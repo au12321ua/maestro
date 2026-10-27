@@ -27,4 +27,4 @@
 - [开发交接](HANDOFF.md)：现状、代码位置和验证入口。
 - [分支、协作与发布规则](guides/development-workflow.md)：独立工作树、`dev` 集成与固定版本发布。
 
-重写前的设计、归档、0.2.0 发布说明和旧验收标准已删除，可在 Git 历史（`9ff43b5` 及更早）中查阅，不成为约束。现场报告与原始证据只保存于 ignored `.local/`。
+重写前的设计、归档、0.2.0 发布说明和旧验收标准已删除，可在 Git 历史（`9ff43b5` 及更早）中查阅，不成为约束。现场说明与原始证据放私有仓库 `PhySpace/maestro-site`（[N-23](proposals/N-23-site-repository.md)），不进入本仓库。
