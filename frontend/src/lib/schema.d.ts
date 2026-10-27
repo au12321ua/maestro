@@ -235,6 +235,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/deployment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Deployment
+         * @description config.toml in force and whether the service has a proxy; changed on the host.
+         */
+        get: operations["get_deployment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/harness-adapters": {
         parameters: {
             query?: never;
@@ -603,6 +623,26 @@ export interface paths {
         put?: never;
         /** Restore Entry */
         post: operations["restore_entry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/setup-network": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Setup Network
+         * @description Save a new revision; setup work that starts from now on uses it.
+         */
+        put: operations["update_setup_network"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1605,6 +1645,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/setup-network": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Setup Network
+         * @description The setup network in force (N-08): read when setup work starts.
+         */
+        get: operations["get_setup_network"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/setup-network/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Setup Network Revisions
+         * @description Every revision, newest first and ending with revision 0; attempts name theirs.
+         */
+        get: operations["list_setup_network_revisions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/system-status": {
         parameters: {
             query?: never;
@@ -1855,6 +1935,11 @@ export interface components {
             id: string;
             /** Phase */
             phase: string | null;
+            /**
+             * Setup Network Revision
+             * @description Setup network revision this attempt's setup was given; none for Oracle
+             */
+            setup_network_revision: number | null;
             /** Started At */
             started_at: string;
             /**
@@ -2765,6 +2850,29 @@ export interface components {
              */
             state: "recycled" | "purged";
         };
+        /**
+         * DeploymentSettings
+         * @description What ``config.toml`` and the service environment set; read only on the web.
+         */
+        DeploymentSettings: {
+            /**
+             * Retired
+             * @description Keys in config.toml that are no longer used
+             */
+            retired: string[];
+            /**
+             * Service Proxy
+             * @description The service process has a proxy in its environment
+             */
+            service_proxy: boolean;
+            /**
+             * Values
+             * @description config.toml settings in force, with defaults
+             */
+            values: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+        };
         /** EffectiveAttachment */
         EffectiveAttachment: {
             /** Content Digest */
@@ -2969,6 +3077,11 @@ export interface components {
             data: components["schemas"]["DatasetVersionDetail"];
             meta: components["schemas"]["Meta"];
         };
+        /** Envelope[DeploymentSettings] */
+        Envelope_DeploymentSettings_: {
+            data: components["schemas"]["DeploymentSettings"];
+            meta: components["schemas"]["Meta"];
+        };
         /** Envelope[Export] */
         Envelope_Export_: {
             data: components["schemas"]["Export"];
@@ -3067,6 +3180,11 @@ export interface components {
         /** Envelope[SessionInfo] */
         Envelope_SessionInfo_: {
             data: components["schemas"]["SessionInfo"];
+            meta: components["schemas"]["Meta"];
+        };
+        /** Envelope[SetupNetwork] */
+        Envelope_SetupNetwork_: {
+            data: components["schemas"]["SetupNetwork"];
             meta: components["schemas"]["Meta"];
         };
         /** Envelope[SetupStatus] */
@@ -3200,6 +3318,12 @@ export interface components {
         Envelope_list_Run__: {
             /** Data */
             data: components["schemas"]["Run"][];
+            meta: components["schemas"]["Meta"];
+        };
+        /** Envelope[list[SetupNetwork]] */
+        Envelope_list_SetupNetwork__: {
+            /** Data */
+            data: components["schemas"]["SetupNetwork"][];
             meta: components["schemas"]["Meta"];
         };
         /** Envelope[list[SourceDataset]] */
@@ -3924,6 +4048,11 @@ export interface components {
             operation_id: string | null;
             /** Prepared At */
             prepared_at: string | null;
+            /**
+             * Setup Network Revision
+             * @description Setup network revision the image was built with; none for a pull
+             */
+            setup_network_revision: number | null;
         };
         /** LoginRequest */
         LoginRequest: {
@@ -4514,6 +4643,11 @@ export interface components {
             pins: components["schemas"]["PreparationPin"][];
             /** Prepared At */
             prepared_at: string | null;
+            /**
+             * Setup Network Revision
+             * @description Setup network revision the image was built with; none for a pull
+             */
+            setup_network_revision: number | null;
             /** Spec Digest */
             spec_digest: string;
             /** Waiters */
@@ -5396,6 +5530,83 @@ export interface components {
              */
             csrf_token: string | null;
             user: components["schemas"]["Me"];
+        };
+        /** SetupNetwork */
+        SetupNetwork: {
+            /** Created At */
+            created_at: string | null;
+            /** Created By Username */
+            created_by_username: string | null;
+            /**
+             * Env
+             * @description Variables for setup in the task container (package mirrors); no secrets
+             */
+            env: {
+                [key: string]: string;
+            };
+            /**
+             * Harness Setup Timeout Sec
+             * @description The harness's setup time limit; none keeps the harness's own
+             */
+            harness_setup_timeout_sec: number | null;
+            /**
+             * No Proxy
+             * @description Comma-separated, no spaces
+             * @default
+             */
+            no_proxy: string;
+            /** Note */
+            note: string;
+            /**
+             * Proxy
+             * @description http(s)://host:port for setup work, reachable from containers; empty is off
+             * @default
+             */
+            proxy: string;
+            /**
+             * Revision
+             * @description 0 is nothing set
+             */
+            revision: number;
+            /**
+             * Warnings
+             * @description Valid but probably not what was meant
+             */
+            warnings: string[];
+        };
+        /** SetupNetworkUpdate */
+        SetupNetworkUpdate: {
+            /**
+             * Env
+             * @description Variables for setup in the task container (package mirrors); no secrets
+             */
+            env?: {
+                [key: string]: string;
+            };
+            /** Expected Revision */
+            expected_revision: number;
+            /**
+             * Harness Setup Timeout Sec
+             * @description The harness's setup time limit; none keeps the harness's own
+             */
+            harness_setup_timeout_sec?: number | null;
+            /**
+             * No Proxy
+             * @description Comma-separated, no spaces
+             * @default
+             */
+            no_proxy?: string;
+            /**
+             * Note
+             * @default
+             */
+            note?: string;
+            /**
+             * Proxy
+             * @description http(s)://host:port for setup work, reachable from containers; empty is off
+             * @default
+             */
+            proxy?: string;
         };
         /** SetupRequest */
         SetupRequest: {
@@ -6320,6 +6531,35 @@ export interface operations {
             };
         };
     };
+    get_deployment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_DeploymentSettings_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     list_adapters: {
         parameters: {
             query?: never;
@@ -7047,6 +7287,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Envelope_RecycleEntry_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_setup_network: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetupNetworkUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_SetupNetwork_"];
                 };
             };
             /** @description Structured error */
@@ -9203,6 +9476,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Envelope_SessionInfo_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_setup_network: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_SetupNetwork_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_setup_network_revisions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_list_SetupNetwork__"];
                 };
             };
             /** @description Structured error */

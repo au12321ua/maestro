@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from maestro.boundaries.environment import CleanupReport
+from maestro.domain.setup_network import BUILT_IN, SetupNetwork
 
 # The platform default scoring contract's metric (domain.scoring.DEFAULT_CONTRACT).
 DEFAULT_METRIC_ID = "reward"
@@ -55,6 +56,9 @@ class RunSpec:
     """Credential values read at execution (03 section 5: the current value of the bound
     credential): ``model_api_key`` and ``param:<NAME>`` for secret author parameters.
     Never persisted, logged or put in configuration."""
+    setup_network: SetupNetwork = BUILT_IN
+    """Read when execution starts (N-08): proxy and variables for a model run's setup
+    (harness install, attachment scripts) and the harness's setup time limit."""
 
 
 @dataclass(frozen=True)

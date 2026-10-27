@@ -31,6 +31,7 @@ from maestro.services.policy import Policies
 from maestro.services.preparation import Preparer
 from maestro.services.recycle import Recycle
 from maestro.services.runs import Runs
+from maestro.services.setup_network import SetupNetworks
 from maestro.services.worker import Worker
 
 
@@ -47,6 +48,7 @@ class Maestro:
     datasets: Datasets
     runs: Runs
     policies: Policies
+    setup_networks: SetupNetworks
     models: ModelConfigs
     attachments: Attachments
     plans: Plans
@@ -127,6 +129,7 @@ class Maestro:
             datasets=Datasets(db, sources, credentials),
             runs=runs,
             policies=Policies(db),
+            setup_networks=SetupNetworks(db),
             models=ModelConfigs(
                 db,
                 adapters,

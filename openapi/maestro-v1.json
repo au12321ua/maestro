@@ -540,6 +540,18 @@
             ],
             "title": "Phase"
           },
+          "setup_network_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Setup network revision this attempt's setup was given; none for Oracle",
+            "title": "Setup Network Revision"
+          },
           "started_at": {
             "title": "Started At",
             "type": "string"
@@ -574,6 +586,7 @@
           "phase",
           "steps",
           "executor_ref",
+          "setup_network_revision",
           "started_at",
           "ended_at",
           "error"
@@ -3202,6 +3215,40 @@
         "title": "DeletionState",
         "type": "object"
       },
+      "DeploymentSettings": {
+        "additionalProperties": false,
+        "description": "What ``config.toml`` and the service environment set; read only on the web.",
+        "properties": {
+          "retired": {
+            "description": "Keys in config.toml that are no longer used",
+            "items": {
+              "type": "string"
+            },
+            "title": "Retired",
+            "type": "array"
+          },
+          "service_proxy": {
+            "description": "The service process has a proxy in its environment",
+            "title": "Service Proxy",
+            "type": "boolean"
+          },
+          "values": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "description": "config.toml settings in force, with defaults",
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "values",
+          "retired",
+          "service_proxy"
+        ],
+        "title": "DeploymentSettings",
+        "type": "object"
+      },
       "EffectiveAttachment": {
         "additionalProperties": false,
         "properties": {
@@ -3842,6 +3889,23 @@
         "title": "Envelope[DatasetVersionDetail]",
         "type": "object"
       },
+      "Envelope_DeploymentSettings_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/DeploymentSettings"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[DeploymentSettings]",
+        "type": "object"
+      },
       "Envelope_Export_": {
         "additionalProperties": false,
         "properties": {
@@ -4180,6 +4244,23 @@
           "meta"
         ],
         "title": "Envelope[SessionInfo]",
+        "type": "object"
+      },
+      "Envelope_SetupNetwork_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SetupNetwork"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[SetupNetwork]",
         "type": "object"
       },
       "Envelope_SetupStatus_": {
@@ -4643,6 +4724,27 @@
           "meta"
         ],
         "title": "Envelope[list[Run]]",
+        "type": "object"
+      },
+      "Envelope_list_SetupNetwork__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/SetupNetwork"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[list[SetupNetwork]]",
         "type": "object"
       },
       "Envelope_list_SourceDataset__": {
@@ -6952,6 +7054,18 @@
               }
             ],
             "title": "Prepared At"
+          },
+          "setup_network_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Setup network revision the image was built with; none for a pull",
+            "title": "Setup Network Revision"
           }
         },
         "required": [
@@ -6961,7 +7075,8 @@
           "last_restore_error",
           "operation_id",
           "prepared_at",
-          "last_used_at"
+          "last_used_at",
+          "setup_network_revision"
         ],
         "title": "LocalPreparation",
         "type": "object"
@@ -8858,6 +8973,18 @@
             ],
             "title": "Prepared At"
           },
+          "setup_network_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Setup network revision the image was built with; none for a pull",
+            "title": "Setup Network Revision"
+          },
           "spec_digest": {
             "title": "Spec Digest",
             "type": "string"
@@ -8878,6 +9005,7 @@
           "operation_id",
           "prepared_at",
           "last_used_at",
+          "setup_network_revision",
           "spec_digest",
           "generation",
           "image_id",
@@ -11603,6 +11731,146 @@
         "title": "SessionInfo",
         "type": "object"
       },
+      "SetupNetwork": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "created_by_username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Username"
+          },
+          "env": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Variables for setup in the task container (package mirrors); no secrets",
+            "title": "Env",
+            "type": "object"
+          },
+          "harness_setup_timeout_sec": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The harness's setup time limit; none keeps the harness's own",
+            "title": "Harness Setup Timeout Sec"
+          },
+          "no_proxy": {
+            "default": "",
+            "description": "Comma-separated, no spaces",
+            "title": "No Proxy",
+            "type": "string"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "proxy": {
+            "default": "",
+            "description": "http(s)://host:port for setup work, reachable from containers; empty is off",
+            "title": "Proxy",
+            "type": "string"
+          },
+          "revision": {
+            "description": "0 is nothing set",
+            "title": "Revision",
+            "type": "integer"
+          },
+          "warnings": {
+            "description": "Valid but probably not what was meant",
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "proxy",
+          "no_proxy",
+          "env",
+          "harness_setup_timeout_sec",
+          "revision",
+          "note",
+          "created_by_username",
+          "created_at",
+          "warnings"
+        ],
+        "title": "SetupNetwork",
+        "type": "object"
+      },
+      "SetupNetworkUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "env": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Variables for setup in the task container (package mirrors); no secrets",
+            "title": "Env",
+            "type": "object"
+          },
+          "expected_revision": {
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "harness_setup_timeout_sec": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The harness's setup time limit; none keeps the harness's own",
+            "title": "Harness Setup Timeout Sec"
+          },
+          "no_proxy": {
+            "default": "",
+            "description": "Comma-separated, no spaces",
+            "title": "No Proxy",
+            "type": "string"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "proxy": {
+            "default": "",
+            "description": "http(s)://host:port for setup work, reachable from containers; empty is off",
+            "title": "Proxy",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_revision"
+        ],
+        "title": "SetupNetworkUpdate",
+        "type": "object"
+      },
       "SetupRequest": {
         "additionalProperties": false,
         "properties": {
@@ -13768,6 +14036,38 @@
         ]
       }
     },
+    "/api/v1/admin/deployment": {
+      "get": {
+        "description": "config.toml in force and whether the service has a proxy; changed on the host.",
+        "operationId": "get_deployment",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_DeploymentSettings_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Get Deployment",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/v1/admin/harness-adapters": {
       "get": {
         "operationId": "list_adapters",
@@ -14813,6 +15113,49 @@
         },
         "summary": "Restore Entry",
         "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/setup-network": {
+      "put": {
+        "description": "Save a new revision; setup work that starts from now on uses it.",
+        "operationId": "update_setup_network",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupNetworkUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_SetupNetwork_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Update Setup Network",
+        "tags": [
+          "configuration",
           "admin"
         ]
       }
@@ -18081,6 +18424,70 @@
         "summary": "Complete Setup",
         "tags": [
           "setup"
+        ]
+      }
+    },
+    "/api/v1/setup-network": {
+      "get": {
+        "description": "The setup network in force (N-08): read when setup work starts.",
+        "operationId": "get_setup_network",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_SetupNetwork_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Get Setup Network",
+        "tags": [
+          "configuration"
+        ]
+      }
+    },
+    "/api/v1/setup-network/revisions": {
+      "get": {
+        "description": "Every revision, newest first and ending with revision 0; attempts name theirs.",
+        "operationId": "list_setup_network_revisions",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_list_SetupNetwork__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "List Setup Network Revisions",
+        "tags": [
+          "configuration"
         ]
       }
     },

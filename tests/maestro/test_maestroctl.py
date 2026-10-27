@@ -31,7 +31,6 @@ def _args(**values):
         "listen_host": "127.0.0.1",
         "port": 8420,
         "insecure_cookie": False,
-        "setup_proxy": None,
         "proxy": None,
         "no_proxy": None,
         "docker_host": None,
@@ -73,17 +72,27 @@ def test_test_root_unit_is_a_user_unit_without_account(tmp_path):
 
 def test_written_config_is_accepted_by_the_service(tmp_path, monkeypatch):
     layout = ctl.Layout(tmp_path, test=True)
-    text = ctl.render_config(
-        layout, _args(port=8431, insecure_cookie=True, setup_proxy="http://10.0.0.1:3128")
-    )
+    text = ctl.render_config(layout, _args(port=8431, insecure_cookie=True))
     path = tmp_path / "config.toml"
     path.write_text(text)
     settings = config.load(path)
     assert settings.data_dir == layout.data and settings.master_key_dir == layout.secrets
     assert settings.runner_python == layout.current / "runner-env/venv/bin/python"
     assert settings.listen_port == 8431 and settings.cookie_secure is False
-    assert settings.setup_proxy == "http://10.0.0.1:3128"
     assert tomllib.loads(ctl.render_config(layout, _args()))["cookie_secure"] is True
+
+
+def test_check_reports_the_daemon_proxy_and_registry_mirrors():
+    bare = {c.name: c for c in ctl.daemon_checks({}, proxy_wanted=True)}
+    assert bare["docker proxy"].status == "warn"
+    assert bare["docker mirrors"].status == "ok" and "none" in bare["docker mirrors"].detail
+    info = {
+        "HttpsProxy": "http://10.0.0.1:3128",
+        "RegistryConfig": {"Mirrors": ["https://m.example/"]},
+    }
+    found = {c.name: c for c in ctl.daemon_checks(info, proxy_wanted=True)}
+    assert "docker proxy" not in found
+    assert found["docker mirrors"].detail == "https://m.example/"
 
 
 def test_environment_file_carries_proxies_and_docker_host():

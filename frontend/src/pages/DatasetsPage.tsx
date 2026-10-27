@@ -36,6 +36,7 @@ import type {
   Task,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { SetupNetworkRevision } from "@/pages/admin/SetupNetworkTab";
 
 const PHASES: Record<string, string> = {
   queued: "排队",
@@ -813,6 +814,12 @@ function TaskDetail({ task }: { task: Task }) {
           <div>
             准备规格：<code>{task.spec_digest}</code>
           </div>
+        )}
+        {task.local_preparation.setup_network_revision != null && (
+          <SetupNetworkRevision
+            revision={task.local_preparation.setup_network_revision}
+            prefix="镜像构建时用的安装网络："
+          />
         )}
       </div>
       <div>

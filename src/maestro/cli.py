@@ -149,7 +149,6 @@ def _harbor_executor(settings):
         heartbeat_sec=settings.runner_heartbeat_sec,
         artifact_limits=settings.artifact_limits(),
         attachments=AttachmentStore(settings.data_dir),
-        setup_env=settings.setup_proxy_env(),
     )
 
 
@@ -162,7 +161,6 @@ def _docker_environment(settings):
         build_timeout_max=settings.build_timeout_max_sec,
         pull_timeout=settings.pull_timeout_sec,
         save_timeout=settings.save_timeout_sec,
-        proxy_env=settings.setup_proxy_env(),
     )
 
 

@@ -93,7 +93,9 @@ def preparation_view(row, location_id: str) -> dict:
             "operation_id": None,
             "prepared_at": None,
             "last_used_at": None,
+            "setup_network_revision": None,
         }
+    output = row["output_json"] or {}
     return {
         "id": row["id"],
         "location_id": row["location_id"],
@@ -102,6 +104,7 @@ def preparation_view(row, location_id: str) -> dict:
         "operation_id": row["active_operation_id"],
         "prepared_at": row["prepared_at"],
         "last_used_at": row["last_used_at"],
+        "setup_network_revision": (output.get("detail") or {}).get("setup_network_revision"),
     }
 
 

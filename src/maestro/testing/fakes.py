@@ -184,11 +184,13 @@ class FakeExecutor:
     cleaned: list = field(default_factory=list)
     reconciled: list = field(default_factory=list)
     release: bool = True
+    specs: list = field(default_factory=list)
 
     async def probe(self) -> None:
         pass
 
     async def execute(self, spec: RunSpec, sink: ExecutionSink, cancel: CancelToken):
+        self.specs.append(spec)
         semaphore = asyncio.Semaphore(spec.concurrency)
         await sink.runner_started({"pid": 0, "runner_id": self.executor_id})
 
@@ -287,7 +289,12 @@ class FakeEnvironment:
         ref = self.ref(spec.spec_digest)
         self.images[ref] = image_id
         self.archives[ref] = image_id
-        return PreparedOutput(image_id, ref, {"name": ref, "digest": image_id, "size_bytes": 1})
+        return PreparedOutput(
+            image_id,
+            ref,
+            {"name": ref, "digest": image_id, "size_bytes": 1},
+            {"method": "build", "setup_network_revision": spec.setup_network.revision},
+        )
 
     async def restore(self, spec: PreparationSpec, expected: PreparedOutput, progress):
         self.restores.append(spec.task_key)

@@ -1239,6 +1239,7 @@ class Runs:
                         "phase": a["phase"],
                         "steps": a["steps_json"] or [],
                         "executor_ref": a["executor_ref_json"],
+                        "setup_network_revision": a["setup_network_revision"],
                         "started_at": a["started_at"],
                         "ended_at": a["ended_at"],
                         "error": a["error_json"],

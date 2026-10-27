@@ -193,6 +193,6 @@ def test_the_setup_proxy_reaches_install_scripts_only(agents, tmp_path):
 
 
 def test_setup_time_covers_installing(agents, tmp_path):
-    assert agents.setup_timeout(360) is None
+    assert agents.setup_timeout(360) == 360
     prepare(agents, [stored(tmp_path, "sdk", "#!/bin/bash\n")], timeout_sec=600)
     assert agents.setup_timeout(360) == 360 + 600 + agents.TRANSFER_SEC

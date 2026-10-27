@@ -35,6 +35,7 @@ import {
 } from "@/lib/format";
 import { limit, useLoad, useSession } from "@/lib/hooks";
 import { HarnessesTab, ModelsTab, PolicyTab } from "@/pages/admin/ConfigurationTabs";
+import { SetupNetworkTab } from "@/pages/admin/SetupNetworkTab";
 import type {
   AuditEvent,
   Credential,
@@ -77,6 +78,7 @@ const SECTIONS: { id: string; label: string; render: () => ReactNode }[] = [
   { id: "harnesses", label: "Harness", render: () => <HarnessesTab /> },
   { id: "policy", label: "团队策略", render: () => <PolicyTab /> },
   { id: "capacity", label: "容量", render: () => <CapacityTab /> },
+  { id: "setup-network", label: "安装网络", render: () => <SetupNetworkTab /> },
   { id: "datasets", label: "数据集导入", render: () => <DatasetImportsTab /> },
   { id: "recycle-bin", label: "回收站", render: () => <RecycleBinTab /> },
   { id: "audit", label: "审计", render: () => <AuditTab /> },

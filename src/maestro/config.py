@@ -7,7 +7,6 @@ what must be known before the database opens.
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlsplit
 
 from maestro.core.errors import MaestroError
 
@@ -36,6 +35,12 @@ TUNING = {
 # The Runner reports every ``runner_heartbeat_sec``; this many in a row may go missing
 # before the Runner counts as lost.
 HEARTBEATS_BEFORE_LOST = 3
+# Settings that moved elsewhere: still accepted so an older config.toml does not stop an
+# update, ignored, and named in the start log (U-39).
+RETIRED = {
+    "setup_proxy": "the setup network is set on the admin page now",
+    "setup_no_proxy": "the setup network is set on the admin page now",
+}
 
 
 @dataclass(frozen=True)
@@ -88,11 +93,8 @@ class Settings:
     storage_accept_min_free_percent: float = 15
     storage_dispatch_min_free_gb: float = 10
     storage_dispatch_min_free_percent: float = 8
-    # Off unless set: an HTTP(S) proxy for setup work only, i.e. the platform's image
-    # builds and attachment install scripts. Never given to the agent or the verifier.
-    # It must be reachable from containers (e.g. the Docker bridge address, not 127.0.0.1).
-    setup_proxy: str = ""
-    setup_no_proxy: str = ""
+    # Retired keys found in the file (``RETIRED``); reported by ``advice``.
+    retired: tuple[str, ...] = ()
 
     @property
     def database(self) -> Path:
@@ -144,24 +146,9 @@ class Settings:
             "hub_runner_slots": self.hub_runner_slots,
         }
 
-    def setup_proxy_env(self) -> dict[str, str]:
-        """Proxy variables for setup work, in both spellings tools read; empty when off."""
-        if not self.setup_proxy:
-            return {}
-        env = {"HTTP_PROXY": self.setup_proxy, "HTTPS_PROXY": self.setup_proxy}
-        if self.setup_no_proxy:
-            env["NO_PROXY"] = self.setup_no_proxy
-        return env | {k.lower(): v for k, v in env.items()}
-
     def advice(self) -> list[str]:
         """Settings that are valid but probably not what was meant; logged at start."""
-        notes = []
-        host = urlsplit(self.setup_proxy).hostname if self.setup_proxy else None
-        if host in {"127.0.0.1", "localhost", "::1"}:
-            notes.append(
-                f"setup_proxy points at {host}: inside a container that is the container "
-                "itself; use an address containers reach, such as the Docker bridge's"
-            )
+        notes = [f"{name} in config.toml is ignored: {RETIRED[name]}" for name in self.retired]
         if self.export_max_gb > self.storage_dispatch_min_free_gb:
             notes.append(
                 f"export_max_gb ({self.export_max_gb}) is above storage_dispatch_min_free_gb "
@@ -205,27 +192,6 @@ class Settings:
                 "artifact_file_max_mb cannot be larger than artifact_attempt_max_mb",
                 500,
             )
-        if self.setup_proxy:
-            parts = urlsplit(self.setup_proxy)
-            if parts.scheme not in {"http", "https"} or not parts.hostname or not parts.port:
-                raise MaestroError(
-                    "CONFIG_INVALID",
-                    "setup_proxy must look like http://host:port (https also accepted)",
-                    500,
-                )
-            if parts.username or parts.password:
-                # Harbor passes exec variables as ``docker exec -e``: visible to every
-                # local user in the process list.
-                raise MaestroError(
-                    "CONFIG_INVALID",
-                    "setup_proxy cannot carry a user name or password; use a proxy that "
-                    "admits the host by address",
-                    500,
-                )
-        if any(c.isspace() for c in self.setup_no_proxy):
-            raise MaestroError(
-                "CONFIG_INVALID", "setup_no_proxy is a comma-separated list without spaces", 500
-            )
         if self.build_timeout_default_sec > self.build_timeout_max_sec:
             raise MaestroError(
                 "CONFIG_INVALID",
@@ -247,11 +213,12 @@ def load(path: Path | None = None) -> Settings:
         raw = tomllib.loads(path.read_text())
     except (OSError, tomllib.TOMLDecodeError) as error:
         raise MaestroError("CONFIG_INVALID", f"Cannot read {path}: {error}", 500) from None
-    known = set(Settings.__dataclass_fields__)
-    unknown = set(raw) - known
+    known = set(Settings.__dataclass_fields__) - {"retired"}
+    unknown = set(raw) - known - set(RETIRED)
     if unknown:
         raise MaestroError("CONFIG_INVALID", f"Unknown settings: {sorted(unknown)}", 500)
-    values = dict(raw)
+    values = {k: v for k, v in raw.items() if k not in RETIRED}
+    values["retired"] = tuple(sorted(set(raw) & set(RETIRED)))
     for name in ("data_dir", "cache_dir", "master_key_dir", "runner_python"):
         if values.get(name):
             values[name] = Path(values[name])

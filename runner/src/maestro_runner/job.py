@@ -396,15 +396,18 @@ class Execution:
             # Harbor's default agent is oracle; never fall back to it implicitly (15 section 6).
             raise Rejected("RUNNER_INPUT_INVALID", "agent must be explicit")
         agent = {**agent, "override_timeout_sec": overrides.get("agent_timeout_sec")}
-        # The harness's own install and attachment scripts run in setup, through the
-        # deployment's setup proxy when it has one.
+        # The harness's own install and attachment scripts run in setup, with the
+        # deployment's setup network (proxy, package mirrors) when it has one.
         agents.INSTALL["env"] = dict(self.spec.get("setup_env") or {})
         if self.spec.get("attachments"):
             if not self.spec["agent"].get("adapter"):
                 raise Rejected("RUNNER_INPUT_INVALID", "attachments need a harness agent")
             self._attachments()
+        harness_limit = self.spec.get("harness_setup_timeout_sec")
+        if self.spec["agent"].get("adapter") and (agents.ATTACHMENTS or harness_limit):
             agent["override_setup_timeout_sec"] = agents.setup_timeout(
-                agents.agent_class(self.spec["agent"]["adapter"]).DEFAULT_SETUP_TIMEOUT_SEC
+                harness_limit
+                or agents.agent_class(self.spec["agent"]["adapter"]).DEFAULT_SETUP_TIMEOUT_SEC
             )
         return JobConfig(
             job_name="job",
@@ -806,6 +809,15 @@ def check_spec(spec: dict) -> None:
         for a in attachments
     ):
         raise Rejected("RUNNER_INPUT_INVALID", f"attachments need exactly {sorted(fields)}")
+    harness_limit = spec.get("harness_setup_timeout_sec")
+    if harness_limit is not None and (
+        isinstance(harness_limit, bool)
+        or not isinstance(harness_limit, int | float)
+        or harness_limit <= 0
+    ):
+        raise Rejected(
+            "RUNNER_INPUT_INVALID", "harness_setup_timeout_sec must be a positive number"
+        )
     limit = spec.get("bootstrap_timeout_sec")
     if any(a["bootstrap"] for a in attachments) and (
         isinstance(limit, bool) or not isinstance(limit, int | float) or limit <= 0

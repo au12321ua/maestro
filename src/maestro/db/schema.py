@@ -317,6 +317,18 @@ team_policies = Table(
     _time("created_at"),
 )
 
+# N-08: the setup network an administrator keeps, one row per revision.
+setup_networks = Table(
+    "setup_networks",
+    metadata,
+    _id(),
+    Column("revision", Integer, nullable=False, unique=True),
+    _json("value_json"),
+    Column("note", String(500), nullable=False),
+    _ref("created_by", "users"),
+    _time("created_at"),
+)
+
 model_configs = Table(
     "model_configs",
     metadata,
@@ -572,6 +584,8 @@ execution_attempts = Table(
     Column("phase", String(32), nullable=True),
     _json("steps_json", nullable=True),
     _json("executor_ref_json", nullable=True),
+    # The setup network revision a model run's setup was given (N-08); None for Oracle.
+    Column("setup_network_revision", Integer, nullable=True),
     _time("started_at"),
     _time("ended_at", nullable=True),
     _json("error_json", nullable=True),

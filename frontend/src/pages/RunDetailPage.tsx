@@ -69,6 +69,7 @@ import type {
   Trial,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { SetupNetworkRevision } from "@/pages/admin/SetupNetworkTab";
 
 const TABS = new Set(["execution", "results", "config", "artifacts"]);
 const TRIAL_TERMINAL = new Set(["scored", "execution_error", "not_started", "cancelled", "interrupted"]);
@@ -829,6 +830,9 @@ function AttemptSteps({
               artifacts={artifacts.filter((a) => a.attempt_id === attempt.id)}
               live={live}
             />
+            {attempt.setup_network_revision != null && (
+              <SetupNetworkRevision revision={attempt.setup_network_revision} />
+            )}
             {err && (
               <div className="mt-1 rounded bg-red-50 px-2 py-1 font-mono text-xs text-red-800">
                 {String(err.code ?? "ERROR")}

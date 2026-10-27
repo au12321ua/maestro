@@ -15,8 +15,8 @@ into a root-owned file in the container just before the agent runs and removed r
 after, before verification: never a command-line argument (``docker exec -e`` would show
 it to every host user) or an environment variable of the Runner. The agent process can
 read it while it works; that is what calling the model from the container means.
-OpenCode, Node and the provider package are installed in setup, through the setup proxy
-when one is configured, at the version the harness pins.
+OpenCode, Node and the provider package are installed in setup, with the deployment's
+setup network (proxy, package mirrors) when it has one, at the version the harness pins.
 
 Attachments (03 section 7) are installed by the same agent class during agent setup,
 before the agent's own setup: each package is copied into this trial's container with
@@ -162,11 +162,12 @@ def content_digest(files: list[list]) -> str:
     return "sha256:" + hashlib.sha256(text.encode()).hexdigest()
 
 
-def setup_timeout(default_sec: float) -> float | None:
-    """Harbor's limit for the whole agent setup when attachments are installed in it."""
+def setup_timeout(harness_sec: float) -> float:
+    """Harbor's limit for the whole agent setup: the harness's own install time, plus the
+    attachments' install and copy time when there are any."""
     if not ATTACHMENTS:
-        return None
-    return default_sec + (INSTALL["timeout_sec"] or 0) + TRANSFER_SEC * len(ATTACHMENTS)
+        return harness_sec
+    return harness_sec + (INSTALL["timeout_sec"] or 0) + TRANSFER_SEC * len(ATTACHMENTS)
 
 
 def _in_container(output: str) -> list[list]:
@@ -206,8 +207,9 @@ async def install(agent, environment) -> None:
                 "content_digest": attachment["content_digest"],
                 "target": target,
                 "user": None if user is None else str(user),
-                # Whether the deployment's setup proxy was offered (never its address).
-                "proxy": bool(INSTALL["env"]),
+                # Whether the deployment's setup proxy was offered; the revision of the
+                # setup network is on the attempt (N-08).
+                "proxy": "HTTP_PROXY" in INSTALL["env"],
                 "status": "copying",
             }
             records.append(record)
@@ -302,7 +304,7 @@ def _opencode_config(protocol: str, model: dict, params: dict) -> dict[str, Any]
 
 
 async def _setup_with_attachments(agent, environment, setup) -> None:
-    """Attachments first, then the agent's own setup; both through the setup proxy."""
+    """Attachments first, then the agent's own setup; both with the setup network."""
     with environment.scoped_exec_env(INSTALL["env"]):
         if ATTACHMENTS:
             await install(agent, environment)

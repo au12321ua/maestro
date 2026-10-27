@@ -356,7 +356,8 @@ class Catalog(_Resource):
 
 
 class Configs(_Resource):
-    """Models, harnesses, credential names, team policy, and configuration resolution."""
+    """Models, harnesses, credential names, team policy, setup network, and configuration
+    resolution."""
 
     def models(self, *, include_disabled: bool = False) -> list[models.ModelConfig]:
         return self._c._get(
@@ -378,6 +379,15 @@ class Configs(_Resource):
 
     def team_policy(self) -> models.TeamPolicy:
         return self._c._get("team-policy", models.TeamPolicy)
+
+    def setup_network(self) -> models.SetupNetwork:
+        """How setup work reaches the network on this deployment: proxy, package mirrors
+        and the harness setup time limit in force."""
+        return self._c._get("setup-network", models.SetupNetwork)
+
+    def setup_network_revisions(self) -> list[models.SetupNetwork]:
+        """Every revision, newest first; an attempt's ``setup_network_revision`` names one."""
+        return self._c._get("setup-network/revisions", list[models.SetupNetwork])
 
     def resolve(self, config: models.ConfigRequestInput | Mapping[str, Any]) -> Resolution:
         """Effective values, their sources, blockers and ``config_digest``; reserves nothing."""

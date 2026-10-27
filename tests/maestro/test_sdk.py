@@ -319,7 +319,7 @@ def test_attachment_published_from_a_directory(service, tmp_path):
 NOT_FOR_PATS = (
     "/api/v1/admin/",
     "/api/v1/session",
-    "/api/v1/setup",
+    "/api/v1/setup",  # first administrator; ``/api/v1/setup-network`` is for PATs too
     "/api/v1/invitations/",
     "/api/v1/me/",
     "/api/v1/dataset-search",
@@ -340,6 +340,8 @@ SDK_METHODS = {
     "get_harness": "configs.harness",
     "list_credential_names": "configs.credential_names",
     "get_team_policy": "configs.team_policy",
+    "get_setup_network": "configs.setup_network",
+    "list_setup_network_revisions": "configs.setup_network_revisions",
     "resolve_config": "configs.resolve",
     "get_resolution": "configs.resolution",
     "list_attachments": "attachments.list",
@@ -385,7 +387,7 @@ def test_every_operation_open_to_pats_has_an_sdk_method():
     public = {
         operation["operationId"]
         for path, methods in document["paths"].items()
-        if not path.startswith(NOT_FOR_PATS)
+        if not path.startswith(NOT_FOR_PATS) or path.startswith("/api/v1/setup-network")
         for operation in methods.values()
     }
     assert public == set(SDK_METHODS)

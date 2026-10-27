@@ -28,6 +28,7 @@ OPEN_FIELDS = {
     ("PreparedOutputView", "detail"): "environment-specific preparation record",
     ("RecycleEntry", "detail"): "purge receipt; depends on the object type",
     ("AuditEvent", "detail"): "depends on the audited action",
+    ("DeploymentSettings", "values"): "config.toml settings, as src/maestro/config.py defines them",
 }
 # Objects that carry documented fields plus code-specific extras.
 OPEN_OBJECTS = {"Problem", "SuggestedAction", "ScoringContract", "ScoringContractInput"}

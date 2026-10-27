@@ -364,6 +364,9 @@ class LocalPreparation(Model):
     operation_id: str | None
     prepared_at: str | None
     last_used_at: str | None
+    setup_network_revision: int | None = Field(
+        description="Setup network revision the image was built with; none for a pull"
+    )
 
 
 class ContentEvidence(Sparse):
@@ -1099,6 +1102,42 @@ class TeamPolicyRevision(Model):
     created_at: str
 
 
+class SetupNetworkFields(Model):
+    proxy: str = Field(
+        "",
+        description="http(s)://host:port for setup work, reachable from containers; empty is off",
+    )
+    no_proxy: str = Field("", description="Comma-separated, no spaces")
+    env: dict[str, str] = Field(
+        default_factory=dict,
+        description="Variables for setup in the task container (package mirrors); no secrets",
+    )
+    harness_setup_timeout_sec: int | None = Field(
+        None, description="The harness's setup time limit; none keeps the harness's own"
+    )
+
+
+class SetupNetwork(SetupNetworkFields):
+    revision: int = Field(description="0 is nothing set")
+    note: str
+    created_by_username: str | None
+    created_at: str | None
+    warnings: list[str] = Field(description="Valid but probably not what was meant")
+
+
+class SetupNetworkUpdate(SetupNetworkFields):
+    note: str = ""
+    expected_revision: int
+
+
+class DeploymentSettings(Model):
+    """What ``config.toml`` and the service environment set; read only on the web."""
+
+    values: JsonObject = Field(description="config.toml settings in force, with defaults")
+    retired: list[str] = Field(description="Keys in config.toml that are no longer used")
+    service_proxy: bool = Field(description="The service process has a proxy in its environment")
+
+
 class RunAccepted(Model):
     run_id: str
     operation_id: str
@@ -1363,6 +1402,9 @@ class Attempt(Model):
         description="Step start times; a step ends when the next starts or the attempt ends"
     )
     executor_ref: JsonObject | None = Field(description="Executor-specific, e.g. Harbor's ids")
+    setup_network_revision: int | None = Field(
+        description="Setup network revision this attempt's setup was given; none for Oracle"
+    )
     started_at: str
     ended_at: str | None
     error: AttemptError | None

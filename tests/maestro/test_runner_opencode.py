@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from test_harbor_executor import agent_spec, make_executor
 from test_runner_attachments import RUNNER_SRC, agents  # noqa: F401 - fixture
-from test_setup_proxy import materials, runner_python  # noqa: F401 - fixtures
+from test_setup_network import materials, runner_python  # noqa: F401 - fixtures
 
 ROOT = Path(__file__).resolve().parents[2]
 RUNNER = Path(os.environ.get("MAESTRO_RUNNER_PYTHON", ROOT / "runner/.venv/bin/python"))

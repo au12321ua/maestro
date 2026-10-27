@@ -53,6 +53,7 @@ from maestro.execution.policy import (
     legal_score,
 )
 from maestro.security.redaction import redact
+from maestro.services import setup_network
 from maestro.services.artifacts import expiry_for, stamp_expiry
 from maestro.services.capacity import HostCapacity, provider_of, reservation, waiting_reason
 from maestro.services.instance import instance_id
@@ -114,6 +115,8 @@ class RunSink:
         self.run_id = run_id
         self.lease = lease
         self.attempt_ids: dict[tuple[str, int], str] = {}
+        # The setup network revision the executor's attempts are given (N-08).
+        self.setup_network_revision: int | None = None
         # Attempts the platform recorded itself (failed cache restores) before the
         # executor started; executor attempt numbers continue after them.
         self.platform_attempts: dict[str, int] = {}
@@ -201,6 +204,7 @@ class RunSink:
                     lease_token=self.lease,
                     runner_id=(detail or {}).get("runner_id") or self.worker.executor.executor_id,
                     executor_ref_json=detail,
+                    setup_network_revision=self.setup_network_revision,
                     state=AttemptState.STARTING,
                     phase="starting",
                     steps_json=[{"step": "starting", "at": at}],
@@ -939,6 +943,11 @@ class Worker:
             if self.preparer is not None:
                 spec = await self._prepare(spec, sink, cancel)
             if spec.trials and not cancel.cancelled:
+                # Read now, not at acceptance: a replaced mirror reaches queued runs (N-08).
+                with self.db.read() as conn:
+                    spec = replace(spec, setup_network=setup_network.current(conn))
+                if spec.effective_config.get("harness"):
+                    sink.setup_network_revision = spec.setup_network.revision
                 report = await self.executor.execute(spec, sink, cancel)
                 cleanup = CleanupState.COMPLETE if report.cleanup_complete else CleanupState.FAILED
                 failure = report.failure_code

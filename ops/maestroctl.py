@@ -502,8 +502,6 @@ def render_config(layout: Layout, args) -> str:
         # Without HTTPS in front, browsers drop a Secure cookie and logins never stick.
         f"cookie_secure = {'false' if args.insecure_cookie else 'true'}",
     ]
-    if args.setup_proxy:
-        lines.append(f"setup_proxy = {toml_string(args.setup_proxy)}")
     return "\n".join(lines) + "\n"
 
 
@@ -731,19 +729,10 @@ def run_checks(layout: Layout, args, *, installing: bool) -> list[Check]:
         info = _docker(["info", "--format", "{{json .}}"], env)
         if info is not None and info.returncode == 0:
             with contextlib.suppress(ValueError):
-                data = json.loads(info.stdout)
-                if getattr(args, "proxy", None) and not (
-                    data.get("HttpsProxy") or data.get("HttpProxy")
+                for check in daemon_checks(
+                    json.loads(info.stdout), bool(getattr(args, "proxy", None))
                 ):
-                    add(
-                        Check(
-                            "docker proxy",
-                            "warn",
-                            "the Docker daemon has no proxy",
-                            "pulls go direct; to proxy them add HTTP(S)_PROXY to a drop-in "
-                            "of docker.service (systemctl edit docker) and restart Docker",
-                        )
-                    )
+                    add(check)
     if not layout.test and getattr(args, "docker_host", None) is None:
         sock = Path("/var/run/docker.sock")
         if sock.exists():
@@ -905,6 +894,31 @@ def download_env(args, service: str | None) -> dict:
         )
     say(f"    downloading through {chosen}")
     return {name: chosen for name in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy")}
+
+
+def daemon_checks(info: dict, proxy_wanted: bool) -> list[Check]:
+    """What ``docker info`` says about pulls: the daemon's proxy and registry mirrors.
+    Reported only; maestroctl never changes the host's Docker configuration."""
+    checks = []
+    if proxy_wanted and not (info.get("HttpsProxy") or info.get("HttpProxy")):
+        checks.append(
+            Check(
+                "docker proxy",
+                "warn",
+                "the Docker daemon has no proxy",
+                "pulls go direct; to proxy them add HTTP(S)_PROXY to a drop-in "
+                "of docker.service (systemctl edit docker) and restart Docker",
+            )
+        )
+    mirrors = (info.get("RegistryConfig") or {}).get("Mirrors") or []
+    checks.append(
+        Check(
+            "docker mirrors",
+            "ok",
+            ", ".join(mirrors) if mirrors else "none: Docker Hub pulls go to the registry itself",
+        )
+    )
+    return checks
 
 
 def cmd_check(layout: Layout, args) -> int:
@@ -1325,7 +1339,6 @@ def parser() -> argparse.ArgumentParser:
         p.add_argument("--docker-host", help="Docker endpoint if not the system daemon")
     install.add_argument("--no-proxy", help="hosts that bypass --proxy (comma separated)")
     with_download(install)
-    install.add_argument("--setup-proxy", help="proxy reachable from containers for setup work")
     install.add_argument(
         "--insecure-cookie",
         action="store_true",

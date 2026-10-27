@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
+from maestro.domain.setup_network import BUILT_IN, SetupNetwork
+
 # PreparationError kinds (06 section 3, platform preparation errors). Only TRANSIENT is
 # retried; a cause that is not known to be transient is never retried.
 TRANSIENT = "transient"  # network, registry or daemon trouble; the content may still exist
@@ -37,6 +39,8 @@ class PreparationSpec:
     """Verified local task material (read only)."""
     spec: dict = field(default_factory=dict)
     """The normalized spec the digest covers (02 section 6)."""
+    setup_network: SetupNetwork = BUILT_IN
+    """In force when this preparation started (N-08); builds use its proxy."""
 
 
 @dataclass(frozen=True)

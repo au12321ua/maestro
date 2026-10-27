@@ -20,6 +20,8 @@ from maestro.api.models import (
     ModelConfigCreate,
     ModelConfigRevise,
     RecycleEntry,
+    SetupNetwork,
+    SetupNetworkUpdate,
     TeamPolicy,
     TeamPolicyRevision,
     TeamPolicyUpdate,
@@ -64,6 +66,18 @@ def list_credential_names(request: Request, who: Principal = Depends(principal))
 @router.get("/team-policy", response_model=Envelope[TeamPolicy])
 def get_team_policy(request: Request, who: Principal = Depends(principal)):
     return ok(request, maestro(request).policies.get(who))
+
+
+@router.get("/setup-network", response_model=Envelope[SetupNetwork])
+def get_setup_network(request: Request, who: Principal = Depends(principal)):
+    """The setup network in force (N-08): read when setup work starts."""
+    return ok(request, maestro(request).setup_networks.get(who))
+
+
+@router.get("/setup-network/revisions", response_model=Envelope[list[SetupNetwork]])
+def list_setup_network_revisions(request: Request, who: Principal = Depends(principal)):
+    """Every revision, newest first and ending with revision 0; attempts name theirs."""
+    return ok(request, maestro(request).setup_networks.history(who))
 
 
 # --- resolution ---------------------------------------------------------------------
@@ -185,6 +199,23 @@ def delete_harness(harness_id: str, request: Request, who: Principal = Depends(p
 )
 def list_policy_revisions(request: Request, who: Principal = Depends(principal)):
     return ok(request, maestro(request).policies.history(who))
+
+
+@router.put(
+    "/admin/setup-network",
+    response_model=Envelope[SetupNetwork],
+    tags=["admin"],
+    dependencies=ADMIN,
+)
+def update_setup_network(
+    body: SetupNetworkUpdate, request: Request, who: Principal = Depends(principal)
+):
+    """Save a new revision; setup work that starts from now on uses it."""
+    value = body.model_dump(exclude={"note", "expected_revision"})
+    return ok(
+        request,
+        maestro(request).setup_networks.update(who, value, body.note, body.expected_revision),
+    )
 
 
 @router.put(

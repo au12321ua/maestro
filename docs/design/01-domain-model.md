@@ -91,7 +91,7 @@ erDiagram
 - 产物记录只存存储键与相对路径，不返回宿主机路径。
 - 幂等记录按 主体 + 动作 + key 唯一；审计事件不含令牌、密码、凭据明文。
 
-其余表的用途：team_policies 保存团队策略修订，config_resolutions 保存配置解析结果（有效期内凭 resolution_id 提交），run_attachments 记录运行按顺序加载的附件版本，artifact_pins 是导出等读取者的有期限 pin，exports 是导出任务，deletions 是回收站状态与删除回执，provider_limits 是提供商并发上限，instance 与 service_epochs 是实例标识与每次启动的代次（用于租约与对账）。
+其余表的用途：team_policies 保存团队策略修订，setup_networks 保存安装网络的版本（执行尝试的 setup_network_revision 指向其中一版），config_resolutions 保存配置解析结果（有效期内凭 resolution_id 提交），run_attachments 记录运行按顺序加载的附件版本，artifact_pins 是导出等读取者的有期限 pin，exports 是导出任务，deletions 是回收站状态与删除回执，provider_limits 是提供商并发上限，instance 与 service_epochs 是实例标识与每次启动的代次（用于租约与对账）。
 
 ## 5. 状态与派生字段
 

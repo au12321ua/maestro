@@ -7,7 +7,6 @@ contract naming ``accuracy`` labelled the summary accuracy while scoring somethi
 import asyncio
 import stat
 import sys
-from dataclasses import dataclass, field
 
 import pytest
 from sqlalchemy import select
@@ -142,18 +141,9 @@ def test_the_adapter_default_metric_finds_no_reward_in_accuracy_output(tmp_path)
 # --- from the confirmed contract to the executor and the summary ------------------------
 
 
-@dataclass
-class SpyExecutor(FakeExecutor):
-    specs: list = field(default_factory=list)
-
-    async def execute(self, spec, sink, cancel):
-        self.specs.append(spec)
-        return await super().execute(spec, sink, cancel)
-
-
 @pytest.fixture
 def executor():
-    return SpyExecutor()
+    return FakeExecutor()  # records the specs it was given
 
 
 def finished_run(api, version_id) -> str:

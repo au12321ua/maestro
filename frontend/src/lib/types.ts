@@ -89,6 +89,7 @@ export type Attachment = S["Attachment"];
 
 export type PolicySetting = S["PolicySetting"];
 export type TeamPolicy = S["TeamPolicy"];
+export type SetupNetwork = S["SetupNetwork"];
 
 export type RunAccepted = S["RunAccepted"];
 

@@ -1,6 +1,10 @@
 """Administrator web-session endpoints: members, invitations, credentials, master key,
-execution capacity, dataset imports, first preparation, cache eviction, admission,
+execution capacity, deployment settings (read only), dataset imports, first preparation, cache eviction, admission,
 deletion of team objects and the recycle bin."""
+
+import dataclasses
+import os
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
 
@@ -14,6 +18,7 @@ from maestro.api.models import (
     CredentialCreate,
     CredentialValue,
     DatasetImport,
+    DeploymentSettings,
     Envelope,
     FirstPreparation,
     Invitation,
@@ -169,6 +174,24 @@ def list_audit_events(
 @router.get("/capacity", response_model=Envelope[CapacityOverview])
 def get_capacity(request: Request, who: Principal = Depends(principal)):
     return ok(request, maestro(request).capacity.overview(who))
+
+
+@router.get("/deployment", response_model=Envelope[DeploymentSettings])
+def get_deployment(request: Request, who: Principal = Depends(principal)):
+    """config.toml in force and whether the service has a proxy; changed on the host."""
+    settings = maestro(request).settings
+    values = {
+        f.name: str(v) if isinstance(v := getattr(settings, f.name), Path) else v
+        for f in dataclasses.fields(settings)
+        if f.name != "retired"
+    }
+    proxy = any(
+        os.environ.get(n) for n in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy")
+    )
+    return ok(
+        request,
+        {"values": values, "retired": list(settings.retired), "service_proxy": proxy},
+    )
 
 
 @router.put("/capacity/providers/{provider}", response_model=Envelope[CapacityOverview])

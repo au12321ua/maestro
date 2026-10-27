@@ -20,6 +20,7 @@ import sys
 import time
 import uuid
 from pathlib import Path
+from unittest import mock
 
 import httpx
 import pytest
@@ -30,6 +31,7 @@ from maestro.application import Maestro
 from maestro.boundaries.storage import LocalArtifactStore
 from maestro.db import migrate
 from maestro.db import schema as t
+from maestro.domain.setup_network import BUILT_IN, SetupNetwork
 from maestro.execution.attachments import AttachmentStore
 from maestro.execution.docker import DockerResources
 from maestro.execution.harbor import HarborExecutor
@@ -49,12 +51,8 @@ RUNNER = Path(os.environ.get("MAESTRO_RUNNER_PYTHON", ROOT / "runner/.venv/bin/p
 # Optional: the deployment's setup proxy (e.g. http://172.17.0.1:7890), for hosts that need
 # one to build images and install attachments. Tests then also check its boundaries.
 SETUP_PROXY = os.environ.get("MAESTRO_TEST_SETUP_PROXY", "")
-SETUP_ENV = (
-    {"HTTP_PROXY": SETUP_PROXY, "HTTPS_PROXY": SETUP_PROXY}
-    | {"http_proxy": SETUP_PROXY, "https_proxy": SETUP_PROXY}
-    if SETUP_PROXY
-    else {}
-)
+# Stands in for the administrator's setup network revision (N-08).
+SETUP_NETWORK = SetupNetwork(1, SETUP_PROXY) if SETUP_PROXY else BUILT_IN
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("MAESTRO_DOCKER_TESTS") != "1" or not RUNNER.is_file(),
@@ -115,9 +113,10 @@ def harbor(settings, tasks: Path, name: str):
         DockerResources(),
         term_grace=30,
         attachments=AttachmentStore(settings.data_dir),
-        setup_env=SETUP_ENV,
     )
-    environment = DockerEnvironment(settings.preparation_dir, proxy_env=SETUP_ENV)
+    environment = DockerEnvironment(settings.preparation_dir)
+    network = mock.patch("maestro.services.setup_network.current", lambda conn: SETUP_NETWORK)
+    network.start()
     built = Maestro.build(
         settings,
         executor=executor,
@@ -141,6 +140,7 @@ def harbor(settings, tasks: Path, name: str):
         built.version_id = result["dataset_version_id"]
         yield built
     finally:
+        network.stop()
         built.db.dispose()
         leftovers = labelled(instance)
         if leftovers:  # never leave resources behind, even when an assertion failed

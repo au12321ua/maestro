@@ -1232,6 +1232,59 @@ class SessionInfo(BaseModel):
     user: Me
 
 
+class SetupNetwork(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    created_at: str | None
+    created_by_username: str | None
+    env: Annotated[
+        dict[str, str],
+        Field(
+            description="Variables for setup in the task container (package mirrors); no secrets"
+        ),
+    ]
+    harness_setup_timeout_sec: Annotated[
+        int | None,
+        Field(description="The harness's setup time limit; none keeps the harness's own"),
+    ]
+    no_proxy: Annotated[str, Field(description="Comma-separated, no spaces")]
+    note: str
+    proxy: Annotated[
+        str,
+        Field(
+            description="http(s)://host:port for setup work, reachable from containers; empty is off"
+        ),
+    ]
+    revision: Annotated[int, Field(description="0 is nothing set")]
+    warnings: Annotated[list[str], Field(description="Valid but probably not what was meant")]
+
+
+class SetupNetworkUpdate(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    env: Annotated[
+        dict[str, str] | None,
+        Field(
+            description="Variables for setup in the task container (package mirrors); no secrets"
+        ),
+    ] = None
+    expected_revision: int
+    harness_setup_timeout_sec: Annotated[
+        int | None,
+        Field(description="The harness's setup time limit; none keeps the harness's own"),
+    ] = None
+    no_proxy: Annotated[str | None, Field(description="Comma-separated, no spaces")] = ""
+    note: str | None = ""
+    proxy: Annotated[
+        str | None,
+        Field(
+            description="http(s)://host:port for setup work, reachable from containers; empty is off"
+        ),
+    ] = ""
+
+
 class SetupRequest(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -1704,6 +1757,24 @@ class DatasetVersionDetail(BaseModel):
     upstream_ref: str
 
 
+class DeploymentSettings(BaseModel):
+    """
+    What ``config.toml`` and the service environment set; read only on the web.
+    """
+
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    retired: Annotated[list[str], Field(description="Keys in config.toml that are no longer used")]
+    service_proxy: Annotated[
+        bool, Field(description="The service process has a proxy in its environment")
+    ]
+    values: Annotated[
+        dict[str, JsonValue],
+        Field(description="config.toml settings in force, with defaults"),
+    ]
+
+
 class EffectiveModel(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -1771,6 +1842,14 @@ class EnvelopeDatasetVersionDetail(BaseModel):
         extra="allow",
     )
     data: DatasetVersionDetail
+    meta: Meta
+
+
+class EnvelopeDeploymentSettings(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: DeploymentSettings
     meta: Meta
 
 
@@ -1851,6 +1930,14 @@ class EnvelopeSessionInfo(BaseModel):
         extra="allow",
     )
     data: SessionInfo
+    meta: Meta
+
+
+class EnvelopeSetupNetwork(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: SetupNetwork
     meta: Meta
 
 
@@ -1971,6 +2058,14 @@ class EnvelopeListRecycleEntry(BaseModel):
         extra="allow",
     )
     data: list[RecycleEntry]
+    meta: Meta
+
+
+class EnvelopeListSetupNetwork(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: list[SetupNetwork]
     meta: Meta
 
 
@@ -2489,6 +2584,10 @@ class Attempt(BaseModel):
     ]
     id: str
     phase: str | None
+    setup_network_revision: Annotated[
+        int | None,
+        Field(description="Setup network revision this attempt's setup was given; none for Oracle"),
+    ]
     started_at: str
     state: Literal[
         "starting",
@@ -2850,6 +2949,10 @@ class LocalPreparation(BaseModel):
     location_id: str
     operation_id: str | None
     prepared_at: str | None
+    setup_network_revision: Annotated[
+        int | None,
+        Field(description="Setup network revision the image was built with; none for a pull"),
+    ]
 
 
 class Plan(BaseModel):
@@ -2895,6 +2998,10 @@ class Preparation(BaseModel):
     operation_id: str | None
     pins: list[PreparationPin]
     prepared_at: str | None
+    setup_network_revision: Annotated[
+        int | None,
+        Field(description="Setup network revision the image was built with; none for a pull"),
+    ]
     spec_digest: str
     waiters: list[PreparationWaiter]
 

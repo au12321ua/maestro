@@ -54,13 +54,14 @@ sudo ./maestroctl install --port 8420 --proxy http://<代理地址>:<端口> --u
 | `--insecure-cookie` | 不经 HTTPS 直接用 HTTP 访问时需要（内网试用），否则浏览器不回传登录 cookie |
 | `--proxy`、`--no-proxy` | 服务运行时的代理：写进 `/etc/maestro/environment`，供服务里的 Docker 客户端（BuildKit 取镜像仓库令牌）和 Hub 下载使用。之后直接编辑该文件再 `restart` 即可修改 |
 | `--download-proxy [URL]` | 安装、更新时下载 Python 包用的代理；默认直连。只写选项不带地址，表示沿用服务的代理（`--proxy`，更新时读 `/etc/maestro/environment`）；带地址则用该地址 |
-| `--setup-proxy` | 写入配置的 `setup_proxy`：只给镜像构建与附件安装用，必须是**容器能访问到**的地址（例如宿主机的局域网地址，不能是 127.0.0.1） |
 | `--docker-host` | 不用系统 Docker 时指定 Docker 地址；此时安装器不改账户的组 |
 | `--uv` | uv 的路径（sudo 的 PATH 里常常没有）。安装器把它复制到 `/opt/maestro/bin/uv`，以后更新用这份 |
 
-拉取镜像走 Docker 守护进程自己的代理设置。`check` 发现守护进程没有代理时只提醒，不会替你修改全机的 Docker 配置；需要时用 `sudo systemctl edit docker` 加上 `HTTP_PROXY` / `HTTPS_PROXY` 后重启 Docker。
+镜像构建、Harness 安装和附件脚本经什么网络（代理、npm / pip 等包镜像源、Harness 安装时限）由管理员在网页的“管理 · 安装网络”设置，保存后立即生效，不用重启；代理必须是**容器能访问到**的地址（例如宿主机的局域网地址，不能是 127.0.0.1）。
 
-配置项及其默认值见仓库 README 与[运维设计](../design/12-operations.md)第 3 节。修改 `/etc/maestro/config.toml` 后执行 `sudo maestroctl restart`。
+拉取镜像走 Docker 守护进程自己的代理设置。`check` 发现守护进程没有代理时只提醒，并报告守护进程配置的 registry 镜像源，不会替你修改全机的 Docker 配置；需要时用 `sudo systemctl edit docker` 加上 `HTTP_PROXY` / `HTTPS_PROXY` 后重启 Docker。
+
+配置项及其默认值见仓库 README 与[运维设计](../design/12-operations.md)第 3 节。修改 `/etc/maestro/config.toml` 后执行 `sudo maestroctl restart`。旧版本写入的 `setup_proxy`、`setup_no_proxy` 已不再使用：服务会忽略它们并在日志里提醒，请在网页的“安装网络”中重新填写，再从配置文件里删去。
 
 ## 日常维护
 

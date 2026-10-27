@@ -46,7 +46,7 @@ from maestro.execution.materials import (
     inspect_task,
 )
 from maestro.security.redaction import redact
-from maestro.services import deleted, operations
+from maestro.services import deleted, operations, setup_network
 
 log = logging.getLogger(__name__)
 
@@ -1338,7 +1338,9 @@ class Preparer:
         try:
             async with self.restore_slots():
                 path = await self._material(ctx, progress)
-                spec = PreparationSpec(ctx.spec_digest, ctx.task_key, path, ctx.spec)
+                with self.db.read() as conn:
+                    network = setup_network.current(conn)
+                spec = PreparationSpec(ctx.spec_digest, ctx.task_key, path, ctx.spec, network)
                 if expected is None:
                     output = await self.environment.prepare(spec, progress)
                 else:
