@@ -1,12 +1,12 @@
 # Maestro
 
-> 本项目按[重写目标设计](docs/design/README.md)把 harbor-helper 整体重写为 Maestro，已替换原来的实现；旧实例的数据不迁移。
+> harbor-helper 已整体重写为 Maestro，替换了原来的实现；旧实例的数据不迁移。
 
 Maestro 让受邀的可信团队通过网页和 SDK 提交、观察、比较和重跑基于 Harbor 的实验：数据集可选择，实验配置固定，结果全团队共享，提交身份保留。
 
 ## 当前状态
 
-已实现：地基（M2）、Harbor 执行内核（M3）、数据集与准备（M4）、配置与提交（M5：分层配置、模型 Agent 与 Terminus-2 / OpenCode、附件、重跑、实验方案与批次）、结果与产物（M6）、SDK 与网页（M7）、系统级安装与维护（M8：`maestroctl` 安装、启停、更新与失败回退、备份恢复、卸载）。路线见[实施计划](docs/design/13-testing-plan.md)第 2 节。
+0.3.0 已有：Hub 数据集导入与环境准备、分层配置与 Harness（Terminus-2、OpenCode）、附件、提交与批次、重跑、实时执行页、评分与产物、导出与回收站、Python SDK，以及 `maestroctl` 系统级安装、更新、备份恢复与卸载。系统怎样工作见[系统说明](docs/design/README.md)，下一步计划见[提案索引](docs/proposals/README.md)。
 
 ## 部署
 

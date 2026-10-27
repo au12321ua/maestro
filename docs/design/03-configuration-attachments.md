@@ -1,177 +1,118 @@
 # 03 配置解析与附件
 
-阶段：P0 · 来源：原稿故事二配置、A2、A6、A9、B2、补充 3、边界 2
-
-导航：[总览](00-overview.md) · 依赖：[数据集](02-datasets-preparation.md)、[权限](09-identity-security.md)
+导航：[总览](00-overview.md) · [数据集](02-datasets-preparation.md) · [方案与提交](04-plans-submission.md) · [权限](09-identity-security.md) · 相关代码：`src/maestro/services/{configuration,policy,model_configs,attachments}.py`、`src/maestro/execution/{agents,attachments,policy}.py`、`runner/src/maestro_runner/agents.py`
 
 ## 1. 模块职责
 
-解析器将作者预设、团队默认、方案和单次覆盖转换为一份可验证、可解释、可哈希的执行配置。目录配置供人选择，运行快照记录实际使用内容；两者分开存储。
+解析器（`Resolver`）把作者设定、团队默认、实验方案和本次请求合成一份可解释、可哈希的生效配置；解析接口与运行受理共用它，网页与 SDK 因而结果相同。运行快照记录实际使用的内容，与目录中的配置对象分开。
 
-| 编号 | 要求 |
-| --- | --- |
-| CFG-01 | 网页和 SDK 调用同一解析服务，取得最终值、来源、差异和阻塞项 |
-| CFG-02 | 每个运行固定数据集、任务、模型请求配置、Harness、附件和资源 |
-| CFG-03 | 内容版本不可覆盖，凭据只保存引用 |
-| CFG-04 | 附件明确组成、作用范围、加载顺序和实际加载证据 |
-| CFG-05 | 模型、Harness、附件变更不改写已有运行 |
-| CFG-06 | 重跑使用原快照，不能重新套用最新团队默认值 |
+| 编号 | 要求 | 现状 |
+| --- | --- | --- |
+| CFG-01 | 网页和 SDK 调用同一解析服务，取得最终值、来源、差异和阻塞项 | 满足 |
+| CFG-02 | 每个运行固定数据集、任务、模型请求配置、Harness、附件和资源 | 满足 |
+| CFG-03 | 内容版本不可覆盖，凭据只保存引用 | 满足 |
+| CFG-04 | 附件明确组成、作用范围、加载顺序和实际加载证据 | 满足；未接 Harbor 原生的 skills / MCP |
+| CFG-05 | 模型、Harness、附件变更不改写已有运行 | 满足 |
+| CFG-06 | 重跑使用原快照，不重新套用最新团队默认值 | 满足，见 [04](04-plans-submission.md) 第 7 节 |
 
 ## 2. 配置对象
 
-| 对象 | 必要字段 | 管理规则 |
-| --- | --- | --- |
-| ModelConfigRevision | provider、transport、endpoint、model_id、request_params、credential_ref、capabilities | 管理员创建修订；敏感 URL 参数不得明文导出 |
-| HarnessVersion | name、version、content_digest、parameter_schema、supported_transports、entrypoint、environment_requirements | 管理员发布，版本内容固定 |
-| AttachmentVersion | name、version、content_digest、manifest、files_manifest、owner_id | 成员可上传；发布后内容固定 |
-| TeamPolicyRevision | defaults、hard_limits、provider_limits、retention_policy | 管理员变更，保留版本 |
-| ExperimentPlan | 配置引用、任务选择、覆盖值、revision | 创建者编辑，运行固定具体修订与展开值 |
+字段以 `src/maestro/db/schema.py` 与 OpenAPI 为准。
 
-提供商配置中的 endpoint 必须属于管理员批准的服务端目录；PAT 不能用临时 endpoint 绕过执行网络边界。模型标识记录“请求值”，接口返回实际版本时再记录 observed_model；无法固定远端模型权重，结果页必须说明这种复现限制。
+| 对象 | 管理规则 |
+| --- | --- |
+| 模型配置 | 管理员网页会话维护，每次修改生成新修订；含提供商、协议（`openai-compatible` / `openai` / `anthropic`）、地址、模型标识、请求参数、凭据引用 |
+| Harness 版本 | 管理员发布，内容固定；记录适配器（`terminus-2` 或 `opencode`，U-25）、可调用的协议与可暴露参数 |
+| 附件版本 | 成员或 experiment PAT 发布；名称 + 版本全团队唯一，内容固定；发布者或管理员可停用、删除 |
+| 团队策略 | 管理员按项修改，每次一个修订（U-21）；各项见 `src/maestro/services/policy.py` |
+| 实验方案 | 部分请求，见 [04](04-plans-submission.md) 第 1 节 |
 
-新运行可以指定模型配置的旧修订（U-26）；管理员要淘汰旧地址或参数，须停用对应凭据或整个模型配置。模型绑定的是哪个凭据只有管理员网页会话可见（U-27）。作者的秘密参数只能引用“通用秘密”类凭据，模型 API 密钥不进入任务容器（U-28）。
+模型配置本身就是批准的服务地址目录：运行只能引用它，PAT 不能临时给地址，因而不能绕过网络边界。地址与参数对全团队可见，像密钥的内容一律拒绝，凭据只经引用绑定（只绑“模型 API 密钥”类）。
+
+- 新运行可以指定模型配置的旧修订（U-26）；要淘汰旧地址或参数，须停用凭据或整个模型配置。
+- 模型绑定哪个凭据只有管理员网页会话可见（U-27）；摘要仍按完整配置计算。
+- 作者的秘密参数只能引用“通用秘密”类凭据，模型密钥不进入任务容器（U-28）。
+
+模型标识只是请求值，远端模型权重无法固定，重跑不等于严格复现。
 
 ## 3. 合并与约束
 
-设计建议的覆盖顺序：
+| 字段 | 层次（后者优先） |
+| --- | --- |
+| 重复次数、运行并发、总时限、附件安装时限 | 团队默认 → 方案 → 本次 |
+| CPU、内存、Agent 与验证时限 | 作者（逐任务）→ 方案 → 本次（对全部任务统一覆盖，D-020） |
+| 作者参数 / Harness 参数 | 作者默认 / Harness 默认 → 方案 → 本次 |
 
-~~~text
-作者预设 → 团队默认 → 实验方案 → 单次覆盖
-                           ↓
-作者硬性要求 + 团队强制上限 + 类型与兼容性检查
-                           ↓
-生效配置 + 字段来源 + 基准差异 + 阻塞项
-~~~
+方案层由方案补齐请求里没给的字段，来源标为方案。
 
-实现按字段分层，不是每个字段都走全部四层：次数、并发、总时限为团队默认 → 方案 → 本次；资源与 Agent、验证时限为作者（逐任务）→ 方案 → 本次（对全部任务统一覆盖，D-020）；作者参数与 Harness 参数各自从默认值起。见 [实施记录](records/m5-configuration-submission.md) 的“M5 实施记录（第一阶段）”与“（第四阶段）”。
-
-具体规则：
-
-1. 未提供字段继承前层；显式 null 仅允许出现在 schema 声明 nullable 的字段，不能表示“清除必填”。
-2. 对象按字段合并；数组整体替换，附件列表保留显式顺序；不做隐式数组拼接。
-3. 时间、CPU、内存先转成标准单位再比较。必填字段、枚举和数值边界统一由参数 schema 校验。
-4. CPU、内存不得低于作者设定，低于即阻塞项 BELOW_AUTHOR_RESOURCES；调高可以，标记 deviates_from_author_baseline=true（U-22）。缩短时限只给警告并标记偏离。团队硬上限不得违反。
-5. 资源不区分作者“建议”与“硬性”，不设管理员确认作者要求强度的入口（U-22）。
-6. 团队默认改变只影响以后解析的新提交；已受理快照不变。
-7. 团队上限收紧不改写已受理快照。出于安全或主机容量无法执行时可阻塞或取消并给出原因，不能暗中降低内存、并发或时间。
-
-示例：作者建议超时 600 秒，团队默认 900 秒，方案 1200 秒，单次覆盖 1800 秒，团队上限 1500 秒。解析结果返回超限错误，不把 1800 静默截断成 1500。若单次为 300 秒，则生效 300，来源 single_override，并显示偏离作者基准。
+1. 对象按字段合并，数组整体替换。
+2. 超过团队上限是阻塞项，不截取（上限 1500 秒、给 1800 秒时报错，而不是生效 1500）；作者值本身超限的任务被排除。
+3. CPU、内存低于作者设定是阻塞项（`BELOW_AUTHOR_RESOURCES`），调高可以并标记偏离作者基准；资源不分“建议”与“硬性”（U-22）。缩短时限只给警告并标记偏离。
+4. 缺必填参数的任务被排除；秘密参数直接填值、未声明的参数名、平台保留名都被拒绝。
+5. 团队默认或上限的改变只影响以后的解析；已受理快照不变，执行不了时阻塞或取消并给出原因，不暗中降低资源、并发或时间。
 
 ## 4. 解析接口输出
 
-~~~json
-{
-  "resolution_id": "res_01",
-  "expires_at": "2026-10-22T02:10:00Z",
-  "effective_config": {
-    "dataset_version_id": "dsv_01",
-    "task_ids": ["task_01"],
-    "repetitions": 2,
-    "trial_timeout_seconds": 600,
-    "max_concurrency": 2
-  },
-  "field_sources": {
-    "/trial_timeout_seconds": {
-      "layer": "author",
-      "source_id": "dsv_01",
-      "revision": 1
-    }
-  },
-  "baseline_differences": [],
-  "required_preparation": [
-    {"task_id": "task_01", "action": "restore_cache", "spec_digest": "sha256:..."}
-  ],
-  "cache_observations": [
-    {"task_id": "task_01", "location_id": "local-host", "cache_state": "absent"}
-  ],
-  "warnings": [],
-  "blockers": [],
-  "config_digest": "sha256:...",
-  "reference_revisions": {"team_policy": 3}
-}
-~~~
+`POST /api/v1/config-resolutions` 的结构见 OpenAPI 的 `ConfigResolution`。只读 PAT 也能解析但不能提交；结果只归发起人，短期有效（`limits.RESOLUTION_MINUTES`），不预留资源或额度。
 
-实现（M5 第一段）：提交也可以把同样的配置直接写在请求里、当场解析；凭 `resolution_id` 提交时重新解析，生效配置变了即返回 CONFIG_RESOLUTION_STALE；资源与时限的覆盖对运行内全部任务统一生效（D-020）。见 [实施记录](records/m5-configuration-submission.md) 的“M5 实施记录（第一阶段）”。
+提交可以凭 `resolution_id`，也可以内联配置当场解析。凭 `resolution_id` 时重新解析，生效配置变了返回 `CONFIG_RESOLUTION_STALE`；旁边再给配置字段返回 422，免得调用方以为改动生效了。受理事务内的复检见 [04](04-plans-submission.md) 第 3 节。
 
-建议解析记录有效 10 分钟，用于提交前确认，不能预留资源或额度。受理时重新检查版本、准入修订、已知内容阻塞、权限和策略；若生效内容将变化，返回 CONFIG_RESOLUTION_STALE 及差异，要求调用方重新取得解析结果。缓存观测、恢复计划和容量检查是独立输出，不参与 config_digest；回收、恢复成功或历史恢复失败不会使内容解析过期。已准入但冷缓存只生成恢复提示，不能生成 TASK_NOT_ADMITTED；固定内容确认不可得才返回相应 blocker。
+缓存观测与恢复计划不进 `config_digest`，回收或恢复不会使解析过期；冷缓存只生成恢复提示。主机已探明不能限制任务网络时，模型运行在解析时即被阻塞（`NETWORK_POLICY_UNSUPPORTED`），Oracle 运行不受影响。
 
 ## 5. 快照固定粒度
 
-| 内容 | 快照记录 | 重跑行为 |
-| --- | --- | --- |
-| 数据集 | 内部版本、Hub 原引用及 resolved_digest、本地材料摘要、任务列表、bench 全量列表 | 使用同 digest；任务子集另记 selection |
-| 准入依据 | admission_id、revision、证明摘要；生效配置保存 preparation_method_digest 与实际 spec_digest | 保留原依据；重新检查显式撤销与兼容性，不要求缓存常驻 |
-| 环境 | 镜像 digest、构建 / 依赖摘要、环境 ABI | 允许按摘要重新准备 |
-| 模型 | 提供商、接入方式、endpoint 标识、请求模型、参数、凭据引用 | 不套最新模型修订；用当前有效凭据 |
-| Harness | 不可变版本、内容摘要、参数 | 内容不匹配拒绝 |
-| 附件 | 有序版本列表、每包摘要、加载契约、影响域 | 固定内容与顺序 |
-| 运行资源 | CPU、内存、试次数、并发、各阶段超时与总时限 | 原值复制，仍须检查当前可执行性 |
-| 计分 | 指标定义、平台错误策略版本与适配器映射摘要、奖励有效性规则、聚合方式、验证器摘要 | 原口径复制，比较中展示 |
-| 执行器 | runner_id、Harbor 精确版本、Runner 协议、作业 schema 摘要 | 使用兼容且已验证的环境，不静默切换版本 |
-| 来源 | 每字段来源、方案修订、团队策略修订、原运行 | 供追溯，不参与实际凭据解析 |
+运行快照（`run_snapshots`）分生效配置、来源与冻结策略三部分：
 
-config_digest 是完整生效配置摘要，不包含运行身份、准入证明元数据、缓存观测和字段来源；snapshot_digest 另外覆盖来源、准入证明和冻结策略，是整份快照的校验值。comparison_digest 排除运行 ID、时间、展示名称、来源运行、准入证明元数据、缓存观测、实际任务子集和纯调度信息，保留内容、准备方式、资源、指标与重复次数等比较条件。比较模块仍逐字段展示差异，不能只凭摘要断言可比较。
+| 内容 | 重跑行为 |
+| --- | --- |
+| 数据集版本与每任务的内容摘要、规格摘要、生效资源与时限 | 同版本同内容 |
+| 每任务的准入修订、准备方式摘要与期望镜像 ID | 重查撤销与可得性，不要求缓存常驻 |
+| 模型修订（含地址、参数、凭据引用）、Harness 版本与参数 | 固定原修订，凭据读执行时的当前值；已停用则拒绝 |
+| 附件的有序版本与摘要、安装时限 | 固定内容与顺序；已清除则拒绝 |
+| 重复次数、并发、总时限、覆盖值 | 原值复制，仍查当前上限 |
+| 评分契约、错误策略与汇总口径版本、团队策略修订、执行器 ID | 原口径复制 |
+| 规范化的原请求、字段来源、基准差异、来源运行 | 重跑从原请求重建 |
 
-执行时另写 actual_execution：实际模型响应标识、Worker / Runner / Harbor 版本、镜像 digest、资源设置和附件加载清单。实际值偏离快照时标记 deviation，禁止将其包装成严格复现。
+- `config_digest`：生效配置的摘要，不含运行身份、准入证明、缓存观测和字段来源；全量重跑与原运行相同。
+- `snapshot_digest`：三部分合起来的整份快照校验值。
+- `comparison_digest`：可比性视图（`comparison_view`），排除任务子集、并发、总时限、行 ID、修订号与凭据引用，秘密参数只比“有值”。比较仍逐字段展示差异，不能只凭摘要断言可比。
 
-现状（缺口）：快照策略记 executor_id，运行记 Runner 启动时报告的 Harbor 与 Runner 版本，执行尝试记 runner_id、Harbor 试次标识、用量与附件安装记录；没有 observed_model 和 deviation 标记。重跑只核对生效配置与原快照一致（RERUN_CONFIG_CHANGED），不比较 executor_id，执行器版本变化时既不拒绝也不标注。
+执行时另记 Runner 报告的 Harbor 与 Runner 版本，以及每次尝试的用量与附件安装记录。
 
-解析器还将固定配置转换为 Harbor 作业，在对应 Runner 环境用导出的 JSON Schema 校验，并运行 --dry-run 检查参数、凭据和来源。此检查不下载任务、不验证镜像就绪，不能替代平台准备与资源检查。公共 API schema 与 Harbor schema 是不同边界，详见 [15](15-stack-harbor.md)。现状：schema 校验与 --dry-run 未实现（见 [实施记录](records/m5-configuration-submission.md)“M5 收尾时尚未完成的事项”）。
+已知限制：
+
+- 不记录模型实际返回的版本，也没有“执行偏离快照”的标记；重跑不比较执行器或 Harbor 版本。
+- Harbor 作业不在受理前用 Harbor 的 schema 或 `--dry-run` 校验，作业层面的错误到 Runner 启动时才暴露（边界见 [15](15-stack-harbor.md)）。
+- 验证时限没有团队上限，只受运行总时限约束；成员填的作者参数与 Harness 参数不查“像不像密钥”。
 
 ## 6. 附件包协议
 
-以下是平台建议的包结构，需由 Harbor 适配器实现转换，不假设 Harbor 已原生支持。
+附件是 tar / zip 包，根目录有 `manifest.json`，可选的 `bootstrap.sh` 是安装脚本，其他文件原样复制。manifest 字段由 `check_manifest` 定义，未实现的（`entrypoints`、`parameter_schema`、`load_order_requirements`）与未知字段一律拒绝，不静默忽略。
 
-> M5 第三阶段的实际做法（P0 支持的 manifest 字段、只收普通文件、影响评分的包暂拒绝、安装位置与时限、三处内容核对）见 [实施记录](records/m5-configuration-submission.md)“M5 实施记录（第三阶段）”。
+`effects` 中含 `verifier` 或 `scoring` 的包在上传时拒绝：平台还没有“不同评分契约”。附件与验证器在同一容器，未声明的影响无法从技术上排除，只能靠声明。
 
-~~~text
-attachment/
-  manifest.json
-  sdk/                 可选
-  skills/              可选
-  tools/               可选
-  bootstrap.sh         可选
-~~~
+上传只接受普通文件与目录（链接、设备、绝对路径、`..` 一律拒绝），先检查再写入、边读边计数，压缩炸弹在读入前拒绝；权限与磁盘水位在接收请求体之前检查。内容摘要覆盖每个文件的路径、SHA-256 与可执行位，与打包格式无关。同名同版本同内容重发返回原版本，内容不同返回冲突。
 
-manifest 至少声明 schema_version、name、version、components、entrypoints、parameter_schema、compatible_harnesses、effects、load_order_requirements。
-
-effects 使用 model_call、agent_tools、task_environment、verifier、scoring 五类。改变验证器或评分规则的包必须显式声明，形成不同的评分契约；普通工具附件不得隐式覆写验证目录。
-
-上传流程：解包检查 → 文件清单与摘要 → schema / 路径 / 大小校验 → 兼容性检查 → 发布固定版本。拒绝绝对路径、路径穿越、逃出包目录的符号链接和重复冲突文件。发布后再次上传相同版本同摘要返回已有记录，不同摘要报冲突。
+上传不执行脚本。有排队或执行中的运行在用时不能删除；清除时若另有未清除的版本持有相同内容则保留文件。
 
 ## 7. 加载阶段与冲突
 
-1. 准备阶段在该试次容器内安装依赖并执行 bootstrap，属于已授权运行；成员 / experiment PAT 无需管理员再次准备。建议放入自定义 Agent 包装器 setup 路径；受独立安装超时、CPU / 内存 / 磁盘限制和运行总时限约束，允许按准备策略访问外网。
-2. 通过环境文件传输接口将固定的 SDK、skills、tools 复制到容器约定路径，不挂载宿主机目录；执行阶段直接加载，不再临时下载依赖。
-3. 验证阶段只加载已声明影响验证的部分。
-4. 每个阶段记录实际摘要、开始 / 结束、出口码、产物与失败原因。
+附件按列表顺序加载，顺序计入 `config_digest`。同名附件（含同一附件的两个版本）或 provides 重叠时解析报 `ATTACHMENT_CONFLICT`，不采用“最后一个覆盖”；不支持所选 Harness 报 `ATTACHMENT_INCOMPATIBLE`；Oracle 运行不能带附件。
 
-附件按配置列表顺序加载。多个附件定义相同工具名、环境变量或入口时，默认拒绝并列出冲突，不采用“最后一个覆盖”。只有 schema 显式支持的合并点可合并。bootstrap 失败归类为环境 / 附件准备失败，不能伪装成模型零分。
+安装由 Harness 适配器的平台子类在 Agent setup 中进行：用 Harbor 文件传输把附件复制到本试次容器的 `/opt/maestro/attachments/<序号>-<名称>`（不挂载宿主目录，U-16），逐文件比对摘要与可执行位，再以任务的 Agent 用户在容器内限时运行 `bootstrap.sh`（Harbor 的 exec 超时只结束本地客户端，限时必须在容器内）。服务启动 Runner 前、Runner 建 Job 前、复制进容器后共三次核对内容，绝不安装与发布时不同的内容。
 
-P0 每个试次各自安装，安装成果不写回共享数据集缓存，也不被另一个试次复用。失败仅影响本试次；按错误规则可重试时，在干净容器重新安装，不改变其他试次或版本准入。进入执行 / 验证后仍只允许批准的模型服务，不延续安装阶段外网权限。脚本不得指定宿主目录、Docker socket、服务管理命令或读取平台主密钥。
+- 脚本失败或超时归为 `attachment_failed`（不评分、不重试），不能伪装成模型零分；容器内副本不符算沙箱失败，可在干净容器重试。安装记录由 Runner 上报，存为执行尝试的证据。
+- 每个试次各自安装，成果不写回共享缓存；安装时限只算脚本运行时间，整体仍在运行总时限内。
+- 安装沿用作者的环境网络基线，之后 Agent 与验证阶段按平台策略收紧（U-18，[09](09-identity-security.md) 第 5 节）。准备代理 `setup_proxy` 只交给模型运行的 setup（Harness 自身安装与附件脚本），不交给 Agent 与验证阶段；代理地址不能带用户名密码，因为 Harbor 以 `docker exec -e` 传变量，宿主进程列表人人可见。
 
-后续若缓存附件安装结果，键至少覆盖附件内容哈希、基础镜像 digest、安装参数、依赖锁及环境 ABI，并验证独立可写层与失效规则；“附件哈希 + 镜像 digest”仅是起点，不作为 P0 共享缓存承诺。仅上传附件不执行 bootstrap，安装只随受理运行发生。
+已知限制：
 
-### Harbor 字段映射
-
-| 扩展包部分 | 已核对的 Harbor 接入点 | 平台补充责任 |
-| --- | --- | --- |
-| skills | agents[].skills | 指向已固定的本地包内容，禁止运行时漂移到新 Git 引用 |
-| MCP tools | agents[].mcp_servers | 按 Agent / transport 兼容性检查；远程目标仍受网络边界限制 |
-| Agent 环境变量 | agents[].env | 仅按对应阶段注入，不假定 setup 能读取同一组变量 |
-| 环境 / 验证变量 | environment.env、verifier.env | 只注入必要字段，凭据保持引用直到执行 |
-| SDK 与普通工具文件 | 环境文件传输或自定义 Agent 包装器 | 复制到容器；不挂载宿主目录（执行器为本试次输出挂载的日志与产物目录除外，[14](14-decisions.md) U-16），不把任意 SDK 包当作 Harbor 原生字段 |
-| bootstrap.sh | 自定义 Agent 的安装 / setup 路径 | 每试次安装；时机、用户、目录、超时、失败隔离与网络切换需原型验证 |
-
-现状：P0 只实现整包复制与 bootstrap，表中 skills、MCP tools 与 agents[].env 的映射未实现（未接）。附件经 Harbor 文件传输复制到 `/opt/maestro/attachments/<序号>-<名称>`，在 Agent setup 中校验并限时安装；安装阶段沿用作者网络基线，可选部署配置的准备代理。见 [实施记录](records/m5-configuration-submission.md) 的“M5 实施记录（第三阶段）”与“（补充：准备与安装阶段的代理）”。
-
-bootstrap 不能为了下载依赖延迟到 agent.run() 才执行。公共模型能力比较中必须显示包装器与附件摘要；真实原生字段不等于所有 Agent 都支持相同 MCP / skills 组合。字段依据与首周验证项见 [15](15-stack-harbor.md)。
+- 附件不映射到 Harbor 的 `agents[].skills`、`mcp_servers`、`env`，只能在 `bootstrap.sh` 里自行安装。
+- 安装依赖镜像里的 bash、GNU `timeout`、`sha256sum`；busybox 的 `timeout` 会把超时记成失败，缺工具时会白白重试。安装占用的磁盘没有单独限额。
 
 ## 8. 验收
 
-- 同一输入在网页与 SDK 中得到相同 config_digest、字段来源和错误列表。
-- 默认值改变后，历史快照保持不变；重跑仍采用原配置和当前凭据引用。
-- 修改镜像标签、附件包内容、Harness 文件时可以检测内容漂移。
-- 附件改变评分规则时，结果和比较明确显示不同评分契约。
-- 超出硬上限、未知参数、附件冲突均在容器启动前失败。
-- 缓存回收前后生效配置摘要相同，已准入任务仍可提交；成员 / experiment PAT 的附件在试次容器独立安装，无管理员操作或宿主目录挂载。
+- 同一输入在网页与 SDK 中得到相同的 `config_digest`、字段来源和阻塞项；团队默认改变后历史快照不变。
+- 附件或 Harness 内容改变即得到不同摘要；存储中的附件被改动时运行不启动。
+- 超出团队上限、未知参数、附件冲突都在容器启动前失败；影响评分的附件在上传时被拒绝。
+- 缓存回收前后生效配置摘要相同；成员 / experiment PAT 的附件在各试次容器里独立安装，无管理员操作或宿主目录挂载。

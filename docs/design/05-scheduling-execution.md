@@ -1,151 +1,94 @@
 # 05 调度与执行生命周期
 
-阶段：P0；公平调度 P1 · 来源：故事二执行、A5、B4、B10、C3
-
-导航：[总览](00-overview.md) · 依赖：[提交](04-plans-submission.md)、[评分](06-results-scoring.md)、[产物](07-artifacts-export.md)
-
-> 本阶段调整：调度单位暂为运行，一个运行执行一个 Harbor Job，试次与执行尝试仍持久记录。本文按试次领取的部分按 [14](14-decisions.md) D-020 解释。
+导航：[总览](00-overview.md) · 依赖：[提交](04-plans-submission.md)、[评分](06-results-scoring.md)、[产物](07-artifacts-export.md) · 相关代码：`src/maestro/services/worker.py`、`src/maestro/services/capacity.py`、`src/maestro/boundaries/executor.py`、`src/maestro/execution/harbor.py`、`runner/src/maestro_runner/job.py`
 
 ## 1. 拓扑与职责
 
-设计采用单服务进程内多个逻辑 Worker，asyncio 调度数据库队列；每个执行尝试由 Worker 启动独立 uv 环境中的 Harbor Runner 子进程。每个 Worker 有独立身份、location_id、容量、支持的执行器与环境版本、心跳和执行记录。systemd 管理服务进程；SQLite 是工作和状态的事实来源。
+服务进程内有一个 Worker，它也是唯一的调度协调器：按数据库队列领取运行、持有租约、在短事务中确认执行事件、执行取消与到期、启动时对账。SQLite 是事实来源。
 
-业务服务负责权限、计划、队列、额度和终态；调度器负责资源准入与领取；Worker 负责一次执行的生命周期；执行器负责测试与验证；环境接口负责容器、文件传输和清理。Worker 不直接访问数据库，也不依赖业务目录的绝对路径。
-
-现状：服务进程内只有一个 Worker（`local-<pid>`），领取、租约与结果确认直接在数据库短事务中完成；与执行器之间是进程内接口，执行器经 ExecutionSink 回报尝试、步骤、结果与产物，Worker 的 RunSink 按租约写库。上面“不直接访问数据库”与第 2 节的接口是拆为独立进程或多机时的长期形态。
+调度单位是运行（[14](14-decisions.md) D-020）：一个运行由一个 Runner 子进程执行一个 Harbor Job。Runner 在独立 uv 环境中运行锁定版本的 Harbor，服务进程不导入 Harbor。试次与执行尝试仍是持久记录，状态、评分和重跑都基于它们。按试次调度见提案 [N-13](../proposals/N-13-trial-granularity.md)。
 
 | 编号 | 要求 |
 | --- | --- |
-| EXE-01 | 持久队列、FIFO 优先、可恢复管理状态 |
-| EXE-02 | 并发同时满足槽位、CPU、内存、运行和提供商限制 |
-| EXE-03 | 进度与日志按准备、执行、验证、收集阶段上报 |
-| EXE-04 | 取消、总时限、维护停止均保留已完成结果 |
+| EXE-01 | 持久队列、按受理顺序优先、重启后可恢复管理状态 |
+| EXE-02 | 并发同时满足槽位、CPU、内存和提供商限制；未满足：每成员 / PAT 的活动试次限制 |
+| EXE-03 | 进度与日志按准备、执行、收集、验证阶段上报 |
+| EXE-04 | 取消与总时限保留已完成结果 |
 | EXE-05 | 意外重启不自动恢复容器执行，明确标记中断并清理 |
-| EXE-06 | 试次临时资源带实例 / 运行 / 试次 / 尝试标签；共享恢复资源带实例 / 恢复 Operation 标签 |
+| EXE-06 | 执行资源带实例 / 运行标签；未满足：试次 / 尝试级标签 |
 
-## 2. Worker 接口
+## 2. 执行器接口
 
-以下为平台接口，不等同于 Harbor 方法；属于将来拆分 Worker 时的形态，目前未实现为 RPC（见第 1 节现状）。
+Worker 与执行器之间是进程内接口（`src/maestro/boundaries/executor.py`）：
 
-| 方法 | 输入 | 约束 |
-| --- | --- | --- |
-| register | worker_id、location_id、capacity、capabilities | 首期仅内部注册，不暴露公网 |
-| claim | worker_id、可用资源 | 服务端返回 WorkItem、快照、attempt_id、lease_token |
-| heartbeat | attempt_id、lease_token、phase | 更新存活与取消指令；不隐式改变业务结果 |
-| report_progress | lease_token、sequence、phase、counts | 序号单调，重复可去重 |
-| append_log | lease_token、stream、offset、chunk | 有界批次，经脱敏后保存 |
-| commit_result | lease_token、result_digest、结构化结果 | 有效租约且结果未确认；同摘要重复提交幂等 |
-| complete_cleanup | lease_token、cleanup_report | 独立于评分与运行终态 |
-| upload_artifact | attempt_id、存储句柄、内容流 | 通过存储接口校验归属和摘要 |
+- **Executor**：`execute(RunSpec, ExecutionSink, CancelToken)` 执行整个运行，返回资源是否确认释放及无结果试次的失败原因；`cleanup(labels)` 按标签清理；`reconcile(Leftover)` 处理上一个服务进程留下的运行；`probe` 探测本机能力（U-18）。
+- **RunSpec**：全部试次（含平台准备好的本地镜像）、并发、配置快照、到期时间、标签、评分指标，以及执行时才解密的凭据值（不持久化、不写日志）。
+- **ExecutionSink**：执行器只上报 Runner 身份、心跳、尝试开始、阶段、日志、产物和尝试结束（`final=False` 表示还会重试）；状态、评分判定、重试策略和租约由平台决定。Worker 的实现 **RunSink** 对每个事件开一个短写事务，先校验运行租约且运行未终结，失败即抛出 STALE_EXECUTION_LEASE，执行器随之停止 Runner 并清理。
 
-将来拆为独立进程或多机时只更换传输与身份验证；业务语义、内容标识和产物上传不变。首期不实现远程 Worker 服务。
-
-Worker 到 Runner 另有版本化 JSON 协议，进度与结果由 Runner 转换，具体见 [15](15-stack-harbor.md)。本阶段按 D-020，一个 Runner 进程执行一个运行的 Harbor Job：n_attempts 为每任务计划试次数，n_concurrent_trials 为运行并发；重试在 Job 内进行，RetryConfig 的次数、退避和不重试的异常名单由平台错误策略推出并显式下发，不用 Harbor 默认名单，平台不再叠加外层重试（见 [实施记录](records/m3-execution.md) 的“M3 实施记录”）。缓存恢复在 Harbor 启动前，失败由平台按同一预算重试。
+Harbor 执行器在新进程组中启动 Runner，经 stdin 下发版本化 JSON 请求，把 stdout 的 NDJSON 事件转成 sink 调用（协议见 [15](15-stack-harbor.md) 第 5 节）。Job 的 `n_attempts` 为每任务计划试次数，`n_concurrent_trials` 为运行并发；重试在 Job 内进行，规则见 [06](06-results-scoring.md) 第 4 节。
 
 ## 3. 调度算法
 
-1. 按入队序号读取到 eligible_at 的工作单元。
-2. 跳过所属运行已停止或到期的项，写明未开始原因。
-3. 校验准入、已知内容阻塞和本机能力；已准入的冷缓存交给准备协调器按固定规格创建或加入恢复操作。
-4. 检查每运行及可选成员 / PAT 活动试次限制；等待恢复不预占执行 CPU / 内存或提供商槽位，实际恢复构建只预留一份独立容量。
-5. 在短事务中领取并生成 service_epoch 与租约。缓存就绪后，在另一个短事务原子预留全局试次槽位、容器 CPU / 内存与提供商许可，再创建试次容器、安装附件和执行；资源未满足则显示等待，不能超额启动。
-6. 完成或确定终止后释放容量，排入下一个可执行项。
+Worker 循环（约 0.5 秒或被唤醒）先处理停止与到期、重试未确认的清理、推进准备协调器，再反复领取：
 
-现状（缺口，涉及第 4、5 条）：领取时即在同一事务按“min(并发, 试次数) × 单试次资源”整体预留执行容量与提供商名额，之后才等待缓存恢复，等待期间一直占用；恢复构建不计入主机 CPU / 内存，只受同时恢复数限制。见 [实施记录](records/README.md) 的“M3 实施记录”“M4 实施记录”与“M5 收尾时尚未完成的事项”。
+1. 磁盘低于派发水位时不领取，排队运行显示 STORAGE_LOW（[07](07-artifacts-export.md) 第 7 节）。
+2. 按受理时间扫描排队、未请求停止的运行。预留宽度为 min(并发, 试次数)，CPU / 内存为宽度 × 各任务中最大的单试次资源，提供商名额为宽度。
+3. 与当前占用比较槽位、CPU、内存和提供商上限；放不下的写入等待原因（CAPACITY_SLOTS、CAPACITY_CPU、CAPACITY_MEMORY、PROVIDER_LIMIT），继续看下一个。第一个放得下的，在同一写事务中写入租约、service_epoch 与预留并置为 preparing。只有 Worker 领取，检查与预留同一事务完成，不会超额。
+4. 占用包括持有租约的运行，以及清理尚未确认的运行：资源未确认释放就继续占容量。
 
-首期采用单一调度协调器串行分配；各阶段容量检查与预留在同一写事务确认，不能多个 Worker 按过期容量判断后超额领取。准备中的试次计入自身运行的活动并发，独立构建与执行容量按真实活动资源重建；评分后容器尚未停止时仍占资源。准备和执行共用主机 CPU / 内存总账，不能各自按整机容量分配。
+允许小运行越过暂时放不下的大运行，所以不是严格 FIFO。空闲主机也放不下的运行在受理时拒绝（RUN_EXCEEDS_CAPACITY）。不提供公平调度。提供商限额只限制同时运行的试次数，不协调 RPM / TPM。容量总量在部署配置（`src/maestro/config.py`），提供商上限由管理员在网页设置，生效值见 `/api/v1/capabilities`。
 
-按 FIFO 扫描首个可容纳项，允许小任务越过暂时放不下的大任务；这不是严格不越队的 FIFO。必须显示等待原因与排队时长，资源始终不可能满足的项在受理阶段拒绝。P1 可加入等待老化或成员公平调度。
+### 已知限制
 
-模型提供商限额包括最大同时运行试次；RPM / TPM 若可得则由共享限流器协调实际请求，执行器无法逐次拦截时只承诺并发限制，不宣称精确保证提供商配额。真实限流错误按评分模块记录，不持续高速重试。
+- 预留在领取时整体占用，等待缓存恢复期间和运行末尾并发下降时都不释放（见 N-13）。
+- 缓存恢复的构建不计入主机 CPU / 内存，只受 `restore_slots` 限制。
+- 没有每成员 / PAT 的活动试次限制。
 
 ## 4. 运行与试次状态
 
-~~~mermaid
-stateDiagram-v2
-    [*] --> queued
-    queued --> preparing
-    preparing --> running
-    running --> finalizing
-    queued --> finalizing: 取消或到期
-    preparing --> finalizing: 失败或停止
-    running --> finalizing: 停止或中断
-    finalizing --> finished: 全部计划已终结
-    finalizing --> cancelled: 主动停止
-    finalizing --> interrupted: 服务中断
-~~~
+运行：queued → preparing → running → finalizing → finished / cancelled / interrupted。有试次进入执行或验证后为 running。未领取的运行被取消或到期时直接结束。finished 表示所有试次已有终态，即使全部失败；到期停止也是 finished（stop_reason=RUN_DEADLINE_EXCEEDED），用户或管理员取消为 cancelled，服务重启为 interrupted。运行的 Operation 在自然完成且有有效评分时 succeeded，否则 failed；这些状态不抹去已保存结果。
 
-图表示单一路径的主阶段。并行运行时，部分试次可能仍在准备而其他试次已执行；详情返回各阶段计数，运行主阶段采用“已启动执行则 running；无执行但有准备则 preparing”的展示规则。
+试次：queued → preparing → executing → verifying → scored / execution_error / not_started / cancelled / interrupted，reason_code 补充原因。执行器步骤到试次阶段的映射见 `STEPS`。产物与清理状态独立记录，不阻止试次终结。
 
-试次按 queued → preparing → executing → verifying → 终态演进。终态为 scored、execution_error、not_started、cancelled、interrupted；reason_code 补充具体错因。合法且 reward_valid=true 的评分被确认时进入 scored，Agent 超时或拒绝任务仍可能得到有效评分。后续收集由 artifact_state 表达，清理由 cleanup_state 表达；二者不阻止试次确认执行终态。失败也需进入有限收尾流程，上传已有日志并清理。
+状态只按允许的迁移前进，先被接受的终态生效，迟到事件被忽略。执行器表示还会重试时，当前 ExecutionAttempt 先终结，试次回到 queued（phase=retry_wait），直到成功或耗尽才写最终结果，不会先写最终错误再被重试覆盖。
 
-可自动重试的失败先终结 ExecutionAttempt，Trial 记录重试事件后回到 queued，直到重试成功或耗尽才写最终错误。不能先把 Trial 写成最终 execution_error，再让后续自动重试覆盖它。
+## 5. 一次运行的执行顺序
 
-Run.finished 表示所有试次已有终态，即使全部失败也可 finished；实际健康度使用 error_count、result_completeness 和 stop_reason。Operation 在自然完成且至少有有效结果时可 succeeded；全部试次均错误则 failed；用户取消则 cancelled；这些状态不应抹去已保存结果。
-
-## 5. 一次执行的顺序
-
-~~~mermaid
-sequenceDiagram
-    participant S as 调度服务
-    participant W as Worker
-    participant E as 执行器/环境
-    participant A as 产物存储
-    W->>S: claim
-    S-->>W: 快照、attempt、租约
-    W->>E: 验证缓存或加入共享恢复，等待固定内容
-    W->>S: 缓存就绪，原子申请容器资源
-    W->>E: 创建试次容器，复制 Harness 与附件
-    W->>E: 本试次 setup / bootstrap 安装，切换网络
-    W->>E: 执行任务、验证
-    W->>S: 提交结构化评分或错误
-    W->>A: 上传日志、会话和输出文件
-    W->>E: 清理环境与临时目录
-    W->>S: 产物与清理报告
-~~~
-
-评分可先于大文件上传确认；运行结果完整度与产物状态因此独立。上传失败可在保留的暂存内容仍可用时重试，不重新调用模型。
-
-共享恢复按 (spec_digest, location_id) 合并，持有独立 Operation、generation、租约与资源预留；每个试次作为等待者关联自己的 attempt。完成后验证摘要、原子发布并交接使用 pin。一个等待者取消只解除自身引用，无等待者才允许终止共享工作；不能按首个运行的标签清理共享构建。恢复失败向等待者报告同一根因，统一使用 [06](06-results-scoring.md) 的预算和退避，不叠加 Runner 或恢复服务内层重试，细则见 [02](02-datasets-preparation.md)。
-
-附件 P0 在每个试次容器内独立安装，不挂载宿主目录（执行器为本试次输出挂载的日志与产物目录除外，[14](14-decisions.md) U-16）、不写回共享缓存；失败影响该试次。安装超时、等待超时与运行总时限分别记录；安装的外网权限在 Agent 执行前切换到批准范围。
+1. 领取后解密凭据；不可用时运行不执行即结束（CREDENTIAL_UNAVAILABLE）。
+2. 各任务并行向准备协调器申请缓存，缺失时加入按 (spec_digest, location_id) 合并的共享恢复（[02](02-datasets-preparation.md)），试次显示 restoring_cache。恢复失败为该任务每个试次记一次尝试，按 [06](06-results-scoring.md) 第 4 节重试；耗尽或不可重试的任务的试次以准备错误结束，其他任务继续。
+3. 执行器核对任务材料与附件原件，缺失的试次直接以错误结束，不执行未经验证的内容。
+4. Runner 中 Harbor 为每个试次创建容器、安装 Harness 与附件、收紧网络、执行 Agent、验证（[03](03-configuration-attachments.md)、[09](09-identity-security.md)）。附件在每个试次容器内独立安装，不写回共享缓存；容器只挂载执行器为本试次输出准备的目录（U-16）。
+5. 每次尝试结束时，Runner 归档其目录，执行器核对摘要、脱敏后存为产物，再提交结果（[07](07-artifacts-export.md) 第 4 节）。产物保存失败不影响结果确认。
+6. Runner 退出后按运行标签清理 Docker 资源；Worker 把仍无结果的试次终结，运行进入终态。
 
 ## 6. 租约与重复执行防护
 
-每次领取产生 attempt_id 和不可复用 lease_token，携带 service_epoch。首期建议心跳 10 秒、30 秒未响应标记 suspect；这些是 D-011 初值。M3 实现为 10 秒心跳、120 秒无事件视为失联（见 [实施记录](records/m3-execution.md) M3 实施记录）。心跳过期不能立即证明旧环境已经停止。
+每次领取生成不可复用的运行租约并记录 service_epoch。所有执行事件与结果提交都校验租约，旧租约得到 STALE_EXECUTION_LEASE。终态后到达的结果只留在尝试记录上；同一试次的结果按摘要去重，同摘要重复提交成功，不同摘要返回 RESULT_CONFLICT。
 
-现状：suspect 状态未实现；Runner 静默超过 `runner_silence_sec`（默认 120 秒）即视为失联，结束进程组并按标签清理，未完成试次记 RUNNER_UNRESPONSIVE，不创建新尝试。
-
-处于 suspect 的尝试先查本机 Worker 与容器标签，执行终止和清理；确认旧执行已停止后，才能按重试规则创建新尝试。无法确认停止则隔离相关资源并阻塞重试，避免同一试次同时调用模型。
-
-旧租约的迟到结果返回 STALE_EXECUTION_LEASE。结果提交必须同时校验试次状态、当前 attempt 和取消标志；不依靠客户端时间判断先后。最终结果同摘要重传可确认成功，不同摘要返回 RESULT_CONFLICT。
+Runner 定期发心跳；stdout 静默超过 `runner_silence_sec` 即视为失联，结束进程组、按标签清理，无结果的试次记 RUNNER_UNRESPONSIVE，不创建新尝试。协议错误同样处理，记 RUNNER_PROTOCOL_ERROR。Job 内重试由 Harbor 在同一 Runner 中进行，上一次尝试的环境删除后才开始下一次。
 
 ## 7. 取消与超时
 
-取消先停止领取，再向 Worker 发出指令。等待共享缓存的试次先解除自身等待，不杀死其他等待者仍需的恢复进程。独立试次 Runner 在 Linux 进程组启动，先协作取消、SIGTERM，建议 30 秒后仍未结束则 SIGKILL；再按实例与尝试标签清理容器、网络和 sidecar。无等待者的恢复由其独立租约与 Operation 标签取消。结束进程组不能代替 Docker 清理；清理另给 120 秒初始宽限，实际值公开并记录。
+取消粒度为整个运行。未领取的运行在请求事务中直接结束。已领取的运行由 Worker 下一次循环触发取消：等待缓存时只退出自身等待，不终止其他等待者仍需的恢复；Runner 先收到 SIGTERM 并在 Harbor 内协作取消，宽限 `runner_term_grace_sec` 后 SIGKILL 进程组，再按标签清理容器、网络和出口控制 sidecar。结束进程组不能代替 Docker 清理。服务进程意外退出时 Runner 经 PDEATHSIG 收到 SIGTERM。
 
-超时需区分准备超时、Agent 执行超时、验证超时与总运行到期。Harbor 基线中 AgentTimeoutError 属于 agent_exhausted_budget，继续验证且奖励有效，不自动重试；仍须有合法验证输出才能评分。用户取消或总时限到期后不再开始新的验证工作，已接受的评分保留。例外与版本证据按 [06](06-results-scoring.md) 记录。
+总时限到期按取消处理（RUN_DEADLINE_EXCEEDED）。停止后不开始新工作，已确认评分保留；执行过的未完成试次记 cancelled，未开始的记 not_started。Agent、验证和附件安装各自的超时由 Harbor 与 Runner 执行，按 [06](06-results-scoring.md) 归类。
 
-无法清理时设置 cleanup_state=failed，登记待处理事项，运行生命周期仍可结束。暂存产物可用时继续收集，收集失败不将已有评分改成错误。
+清理无法确认时运行照常结束，cleanup_state=failed，预留继续占用容量，Worker 定期重试清理。
 
 ## 8. 意外重启与对账
 
-启动先进入 recovering，关闭新受理和派发：
+启动时、开始领取之前（`Worker.start_epoch`、`Worker.recover`）：
 
-1. 加载数据库并校验 schema，生成新 service_epoch。
-2. 查询旧 epoch 中仍在 preparing / executing / verifying / collecting 的尝试。
-3. 已确认评分保留；未有最终结果的在途试次标记 interrupted，原因 SERVICE_RESTARTED。
-4. 被影响运行的未领取试次标记 not_started / RUN_INTERRUPTED；该运行整体中断，不自动补跑。
-5. 完全未开始、所有试次仍 queued 的运行可继续留队；已经全部确认结果、只剩上传或清理的运行完成收尾，不改为未评分。
-6. 校验持久化的 Runner 进程启动标识并终止遗留进程组，再按实例标签停止孤儿容器、网络和 sidecar，清理或隔离对应目录；不按可复用 PID 盲目杀进程，不删除其他实例或人工容器。
-7. 对已确认但文件状态未确认的产物校验摘要、补齐索引或标记 unavailable。
-8. 对旧共享恢复 Operation、等待者和 pin 对账，终止旧构建进程并清理未发布成果；已发布缓存验证后保留，未完成缓存标记 absent / stale，准入不变。关联在途试次按上述规则中断，不自动续跑。
-9. 重建内存容量与操作进度，发布恢复报告后进入 ready。
+1. 生成新的 service_epoch。
+2. 上一个进程仍持有租约的未终结运行：从未有执行尝试且未请求停止的，释放租约与预留，按原受理时间留在队列；所有试次已终态的，正常结束；其余运行的在途尝试标 interrupted，执行过的未完成试次记 interrupted / SERVICE_RESTARTED，未开始的记 not_started / RUN_INTERRUPTED，不自动补跑。已确认评分保留。
+3. 用持久化的 Runner 进程身份（PID、进程启动时间、boot id）确认遗留 Runner 属于本实例后才 SIGKILL 其进程组，不按可能被复用的 PID 盲目杀进程。
+4. 按运行标签、再按实例标签清理遗留容器、网络和 sidecar，不触碰其他实例或无标签资源；未确认释放则 cleanup_state=failed。
+5. 准备协调器对恢复操作对账（[02](02-datasets-preparation.md)），产物索引对账见 [07](07-artifacts-export.md) 第 4 节；结果写入 service_epoch 记录。
 
-重启不会自动新建运行或消耗 PAT 额度。用户可对未完成任务创建新重跑。
+重启不会自动新建运行或消耗 PAT 额度，用户可对未完成任务创建重跑。
 
-## 9. 维护模式与验收
+## 9. 停机与验收
 
-P0 的手动停止 / 重启会中断在途工作，必须如实记录。P1 维护模式先禁止新受理和派发，再选择等待已领取项完成或立即取消；排队项保留到维护结束，除非已到总运行时限。
+手动停止或重启服务会中断在途运行，按第 8 节如实记录。带排空的维护模式未实现，见 [N-12](../proposals/N-12-drain-update.md)。
 
-关键验收：同时竞争只领取一次；满载仍不超资源；取消与评分并发保持单一终态；杀死进程后不继续原运行执行；孤儿资源按实例标签清理；上传失败和清理失败均不丢已确认评分。
+关键验收：同时竞争只领取一次；满载仍不超资源；取消与评分并发保持单一终态；杀死进程后不继续原运行执行；孤儿资源按实例标签清理；产物保存失败和清理失败都不丢已确认评分。

@@ -1,14 +1,14 @@
 # 文档导航
 
-项目已按目标设计重写为 Maestro，入口是[重写目标设计](design/README.md)。文档描述设计、契约和可复用的操作；进度只在[开发交接](HANDOFF.md)中维护。
+文档按寿命分开：系统说明只写现状，提案写待实现的设计，决策记录只记决定（U-33）。
 
-## 重写设计
+## 系统与规划
 
-- [设计入口](design/README.md)：文档地位、实践优先规则、当前阶段调整和模块索引。
-- [需求整理与审查](design/requirements-review.md)：需求基线（审计稿）。
-- [测试验收与实施计划](design/13-testing-plan.md)：重写路线、里程碑与验收场景。
-- [决策记录与需求追踪](design/14-decisions.md)：用户决定、待确认冲突、设计建议与待验证项。
-- [实施记录](design/records/README.md)：各里程碑实施时的原设计与实际做法、验证范围和未覆盖项，按记录时点保留。
+- [系统说明](design/README.md)：Maestro 现在是什么样，以及文档分工的规则。
+- [提案](proposals/README.md)：下一步做什么，按优先级排列的索引与提案模板。
+- [决策记录](design/14-decisions.md)：用户决定、技术决定、待确认冲突与上游依赖。
+- [测试与验收](design/13-testing-plan.md)：测试分层、验收与故障场景。
+- 已冻结的出处：[需求审计稿](design/requirements-review.md)、重写期间的[实施记录](design/records/README.md)。
 
 ## 代码
 
@@ -24,7 +24,7 @@
 
 ## 开发协作
 
-- [开发交接](HANDOFF.md)：进度、兼容策略和验证入口。
+- [开发交接](HANDOFF.md)：现状、代码位置和验证入口。
 - [分支、协作与发布规则](guides/development-workflow.md)：独立工作树、`dev` 集成与固定版本发布。
 
-旧设计、归档、0.2.0 发布说明和旧验收标准已删除，可在 Git 历史（`9ff43b5` 及更早）中查阅；它们不成为重写的约束。现场报告与原始证据只保存于 ignored `.local/`。
+重写前的设计、归档、0.2.0 发布说明和旧验收标准已删除，可在 Git 历史（`9ff43b5` 及更早）中查阅，不成为约束。现场报告与原始证据只保存于 ignored `.local/`。

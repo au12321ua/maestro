@@ -1,76 +1,46 @@
-# 13 测试验收与实施计划
+# 13 测试与验收
 
-阶段：P0 / P1 · 来源：A7、A9、B2、C4 及三个用户故事
-
-导航：[总览](00-overview.md) · 依赖：全部模块 · [需求追踪](14-decisions.md)
+导航：[总览](00-overview.md) · 依赖：全部模块 · 相关代码：`tests/maestro/`、`frontend/qa/`、`.gitea/workflows/verify.yml`；命令见[开发交接](../HANDOFF.md)的验证入口
 
 ## 1. 使用方式
 
-本文定义重写的验收要求和实施路线，不代表这些功能已经实现或测试已通过。实施时将场景关联到实际测试结果、版本和运行记录；本文不记录各里程碑的进行状态。
+本文列出验收场景（E2E-…、F-…）与需求编号的验收入口，并注明当前由哪些测试覆盖；没有自动化测试的标“未覆盖”。场景描述的是必须成立的行为，不记录某次运行的结果；实测记录按协作规则放在 `.local/` 或 `records/`。
 
-单元与集成测试使用 pytest；数据源、执行器、环境、持久化四个边界均有测试替身，覆盖状态机、计分和并发。真实端到端测试在有 Docker 的 Linux 主机或 VM 上，从管理脚本安装开始跑任务；优先选 Oracle 执行参考解法，平台规则不依靠真实模型的偶然输出。
+平台规则不依靠真实模型的偶然输出：端到端闭环优先用 Oracle 执行参考解法。测试夹具选择无需模型、无付费外部依赖的任务，显式设置 oracle；Oracle 结果标为测试模式。真实模型只做少量冒烟，验证凭据、模型参数和调用接入。
 
-Oracle 依赖任务提供 solution/solve.sh，而且参考脚本或验证器仍可能自行调用外部服务。测试夹具必须选择无需模型、无付费外部依赖的任务；显式设置 oracle，不能仅依赖上游默认。Oracle 结果标为测试模式，不进入模型能力排名。少量真实模型冒烟另行执行，用于验证凭据、模型参数和调用接入。
+UI 文案与纯样式变更不写低价值单元测试；优先验证会导致重复执行、丢结果、错计分或越权的业务行为。
 
-在 M2 地基之前，先完成 M1：[15](15-stack-harbor.md) 的 TECH-01～04 最小原型（实时进度、网络强制收紧、独立准备与冷缓存并发恢复、每试次 bootstrap 的 setup 衔接及无宿主目录挂载），以及运行级调度所需的 V-12。
+## 2. 测试分层与运行方式
 
-## 2. 重写路线
-
-重写在 `feature/rewrite` 分支进行，基线是 `9ff43b5`（[14](14-decisions.md) U-01）。中途允许无法部署（U-04），最终整体替换 `dev`。原设计稿按全新项目编排的 M0～M5 已改为下表；原表可在 Git 历史中查阅。
-
-### 2.1 原则
-
-- **按模块替换，不并行维护新旧两套。** 新模块就绪后直接删除对应的基线代码和测试，不保留转发层或兼容分支。
-- **每个里程碑都带对应的 API 和最简页面。** 用户通常要看到实际页面才能判断需求是否对，因此 M7 只做收口，不是第一次出现页面。
-- **测试随模块重建。** 新代码使用四个边界的测试替身（C4）。基线中靠复制源码、在末尾追加代码来伪造执行器的进程 fixture，不迁移到新执行层。
-- **实践优先。** 偏离设计时先在 14 记录，再同步修改模块文档（[文档地位](README.md)）。
-- **改名为 Maestro（U-12）。** 新代码写在新包 `src/maestro/` 中，命令、服务名、安装路径和前端标题一并使用新名称；基线包 `harbor_helper` 随模块替换逐步删除，M8 完成时不再存在。
-- 本节只描述交付内容和退出条件，不记录进度。
-
-### 2.2 里程碑
-
-| 里程碑 | 交付物 | 替换或删除的基线部分 | 退出条件 |
-| --- | --- | --- | --- |
-| M0 起点 | 重写分支、设计文档并入、基线可用性记录（pytest / 前端构建结果） | 已被设计取代的旧设计、归档、发布说明和验收标准 | 文档入口指向本目录；基线检查结果连同固定提交记录在 `.local/` |
-| M1 技术原型 | TECH-01～04 与 V-12，在独立 uv 环境中针对锁定 Harbor 版本验证 | 不修改主代码 | 每项有结论、样例与版本；未通过项在 14 写明改用的方案 |
-| M2 地基 | 01 的表结构、带版本号的迁移、WAL 与外键、短事务仓储；领域类型与多维状态；Operation、幂等与审计事件；账户、邀请、会话、PAT（09）；凭据与主密钥（移植 `dev` 的轮换实现）；四个边界的测试替身；公开 OpenAPI 骨架 | `persistence/`、`service/data.py`、`access.py`、`setup.py`，以及运行目录中的 JSON 状态文件 | 空实例可初始化；权限、幂等、受理事务和迁移有测试；E2E-RUN-01 以假执行器跑通 |
-| M3 执行内核 | 独立 Harbor 环境中的 Runner 与 JSON 协议（15 第 5 节）；运行级 Job（D-020）；实时阶段事件和错因映射（06）；试次与执行尝试记录；进程组取消、标签清理、重启对账（05 第 7～8 节）；提供商并发 | `execution/runs.py`、`worker.py`、`results/reports.py`、`service/lifecycle.py`；服务进程中所有 `import harbor` | Oracle 真实小任务从准备到产物全链路成功；运行中可看到各试次阶段（U-07）；杀进程后不残留容器 |
-| M4 数据集与准备 | Hub 来源适配器、数据集版本与 digest、任务、准入、内容可得性、准备缓存与共享恢复（02）；作者参数 | `service/configuration.py` 中的数据集部分、`service/sources.py`、`execution/sources.py`、`author_inputs.py`（校验与发现逻辑可移植） | E2E-DS-01～05 通过 |
-| M5 配置与提交 | 分层配置与字段来源（03）；模型配置与三种协议（移植 `dev`）；Harness 版本；附件与每试次 bootstrap；平台收紧任务网络策略、网络能力预检与出口控制 sidecar 的清理标签（TECH-02，U-18）；实验方案；提交批次；PAT 额度；重跑与修改后运行；限额与取消（04） | `service/submissions.py`、`attachments.py`、`admission.py`，以及其余配置部分 | E2E-RUN-01～04 通过；首个真实模型运行之前，Agent 与验证阶段的网络限制已在目标主机生效，能力不足时拒绝运行 |
-| M6 结果与产物 | 评分统计与覆盖率（06）；产物存储、索引、下载、批量导出、保留与过期（07）；按 07 第 8 节实现删除与回收站 | `service/machine.py` 的结果投影、`results/presentation.py` | 故事三的 P0 场景通过；有效零分、缺评分与执行失败在 API 和导出中都能区分 |
-| M7 SDK 与网页 | 由 OpenAPI 生成前端类型和 SDK；能力发现；按 11 整理网页，包括类似 GitHub Actions 的执行页和管理页 | `commands/`、`skills/`、基线的研究客户端说明，前端中未被前面里程碑替换的页面 | 网页与 SDK 能力一致；三个故事各有一条完全由 agent 经 SDK 走完的场景 |
-| M8 运维与替换 | 按 12 的系统级布局（U-13）实现安装、启停、更新、卸载和备份；第 4 节起的全部 P0 验收场景；在新 state 上部署 | 基线剩余的全部代码与文档，`scripts/` 中的本机启动脚本 | P0 验收通过；在 `feature/rewrite` 上执行 `git merge -s ours dev` 后经 PR 合入 `dev`，不改写共享历史；旧 state 不迁移（O-09） |
-| 后续 | P1：集合、对齐比较与分析快照（08）；排空更新、异机备份恢复；调度改为试次粒度（撤销 D-020）。另有 CLI 与 MCP（U-11）。0.3.0 之后的优先级见[下一阶段开发想法](roadmap-next.md) | — | 对应场景和恢复演练通过 |
-
-### 2.3 可从基线或 `dev` 移植的部分
-
-实现前先读原代码，按新设计重写接口，不整文件照搬：
-
-| 来源 | 内容 | 用于 |
+| 层级 | 内容 | 位置与开关 |
 | --- | --- | --- |
-| 基线 `security/credentials.py`、`access_tokens.py` | AES-GCM 凭据加密、令牌摘要、日志脱敏 | M2 |
-| `dev` 提交 `2538538` | 主密钥代次与原子轮换、三种模型协议 | M2、M5 |
-| 基线 `execution/environments.py`、`dev` 的 `execution/resources.py` | 原生 Docker 环境包装、阶段计时、按 compose 标签清理并确认释放 | M3 |
-| 基线 `execution/sources.py`、`author_inputs.py` | 任务下载、内容哈希与目录摘要校验、作者参数发现 | M4 |
-| `dev` 的 `service/recycle.py` | 两步删除与回收站语义 | M6 |
-| `dev` 的 `sdk.py` | 薄客户端、幂等键与返回脱敏 | M7 |
-| `dev` 的 `scripts/service.py`、`service/shutdown.py` | 两阶段停机与排空的处理流程；布局改为系统级 | M8 |
-| 基线与 `dev` 的前端 | shadcn 组件、外壳和主题 | 各里程碑的页面 |
+| 单元与服务测试 | 领域规则（配置合并、摘要、状态迁移、计分与覆盖率）、仓储与并发（幂等、额度、准入竞争、共享恢复租约与等待者、pin 与回收、终态提交）、API 权限与契约、SDK | `tests/maestro/test_*.py`，默认运行。每个测试用全新的临时 data / cache / 主密钥目录（`conftest.py`），四个边界用 `src/maestro/testing/fakes.py` 的替身；Runner 协议用 `tests/maestro/fake_runner.py` 脚本化的假 Runner |
+| Runner 单元 | 网络收紧、附件安装、Harness 适配 | `test_runner_*.py`、`test_fix_m5_review.py` 等；需要 `runner/` 的 uv 环境，没装时跳过 |
+| 真实 Docker | Oracle 全链路、准备原件与恢复、取消与杀进程后的清理、网络收紧、附件在试次容器内安装 | `test_harbor_docker.py`，需 `MAESTRO_DOCKER_TESTS=1`；只用本地 fixture 任务与已有基础镜像，不调用模型和 Hub；每个测试用独立实例标签与 `maestro-prep/<实例>` 仓库名，结束时核对清空 |
+| 真实 Hub | 目录调用、失败分类、导入与首次准备 | `test_hub_live.py`，需 `MAESTRO_HUB_TESTS=1`；匿名读取公开数据集 |
+| 真实模型冒烟 | Terminus-2、OpenCode 各一个试次 | `test_harbor_docker.py -k real_model` 与 `test_opencode_with_a_real_model`，需 `MAESTRO_MODEL_TESTS=1` 及模型地址、key 文件；会产生费用，须核对当前授权与预算 |
+| 安装运维 | 安装、更新、失败回退、备份恢复、卸载与清除 | `test_install.py`，需 `MAESTRO_INSTALL_TESTS=1`；用隐藏参数 `--test-root` 把布局放进临时目录，以 systemd 用户单元运行；规则部分在 `test_maestroctl.py`、`test_backup.py`，默认运行 |
+| 网页 | 关键路径冒烟 | `frontend/qa/smoke.spec.ts`（Playwright），需要全新的一次性 state 与 `serve --demo-executor` |
+| CI | lint、契约与 SDK 模型漂移、文档链接、默认 pytest、网页 lint / `check:api` / build | `.gitea/workflows/verify.yml`，每次推送；pytest 只传 PATH 与临时 HOME。真实 Docker、Hub、模型与安装测试不在 CI，手动运行 |
 
-不在无代码依据时给出工期或人日估算。每个里程碑可以拆成工单，工单引用模块需求编号、接口和本文场景。
+隔离要求：验证使用独立 HOME、state 与主密钥，清除继承的真实凭据环境；不用已有团队 state 或真实凭据作随手测试。真实 Docker 测试前后建议对 `docker images`、`ps -a`、`network ls`、`volume ls` 留快照对比。
 
-## 3. 测试分层
+## 3. 需求与验收对照
 
-| 层级 | 验证内容 | 测试方式 |
+| 需求编号组 | 定义位置 | 主要验收 |
 | --- | --- | --- |
-| 领域规则 | 配置合并、内容哈希、状态迁移、奖励有效性、分母 / 覆盖率 | pytest 表驱动与固定输入 |
-| 仓储与并发 | 幂等、额度、准入撤销竞争、共享恢复租约 / 等待者、pin / 回收、终态提交 | 临时 SQLite WAL 与受控并发 |
-| 边界契约 | Runner 协议、上游字段映射、取消、日志、评分、文件传输 | pytest、四边界替身、锁定 Harbor 样本 |
-| API / SDK | schema、错误、权限、分页、断线接续 | 同一契约样例驱动两侧 |
-| 网页业务 | 配置来源、重复提交、状态辨识、权限入口 | 关键路径端到端验证 |
-| Linux 运维 | uv 环境、systemd、Docker / nftables、journald、重启、更新和恢复 | 管理脚本安装后在主机或 VM 真实执行 |
+| DS-01～DS-09 | [02](02-datasets-preparation.md) | E2E-DS-01～05、F-21～24 |
+| CFG-01～CFG-06 | [03](03-configuration-attachments.md) | E2E-RUN-01 / 04、F-11 / 19 / 25 |
+| RUN-01～RUN-06 | [04](04-plans-submission.md) | E2E-RUN-01～04、F-01 / 21 / 23 / 26 |
+| EXE-01～EXE-06 | [05](05-scheduling-execution.md) | F-02～03、F-05 / 08 / 22 / 24 |
+| RES-01～RES-06 | [06](06-results-scoring.md) | F-04～07、F-23、E2E-OUT-01 |
+| ART-01～ART-06 | [07](07-artifacts-export.md) | E2E-OUT-01、F-09～12、F-21 / 24 |
+| ANA-01～ANA-06 | [N-11](../proposals/N-11-collections-comparison.md) | 未实现，见提案 |
+| IAM-01～IAM-06 | [09](09-identity-security.md) | E2E-DS-03、E2E-RUN-04、F-13 / 25、第 8 节 |
+| API-01～API-06 | [10](10-api-sdk-cli.md) | E2E-RUN-01～02、E2E-DS-04～05、F-20 |
+| OPS-01～OPS-07 | [12](12-operations.md) | 12 第 9 节、F-08、F-14～15 |
 
-UI 文案与纯样式变更无需逐项编写低价值单元测试；优先验证会导致重复执行、丢结果、错计分或越权的业务行为。
+网页需求由 [11](11-web-ui.md) 的页面与流程承接上述业务编号，不另造与服务端不一致的规则。
 
 ## 4. 故事一：数据集添加与准备
 
@@ -82,6 +52,8 @@ UI 文案与纯样式变更无需逐项编写低价值单元测试；优先验�
 
 预期：形成不可变版本和任务目录；镜像 digest、内容摘要、首次成功准入证明可查；任务可被成员与 PAT 读取并选择；重试同一导入不生成重复版本。
 
+覆盖：`test_datasets.py`（替身）；`test_hub_live.py`（真实 Hub）。
+
 ### E2E-DS-02 局部失败
 
 前提：假版本含 3 个任务，控制其中 1 个构建失败。
@@ -89,6 +61,8 @@ UI 文案与纯样式变更无需逐项编写低价值单元测试；优先验�
 步骤：管理员首次准备 → 成员选择全部可提交任务并预检 → 管理员单独重试首次失败项。
 
 预期：初始目录显示 2 已准入 / 1 首次失败，缓存状态另列；预检固定 2 个任务并列出排除项；重试后 3 个均准入，旧快照仍为原 2 项。清理两个已准入缓存后，新预检仍选择这两项并提示运行时恢复。
+
+覆盖：`test_datasets.py`。
 
 ### E2E-DS-03 SDK 发现与管理边界
 
@@ -98,6 +72,8 @@ UI 文案与纯样式变更无需逐项编写低价值单元测试；优先验�
 
 预期：读取成功且结构化；两个 PAT 的管理请求均被拒绝。experiment PAT 可正常提交并触发运行内恢复；read PAT 不能提交，也不能以恢复接口绕过权限。
 
+覆盖：`test_datasets.py`、`test_sdk.py`、`test_permissions.py`。
+
 ### E2E-DS-04 已准入任务的冷缓存与共享恢复
 
 前提：管理员首次准备成功，记录准入、配置摘要及镜像 digest；回收本机准备缓存。
@@ -106,11 +82,15 @@ UI 文案与纯样式变更无需逐项编写低价值单元测试；优先验�
 
 预期：两条请求均可受理，无管理员操作；同键同轮仅一个拉取 / 构建，取消不影响另一个等待者；按同一 digest 恢复且不重复预留构建容量。准入和 config_digest 不变；重跑复用缓存，每个被受理运行只扣一次额度。
 
+覆盖：`test_preparation.py`、`test_sdk.py`（替身）；`test_harbor_docker.py`（真实镜像从准备原件恢复）。
+
 ### E2E-DS-05 暂态失败与确切内容不可得
 
 步骤：分别注入可重试下载失败、鉴权失败、原 digest 消失且无本地副本、仅取得不同摘要；再构造上游缺失但本机确切副本仍在的情形。
 
 预期：暂态错误按预算重试，失败记录归属试次且准入保持；鉴权错误给出凭据处理入口，不标永久缺失。确切内容不可得阻止新提交与原配置重跑，返回 expected_digest；受理前拒绝不扣额度，受理后发现则形成试次错误。不同摘要不被接受，本地确切副本仍在时可以执行。
+
+覆盖：`test_preparation.py`、`test_acceptance_p0.py`、`test_fix_prep_service.py`、`test_fix_prep_docker.py`（错误分类）。
 
 ## 5. 故事二：运行提交与执行
 
@@ -122,6 +102,8 @@ UI 文案与纯样式变更无需逐项编写低价值单元测试；优先验�
 
 预期：全过程不需要网页或服务器目录；运行固定配置、字段来源和内容摘要；评分和证据可追溯；SDK 客户端超时不取消服务端运行。
 
+覆盖：`test_e2e_run.py`、`test_sdk.py`（替身）；`test_harbor_docker.py`（真实 Oracle 从提交到产物）。
+
 ### E2E-RUN-02 断线、并发与批次
 
 前提：PAT 仅剩 2 个受理额度。
@@ -129,6 +111,8 @@ UI 文案与纯样式变更无需逐项编写低价值单元测试；优先验�
 步骤：提交包含 2 个运行的批次，模拟受理后响应丢失；使用同幂等键重试；并发尝试额外提交。
 
 预期：只存在一个批次和两个运行，扣减 2 个额度；重试返回同一身份；额外提交被拒绝；不留下未关联试次或负额度。
+
+覆盖：`test_batches.py`、`test_sdk.py`。
 
 ### E2E-RUN-03 取消与后续运行
 
@@ -138,6 +122,8 @@ UI 文案与纯样式变更无需逐项编写低价值单元测试；优先验�
 
 预期：原评分保留；重跑创建新运行且使用原快照，仅缩小任务范围；修改后运行保存差异与来源；原运行不增加试次。
 
+覆盖：`test_reruns.py`、`test_worker.py`。
+
 ### E2E-RUN-04 成员附件的运行内安装
 
 前提：成员或 experiment PAT 上传含 bootstrap.sh 的固定附件，数据集已准入，无管理员在线。
@@ -146,7 +132,9 @@ UI 文案与纯样式变更无需逐项编写低价值单元测试；优先验�
 
 预期：上传不执行脚本；运行受理后每试次在自己的容器安装，除本试次输出目录外无宿主目录挂载，无管理员准备请求；记录摘要、身份、目录、时限和日志。安装可按准备策略联网，执行 / 验证切换到模型服务限制；失败仅影响对应试次，无伪造零分，不污染另一容器、共享缓存或数据集准入。安装与等待均受总时限约束。
 
-## 6. 故事三：查询、导出与组织
+覆盖：`test_attachments.py`、`test_sdk.py`、`test_runner_attachments.py`、`test_harbor_executor.py`；`test_harbor_docker.py`（真实容器内安装、挂载与网络）。
+
+## 6. 故事三：查询与导出
 
 ### E2E-OUT-01 SDK 查询与导出
 
@@ -154,68 +142,61 @@ UI 文案与纯样式变更无需逐项编写低价值单元测试；优先验�
 
 预期：每份结果准确对应运行 / 任务 / 试次，零分与未评分可区分；已过期和保存失败项在清单中有显式原因；未泄露凭据。
 
-### E2E-OUT-02 P1 对齐与新一轮
+覆盖：`test_results_export.py`、`test_sdk.py`。
 
-步骤：创建集合加入两个不同批次运行 → 声明附件为变化因素 → 查看条件差异与任务对齐 → 选择源运行修改后提交并加入集合。
+### E2E-OUT-02 对齐与新一轮
 
-预期：非预期模型 / 资源差异产生警告；不同评分契约阻止直接总分比较；新运行来源和配置变化可追溯；集合不复制产物。
+已移到 [N-11](../proposals/N-11-collections-comparison.md)。
 
-### E2E-OUT-03 P1 快照与证据到期
+### E2E-OUT-03 快照与证据到期
 
-步骤：保存分析快照 → 集合加入新运行 → 触发原产物到期回收 → 再查快照。
-
-预期：快照运行清单与计算值保持，原证据显示过期；集合可继续变化；不会因文件过期而删除评分或误报原始文件可用。
+已移到 [N-11](../proposals/N-11-collections-comparison.md)。
 
 ## 7. 必须覆盖的故障场景
 
-| 编号 | 故障注入 | 必须满足的不变量 |
-| --- | --- | --- |
-| F-01 | 同键同内容、同键异内容并发提交 | 只受理一次，冲突稳定，额度不重复扣 |
-| F-02 | 两 Worker 争抢一个试次 | 一个有效租约，无并发模型执行 |
-| F-03 | 取消与结果同时提交 | 按服务端确认顺序只接受一个终态，已有评分不丢 |
-| F-04 | 验证器输出 0、null、非法值；合法数值但 reward_valid=false | 有效 0 计分；无效数值仅作诊断，分母和覆盖率正确 |
-| F-05 | 暂态准备失败后两次重试 | ExecutionAttempt 增加，Trial 数不变，准入不变，无恢复内层重试 |
-| F-06 | 提供商故障、超时、拒绝任务和未分类错误 | 按平台错误策略的 retry / grade / reward_valid（经适配器映射）；不双重重试或挑分，记录可能重复费用 |
-| F-07 | 评分后上传失败 / 清理失败 | 评分保持，两个失败维度可见 |
-| F-08 | 进程在准备 / 执行 / 验证时被杀 | 中断规则一致，孤儿容器受控，未自动续跑 |
-| F-09 | 文件发布前后进程退出 | 索引 / 文件对账后无虚假 available |
-| F-10 | 磁盘到低水位 | 阻止受理 / 派发，查询和取消可用 |
-| F-11 | 同名版本或镜像内容漂移 | 不静默更换内容，原配置重跑拒绝或按摘要重建 |
-| F-12 | 下载 / 导出与回收竞争 | pin 有限，清单准确，无无限保留 |
-| F-13 | 管理员 PAT、越权 owner_id、撤销 PAT | 管理接口拒绝、归属检查有效、撤销立即影响新调用 |
-| F-14 | P1 迁移后启动失败 | 旧程序与更新前数据库一起恢复 |
-| F-15 | P1 异机缺主密钥恢复 | 明确凭据不可恢复，不虚报恢复完成 |
-| F-16 | Runner stderr 洪泛、stdout 混入非协议输出、进程非零退出 | 无死锁；协议错误可定位；结果文件经校验后仍可识别 |
-| F-17 | Runner 协议版本或 Harbor schema 与发布清单不符 | 预检拒绝，不把不可解析结果当正常评分 |
-| F-18 | nftables 不可用、任务 public 或已有更严网络策略 | 能力缺失拒绝；平台限制可靠收紧，不静默放宽 |
-| F-19 | bootstrap 超时 / 失败、两个试次独立安装 | setup 阶段执行；不进入 Agent；P0 无跨试次安装缓存，不污染其他试次 |
-| F-20 | 修改 OpenAPI 后不重生成网页客户端或 SDK 类型 | CI 发现受控产物漂移并失败 |
-| F-21 | 回收已准入缓存，成员 / PAT 提交并原配置重跑 | 均可受理；固定摘要恢复；无管理员动作；准入与配置摘要不变 |
-| F-22 | 多等待者恢复、取消 / 到期与新等待者加入竞争 | 单个活动恢复租约；独立取消；发布到使用 pin 连续保护，容量不重复计 |
-| F-23 | 下载超时 / 429 / 5xx、鉴权失败、原 digest 真缺失或内容不符 | 暂态不撤准入、不误标不可得；真缺失拒绝两种提交并列出摘要 |
-| F-24 | 缓存回收与发布竞争、旧租约迟到、共享构建中服务重启 | 无错误 ready；迟到不覆盖；旧试次中断，遗留构建清理，准入证明保留 |
-| F-25 | 成员 / PAT 的 bootstrap 请求宿主目录或越过阶段网络 | 除本试次输出目录外无宿主目录挂载；运行内安装不提升管理权限；失败与超时局限于本试次 |
-| F-26 | 解析后、受理前管理员撤销准入 | 事务复检拒绝且不扣额度；缓存变化本身不造成解析失效 |
+| 编号 | 故障注入 | 必须满足的不变量 | 覆盖 |
+| --- | --- | --- | --- |
+| F-01 | 同键同内容、同键异内容并发提交 | 只受理一次，冲突稳定，额度不重复扣 | `test_acceptance.py` |
+| F-02 | 两 Worker 争抢一个运行 | 一个有效租约，无并发执行 | `test_acceptance_p0.py`、`test_worker.py` |
+| F-03 | 取消与结果同时提交 | 按服务端确认顺序只接受一个终态，已有评分不丢 | `test_acceptance_p0.py` |
+| F-04 | 验证器输出 0、null、非法值；合法数值但 reward_valid=false | 有效 0 计分；无效数值仅作诊断，分母和覆盖率正确 | `test_scoring.py`、`test_worker.py`、`test_execution_policy.py`、`test_fix_scoring_*.py` |
+| F-05 | 暂态准备失败后两次重试 | ExecutionAttempt 增加，Trial 数不变，准入不变，无恢复内层重试 | `test_preparation.py`、`test_worker.py` |
+| F-06 | 提供商故障、超时、拒绝任务和未分类错误 | 按平台错误策略的 retry / grade / reward_valid（经适配器映射）；不双重重试或挑分 | `test_execution_policy.py`、`test_harbor_executor.py` |
+| F-07 | 评分后上传失败 / 清理失败 | 评分保持，两个失败维度可见 | `test_acceptance_p0.py`、`test_worker.py`、`test_capacity.py` |
+| F-08 | 进程在准备 / 执行 / 验证时被杀 | 中断规则一致，孤儿容器受控，未自动续跑 | `test_restart.py`、`test_worker.py`、`test_preparation.py`；`test_harbor_docker.py`（杀 Runner、杀服务后重启） |
+| F-09 | 文件发布前后进程退出 | 索引 / 文件对账后无虚假 available | `test_retention.py` |
+| F-10 | 磁盘到低水位 | 阻止受理 / 派发，查询和取消可用 | `test_retention.py`、`test_fix_m5_review.py` |
+| F-11 | 同名版本或镜像内容漂移 | 不静默更换内容，原配置重跑拒绝或按摘要重建 | `test_datasets.py`、`test_reruns.py` |
+| F-12 | 下载 / 导出与回收竞争 | pin 有限，清单准确，无无限保留 | `test_retention.py`、`test_results_export.py` |
+| F-13 | 管理员 PAT、越权 owner_id、撤销 PAT | 管理接口拒绝、归属检查有效、撤销立即影响新调用 | `test_permissions.py`、`test_identity_api.py` |
+| F-14 | 更新时迁移或启动失败 | 旧程序与更新前数据库一起恢复 | `test_install.py`（`MAESTRO_CTL_FAIL_AT` 注入 migrate / start） |
+| F-15 | 恢复时缺所需主密钥 | 默认拒绝并说明凭据不可解密；显式接受时凭据失效，不虚报恢复完成。异机情形见 [N-21](../proposals/N-21-offhost-restore.md) | `test_backup.py` |
+| F-16 | Runner stderr 洪泛、stdout 混入非协议输出、进程非零退出 | 无死锁；协议错误可定位；已完成尝试的结果保留 | `test_harbor_executor.py` |
+| F-17 | Runner 协议版本或 Harbor 版本与发布清单不符 | 不把不可解析结果当正常评分 | 部分：`test_harbor_executor.py` 中运行时不符按 `RUNNER_PROTOCOL_ERROR` 结束；受理前预检未覆盖 |
+| F-18 | nftables 不可用、任务 public 或已有更严网络策略 | 能力缺失拒绝；平台限制可靠收紧，不静默放宽 | `test_network_capability.py`、`test_fix_m5_review.py`；`test_harbor_docker.py`（真实网络） |
+| F-19 | bootstrap 超时 / 失败、两个试次独立安装 | setup 阶段执行；不进入 Agent；无跨试次安装缓存，不污染其他试次 | `test_runner_attachments.py`；`test_harbor_docker.py` |
+| F-20 | 修改 OpenAPI 后不重生成网页客户端或 SDK 类型 | CI 发现受控产物漂移并失败 | `test_sdk.py`、`test_api_contract.py`；CI 的 `generate_clients.py --check` 与 `check:api` |
+| F-21 | 回收已准入缓存，成员 / PAT 提交并原配置重跑 | 均可受理；固定摘要恢复；无管理员动作；准入与配置摘要不变 | `test_acceptance_p0.py`、`test_preparation.py` |
+| F-22 | 多等待者恢复、取消 / 到期与新等待者加入竞争 | 单个活动恢复租约；独立取消；发布到使用 pin 连续保护，容量不重复计 | `test_preparation.py`、`test_fix_prep_service.py` |
+| F-23 | 下载超时 / 429 / 5xx、鉴权失败、原 digest 真缺失或内容不符 | 暂态不撤准入、不误标不可得；真缺失拒绝两种提交并列出摘要 | `test_acceptance_p0.py`、`test_preparation.py`、`test_hub_live.py`（失败分类） |
+| F-24 | 缓存回收与发布竞争、旧租约迟到、共享构建中服务重启 | 无错误 ready；迟到不覆盖；旧试次中断，遗留构建清理，准入证明保留 | `test_preparation.py`、`test_fix_prep_service.py`、`test_fix_prep_docker.py` |
+| F-25 | 成员 / PAT 的 bootstrap 请求宿主目录或越过阶段网络 | 除本试次输出目录外无宿主目录挂载；运行内安装不提升管理权限；失败与超时局限于本试次 | `test_harbor_docker.py`（挂载与网络）、`test_runner_attachments.py` |
+| F-26 | 解析后、受理前管理员撤销准入 | 事务复检拒绝且不扣额度；缓存变化本身不造成解析失效 | `test_acceptance.py`、`test_acceptance_p0.py` |
 
 ## 8. 容量与安全验收
 
-按 10 个默认试次并行运行，确认槽位、CPU、内存、提供商并发限制生效；批次规模上限在容器启动前拒绝。最大任务规模、元数据查询目标及磁盘阈值先以 D-011 建议值压测，再把测量环境和结果写入发布记录。
+- 槽位、CPU、内存与提供商并发限制生效；放不下的运行在受理时拒绝，容器启动前不超额。覆盖：`test_capacity.py`、`test_batches.py`。
+- 执行与验证阶段经 Harbor 阶段策略只访问批准范围，不能直连任意外网、宿主管理面或云元数据；主机没有收紧能力时拒绝模型运行。覆盖：`test_network_capability.py`、`test_harbor_docker.py`。
+- 容器没有宿主目录（本试次输出目录除外）、Docker socket、主密钥或宿主数据库挂载；附件解包与文件传输不越界。覆盖：`test_attachments.py`、`test_harbor_docker.py`。共享构建与试次容器按同一主机总账限制 CPU / 内存：未覆盖。
+- 网页、SDK、导出及日志中常见凭据的基本脱敏。覆盖：`test_fix_identity_redaction.py`、`test_security.py`、`test_sdk.py`、`test_credential_visibility.py`。脱敏测试不证明能隔离恶意代码，可信团队前提不变。
+- 契约：CI 导出 OpenAPI，核对 SDK 模型与网页类型没有漂移；SDK 在未安装服务端与 Harbor 的环境中独立导入（`test_sdk.py`）；服务进程不导入 Harbor（`test_harbor_boundary.py`）。
+- 最大任务规模、元数据查询目标与磁盘阈值的压测：未覆盖。
 
-准备阶段可以完成依赖下载；执行与验证阶段通过 Harbor 原生阶段策略仅访问批准范围，不能直连任意外网、宿主管理面或云元数据。验证主机 nftables / sidecar 能力及平台强制收紧任务策略，无能力时拒绝。容器无宿主目录、Docker socket、主密钥或宿主数据库挂载；附件解包与文件传输不能越界。共享构建与试次容器按同一主机总账限制 CPU / 内存，等待者不重复占构建资源。
+## 9. 发布检查
 
-检查网页、SDK、导出及日志中常见凭据的基本脱敏效果，同时记录可信团队限制，不以脱敏测试推断恶意代码隔离能力。
+发布前：
 
-CI 固定平台依赖并导出 FastAPI OpenAPI，重新生成 TypeScript 客户端与 Python SDK 类型，检查无未提交差异并执行契约样例；SDK 在未安装服务端应用或 Harbor 的环境中独立导入和调用。Runner 依赖锁与 schema / 错误策略样本另作版本化验证，不因官网最新内容自动更新。
-
-## 9. 完成标准
-
-P0 发布门槛：
-
-- P0 需求有实现位置与可复现验证结果，全部 P0 端到端、F-01～F-13、F-16～F-26 与 TECH-01～04 通过。
-- 管理脚本安装后真实 Hub / Harbor / Docker Oracle 小任务闭环通过，模型接入有独立冒烟，兼容版本、字段与错误策略映射有记录。
-- 并发幂等、计分、权限、取消、重启与回收无未解决的高影响问题。
-- OpenAPI、SDK 类型、错误码和网页行为一致，SDK 闭环不依赖服务端目录。
-- Linux 安装、启停、日志、异常恢复与默认保留数据卸载通过。
-- 所有仍采用的设计建议已在决策记录中确认，或明确标明发布限制与负责人。
-
-P1 另须通过集合 / 比较 / 快照场景、排空更新、F-14 / F-15 及异机恢复演练。尚未实现的 P1 / P2 能力在 capability 中关闭，不能仅靠文档宣称交付。
+- CI 通过（第 2 节）。
+- 手动运行真实 Docker、真实 Hub 与安装运维测试并通过；模型接入另有一次真实模型冒烟（须有授权与预算）。
+- 第 4～8 节中标“未覆盖”或“部分”的项目，在发布说明中写明限制。
+- 未实现的能力在 `/capabilities` 的 `features` 中关闭（例如 `collections`），不靠文档宣称交付。
