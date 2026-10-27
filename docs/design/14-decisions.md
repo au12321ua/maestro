@@ -47,6 +47,7 @@
 | U-35 | 2026-10-27 | 部署现场说明与验证证据不再只放某台机器的 `.local/`，改用自托管 Gitea：私有仓库 `PhySpace/maestro-site` 放现场说明与手动证据，CI 证据用 Actions artifacts，需要时用 Issue 讨论提案；不用网络白板或公网令牌文件夹。`.local/` 只放本机草稿（仓库名由 U-36 更正） | `AGENTS.md`、交接、开发流程与文档入口 |
 | U-36 | 2026-10-27 | 现场与证据仓库实际建在 `auua/maestro-site`（Gitea 个人账号下，私有），取代 U-35 中的 `PhySpace/maestro-site`。图片、视频、压缩包、抓包类文件用 LFS，不设保留期限，想清理时手动清理。证据日志里可以带模型 key，不要求逐项脱敏（Gitea 自部署，风险可控）；但主密钥文件、初始化令牌、Gitea 凭据和 SSH 私钥不入库，主机说明只记存放位置。每个开发环境各装一个 tea，用用户本人的 token，不另建机器人账号 | `AGENTS.md`、交接、开发流程；`maestro-site` 的 README 与 `tools/check_forbidden.py` |
 | U-37 | 2026-10-27 | 只改文档、不改代码的提交跳过 CI：提交说明和 PR 标题里写 `[skip ci]`。起因是文档 PR 的 CI 在装依赖那一步因网络失败，用户照常合并并决定以后这类修改不再跑 CI | [开发流程](../guides/development-workflow.md)、[交接](../HANDOFF.md)的 CI 一条 |
+| U-38 | 2026-10-28 | Harness 安装的 Node 与 npm 下载问题用环境变量注入包镜像源解决（如 npmmirror），不由平台做本机缓存；apt 由部署方把缓存代理设为准备代理。这些设置做成管理页的网页版，与准备代理挪到网页合并成一个提案；先在 `config.toml` 里做的版本（本机分支 `feature/setup-env`）只作短暂试验，不合入 `dev`。取代 U-30 中“安装缓存先做本机包缓存代理” | 提案 [N-08](../proposals/N-08-setup-network.md)；索引中 N-10 并入 N-08 |
 
 ### D-020 运行级调度（落实 U-05）
 
