@@ -33,7 +33,7 @@
 
 | 编号 | 提案 | 状态 | 要点 |
 | --- | --- | --- | --- |
-| N-08 | [安装网络在管理页配置](N-08-setup-network.md)（已定做网页版，合并原 N-10） | 设计中 | 准备代理、包镜像源等安装变量与 Harness 安装时限放进管理页同一分区，按修订保存、执行时生效，每个执行尝试与准备记录写明用了第几版；不进 `config_digest`。顺带：管理页只读显示部署配置，`maestroctl check` 报告 Docker registry 镜像源。本机缓存由部署方提供（squid、Verdaccio），填地址即可 |
+| N-08 | [安装网络在管理页配置](N-08-setup-network.md)（已定做网页版，合并原 N-10） | 已确认 | 准备代理、包镜像源等安装变量与 Harness 安装时限放进管理页同一分区，按修订保存、执行时生效，每个执行尝试与准备记录写明用了第几版；不进 `config_digest`。顺带：管理页只读显示部署配置，`maestroctl check` 报告 Docker registry 镜像源。本机缓存由部署方提供（squid、Verdaccio），填地址即可 |
 | N-09 | 常规 Harness：至少 Codex 与 Claude Code（已定） | 想法 | 把 OpenCode 的做法抽成通用的“容器内 Harness”模板，最好是声明式配置（与 N-19 一起设计）。Claude Code 需要 Anthropic 协议，Codex 需要 OpenAI Responses，不匹配在受理时拒绝。锁定版本中 Harbor 自带的这两个 agent 须实测；考虑与升级 Harbor 一起做，升级前补上 schema 导出、`--dry-run` 与兼容清单 |
 | N-10 | Harness 安装缓存 | 并入 N-08 | 改为环境变量注入包镜像源（U-38）；`config.toml` 版只作试验，不合入 |
 | N-11 | [实验集合、对齐比较与分析快照](N-11-collections-comparison.md)（已定纳入） | 设计中 | 新增 Harness 后的主要用途：同一数据集上比较不同模型与 Harness |
