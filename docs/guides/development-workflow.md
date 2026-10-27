@@ -61,6 +61,8 @@ git push -u origin feature/my-change
 
 CI 在推送和 PR 时运行，不覆盖真实 Docker、Hub 与模型测试，这些仍按交接另行执行。分支保护、必需检查和远端运行结果仍需在各仓库实时核对，配置文件不代表保护已经生效。
 
+只改文档、不改代码的提交跳过 CI：提交说明和 PR 标题里写 `[skip ci]`（U-37）。这里的“文档”指 Markdown 说明、提案和决策记录；只要改了代码、配置、依赖锁文件、前端、测试或 `.gitea/` 下的工作流，就不跳过。跳过后 CI 不会检查链接，提交前在本地运行 `python3 tools/check_doc_links.py` 和 `git diff --check`。
+
 ## 资料与交付证据
 
 Git 保留通用使用、API、架构、产品契约、发布规则和验收标准。现场工程/独立验收报告、原始日志、capture、截图、执行脚本、证据索引及部署现场说明放私有仓库 `auua/maestro-site`（CI 证据用 Gitea Actions artifacts），开发草稿放本机 ignored `.local/`，都不得换一个公开目录提交。本仓库不放 state、凭据和主密钥。`maestro-site` 不放主密钥文件、初始化令牌、Gitea 凭据和 SSH 私钥，其余日志里的模型 key 等不要求逐项脱敏（U-36）；证据归档不能整包复制运行目录，复制前先用该仓库的 `tools/check_forbidden.py` 检查。
