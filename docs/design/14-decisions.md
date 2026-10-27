@@ -44,7 +44,8 @@
 | U-32 | 2026-10-27 | `fix/separate-verifier` 不合并：当时时间紧，独立验证环境与 Compose 辅助服务的支持按提案重新实现，该分支只作参考 | 取代 U-30 中“只合入 `fix/separate-verifier` 中独立验证环境的修复”；见提案 N-01 |
 | U-33 | 2026-10-27 | 文档按寿命分开，一次性整理：00～13、15 只写系统现状，直接改写；待实现的设计写成提案（`docs/proposals/`），实现后并入系统说明并删除提案；本页只记决定；实施证据写在提交说明与 PR 中，`records/` 冻结不再新增。需求审计稿完成使命，冻结为出处，以后以提案为主 | `AGENTS.md`、[文档入口](README.md)、[开发交接](../HANDOFF.md)、[开发流程](../guides/development-workflow.md)；原 08 移为提案 N-11 |
 | U-34 | 2026-10-27 | 0.3.0 已部署，从此数据库结构变更一律追加新迁移，不再重新生成 `0001`。更广的兼容承诺仍从第一个面向外部用户的版本开始（U-31） | [开发交接](../HANDOFF.md) 验证入口的“数据库”一条；提案索引 N-17 |
-| U-35 | 2026-10-27 | 部署现场说明与验证证据不再只放某台机器的 `.local/`，改用自托管 Gitea：私有仓库 `PhySpace/maestro-site` 放现场说明与手动证据，CI 证据用 Actions artifacts，需要时用 Issue 讨论提案；不用网络白板或公网令牌文件夹。`.local/` 只放本机草稿 | 提案 [N-23](../proposals/N-23-site-repository.md)；`AGENTS.md`、交接、开发流程与文档入口 |
+| U-35 | 2026-10-27 | 部署现场说明与验证证据不再只放某台机器的 `.local/`，改用自托管 Gitea：私有仓库 `PhySpace/maestro-site` 放现场说明与手动证据，CI 证据用 Actions artifacts，需要时用 Issue 讨论提案；不用网络白板或公网令牌文件夹。`.local/` 只放本机草稿（仓库名由 U-36 更正） | `AGENTS.md`、交接、开发流程与文档入口 |
+| U-36 | 2026-10-27 | 现场与证据仓库实际建在 `auua/maestro-site`（Gitea 个人账号下，私有），取代 U-35 中的 `PhySpace/maestro-site`。图片、视频、压缩包、抓包类文件用 LFS，不设保留期限，想清理时手动清理。证据日志里可以带模型 key，不要求逐项脱敏（Gitea 自部署，风险可控）；但主密钥文件、初始化令牌、Gitea 凭据和 SSH 私钥不入库，主机说明只记存放位置。每个开发环境各装一个 tea，用用户本人的 token，不另建机器人账号 | `AGENTS.md`、交接、开发流程；`maestro-site` 的 README 与 `tools/check_forbidden.py` |
 
 ### D-020 运行级调度（落实 U-05）
 

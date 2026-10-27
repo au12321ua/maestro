@@ -34,4 +34,4 @@
 - CI：`.gitea/workflows/verify.yml` 在 `HH_RUNNER_LABEL` 指定的 runner 上对每次推送运行：ruff、`tools/generate_clients.py --check`、`tools/check_doc_links.py`（Markdown 相对链接）、不含 Docker / Hub / 模型的 pytest（只传 PATH 与临时 HOME）、网页 lint、`check:api`、build，并核对 `src/maestro/static/` 与源码一致。真实 Docker、Hub 与模型测试仍按上面的开关在本机手动运行。
 - 验收场景见[测试与验收](design/13-testing-plan.md)。验证命令和门禁以本页为准。
 
-现场报告与原始证据经脱敏后放私有仓库 `PhySpace/maestro-site`（[N-23](proposals/N-23-site-repository.md)，建好之前在部署主机的 ignored `.local/`）；公开文档只留短的固定代码版本、实际覆盖与未覆盖范围摘要。集成后的 worktree 和短期分支按协作规则收尾。
+现场报告与原始证据放私有仓库 `auua/maestro-site`（主密钥文件、初始化令牌、Gitea 凭据和 SSH 私钥不入库，其余日志不要求逐项脱敏，U-36）；公开文档只留短的固定代码版本、实际覆盖与未覆盖范围摘要。集成后的 worktree 和短期分支按协作规则收尾。

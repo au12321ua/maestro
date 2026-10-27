@@ -2,7 +2,7 @@
 
 Maestro 的系统说明在 [docs/design](docs/design/README.md)（只写现状），待实现的设计在[提案](docs/proposals/README.md)。先读[系统说明入口](docs/design/README.md)和[开发交接](docs/HANDOFF.md)，开发前再读[分支、协作与发布规则](docs/guides/development-workflow.md)，然后按当前任务读取相关模块和原始文件；启动时不必读完整个文档目录。
 
-小任务（可回滚，不改接口、数据结构、密钥、部署和验收标准，例如查问题、清理环境、改文档或配置）只读与当前任务直接相关的文件。但操作服务、state 或镜像前，仍须先读部署现场说明（私有仓库 `PhySpace/maestro-site` 中对应主机的文件；建好之前是部署主机上的 `.local/LOCAL_ENVIRONMENT.md`）；“工作原则”中保护现场与秘密的要求同样适用。现场说明由部署者维护，不进入公开仓库。
+小任务（可回滚，不改接口、数据结构、密钥、部署和验收标准，例如查问题、清理环境、改文档或配置）只读与当前任务直接相关的文件。但操作服务、state 或镜像前，仍须先读部署现场说明（私有仓库 `auua/maestro-site` 的 `hosts/` 中对应主机的文件）；“工作原则”中保护现场与秘密的要求同样适用。现场说明由部署者维护，不进入公开仓库。
 
 单项工作从 `dev` 新建短期分支和独立 worktree，不在部署目录或 `master` 上开发。开始工作时核对[决策记录](docs/design/14-decisions.md)第 0 节、相关提案和本次明确任务，用户当前明确指令优先。
 
@@ -35,7 +35,7 @@ Maestro 的系统说明在 [docs/design](docs/design/README.md)（只写现状�
 
 - 下一步做什么：[提案索引](docs/proposals/README.md)。测试分层与验收场景：[测试与验收](docs/design/13-testing-plan.md)。各模块从[系统说明入口](docs/design/README.md)进入。
 - 代码分工：[源码职责](docs/architecture/source-layout.md)；公开 API 以服务导出的 OpenAPI 为准。已删除的基线服务、CLI 与机器 API 可查 `9ff43b5`。
-- 部署现场以私有仓库 `PhySpace/maestro-site`（[N-23](docs/proposals/N-23-site-repository.md)；建好之前仍在部署主机主仓的 ignored `.local/`）中的现场说明为准；操作前实时核对身份与引用。
+- 部署现场以私有仓库 `auua/maestro-site`（Gitea；克隆与上手步骤见其 README）`hosts/` 中的现场说明为准；操作前实时核对身份与引用。
 - 废弃方案和重写前的旧实现可查 Git 历史，不成为新增约束。
 
 ## 运行与验证入口
@@ -46,6 +46,6 @@ Maestro 的系统说明在 [docs/design](docs/design/README.md)（只写现状�
 
 区分本轮观察、版本限定的历史证据、文档声称及推测；未经用户确认的 Agent 方案、默认值或实现选择不能升格为硬约束。变更按影响范围验证，并记录代码版本、前置条件及未覆盖范围。
 
-现场报告、原始日志、capture、截图和证据索引经脱敏后放私有仓库 `PhySpace/maestro-site`（[N-23](docs/proposals/N-23-site-repository.md)；建好之前仍在部署主机主仓的 ignored `.local/`），CI 证据用 Gitea Actions artifacts；ignored `.local/` 只放本机草稿。公开文档只留短的固定版本范围摘要；不要求将 Agent 提供的原始证据重新入库。历史笔记和报告按原时点保留，不随任务反复同步为“最新状态”。集成后负责人必须按协作规则收尾 worktree 和短期分支。
+现场报告、原始日志、capture、截图和证据索引放私有仓库 `auua/maestro-site`，CI 证据用 Gitea Actions artifacts；ignored `.local/` 只放本机草稿。`maestro-site` 不放主密钥文件、初始化令牌、Gitea 凭据和 SSH 私钥，其余日志不要求逐项脱敏（U-36）。公开文档只留短的固定版本范围摘要；不要求将 Agent 提供的原始证据重新入库。历史笔记和报告按原时点保留，不随任务反复同步为“最新状态”。集成后负责人必须按协作规则收尾 worktree 和短期分支。
 
 保护已有现场与秘密：不把凭据或运行数据入库，不用已有团队 state 或真实凭据作随手测试；真实模型请求须核对当前任务授权与预算。开发与测试中的实验只用全新的独立 state。

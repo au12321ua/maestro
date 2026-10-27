@@ -47,7 +47,7 @@ git push -u origin feature/my-change
 1. 写提案或更新提案索引，与用户确认范围和待定问题；用户的决定写入[决策记录](../design/14-decisions.md)第 0 节。
 2. 按已确认的提案实现。
 3. 合入 `dev` 的同一个 PR 中：把结论改写进受影响的[系统说明](../design/README.md)（只写现状，直接改，不追加“原设计 / 现状”分层）、删除提案文件、在索引中移到“已完成”。
-4. 改了什么、验证了什么、没覆盖什么写在提交说明与 PR 描述中；原始证据经脱敏后放私有仓库 `maestro-site`（[N-23](../proposals/N-23-site-repository.md)）。不再新增 `design/records/` 下的实施记录。
+4. 改了什么、验证了什么、没覆盖什么写在提交说明与 PR 描述中；原始证据放私有仓库 `maestro-site` 的 `evidence/`。不再新增 `design/records/` 下的实施记录。
 
 小修复不需要提案，直接修改代码和受影响的系统说明。
 
@@ -63,7 +63,7 @@ CI 在推送和 PR 时运行，不覆盖真实 Docker、Hub 与模型测试，�
 
 ## 资料与交付证据
 
-Git 保留通用使用、API、架构、产品契约、发布规则和验收标准。现场工程/独立验收报告、原始日志、capture、截图、执行脚本、证据索引及部署现场说明放私有仓库 `PhySpace/maestro-site`（[N-23](../proposals/N-23-site-repository.md)，建好之前在部署主机主仓的 ignored `.local/`），开发草稿放本机 ignored `.local/`，都不得换一个公开目录提交。state、凭据和主密钥也不得入库；证据归档不能整包复制含秘密的运行目录。
+Git 保留通用使用、API、架构、产品契约、发布规则和验收标准。现场工程/独立验收报告、原始日志、capture、截图、执行脚本、证据索引及部署现场说明放私有仓库 `auua/maestro-site`（CI 证据用 Gitea Actions artifacts），开发草稿放本机 ignored `.local/`，都不得换一个公开目录提交。本仓库不放 state、凭据和主密钥。`maestro-site` 不放主密钥文件、初始化令牌、Gitea 凭据和 SSH 私钥，其余日志里的模型 key 等不要求逐项脱敏（U-36）；证据归档不能整包复制运行目录，复制前先用该仓库的 `tools/check_forbidden.py` 检查。
 
 Agent 交付原始报告或 capture 路径时，负责人保存本地出处、固定提交、覆盖范围和未完成项，不要求将原件塞进 Git。公开说明只保留短的固定版本范围摘要，不链接私有档案，也不把历史失败或 PARTIAL 改成成功。测试文件属于可维护代码；单次执行的测试输出属于现场证据。
 
