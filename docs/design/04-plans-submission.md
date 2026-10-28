@@ -22,7 +22,7 @@
 
 Worker 忙不构成受理失败，运行排队。预检不占额度；受理失败返回结构化错误，不留“半个运行”。冷缓存只产生恢复提示；准入与内容不可得的规则见 [02](02-datasets-preparation.md) 第 5 节，超时、限流或鉴权失败不会被记成内容不可得。
 
-已知限制：受理不检查 Worker 是否在运行（`/api/v1/system-status` 的 `accepting_runs` 只供观察）；没有维护模式，见提案 [N-12](../proposals/N-12-drain-update.md)。
+已知限制：受理不检查 Worker 是否在运行（`/api/v1/system-status` 的 `accepting_runs` 只供观察）；没有维护模式（暂缓，U-48）。
 
 ## 3. 单次提交事务
 

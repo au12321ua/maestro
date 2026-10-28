@@ -44,7 +44,7 @@ journald                            服务标准输出 / 错误
 | OPS-04 | 每次启动先对账，完成前不受理（第 4 节） |
 | OPS-05 | 卸载默认保留数据与配置，彻底删除需列出范围并确认实例编号（第 7 节） |
 | OPS-06 | 未满足：兼容信息只有发布包的 `RELEASE.json`（版本、提交、数据库结构版本、Harbor 版本、Runner 修订、文件摘要），没有经验证的发行版与 CPU 架构支持清单 |
-| OPS-07 | 同机更新带自动备份与失败回退（第 5 节）；排空见 [N-12](../proposals/N-12-drain-update.md) |
+| OPS-07 | 同机更新带自动备份与失败回退（第 5 节）；不排空（暂缓，U-48） |
 
 安装检查不改全机 Docker 配置（守护进程没有代理时只提醒）。nftables 只查内核模块；网络收紧是否真正生效由服务启动时经 Runner 探测（第 4 节）。
 
@@ -94,7 +94,7 @@ journald                            服务标准输出 / 错误
 
 网络探测结论为不能限制时，模型运行在受理时即被拒绝（阻塞项 `NETWORK_POLICY_UNSUPPORTED`，不扣额度），能力接口的 `features.restricted_network` 报告结果；探测失败按不能处理，Runner 在每个运行开始时的检查仍是最后一道。
 
-计划停机没有排空：`stop` / `restart` 会中断在途工作并如实记为中断。带排空的维护见 [N-12](../proposals/N-12-drain-update.md)。
+计划停机没有排空：`stop` / `restart` 会中断在途工作并如实记为中断。带排空的维护暂缓（U-48）。
 
 ## 5. 版本更新
 
@@ -110,7 +110,7 @@ journald                            服务标准输出 / 错误
 
 回退必须连同数据库一起恢复：迁移可能与旧程序不兼容，只切换 `current` 不算回滚。新版本不改写共享 Harbor 环境或旧版本的锁文件。
 
-已知限制：有运行在跑时只能等待或中断，没有排空、维护模式和断线后可查询的维护记录，见 [N-12](../proposals/N-12-drain-update.md)。
+已知限制：有运行在跑时只能等待或中断，没有排空和维护模式（暂缓，U-48）。
 
 ## 6. 备份与恢复
 
@@ -146,4 +146,4 @@ journald                            服务标准输出 / 错误
 - 安装、初始化、启停、日志、更新、失败回退、同机备份恢复、保留数据卸载与彻底删除：`tests/maestro/test_install.py`（需 `MAESTRO_INSTALL_TESTS=1`，在临时根目录以 systemd 用户单元运行）；布局、单元文件与删除边界：`tests/maestro/test_maestroctl.py`；备份集与恢复检查：`tests/maestro/test_backup.py`。
 - 非正常终止后按规则标记中断、保留评分并清理本实例遗留容器：见 [13](13-testing-plan.md) 的 F-08。
 - 普通重启不更新版本。
-- 带在途工作的排空更新与异机恢复不在当前范围，见 [N-12](../proposals/N-12-drain-update.md)、[N-21](../proposals/N-21-offhost-restore.md)。
+- 带在途工作的排空更新与异机恢复不在当前范围：前者暂缓（U-48），后者见 [N-21](../proposals/N-21-offhost-restore.md)。

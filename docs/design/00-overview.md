@@ -43,7 +43,7 @@ Maestro 是自托管的 Agent 评测平台：在本机 Docker 中用 Harbor 执�
 | 执行（[05](05-scheduling-execution.md)） | 按受理顺序领取（大运行不挡放得下的小运行）、资源准入、重启对账、环境清理 | 试次粒度调度（[N-13](../proposals/N-13-trial-granularity.md)）；公平调度；多机 Worker；GPU；金额或 token 预算 |
 | 结果（[06](06-results-scoring.md)、[07](07-artifacts-export.md)、[08](08-collections-comparison.md)） | 运行与任务结果、基本统计、日志、下载、批量导出、回收站；跨运行比较、集合与分析快照（[08](08-collections-comparison.md)） | 跨数据集版本的任务映射；显著性检验与 pass@k；公开发布页面 |
 | 访问（[09](09-identity-security.md)、[10](10-api-sdk-cli.md)、[11](11-web-ui.md)） | 网页、PAT 与 Python SDK、能力发现、统一操作记录 | 实验用 CLI 与 MCP（U-11）；事件流与 webhook；开放注册与 SSO |
-| 运维（[12](12-operations.md)） | 安装、启停、状态、日志、同机备份恢复、更新、保留数据卸载 | 带排空的更新（[N-12](../proposals/N-12-drain-update.md)）；异机恢复（[N-21](../proposals/N-21-offhost-restore.md)） |
+| 运维（[12](12-operations.md)） | 安装、启停、状态、日志、同机备份恢复、更新、保留数据卸载 | 带排空的更新（暂缓，U-48）；异机恢复（[N-21](../proposals/N-21-offhost-restore.md)） |
 
 费用与 token 只记观测值，未知为空；运行时长和并发不是金额预算保证。安全边界假设成员互相信任：Docker 组约等于 root，附件可运行任意 `bootstrap.sh`，证据只做基本脱敏（U-10）。
 
