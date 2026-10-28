@@ -873,11 +873,13 @@ function StepList({
         const running = !next;
         const failed = last && ENDED_BADLY.has(attempt.state);
         const prefix = STEP_LOG_PREFIX[step.step];
+        // Only what was forwarded live: for a harness that is its trajectory rendered as
+        // text; the raw event stream and trajectory.json stay in the artifacts tab.
         const logs = prefix
           ? artifacts.filter(
               (a) =>
+                a.kind === "log" &&
                 a.relative_path.startsWith(prefix) &&
-                /\.(txt|log)$/.test(a.relative_path) &&
                 // Attachment install logs belong to their own step, not the agent's.
                 (step.step === "installing" || !a.relative_path.startsWith(INSTALL_LOGS)),
             )
