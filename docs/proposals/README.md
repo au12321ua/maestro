@@ -33,7 +33,7 @@
 
 | 编号 | 提案 | 状态 | 要点 |
 | --- | --- | --- | --- |
-| N-09 | 常规 Harness：至少 Codex 与 Claude Code（已定） | 想法 | 把 OpenCode 的做法抽成通用的“容器内 Harness”模板，最好是声明式配置（与 N-19 一起设计）。Claude Code 需要 Anthropic 协议，Codex 需要 OpenAI Responses，不匹配在受理时拒绝。锁定版本中 Harbor 自带的这两个 agent 须实测；考虑与升级 Harbor 一起做，升级前补上 schema 导出、`--dry-run` 与兼容清单 |
+| N-09 | [常规 Harness：Codex 与 Claude Code，以及上游版本提示](N-09-codex-claude-code.md)（已定至少这两个） | 已确认 | 抽出 OpenCode 的“容器内 Harness”做法给两个新适配器共用，密钥以文件进容器；协议不匹配在解析阶段拒绝。上游版本成为 Harness 版本的必填字段，发布表单从 npm 列出上游正式版本、Maestro 测过的版本与团队已发布的版本。声明式配置（N-19）与升级 Harbor 另做；实测预算 20 美元（U-40）；待定问题按推荐（U-41） |
 | N-11 | [实验集合、对齐比较与分析快照](N-11-collections-comparison.md)（已定纳入） | 设计中 | 新增 Harness 后的主要用途：同一数据集上比较不同模型与 Harness |
 | N-12 | [带排空的更新与维护模式](N-12-drain-update.md)（已定纳入） | 设计中 | CD 让更新变频繁，现在有运行在跑时更新被拒绝 |
 
