@@ -21,7 +21,7 @@ UI 文案与纯样式变更不写低价值单元测试；优先验证会导致�
 | 真实模型冒烟 | Terminus-2、OpenCode、Codex、Claude Code 各一个试次 | `test_harbor_docker.py -k real_model`，需 `MAESTRO_MODEL_TESTS=1` 及模型地址、key 文件；Codex 与 Claude Code 另需各自的 Responses / Messages 地址，并在 setup 中真实安装（见交接）；会产生费用，须核对当前授权与预算 |
 | 安装运维 | 安装、更新、失败回退、备份恢复、卸载与清除 | `test_install.py`，需 `MAESTRO_INSTALL_TESTS=1`；用隐藏参数 `--test-root` 把布局放进临时目录，以 systemd 用户单元运行；规则部分在 `test_maestroctl.py`、`test_backup.py`，默认运行 |
 | 网页 | 关键路径冒烟 | `frontend/qa/smoke.spec.ts`（Playwright），需要全新的一次性 state 与 `serve --demo-executor` |
-| CI | lint、契约与 SDK 模型漂移、文档链接、默认 pytest、网页 lint / `check:api` / build | `.gitea/workflows/verify.yml`，每次推送；pytest 只传 PATH 与临时 HOME。真实 Docker、Hub、模型与安装测试不在 CI，手动运行 |
+| CI | lint、文档链接、默认 pytest（含契约与 SDK 模型漂移）、网页 lint / `check:api` / build、第三方许可证 | `.gitea/workflows/verify.yml`，每次改了 Markdown 以外内容的推送；pytest 并行，只传 PATH 与临时 HOME。`dev` 与版本 tag 通过后发布（[12](12-operations.md) 第 1 节）。真实 Docker、Hub、模型与安装测试不在 CI，手动运行 |
 
 隔离要求：验证使用独立 HOME、state 与主密钥，清除继承的真实凭据环境；不用已有团队 state 或真实凭据作随手测试。真实 Docker 测试前后建议对 `docker images`、`ps -a`、`network ls`、`volume ls` 留快照对比。
 
@@ -175,7 +175,7 @@ UI 文案与纯样式变更不写低价值单元测试；优先验证会导致�
 | F-17 | Runner 协议版本或 Harbor 版本与发布清单不符 | 不把不可解析结果当正常评分 | 部分：`test_harbor_executor.py` 中运行时不符按 `RUNNER_PROTOCOL_ERROR` 结束；受理前预检未覆盖 |
 | F-18 | nftables 不可用、任务 public 或已有更严网络策略 | 能力缺失拒绝；平台限制可靠收紧，不静默放宽 | `test_network_capability.py`、`test_fix_m5_review.py`；`test_harbor_docker.py`（真实网络） |
 | F-19 | bootstrap 超时 / 失败、两个试次独立安装 | setup 阶段执行；不进入 Agent；无跨试次安装缓存，不污染其他试次 | `test_runner_attachments.py`；`test_harbor_docker.py` |
-| F-20 | 修改 OpenAPI 后不重生成网页客户端或 SDK 类型 | CI 发现受控产物漂移并失败 | `test_sdk.py`、`test_api_contract.py`；CI 的 `generate_clients.py --check` 与 `check:api` |
+| F-20 | 修改 OpenAPI 后不重生成网页客户端或 SDK 类型 | CI 发现受控产物漂移并失败 | `test_sdk.py`（运行 `generate_clients.py --check`）、`test_api_contract.py`；网页类型由 CI 的 `check:api` 核对 |
 | F-21 | 回收已准入缓存，成员 / PAT 提交并原配置重跑 | 均可受理；固定摘要恢复；无管理员动作；准入与配置摘要不变 | `test_acceptance_p0.py`、`test_preparation.py` |
 | F-22 | 多等待者恢复、取消 / 到期与新等待者加入竞争 | 单个活动恢复租约；独立取消；发布到使用 pin 连续保护，容量不重复计 | `test_preparation.py`、`test_fix_prep_service.py` |
 | F-23 | 下载超时 / 429 / 5xx、鉴权失败、原 digest 真缺失或内容不符 | 暂态不撤准入、不误标不可得；真缺失拒绝两种提交并列出摘要 | `test_acceptance_p0.py`、`test_preparation.py`、`test_hub_live.py`（失败分类） |
@@ -196,7 +196,7 @@ UI 文案与纯样式变更不写低价值单元测试；优先验证会导致�
 
 发布前：
 
-- CI 通过（第 2 节）。
+- CI 通过（第 2 节）。正式版本：把代码版本改成正式版本号，合入 `master`，在 `master` 上打 `v<版本>` tag 并推送到 Gitea；CI 对 tag 再完整跑一次并发布。Gitea 上发布成功后，才把 `master` 与这个 tag 推到 GitHub（GitHub 不跑测试，U-42）。之后 `dev` 立即改成下一个 `.dev0`。
 - 手动运行真实 Docker、真实 Hub 与安装运维测试并通过；模型接入另有一次真实模型冒烟（须有授权与预算）。
 - 第 4～8 节中标“未覆盖”或“部分”的项目，在发布说明中写明限制。
 - 未实现的能力在 `/capabilities` 的 `features` 中关闭（例如 `collections`），不靠文档宣称交付。

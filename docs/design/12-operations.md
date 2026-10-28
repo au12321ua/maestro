@@ -4,7 +4,7 @@
 
 ## 1. 安装布局与进程
 
-发布形式是压缩包（`tools/build_release.py` 生成），由包内只用系统 Python 标准库的 `maestroctl` 安装和维护（U-29）。布局是系统级的（U-13）：
+发布形式是压缩包（`tools/build_release.py` 生成），由包内只用系统 Python 标准库的 `maestroctl` 安装和维护（U-29）。包由 CI 生成并发布到 Gitea Releases：`dev` 每次通过 CI 后是一个带提交标识的预发布（保留最近 10 个），`master` 上的 `v<版本>` tag 是正式版本；GitHub Releases 只在推送 tag 时由同一个 tag 构建，不重复测试（U-42）。发布附 SDK wheel、第三方许可证清单与 `SHA256SUMS`，包内带 `LICENSE`、`NOTICE` 与同一份清单。不自动部署：管理员下载包后执行 `maestroctl update`。布局是系统级的（U-13）：
 
 ~~~text
 /opt/maestro/versions/<build>/      程序（服务 venv，网页在服务包内）、该版本的 maestroctl、RELEASE.json

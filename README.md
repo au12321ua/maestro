@@ -10,10 +10,10 @@ Maestro 让受邀的可信团队通过网页和 SDK 提交、观察、比较和�
 
 ## 部署
 
-在一台带 systemd 和 Docker 的 Linux 主机上，用发布包安装：
+在一台带 systemd 和 Docker 的 Linux 主机上，用发布包安装。发布包从 Releases 下载：正式版本来自 `master` 的版本 tag，`dev` 每次通过 CI 后另有带提交标识的预发布，只用于试用。也可以在仓库里自己打包（见部署指南）：
 
 ```bash
-uv run python tools/build_release.py            # 在仓库里打包：dist/maestro-<版本>-<提交>.tar.gz
+sha256sum -c SHA256SUMS --ignore-missing            # 核对下载的包
 tar xf maestro-<版本>.tar.gz && cd maestro-<版本>
 sudo ./maestroctl install --uv "$(command -v uv)"   # 打印访问地址与一次性初始化令牌
 ```
@@ -70,6 +70,10 @@ uv run maestro --config "$root/config.toml" serve --port 8420
 | `runner_heartbeat_sec` / `runner_silence_sec` | 10 / 120 | Runner 的心跳间隔，以及多久没有任何动静就视为失联；归档很大的目录会阻塞心跳，在慢盘上调大归档上限时请同时调大静默时限 |
 
 实际生效的值可在 `/api/v1/capabilities` 的 `limits` 里查到。PAT 期限、单次运行的规模、保留天数等团队策略在数据库里按修订保存，由管理员在网页“管理 → 团队策略”调整。
+
+## 许可证
+
+[Apache License 2.0](LICENSE)，另见 [NOTICE](NOTICE)。每个发布包附第三方许可证清单 `THIRD_PARTY_LICENSES.md`。
 
 ## 文档
 

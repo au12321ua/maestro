@@ -98,7 +98,7 @@ client.runs.download_artifacts(submitted.run_id, local_directory)
 
 ## 8. 契约验收
 
-- CI（`.gitea/workflows/verify.yml`）运行 `tools/generate_clients.py --check` 与 `npm run check:api`，确认 SDK、网页类型与服务端不漂移；SDK 可单独安装。
+- CI（`.gitea/workflows/verify.yml`）经 `test_sdk.py` 运行 `tools/generate_clients.py --check`，并运行 `npm run check:api`，确认 SDK、网页类型与服务端不漂移；SDK 可单独安装。
 - 手工构造的响应也按声明模型校验（`api/deps.py` 的 `respond`）。
 - 同一业务经网页与 SDK 得到一致的快照和状态，SDK 不需要服务器文件系统。
 - 断线、超时和重试不会重复受理；过期幂等键有明确提示。

@@ -1,0 +1,46 @@
+# GitHub only receives master and its v* tags when a release is made, after the same
+# version was tested and published on Gitea (N-02, U-42). So this workflow runs no tests:
+# it rebuilds the package from the tag and publishes a GitHub Release with the same
+# assets. Gitea reads only .gitea/workflows and never runs this file.
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Environments for the package and the license list
+        # The web pages are built and committed, so npm only provides the license texts.
+        run: |
+          python -m pip install uv==0.13.5
+          uv sync --locked
+          (cd runner && uv sync --locked)
+          (cd frontend && npm ci --no-audit --no-fund --ignore-scripts)
+      - name: Build
+        run: |
+          if ! git merge-base --is-ancestor HEAD origin/master; then
+            echo "$GITHUB_REF_NAME is not on master"; exit 1
+          fi
+          uv run python tools/build_release.py --assets --expect-version "${GITHUB_REF_NAME#v}" --out dist
+          previous="$(git describe --tags --abbrev=0 --match 'v*' HEAD^ 2>/dev/null || true)"
+          git log --format='- %s (%h)' ${previous:+"$previous..HEAD"} > "$RUNNER_TEMP/notes.md"
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --title "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md"
