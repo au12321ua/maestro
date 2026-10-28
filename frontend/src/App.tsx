@@ -22,6 +22,10 @@ import { ExportsPage } from "@/pages/ExportsPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { AdminPage } from "@/pages/AdminPage";
 import { WorkbenchPage } from "@/pages/WorkbenchPage";
+import { ComparePage } from "@/pages/ComparePage";
+import { CollectionsPage } from "@/pages/CollectionsPage";
+import { CollectionPage } from "@/pages/CollectionPage";
+import { SnapshotPage } from "@/pages/SnapshotPage";
 
 type Boot =
   | { phase: "loading" }
@@ -183,6 +187,10 @@ function SignedIn({
           <Route path="/plans" element={<PlansPage />} />
           <Route path="/batches" element={<BatchListPage />} />
           <Route path="/batches/:batchId" element={<BatchPage />} />
+          <Route path="/compare" element={<ComparePage />} />
+          <Route path="/collections" element={<CollectionsPage />} />
+          <Route path="/collections/:collectionId" element={<CollectionPage />} />
+          <Route path="/snapshots/:snapshotId" element={<SnapshotPage />} />
           <Route path="/exports" element={<ExportsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route

@@ -280,6 +280,8 @@ export const RECYCLE_TYPE: Record<string, string> = {
   harness_version: "Harness 版本",
   attachment_version: "附件",
   experiment_plan: "实验方案",
+  collection: "集合",
+  analysis_snapshot: "分析快照",
 };
 
 export const STORAGE_LEVEL: Labels = {

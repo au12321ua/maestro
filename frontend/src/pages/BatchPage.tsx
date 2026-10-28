@@ -106,6 +106,11 @@ export function BatchPage() {
   return (
     <div className="grid gap-4">
       <PageTitle title={`批次：${batch.name}`}>
+        {batch.runs.length > 1 && (
+          <Button asChild size="sm" variant="outline">
+            <Link to={`/compare?runs=${batch.runs.map((r) => r.id).join(",")}`}>比较这一批</Link>
+          </Button>
+        )}
         {batch.allowed_actions.includes("cancel") && (
           <Button size="sm" variant="destructive" onClick={() => void cancel()}>
             取消批次

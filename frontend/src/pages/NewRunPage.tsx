@@ -37,6 +37,7 @@ import {
   fmtTime,
 } from "@/lib/format";
 import { limit, useLoad, useSession } from "@/lib/hooks";
+import { DIMENSION, SCENARIO } from "@/lib/comparison";
 import type {
   BatchPreview,
   ConfigRequest,
@@ -47,6 +48,8 @@ import type {
   RunCreate,
   Task,
   EffectiveTask,
+  Dimension,
+  Scenario,
 } from "@/lib/types";
 import { TaskStatusCells } from "@/components/TaskStatusCells";
 
@@ -102,6 +105,15 @@ interface DraftMember {
 }
 
 /** Blank means "inherit": the field is sent as null so the resolver takes the layer below. */
+// Which collection dimension each override field belongs to (06 section 8).
+const OVERRIDE_DIMENSION: Record<string, string> = {
+  repetitions: "repetitions",
+  agent_sec: "resources",
+  cpus: "resources",
+  memory_mb: "resources",
+  bootstrap_sec: "attachments",
+};
+
 function numberOrNull(text: string): number | null {
   return text.trim() === "" ? null : Number(text);
 }
@@ -113,6 +125,18 @@ export function NewRunPage() {
   // A modified run starts from that run's request; its differences are recorded.
   const sourceRunId = params.get("from");
   const plans = useLoad(async () => (await api.get("/plans")).data);
+  // From a collection: its fixed fields are filled in and locked, and the run joins it.
+  const collectionId = params.get("collection");
+  const collection = useLoad(
+    async () =>
+      collectionId
+        ? (await api.get("/collections/{collection_id}", { path: { collection_id: collectionId } }))
+            .data
+        : undefined,
+    [collectionId],
+  );
+  const fixedDimensions = new Set(Object.keys(collection.data?.fixed ?? {}));
+  const locked = (dimension: string) => !!collectionId && fixedDimensions.has(dimension);
   const datasets = useLoad(
     async () => (await api.get("/datasets", { query: { limit: 200 } })).data,
   );
@@ -178,6 +202,8 @@ export function NewRunPage() {
   const [modelRevision, setModelRevision] = useState<number | null>(null);
   const [planId, setPlanId] = useState("");
   const [planName, setPlanName] = useState("");
+  const [collectionName, setCollectionName] = useState("");
+  const [collectionScenario, setCollectionScenario] = useState<Scenario>("models");
   const [draft, setDraft] = useState<DraftMember[]>([]);
   const [batchName, setBatchName] = useState("");
   const [batchPreview, setBatchPreview] = useState<BatchPreview | null>(null);
@@ -303,10 +329,12 @@ export function NewRunPage() {
 
   const plan = (plans.data ?? []).find((p) => p.id === planId);
   /** What is sent: with a plan, only the fields that differ from it. */
-  const outgoing = (): Partial<ConfigRequest> =>
-    plan
+  const outgoing = (): Partial<ConfigRequest> => ({
+    ...(plan
       ? { ...ownFields(request(), plan.template), plan_id: plan.id, plan_revision: plan.revision }
-      : request();
+      : request()),
+    ...(collectionId ? { collection_id: collectionId } : {}),
+  });
 
   /** Fill the form from a (partial) request: a plan's template or a run's request. */
   const applyRequest = (req: PartialRequest) => {
@@ -359,6 +387,14 @@ export function NewRunPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wanted, plans.data]);
 
+  const collectionApplied = useRef(false);
+  useEffect(() => {
+    if (!collection.data || collectionApplied.current) return;
+    collectionApplied.current = true;
+    applyRequest(collection.data.template);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collection.data]);
+
   const imported = useRef(false);
   useEffect(() => {
     if (!sourceRunId || imported.current) return;
@@ -391,6 +427,23 @@ export function NewRunPage() {
       toast.success(`已保存方案“${res.data.name}”`);
       setPlanName("");
       await plans.reload();
+    } catch (err) {
+      setError(err);
+    }
+  };
+
+  const saveCollection = async () => {
+    setError(undefined);
+    try {
+      const res = await api.post("/collections", {
+        body: {
+          name: collectionName.trim(),
+          scenario: collectionScenario,
+          base: { request: setFields(request()) },
+        },
+      });
+      toast.success(`已建好集合“${res.data.name}”`);
+      navigate(`/collections/${res.data.id}`);
     } catch (err) {
       setError(err);
     }
@@ -466,6 +519,7 @@ export function NewRunPage() {
       resolution_id: resolution.resolution_id,
       client_request_id: clientRequestId || null,
       source_run_id: sourceRunId,
+      collection_id: collectionId,
     };
     try {
       const res = await api.post("/runs", {
@@ -511,6 +565,7 @@ export function NewRunPage() {
       step={1}
       placeholder="继承"
       value={overrides[field]}
+      disabled={locked(OVERRIDE_DIMENSION[field] ?? "")}
       onChange={(e) =>
         changed(setOverrides)({ ...overrides, [field]: e.target.value })
       }
@@ -533,6 +588,17 @@ export function NewRunPage() {
       )}
       {versions.length > 0 && (
         <form className="grid gap-4" onSubmit={check}>
+          {collectionId && (
+            <div className="rounded-md border border-sky-300 bg-sky-50 p-3 text-sm text-sky-900">
+              从集合{" "}
+              <Link to={`/collections/${collectionId}`} className="underline">
+                {collection.data?.name ?? collectionId}
+              </Link>{" "}
+              新建：固定的维度（
+              {[...fixedDimensions].map((d) => DIMENSION[d as Dimension] ?? d).join("、")}
+              ）已按集合填好并锁住，只需选可变的维度、任务和并发。提交后自动加入集合；与集合不符的配置在“检查配置”时就会指出。
+            </div>
+          )}
           {sourceRunId && (
             <div className="rounded-md border border-sky-300 bg-sky-50 p-3 text-sm text-sky-900">
               基于运行{" "}
@@ -571,6 +637,39 @@ export function NewRunPage() {
                   </option>
                 ))}
               </SelectField>
+              <div className="flex items-end gap-2 md:col-span-2">
+                <TextField
+                  id="collection-from-form"
+                  label="把当前表单建成集合"
+                  placeholder="集合名称"
+                  value={collectionName}
+                  onChange={(e) => setCollectionName(e.target.value)}
+                  hint="固定维度取表单当前的值；之后可以从集合新建运行"
+                />
+                <select
+                  aria-label="集合场景"
+                  className="mb-[1.35rem] h-9 rounded-md border bg-background px-2 text-sm"
+                  value={collectionScenario}
+                  onChange={(e) => setCollectionScenario(e.target.value as Scenario)}
+                >
+                  {Object.entries(SCENARIO)
+                    .filter(([, s]) => s.variable)
+                    .map(([key, s]) => (
+                      <option key={key} value={key}>
+                        {s.label}
+                      </option>
+                    ))}
+                </select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="mb-[1.35rem]"
+                  disabled={!collectionName.trim() || executionMode !== "agent"}
+                  onClick={() => void saveCollection()}
+                >
+                  建成集合
+                </Button>
+              </div>
               <div className="flex items-end gap-2">
                 <TextField
                   id="plan-name"
@@ -608,6 +707,7 @@ export function NewRunPage() {
                 id="run-version"
                 label="数据集版本"
                 value={versionId}
+                disabled={!!collectionId}
                 onChange={(e) => {
                   changed(setChosenVersion)(e.target.value);
                   setSelected(new Set());
@@ -627,6 +727,7 @@ export function NewRunPage() {
                   <input
                     type="radio"
                     name="execution-mode"
+                    disabled={!!collectionId}
                     checked={executionMode === "agent"}
                     onChange={() => changed(setExecutionMode)("agent")}
                   />
@@ -636,6 +737,7 @@ export function NewRunPage() {
                   <input
                     type="radio"
                     name="execution-mode"
+                    disabled={!!collectionId}
                     checked={executionMode === "oracle"}
                     onChange={() => changed(setExecutionMode)("oracle")}
                   />
@@ -668,6 +770,7 @@ export function NewRunPage() {
                     id="run-model"
                     label="模型"
                     value={model?.id ?? ""}
+                    disabled={locked("model")}
                     onChange={(e) => {
                       changed(setModelId)(e.target.value);
                       setModelRevision(null);
@@ -702,6 +805,7 @@ export function NewRunPage() {
                     id="run-harness"
                     label="Harness"
                     value={harness?.id ?? ""}
+                    disabled={locked("harness")}
                     onChange={(e) => {
                       changed(setHarnessId)(e.target.value);
                       setHarnessParams({});

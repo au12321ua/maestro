@@ -2369,6 +2369,11 @@
             ],
             "title": "Batch Id"
           },
+          "compared_trials": {
+            "description": "Planned trials of the compared tasks",
+            "title": "Compared Trials",
+            "type": "integer"
+          },
           "difference": {
             "anyOf": [
               {
@@ -2556,6 +2561,7 @@
             "$ref": "#/components/schemas/ComparisonUsage"
           },
           "valid_trials": {
+            "description": "Scored plus counted-as-failed, in compared tasks",
             "title": "Valid Trials",
             "type": "integer"
           }
@@ -2575,6 +2581,7 @@
           "finished_at",
           "evidence",
           "task_count",
+          "compared_trials",
           "valid_trials",
           "mean",
           "stddev",

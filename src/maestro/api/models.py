@@ -1694,7 +1694,8 @@ class ComparedRunRow(Model):
     finished_at: str | None
     evidence: Evidence
     task_count: int
-    valid_trials: int
+    compared_trials: int = Field(description="Planned trials of the compared tasks")
+    valid_trials: int = Field(description="Scored plus counted-as-failed, in compared tasks")
     mean: Number | None = Field(description="Macro mean of the compared tasks' means")
     stddev: Number | None = Field(description="Sample standard deviation of the task means")
     passed_trials: int | None

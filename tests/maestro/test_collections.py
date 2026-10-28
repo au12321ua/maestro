@@ -328,3 +328,34 @@ def test_a_snapshot_stays_while_runs_and_files_go(service, version_id, executor)
         )
         assert error(busy) == (409, "SNAPSHOT_RUNS_ACTIVE")
         alice.post(f"/api/v1/runs/{running_run}/cancel", expect=200)
+
+
+def test_an_agent_keeps_a_collection_through_the_sdk(service, version_id, executor):
+    from maestro_sdk import MaestroClient
+
+    with running(service) as client:
+        admin = setup_admin(service, client)
+        member = invite_member(service, admin, "member")
+        model_a, harness = prepare_model(admin)
+        model_b = second_model(admin, model_a)
+        token = create_pat(member, "experiment")
+        agent = MaestroClient("http://testserver", token.token, http=token.client)
+        base = run_of(member, version_id, model_a, harness)
+        collection = agent.collections.create(
+            "models", "models", base_run_id=base, run_ids=[base]
+        )
+        executor.script = {"add-02": [RATE_LIMITED]}
+        submission = agent.runs.submit(
+            agent_body(model_b, harness), name="b", collection_id=collection.id
+        )
+        wait_operation(token, submission.accepted.operation_id)
+        table = agent.collections.compare(collection.id)
+        assert [r.run_id for r in table.runs] == [base, submission.accepted.run_id]
+        assert table.dropped_tasks == 1
+        everything = agent.collections.compare(collection.id, exclude=[])
+        assert everything.dropped_tasks == 0
+        snapshot = agent.snapshots.create("first look", collection_id=collection.id)
+        snapshot = agent.snapshots.add_note(snapshot.id, "B is rate limited on add-02.")
+        assert snapshot.notes[0].pat_id is not None
+        assert agent.comparisons.compare([base, submission.accepted.run_id]).comparable
+        assert [e.action for e in agent.collections.events(collection.id)][:1] == ["add"]

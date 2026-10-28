@@ -72,6 +72,7 @@ import type {
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { SetupNetworkRevision } from "@/pages/admin/SetupNetworkTab";
+import { AddToCollection } from "@/components/AddToCollection";
 
 const TABS = new Set(["execution", "results", "config", "artifacts"]);
 const TRIAL_TERMINAL = new Set(["scored", "execution_error", "not_started", "cancelled", "interrupted"]);
@@ -262,6 +263,7 @@ function RunDetailView({ runId }: { runId: string }) {
             </Link>
           </Button>
         )}
+        {run.allowed_actions.includes("modify") && <AddToCollection runId={run.id} />}
         {run.allowed_actions.includes("delete") && (
           <Button size="sm" variant="outline" disabled={busy} onClick={() => void remove()}>
             <Trash2 />

@@ -724,6 +724,82 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/analysis-snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Snapshots */
+        get: operations["list_snapshots"];
+        put?: never;
+        /**
+         * Create Snapshot
+         * @description Freeze the comparison of ended runs, a collection's or the runs named.
+         */
+        post: operations["create_snapshot"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analysis-snapshots/{snapshot_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Snapshot */
+        get: operations["get_snapshot"];
+        put?: never;
+        post?: never;
+        /** Delete Snapshot */
+        delete: operations["delete_snapshot"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analysis-snapshots/{snapshot_id}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Snapshot Note */
+        post: operations["add_snapshot_note"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analysis-snapshots/{snapshot_id}/notes/{note_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Snapshot Note
+         * @description Only the note's author edits it.
+         */
+        put: operations["update_snapshot_note"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/artifacts/{artifact_id}": {
         parameters: {
             query?: never;
@@ -839,6 +915,161 @@ export interface paths {
         get: operations["capabilities"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/collections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Collections */
+        get: operations["list_collections"];
+        put?: never;
+        /**
+         * Create Collection
+         * @description The specification (scenario and fixed values) cannot change afterwards.
+         */
+        post: operations["create_collection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/collections/{collection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Collection */
+        get: operations["get_collection"];
+        /**
+         * Update Collection
+         * @description Name, description and comparison settings.
+         */
+        put: operations["update_collection"];
+        post?: never;
+        /** Delete Collection */
+        delete: operations["delete_collection"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/collections/{collection_id}/comparison": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Compare Collection
+         * @description The collection's comparison with its saved settings, or with these for this view.
+         */
+        post: operations["compare_collection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/collections/{collection_id}/copy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Copy Collection */
+        post: operations["copy_collection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/collections/{collection_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Collection Events */
+        get: operations["list_collection_events"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/collections/{collection_id}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Collection Runs
+         * @description Runs that differ from the fixed values are refused with what differs.
+         */
+        post: operations["add_collection_runs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/collections/{collection_id}/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Label Collection Run */
+        put: operations["label_collection_run"];
+        post?: never;
+        /** Remove Collection Run */
+        delete: operations["remove_collection_run"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/comparisons": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Compare Runs
+         * @description Compute a comparison of these runs; nothing is saved.
+         */
+        post: operations["compare_runs"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2340,6 +2571,449 @@ export interface components {
             /** Slots */
             slots: number;
         };
+        /** Collection */
+        Collection: {
+            /** Allowed Actions */
+            allowed_actions: string[];
+            /** Base Run Id */
+            base_run_id: string | null;
+            /** Copied From */
+            copied_from: string | null;
+            /** Created At */
+            created_at: string;
+            deletion: components["schemas"]["DeletionState"] | null;
+            /** Description */
+            description: string;
+            /**
+             * Fixed
+             * @description Fixed dimensions and their values
+             */
+            fixed: {
+                [key: string]: {
+                    [key: string]: components["schemas"]["JsonValue"];
+                };
+            };
+            /** Fixed Labels */
+            fixed_labels: {
+                [key: string]: string;
+            };
+            /** Id */
+            id: string;
+            /** Members */
+            members: components["schemas"]["CollectionMember"][] | null;
+            /** Name */
+            name: string;
+            /**
+             * Not Carried
+             * @description After a copy: runs left behind and what differs
+             */
+            not_carried: components["schemas"]["NotCarried"][] | null;
+            /** Owner Id */
+            owner_id: string;
+            /** Owner Username */
+            owner_username: string | null;
+            /** Run Count */
+            run_count: number;
+            /**
+             * Scenario
+             * @enum {string}
+             */
+            scenario: "models" | "harnesses" | "model_harness" | "attachments" | "repeats" | "custom";
+            settings: components["schemas"]["ComparisonSettings"];
+            /** @description Fills in runs submitted from the collection */
+            template: components["schemas"]["PlanTemplate-Output"];
+            /** Updated At */
+            updated_at: string;
+            /** Variable Dimensions */
+            variable_dimensions: ("model" | "harness" | "attachments" | "resources" | "repetitions" | "parameters")[];
+        };
+        /**
+         * CollectionBase
+         * @description Where the fixed values come from: a run, or a full configuration request.
+         */
+        CollectionBase: {
+            request?: components["schemas"]["ConfigRequest-Input"] | null;
+            /** Run Id */
+            run_id?: string | null;
+        };
+        /**
+         * CollectionCopy
+         * @description A new collection with a changed specification; matching runs are carried over.
+         */
+        CollectionCopy: {
+            /** @description Required when a dimension that varied becomes fixed */
+            base?: components["schemas"]["CollectionBase"] | null;
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Scenario */
+            scenario?: ("models" | "harnesses" | "model_harness" | "attachments" | "repeats" | "custom") | null;
+            settings?: components["schemas"]["ComparisonSettingsInput"] | null;
+            /** Variable Dimensions */
+            variable_dimensions?: ("model" | "harness" | "attachments" | "resources" | "repetitions" | "parameters")[] | null;
+        };
+        /** CollectionCreate */
+        CollectionCreate: {
+            base: components["schemas"]["CollectionBase"];
+            /**
+             * Description
+             * @default
+             */
+            description?: string;
+            /** Name */
+            name: string;
+            /**
+             * Run Ids
+             * @default []
+             */
+            run_ids?: string[];
+            /**
+             * Scenario
+             * @enum {string}
+             */
+            scenario: "models" | "harnesses" | "model_harness" | "attachments" | "repeats" | "custom";
+            settings?: components["schemas"]["ComparisonSettingsInput"] | null;
+            /**
+             * Variable Dimensions
+             * @description Only for the custom scenario
+             */
+            variable_dimensions?: ("model" | "harness" | "attachments" | "resources" | "repetitions" | "parameters")[] | null;
+        };
+        /** CollectionEvent */
+        CollectionEvent: {
+            /** Action */
+            action: string;
+            /** Actor Username */
+            actor_username: string | null;
+            /** At */
+            at: string;
+            /** Detail */
+            detail: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Id */
+            id: string;
+            /** Pat Id */
+            pat_id: string | null;
+            /** Run Id */
+            run_id: string | null;
+        };
+        /** CollectionMember */
+        CollectionMember: {
+            /** Added At */
+            added_at: string;
+            /** Added By Username */
+            added_by_username: string | null;
+            deletion: components["schemas"]["DeletionState"] | null;
+            /** Label */
+            label: string | null;
+            /** Run Id */
+            run_id: string;
+            /** Run Name */
+            run_name: string;
+            /** Run State */
+            run_state: string;
+        };
+        /** CollectionRunLabel */
+        CollectionRunLabel: {
+            /** Label */
+            label?: string | null;
+        };
+        /** CollectionRunRef */
+        CollectionRunRef: {
+            /** Label */
+            label?: string | null;
+            /** Run Id */
+            run_id: string;
+        };
+        /** CollectionRunsAdd */
+        CollectionRunsAdd: {
+            /** Runs */
+            runs: components["schemas"]["CollectionRunRef"][];
+        };
+        /** CollectionUpdate */
+        CollectionUpdate: {
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name?: string | null;
+            settings?: components["schemas"]["ComparisonSettingsInput"] | null;
+        };
+        /** ComparedRunRow */
+        ComparedRunRow: {
+            /** Accepted At */
+            accepted_at: string;
+            /** Actual Models */
+            actual_models: string[];
+            /** Batch Id */
+            batch_id: string | null;
+            /**
+             * Compared Trials
+             * @description Planned trials of the compared tasks
+             */
+            compared_trials: number;
+            /** @description To the baseline; only for the same dataset content and scoring over common tasks */
+            difference: components["schemas"]["ComparisonDifference"] | null;
+            /**
+             * Evidence
+             * @enum {string}
+             */
+            evidence: "available" | "none" | "deleted" | "purged";
+            /** Excluded By Group */
+            excluded_by_group: {
+                [key: string]: number;
+            };
+            /** Excluded Trials */
+            excluded_trials: number;
+            /** Failed By Group */
+            failed_by_group: {
+                [key: string]: number;
+            };
+            /** Failed Trials */
+            failed_trials: number;
+            /** Finished At */
+            finished_at: string | null;
+            /** Label */
+            label: string | null;
+            /**
+             * Mean
+             * @description Macro mean of the compared tasks' means
+             */
+            mean: number | null;
+            /** Name */
+            name: string;
+            /** Owner Username */
+            owner_username: string | null;
+            /** Pass Rate */
+            pass_rate: number | null;
+            /** Passed Trials */
+            passed_trials: number | null;
+            /** Pending Trials */
+            pending_trials: number;
+            /** Planned Trials */
+            planned_trials: number;
+            /** Relation */
+            relation: string;
+            /** Run Id */
+            run_id: string;
+            /** Scored Trials */
+            scored_trials: number;
+            /** Source Run Id */
+            source_run_id: string | null;
+            /** State */
+            state: string;
+            /**
+             * Stddev
+             * @description Sample standard deviation of the task means
+             */
+            stddev: number | null;
+            /** Task Count */
+            task_count: number;
+            /** Terminal */
+            terminal: boolean;
+            /**
+             * Title
+             * @description The run's values of the varying dimensions
+             */
+            title: string;
+            usage: components["schemas"]["ComparisonUsage"];
+            /**
+             * Valid Trials
+             * @description Scored plus counted-as-failed, in compared tasks
+             */
+            valid_trials: number;
+        };
+        /** ComparedTask */
+        ComparedTask: {
+            /** Cells */
+            cells: {
+                [key: string]: components["schemas"]["ComparisonCell"] | null;
+            };
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "compared" | "no_valid_trials" | "not_common";
+            /** Task Key */
+            task_key: string;
+        };
+        /** Comparison */
+        Comparison: {
+            /** All Tasks */
+            all_tasks: number;
+            /** Blockers */
+            blockers: components["schemas"]["ComparisonNotice"][];
+            /** Common Tasks */
+            common_tasks: number;
+            /**
+             * Comparable
+             * @description Same dataset content and scoring contract
+             */
+            comparable: boolean;
+            /** Comparison Version */
+            comparison_version: number;
+            /** Dimensions */
+            dimensions: components["schemas"]["ComparisonDimension"][];
+            /**
+             * Dropped Tasks
+             * @description Common tasks left out: a run had no valid trial
+             */
+            dropped_tasks: number;
+            /** Grouping Version */
+            grouping_version: number;
+            /** Groups */
+            groups: components["schemas"]["FailureGroupCount"][];
+            /** Runs */
+            runs: components["schemas"]["ComparedRunRow"][];
+            /** Set Aside */
+            set_aside: components["schemas"]["SetAsideRun"][];
+            settings: components["schemas"]["ComparisonSettings"];
+            /** Tasks */
+            tasks: components["schemas"]["ComparedTask"][];
+            /** Varying */
+            varying: ("dataset" | "scoring" | "model" | "harness" | "attachments" | "resources" | "repetitions" | "parameters" | "other")[];
+            /** Warnings */
+            warnings: components["schemas"]["ComparisonNotice"][];
+        };
+        /** ComparisonCell */
+        ComparisonCell: {
+            /** Excluded By Group */
+            excluded_by_group: {
+                [key: string]: number;
+            };
+            /** Excluded Trials */
+            excluded_trials: number;
+            /** Failed By Group */
+            failed_by_group: {
+                [key: string]: number;
+            };
+            /**
+             * Failed Trials
+             * @description Failures counted as failed (0 when higher is better)
+             */
+            failed_trials: number;
+            /** Mean */
+            mean: number | null;
+            /** Passed Trials */
+            passed_trials: number | null;
+            /** Pending Trials */
+            pending_trials: number;
+            /** Planned Trials */
+            planned_trials: number;
+            /** Scored Trials */
+            scored_trials: number;
+            /** Scores */
+            scores: (number | null)[];
+            /** Trial Ids */
+            trial_ids: string[];
+            /** Valid Trials */
+            valid_trials: number;
+        };
+        /** ComparisonDifference */
+        ComparisonDifference: {
+            /** Mean */
+            mean: number | null;
+            /** Pass Rate */
+            pass_rate: number | null;
+        };
+        /** ComparisonDimension */
+        ComparisonDimension: {
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "dataset" | "scoring" | "model" | "harness" | "attachments" | "resources" | "repetitions" | "parameters" | "other";
+            /**
+             * Labels
+             * @description A short name of each run's value, by run id
+             */
+            labels: {
+                [key: string]: string;
+            };
+            /**
+             * Paths
+             * @description JSON pointers where some run differs from the first
+             */
+            paths: string[];
+            /** Varies */
+            varies: boolean;
+        };
+        /** ComparisonNotice */
+        ComparisonNotice: {
+            /** All */
+            all?: number | null;
+            /** Code */
+            code: string;
+            /** Common */
+            common?: number | null;
+            /** Dimension */
+            dimension?: ("dataset" | "scoring" | "model" | "harness" | "attachments" | "resources" | "repetitions" | "parameters" | "other") | null;
+            /** Run Ids */
+            run_ids?: string[] | null;
+        };
+        /** ComparisonRequest */
+        ComparisonRequest: {
+            /** Baseline Run Id */
+            baseline_run_id?: string | null;
+            /**
+             * Exclude
+             * @description Failure groups left out; failures of other groups count as failed
+             */
+            exclude?: ("provider_unavailable" | "provider_access" | "environment_setup" | "preparation" | "executor_unsupported" | "platform_stop" | "out_of_memory" | "verifier" | "attachment" | "provider_request" | "unclassified")[] | null;
+            layout?: components["schemas"]["Layout-Input"] | null;
+            /**
+             * Run Ids
+             * @description Runs in display order
+             */
+            run_ids: string[];
+            /**
+             * Scope
+             * @description common: tasks every run has; all: every task, no differences
+             */
+            scope?: ("common" | "all") | null;
+        };
+        /** ComparisonSettings */
+        ComparisonSettings: {
+            /** Baseline Run Id */
+            baseline_run_id: string | null;
+            /** Exclude */
+            exclude: ("provider_unavailable" | "provider_access" | "environment_setup" | "preparation" | "executor_unsupported" | "platform_stop" | "out_of_memory" | "verifier" | "attachment" | "provider_request" | "unclassified")[];
+            layout: components["schemas"]["Layout-Output"];
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "common" | "all";
+        };
+        /**
+         * ComparisonSettingsInput
+         * @description Unset fields keep the saved (or default) value.
+         */
+        ComparisonSettingsInput: {
+            /** Baseline Run Id */
+            baseline_run_id?: string | null;
+            /**
+             * Exclude
+             * @description Failure groups left out; failures of other groups count as failed
+             */
+            exclude?: ("provider_unavailable" | "provider_access" | "environment_setup" | "preparation" | "executor_unsupported" | "platform_stop" | "out_of_memory" | "verifier" | "attachment" | "provider_request" | "unclassified")[] | null;
+            layout?: components["schemas"]["Layout-Input"] | null;
+            /**
+             * Scope
+             * @description common: tasks every run has; all: every task, no differences
+             */
+            scope?: ("common" | "all") | null;
+        };
+        /** ComparisonUsage */
+        ComparisonUsage: {
+            /** Known Totals */
+            known_totals: {
+                [key: string]: number;
+            };
+            /** Known Trials */
+            known_trials: number;
+        };
         /**
          * ConfigBlocker
          * @description Why this configuration cannot be submitted; ``path`` points at the field.
@@ -2404,6 +3078,11 @@ export interface components {
              * @default []
              */
             attachments?: string[];
+            /**
+             * Collection Id
+             * @description Join this collection: its fixed fields fill in what is left out, and the run must match them
+             */
+            collection_id?: string | null;
             /** Concurrency */
             concurrency?: number | null;
             /**
@@ -2473,6 +3152,11 @@ export interface components {
              * @default []
              */
             attachments: string[];
+            /**
+             * Collection Id
+             * @description Join this collection: its fixed fields fill in what is left out, and the run must match them
+             */
+            collection_id: string | null;
             /** Concurrency */
             concurrency: number | null;
             /**
@@ -3083,6 +3767,16 @@ export interface components {
             data: components["schemas"]["CapacityOverview"];
             meta: components["schemas"]["Meta"];
         };
+        /** Envelope[Collection] */
+        Envelope_Collection_: {
+            data: components["schemas"]["Collection"];
+            meta: components["schemas"]["Meta"];
+        };
+        /** Envelope[Comparison] */
+        Envelope_Comparison_: {
+            data: components["schemas"]["Comparison"];
+            meta: components["schemas"]["Meta"];
+        };
         /** Envelope[ConfigRequest] */
         Envelope_ConfigRequest_: {
             data: components["schemas"]["ConfigRequest-Output"];
@@ -3218,6 +3912,11 @@ export interface components {
             data: components["schemas"]["SetupStatus"];
             meta: components["schemas"]["Meta"];
         };
+        /** Envelope[Snapshot] */
+        Envelope_Snapshot_: {
+            data: components["schemas"]["Snapshot"];
+            meta: components["schemas"]["Meta"];
+        };
         /** Envelope[SourceVersionDetail] */
         Envelope_SourceVersionDetail_: {
             data: components["schemas"]["SourceVersionDetail"];
@@ -3265,6 +3964,18 @@ export interface components {
         Envelope_list_Batch__: {
             /** Data */
             data: components["schemas"]["Batch"][];
+            meta: components["schemas"]["Meta"];
+        };
+        /** Envelope[list[CollectionEvent]] */
+        Envelope_list_CollectionEvent__: {
+            /** Data */
+            data: components["schemas"]["CollectionEvent"][];
+            meta: components["schemas"]["Meta"];
+        };
+        /** Envelope[list[Collection]] */
+        Envelope_list_Collection__: {
+            /** Data */
+            data: components["schemas"]["Collection"][];
             meta: components["schemas"]["Meta"];
         };
         /** Envelope[list[CredentialName]] */
@@ -3355,6 +4066,12 @@ export interface components {
         Envelope_list_SetupNetwork__: {
             /** Data */
             data: components["schemas"]["SetupNetwork"][];
+            meta: components["schemas"]["Meta"];
+        };
+        /** Envelope[list[SnapshotSummary]] */
+        Envelope_list_SnapshotSummary__: {
+            /** Data */
+            data: components["schemas"]["SnapshotSummary"][];
             meta: components["schemas"]["Meta"];
         };
         /** Envelope[list[SourceDataset]] */
@@ -3626,6 +4343,23 @@ export interface components {
             /** Warnings */
             warnings: number;
         };
+        /** FailureGroupCount */
+        FailureGroupCount: {
+            /** Excluded */
+            excluded: boolean;
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "provider_unavailable" | "provider_access" | "environment_setup" | "preparation" | "executor_unsupported" | "platform_stop" | "out_of_memory" | "verifier" | "attachment" | "provider_request" | "unclassified";
+            /**
+             * Side
+             * @enum {string}
+             */
+            side: "external" | "subject";
+            /** Trials */
+            trials: number;
+        };
         /** FieldErrorModel */
         FieldErrorModel: {
             /** Code */
@@ -3645,14 +4379,15 @@ export interface components {
         };
         /**
          * FieldSource
-         * @description Which layer gave a value: author, team policy, plan, harness default or override.
+         * @description Which layer gave a value: author, team policy, plan, collection, harness default or
+         *     override.
          */
         FieldSource: {
             /**
              * Layer
              * @enum {string}
              */
-            layer: "author" | "team" | "plan" | "override" | "harness";
+            layer: "author" | "team" | "plan" | "collection" | "override" | "harness";
             /** Revision */
             revision?: number | null;
             /** Source Id */
@@ -4086,6 +4821,56 @@ export interface components {
             token_prefix: string;
         };
         JsonValue: unknown;
+        /** Layout */
+        "Layout-Input": {
+            /** Columns */
+            columns?: ("dataset" | "scoring" | "model" | "harness" | "attachments" | "resources" | "repetitions" | "parameters" | "other") | null;
+            /**
+             * Mode
+             * @description leaderboard: a row per run; matrix: two varying dimensions as rows and columns
+             * @default leaderboard
+             * @enum {string}
+             */
+            mode?: "leaderboard" | "matrix";
+            /** Rows */
+            rows?: ("dataset" | "scoring" | "model" | "harness" | "attachments" | "resources" | "repetitions" | "parameters" | "other") | null;
+            sort?: components["schemas"]["LayoutSort-Input"] | null;
+        };
+        /** Layout */
+        "Layout-Output": {
+            /** Columns */
+            columns: ("dataset" | "scoring" | "model" | "harness" | "attachments" | "resources" | "repetitions" | "parameters" | "other") | null;
+            /**
+             * Mode
+             * @description leaderboard: a row per run; matrix: two varying dimensions as rows and columns
+             * @default leaderboard
+             * @enum {string}
+             */
+            mode: "leaderboard" | "matrix";
+            /** Rows */
+            rows: ("dataset" | "scoring" | "model" | "harness" | "attachments" | "resources" | "repetitions" | "parameters" | "other") | null;
+            sort: components["schemas"]["LayoutSort-Output"] | null;
+        };
+        /** LayoutSort */
+        "LayoutSort-Input": {
+            /**
+             * Descending
+             * @default false
+             */
+            descending?: boolean;
+            /** Key */
+            key: string;
+        };
+        /** LayoutSort */
+        "LayoutSort-Output": {
+            /**
+             * Descending
+             * @default false
+             */
+            descending: boolean;
+            /** Key */
+            key: string;
+        };
         /** LocalPreparation */
         LocalPreparation: {
             /**
@@ -4178,6 +4963,16 @@ export interface components {
             next_cursor?: string | null;
             /** Request Id */
             request_id: string;
+        };
+        /** Mismatch */
+        Mismatch: {
+            /**
+             * Dimension
+             * @enum {string}
+             */
+            dimension: "dataset" | "scoring" | "model" | "harness" | "attachments" | "resources" | "repetitions" | "parameters" | "other";
+            /** Path */
+            path: string;
         };
         /** ModelConfig */
         ModelConfig: {
@@ -4368,6 +5163,25 @@ export interface components {
             run_deadline_hours: number | null;
             task_selection: components["schemas"]["TaskSelection-Output"];
             timeouts: components["schemas"]["TimeoutOverrides"];
+        };
+        /** NotCarried */
+        NotCarried: {
+            /** Mismatches */
+            mismatches: components["schemas"]["Mismatch"][];
+            /** Name */
+            name: string;
+            /** Run Id */
+            run_id: string;
+        };
+        /** NoteBody */
+        NoteBody: {
+            /** Body */
+            body: string;
+        };
+        /** ObjectRef */
+        ObjectRef: {
+            /** Id */
+            id: string;
         };
         /**
          * Operation
@@ -4835,7 +5649,7 @@ export interface components {
              * Object Type
              * @enum {string}
              */
-            object_type: "run" | "artifact" | "dataset" | "dataset_version" | "credential" | "user" | "pat" | "model_config" | "harness_version" | "attachment_version" | "experiment_plan";
+            object_type: "run" | "artifact" | "dataset" | "dataset_version" | "credential" | "user" | "pat" | "model_config" | "harness_version" | "attachment_version" | "experiment_plan" | "collection" | "analysis_snapshot";
             /** Owner Id */
             owner_id: string | null;
             /** Owner Username */
@@ -4854,6 +5668,7 @@ export interface components {
         ReferenceRevisions: {
             /** Attachments */
             attachments?: string[] | null;
+            collection?: components["schemas"]["ObjectRef"] | null;
             /** Harness Version */
             harness_version?: string | null;
             model_config?: components["schemas"]["RevisionRef"] | null;
@@ -5090,6 +5905,11 @@ export interface components {
             attachments?: string[];
             /** Client Request Id */
             client_request_id?: string | null;
+            /**
+             * Collection Id
+             * @description Join this collection: its fixed fields fill in what is left out, and the run must match them
+             */
+            collection_id?: string | null;
             /** Concurrency */
             concurrency?: number | null;
             /** Dataset Version Id */
@@ -5587,6 +6407,18 @@ export interface components {
             csrf_token: string | null;
             user: components["schemas"]["Me"];
         };
+        /** SetAsideRun */
+        SetAsideRun: {
+            /** Name */
+            name: string;
+            /**
+             * Reason
+             * @constant
+             */
+            reason: "deleted";
+            /** Run Id */
+            run_id: string;
+        };
         /** SetupNetwork */
         SetupNetwork: {
             /** Created At */
@@ -5679,6 +6511,111 @@ export interface components {
         SetupStatus: {
             /** Needs Setup */
             needs_setup: boolean;
+        };
+        /** Snapshot */
+        Snapshot: {
+            /** Allowed Actions */
+            allowed_actions: string[];
+            /** Collection Id */
+            collection_id: string | null;
+            /** Created At */
+            created_at: string;
+            deletion: components["schemas"]["DeletionState"] | null;
+            /**
+             * Evidence
+             * @description Whether each run's files still open
+             */
+            evidence: {
+                [key: string]: "available" | "none" | "deleted" | "purged";
+            };
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Notes */
+            notes: components["schemas"]["SnapshotNote"][];
+            /** Owner Id */
+            owner_id: string;
+            /** Owner Username */
+            owner_username: string | null;
+            /** Pat Id */
+            pat_id: string | null;
+            result: components["schemas"]["Comparison"];
+            /** Run Count */
+            run_count: number;
+            settings: components["schemas"]["ComparisonSettings"];
+            spec: components["schemas"]["SnapshotSpec"] | null;
+        };
+        /** SnapshotCreate */
+        SnapshotCreate: {
+            /** Collection Id */
+            collection_id?: string | null;
+            /** Name */
+            name: string;
+            /** Note */
+            note?: string | null;
+            /**
+             * Run Ids
+             * @description Without a collection
+             */
+            run_ids?: string[] | null;
+            settings?: components["schemas"]["ComparisonSettingsInput"] | null;
+        };
+        /** SnapshotNote */
+        SnapshotNote: {
+            /** Author Id */
+            author_id: string;
+            /** Author Username */
+            author_username: string | null;
+            /** Body */
+            body: string;
+            /** Created At */
+            created_at: string;
+            /** Editable */
+            editable: boolean;
+            /** Id */
+            id: string;
+            /** Pat Id */
+            pat_id: string | null;
+            /** Updated At */
+            updated_at: string;
+        };
+        /** SnapshotSpec */
+        SnapshotSpec: {
+            /** Fixed */
+            fixed: {
+                [key: string]: {
+                    [key: string]: components["schemas"]["JsonValue"];
+                };
+            };
+            /**
+             * Scenario
+             * @enum {string}
+             */
+            scenario: "models" | "harnesses" | "model_harness" | "attachments" | "repeats" | "custom";
+            /** Variable Dimensions */
+            variable_dimensions: ("model" | "harness" | "attachments" | "resources" | "repetitions" | "parameters")[];
+        };
+        /** SnapshotSummary */
+        SnapshotSummary: {
+            /** Allowed Actions */
+            allowed_actions: string[];
+            /** Collection Id */
+            collection_id: string | null;
+            /** Created At */
+            created_at: string;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Owner Id */
+            owner_id: string;
+            /** Owner Username */
+            owner_username: string | null;
+            /** Pat Id */
+            pat_id: string | null;
+            /** Run Count */
+            run_count: number;
         };
         /** SourceDataset */
         SourceDataset: {
@@ -7340,7 +8277,7 @@ export interface operations {
         parameters: {
             query?: {
                 state?: string;
-                object_type?: ("run" | "artifact" | "dataset" | "dataset_version" | "credential" | "user" | "pat" | "model_config" | "harness_version" | "attachment_version" | "experiment_plan") | null;
+                object_type?: ("run" | "artifact" | "dataset" | "dataset_version" | "credential" | "user" | "pat" | "model_config" | "harness_version" | "attachment_version" | "experiment_plan" | "collection" | "analysis_snapshot") | null;
                 cursor?: string | null;
                 limit?: number | null;
             };
@@ -7553,6 +8490,203 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Envelope_list_TeamPolicyRevision__"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_snapshots: {
+        parameters: {
+            query?: {
+                collection_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_list_SnapshotSummary__"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_snapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SnapshotCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_Snapshot_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_snapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                snapshot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_Snapshot_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_snapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                snapshot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_RecycleEntry_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    add_snapshot_note: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                snapshot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoteBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_Snapshot_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_snapshot_note: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                snapshot_id: string;
+                note_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoteBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_Snapshot_"];
                 };
             };
             /** @description Structured error */
@@ -7820,6 +8954,402 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Envelope_Capabilities_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_collections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_list_Collection__"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_collection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_Collection_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_collection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_Collection_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_collection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_Collection_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_collection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_RecycleEntry_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    compare_collection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ComparisonSettingsInput"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_Comparison_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    copy_collection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectionCopy"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_Collection_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_collection_events: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_list_CollectionEvent__"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    add_collection_runs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectionRunsAdd"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_Collection_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    label_collection_run: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectionRunLabel"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_Collection_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    remove_collection_run: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_Collection_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    compare_runs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ComparisonRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_Comparison_"];
                 };
             };
             /** @description Structured error */

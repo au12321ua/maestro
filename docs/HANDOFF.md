@@ -11,7 +11,7 @@
 ## 现状
 
 - 2026-10-24 重写（M1～M8，从 `9ff43b5` 起）替换了旧实现，`1fdef62` 定为 0.3.0。各里程碑的取舍与当时的验证范围见冻结的[实施记录](design/records/README.md)。
-- 已有：Hub 数据集导入、首次准备与共享恢复；分层配置、模型配置与 Harness（Terminus-2、OpenCode 1.x 与 2.x、Codex、Claude Code）、附件；提交、批次、重跑与实验方案；运行级执行（D-020）、评分、产物、导出与回收站；Python SDK 与网页；`maestroctl` 系统级安装、更新、同机备份恢复。未实现与计划中的事见[提案索引](proposals/README.md)。
+- 已有：Hub 数据集导入、首次准备与共享恢复；分层配置、模型配置与 Harness（Terminus-2、OpenCode 1.x 与 2.x、Codex、Claude Code）、附件；提交、批次、重跑与实验方案；跨运行比较、集合与分析快照；运行级执行（D-020）、评分、产物、导出与回收站；Python SDK 与网页；`maestroctl` 系统级安装、更新、同机备份恢复。未实现与计划中的事见[提案索引](proposals/README.md)。
 - 部署现场：一台主机以系统级安装（`maestroctl`，默认端口 8420）运行一个实例，用户自己的端到端测试也在它上面做；主机细节由部署者维护，不写进仓库。开发与自动化测试不使用它的 state，用全新的独立实例（见根目录 README 的“开发试用”）。远端分支 `fix/separate-verifier` 未合入且不会直接合入（U-32），现场曾运行过它的构建；更新现场前核对正在运行的版本。
 
 ## 代码状态

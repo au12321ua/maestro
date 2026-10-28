@@ -20,6 +20,8 @@ from maestro.core.digests import digest_json
 from maestro.domain.scoring import mean, passed, sample_stddev
 from maestro.domain.states import TRIAL_ACTIVE, TrialState
 
+# Snapshots keep the tables they computed: a change to the table's shape bumps this, and
+# reading a snapshot must then still understand the older shape.
 COMPARISON_VERSION = 1
 GROUPING_VERSION = 1
 
@@ -130,6 +132,8 @@ def label(dimension: str, value: dict) -> str:
         return f"{dataset.get('namespace')}/{dataset.get('name')}"
     if dimension == "scoring":
         return str(value.get("metric_id"))
+    if all(isinstance(v, str | int | float | bool) for v in value.values()):
+        return ", ".join(f"{k}={value[k]}" for k in sorted(value))
     return digest_json(value)[7:15]
 
 
@@ -431,6 +435,7 @@ def compare(
                     if k not in BLOCKING_DIMENSIONS
                 ),
                 "task_count": len(chosen),
+                "compared_trials": sum(c["planned_trials"] for c in chosen),
                 "valid_trials": valid,
                 "mean": mean(task_means),
                 "stddev": sample_stddev(task_means),

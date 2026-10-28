@@ -67,6 +67,9 @@ Example config: `{"dataset_version_id": ..., "execution_mode": "agent", "model_c
 | Package for analysis | `e = client.exports.create([run_ids])`, `client.operations.wait(e.operation_id)`, `client.exports.download(e.id, "x.zip")` |
 | Publish tools for the agent under test | `client.attachments.publish("dir")` (needs `manifest.json`); then put the id in `attachments` |
 | Filter runs | `client.runs.list(dataset_version_id=..., model_config_id=..., state=..., accepted_after="2026-10-24T00:00:00Z")` |
+| Compare runs | `client.comparisons.compare([run_a, run_b])`: what differs, per-run statistics over common tasks, per-task cells. External failures (rate limits, environment build, platform stops) are excluded by default and the rest count as failed (0); pass `exclude=[]` to keep them all. Report `dropped_tasks`, the excluded counts and any `warnings` with the numbers |
+| Keep a collection | `c = client.collections.create(name, "models", base_run_id=run_id, run_ids=[...])`; submit into it with `client.runs.submit(cfg, name=..., collection_id=c.id)` (fixed fields are filled in; a mismatch is refused); `client.collections.compare(c.id)` |
+| Record a conclusion | `s = client.snapshots.create(name, collection_id=c.id)` once the runs ended, then `client.snapshots.add_note(s.id, text)`; your note is stored apart from the computed table |
 
 ## Errors
 

@@ -1926,6 +1926,7 @@ class ComparedRunRow(BaseModel):
     accepted_at: str
     actual_models: list[str]
     batch_id: str | None
+    compared_trials: Annotated[int, Field(description="Planned trials of the compared tasks")]
     difference: Annotated[
         ComparisonDifference | None,
         Field(
@@ -1961,7 +1962,9 @@ class ComparedRunRow(BaseModel):
     terminal: bool
     title: Annotated[str, Field(description="The run's values of the varying dimensions")]
     usage: ComparisonUsage
-    valid_trials: int
+    valid_trials: Annotated[
+        int, Field(description="Scored plus counted-as-failed, in compared tasks")
+    ]
 
 
 class ComparedTask(BaseModel):

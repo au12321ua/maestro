@@ -38,7 +38,7 @@
 | [05 调度与执行](05-scheduling-execution.md) | 队列、资源、Worker、取消、重启和对账 |
 | [06 结果与评分](06-results-scoring.md) | 错因、重试、零分、分母、覆盖率和多试次聚合 |
 | [07 产物与导出](07-artifacts-export.md) | 上传、索引、下载、批量导出、保留、回收站 |
-| 08 | 集合与比较尚未实现，见提案 [N-11](../proposals/N-11-collections-comparison.md) |
+| [08 集合、比较与分析快照](08-collections-comparison.md) | 维度与条件核对、失败分组与剔除、对齐与统计、集合规格、快照 |
 | [09 身份、权限与安全](09-identity-security.md) | 账户、PAT、权限、凭据和容器网络 |
 | [10 API 与 SDK](10-api-sdk-cli.md) | 契约原则、错误、操作记录、幂等、能力发现 |
 | [11 网页](11-web-ui.md) | 页面、关键流程、状态展示 |

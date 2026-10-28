@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Package, Plus, RefreshCw } from "lucide-react";
+import { GitCompare, Package, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -133,6 +133,23 @@ export function RunListPage() {
             onChange={(e) => setTo(e.target.value)}
           />
         </label>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={selected.size < 2}
+          title="把所选运行放在一起比较"
+          onClick={() =>
+            navigate(
+              `/compare?runs=${runs
+                .filter((r) => selected.has(r.id))
+                .map((r) => r.id)
+                .join(",")}`,
+            )
+          }
+        >
+          <GitCompare />
+          比较所选
+        </Button>
         <Button
           variant="outline"
           size="sm"

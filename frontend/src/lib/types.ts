@@ -125,3 +125,22 @@ export type PlanTemplate = S["PlanTemplate-Input"];
 /** Any subset of a configuration request as the service returns it (a plan's template, a
  *  run's request): the loosest shape, for filling the new-run form. */
 export type PartialRequest = S["PlanTemplate-Output"];
+
+/** Runs side by side (06 section 8), computed on demand; a snapshot holds a frozen one. */
+export type Comparison = S["Comparison"];
+export type ComparedRunRow = S["ComparedRunRow"];
+export type ComparedTask = S["ComparedTask"];
+export type ComparisonCell = S["ComparisonCell"];
+export type ComparisonSettings = S["ComparisonSettings"];
+export type ComparisonSettingsInput = S["ComparisonSettingsInput"];
+export type ComparisonLayout = ComparisonSettings["layout"];
+export type Dimension = S["ComparisonDimension"]["key"];
+export type FailureGroup = S["FailureGroupCount"]["key"];
+export type Collection = S["Collection"];
+export type CollectionMember = S["CollectionMember"];
+export type CollectionEvent = S["CollectionEvent"];
+export type Scenario = Collection["scenario"];
+export type VariableDimension = Collection["variable_dimensions"][number];
+export type Snapshot = S["Snapshot"];
+export type SnapshotSummary = S["SnapshotSummary"];
+export type SnapshotNote = S["SnapshotNote"];

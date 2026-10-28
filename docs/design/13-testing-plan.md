@@ -35,7 +35,7 @@ UI 文案与纯样式变更不写低价值单元测试；优先验证会导致�
 | EXE-01～EXE-06 | [05](05-scheduling-execution.md) | F-02～03、F-05 / 08 / 22 / 24 |
 | RES-01～RES-06 | [06](06-results-scoring.md) | F-04～07、F-23、E2E-OUT-01 |
 | ART-01～ART-06 | [07](07-artifacts-export.md) | E2E-OUT-01、F-09～12、F-21 / 24 |
-| ANA-01～ANA-06 | [N-11](../proposals/N-11-collections-comparison.md) | 未实现，见提案 |
+| ANA-01～ANA-06 | [08](08-collections-comparison.md) | E2E-OUT-02～03 |
 | IAM-01～IAM-06 | [09](09-identity-security.md) | E2E-DS-03、E2E-RUN-04、F-13 / 25、第 8 节 |
 | API-01～API-06 | [10](10-api-sdk-cli.md) | E2E-RUN-01～02、E2E-DS-04～05、F-20 |
 | OPS-01～OPS-07 | [12](12-operations.md) | 12 第 9 节、F-08、F-14～15 |
@@ -144,13 +144,21 @@ UI 文案与纯样式变更不写低价值单元测试；优先验证会导致�
 
 覆盖：`test_results_export.py`、`test_sdk.py`。
 
-### E2E-OUT-02 对齐与新一轮
+### E2E-OUT-02 比较、剔除与集合
 
-已移到 [N-11](../proposals/N-11-collections-comparison.md)。
+步骤：用假执行器提交几个不同模型的运行，其中一个构造限流失败和内存超限失败 → 比较 → 剔除外部原因 → 以一个运行为基准建集合 → 尝试加入资源不同的运行 → 带 `collection_id` 提交新运行与批次 → 重跑并加入 → 复制并修改规格。
+
+预期：条件核对列出模型不同；限流被剔除并把该任务从所有列去掉，内存超限计为 0 分，运行详情页汇总不变；资源不同的运行被拒并列出字段；从集合提交的运行自动加入，不符的提交不受理；重跑是独立的一行；复制只带走符合新规格的运行；read PAT 不能修改；SDK 走同一流程得到同一张表。
+
+覆盖：`test_comparison.py`、`test_collections.py`。
 
 ### E2E-OUT-03 快照与证据到期
 
-已移到 [N-11](../proposals/N-11-collections-comparison.md)。
+步骤：保存集合的快照并写结论 → 集合加入新运行 → 把一个运行放进回收站、再物理删除 → 再查快照与集合。
+
+预期：快照的清单、规格与数值不变，证据显示“已删除 / 已彻底删除”；集合把回收站里的运行搁置、物理删除后移除并记入修改记录；结论只有作者能改；运行未结束时不能保存快照。
+
+覆盖：`test_collections.py`。
 
 ## 7. 必须覆盖的故障场景
 

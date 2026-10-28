@@ -43,7 +43,7 @@ SDK 要求 api_version 为 v1 且所需功能开启，否则抛 UNSUPPORTED_CAPA
 接口的方法、字段、错误以 `openapi/maestro-v1.json` 为准，SDK 方法见 `sdk/README.md`。读取默认团队共享，写入按 [权限矩阵](09-identity-security.md) 校验。资源分组：
 
 - 目录：能力与状态、团队策略、数据集来源 / 版本 / 任务 / 准备记录、模型配置、Harness 版本、凭据名称（U-23）、配置解析。
-- 实验：附件、方案、运行（含试次、汇总、原请求、取消、重跑、删除）、批次、产物、导出、Operation。
+- 实验：附件、方案、运行（含试次、汇总、原请求、取消、重跑、删除）、批次、比较、集合（含成员、修改记录、复制）、分析快照（含结论）、产物、导出、Operation。
 - 账号：初始化、会话、邀请查询与接受、本人信息、改密码、本人 PAT。
 - 管理（`/api/v1/admin/`，以及 Hub 检索 `/dataset-search*`，U-20）：只接受管理员网页会话。
 
@@ -52,7 +52,8 @@ SDK 要求 api_version 为 v1 且所需功能开启，否则抛 UNSUPPORTED_CAPA
 - 附件以单次 `POST /attachments` 流式上传，服务端校验后同步返回版本；同名同版本同内容返回 200。
 - 日志也是产物，通过 `GET /artifacts/{id}/download` 读取，可带 offset / length 分段读（单段上限 1 MiB）。
 - 修改后运行没有专门接口：`GET /runs/{id}/request` 取原请求，修改后重新解析，提交时带 source_run_id。
-- 维护（更新、备份、恢复）不在 HTTP API 中（[12](12-operations.md)）；集合与比较见 [N-11](../proposals/N-11-collections-comparison.md)。
+- 维护（更新、备份、恢复）不在 HTTP API 中（[12](12-operations.md)）。
+- 比较是只计算不保存的 `POST /comparisons`；集合的比较用 `POST /collections/{id}/comparison`，请求体为空时用集合保存的设置（[08](08-collections-comparison.md)）。
 
 ### 任务准入与本机缓存响应
 

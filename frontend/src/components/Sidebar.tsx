@@ -8,6 +8,7 @@ import {
   Database,
   LayoutDashboard,
   Layers,
+  Library,
   Menu,
   PackageOpen,
   PanelLeftClose,
@@ -37,6 +38,7 @@ const GROUPS: { title?: string; links: Link[] }[] = [
     links: [
       { to: "/runs", label: "运行", icon: Play },
       { to: "/batches", label: "批次", icon: Layers },
+      { to: "/collections", label: "集合", icon: Library },
       { to: "/plans", label: "方案", icon: ClipboardList },
     ],
   },

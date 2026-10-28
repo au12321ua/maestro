@@ -25,7 +25,9 @@
 | 试次 Trial | 运行中某任务的第几次计划执行 | 身份固定，结果演进 |
 | 执行尝试 ExecutionAttempt | 同一试次的一次执行（Harbor Job 内的一次重试也是一次尝试） | 每次独立记录 |
 | 工作单元 WorkItem | 每个试次一条，随运行的领取同步状态与租约；不单独领取 | 调度状态可变 |
-| 提交批次 SubmissionBatch | 一次原子成组受理的运行集合 | 成员固定，状态聚合 |
+| 提交批次 SubmissionBatch | 一次原子成组受理的一组运行 | 成员固定，状态聚合 |
+| 集合 Collection | 团队维护的一组运行引用，带建立时固定的规格（[08](08-collections-comparison.md)） | 规格固定；成员与设置可变，变更有记录 |
+| 分析快照 AnalysisSnapshot | 冻结的一次比较：运行清单、设置与计算结果 | 固定；结论另存，作者可改 |
 | 操作记录 Operation | 一次长操作的跟踪对象 | 状态和进度可变 |
 
 产品里的“尝试次数”叫“每任务计划试次数”，避免与 ExecutionAttempt 的自动重试混淆；API 分别用 repetitions 和 attempt_index。
@@ -51,6 +53,8 @@ erDiagram
     TRIAL ||--o{ EXECUTION_ATTEMPT : executes
     TRIAL ||--o| TRIAL_RESULT : resolves
     EXECUTION_ATTEMPT ||--o{ ARTIFACT : produces
+    COLLECTION }o--o{ RUN : references
+    COLLECTION o|--o{ ANALYSIS_SNAPSHOT : freezes
 ~~~
 
 每个运行有一个执行跟踪 Operation，批次另有聚合 Operation。首次准备、缓存恢复和导出各有自己的 Operation；同键并发恢复共享一个操作，通过 PreparationWaiter 关联多个等待者。共享恢复不归首个等待者所有，租约与进程身份单独保存，owner 为空。Operation 不代替业务对象，进度可从领域记录重建。
