@@ -9,14 +9,16 @@ adapter's agent class hands them to the model client in memory.
 Terminus-2 is Harbor's own agent: the model is called from this process and only shell
 commands run in the task container, so the container needs no route to the model.
 
-OpenCode runs inside the task container and calls the model from there, so the agent
-phase may reach the model's host only (the executor's network plan). Its key is copied
-into a root-owned file in the container just before the agent runs and removed right
-after, before verification: never a command-line argument (``docker exec -e`` would show
-it to every host user) or an environment variable of the Runner. The agent process can
-read it while it works; that is what calling the model from the container means.
-OpenCode, Node and the provider package are installed in setup, with the deployment's
-setup network (proxy, package mirrors) when it has one, at the version the harness pins.
+OpenCode, Codex and Claude Code run inside the task container and call the model from
+there, so the agent phase may reach the model's host only (the executor's network plan).
+Their key reaches the container as a root-owned file just before the agent runs and is
+removed right after, before verification: never a command-line argument (``docker exec
+-e`` would show it to every host user) or an environment variable of the Runner. The
+agent process can read it while it works; that is what calling the model from the
+container means. OpenCode reads the file through its config, Claude Code through an
+``apiKeyHelper`` that prints it, and Codex gets its ``auth.json`` copied in the same way.
+Each is installed in setup with npm, with the deployment's setup network (proxy, package
+mirrors) when it has one, at the exact upstream version of the harness version.
 
 Attachments (03 section 7) are installed by the same agent class during agent setup,
 before the agent's own setup: each package is copied into this trial's container with
@@ -32,7 +34,10 @@ import functools
 import hashlib
 import json
 import math
+import os
+import re
 import shlex
+import tempfile
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -62,19 +67,39 @@ TERMINUS_PARAMETERS = {
     "tmux_pane_height",
     "interleaved_thinking",
 }
-# OpenCode's npm version; a harness version may pin another. Never "latest": a run must
-# be reproducible from its snapshot.
-OPENCODE_VERSION = "1.18.35"
-OPENCODE_PARAMETERS = {"version"}
-OPENCODE_KEY = "/run/maestro/model-key"
+# Harnesses installed in the task container: the npm package of each, and the version
+# this Runner was last smoke-tested with against a real model (N-09; the service shows
+# it next to upstream versions). A run always names an exact version, never "latest":
+# it must be reproducible from its snapshot.
+PACKAGES = {
+    "opencode": "opencode-ai",
+    "codex": "@openai/codex",
+    "claude-code": "@anthropic-ai/claude-code",
+}
+TESTED = {"opencode": "1.18.35", "codex": "0.165.0", "claude-code": "2.1.308"}
+EXACT_VERSION = re.compile(r"\d+(\.\d+){1,3}([-+][0-9A-Za-z.-]+)?")
+MODEL_KEY = "/run/maestro/model-key"
 ADAPTERS = {
     "terminus-2": {
         "protocols": ("anthropic", "openai", "openai-compatible"),
         "parameters": TERMINUS_PARAMETERS,
+        "model_parameters": None,
     },
     "opencode": {
         "protocols": ("anthropic", "openai", "openai-compatible"),
-        "parameters": OPENCODE_PARAMETERS,
+        "parameters": set(),
+        "model_parameters": None,
+    },
+    # Codex speaks the Responses API only; Claude Code the Messages API only.
+    "codex": {
+        "protocols": ("openai",),
+        "parameters": set(),
+        "model_parameters": {"reasoning_effort", "reasoning_summary"},
+    },
+    "claude-code": {
+        "protocols": ("anthropic",),
+        "parameters": {"max_turns"},
+        "model_parameters": {"reasoning_effort", "max_thinking_tokens"},
     },
 }
 
@@ -105,8 +130,19 @@ def agent_config(agent: dict) -> dict[str, Any]:
     unknown = set(params) - ADAPTERS[adapter]["parameters"]
     if unknown:
         raise InputError(f"unknown {adapter} parameters: {sorted(unknown)}")
-    if adapter == "opencode":
-        return _opencode_config(protocol, model, params)
+    allowed = ADAPTERS[adapter]["model_parameters"]
+    if allowed is not None and set(model.get("params") or {}) - allowed:
+        unknown = sorted(set(model["params"]) - allowed)
+        raise InputError(f"{adapter} does not take these model parameters: {unknown}")
+    if adapter in PACKAGES:
+        version = agent.get("version")
+        if not isinstance(version, str) or not EXACT_VERSION.fullmatch(version):
+            raise InputError(f"{adapter} needs an exact upstream version, not {version!r}")
+        return {
+            "opencode": _opencode_config,
+            "codex": _codex_config,
+            "claude-code": _claude_code_config,
+        }[adapter](protocol, model, params, version)
     model_params = dict(model.get("params") or {})
     kwargs: dict[str, Any] = {
         **params,
@@ -275,19 +311,16 @@ async def install(agent, environment) -> None:
         report(trial_name, records)
 
 
-def _opencode_config(protocol: str, model: dict, params: dict) -> dict[str, Any]:
+def _opencode_config(protocol: str, model: dict, params: dict, version: str) -> dict[str, Any]:
     """OpenCode reads its provider from its own config: the endpoint and a key file, and
     the model's parameters as provider options. Web tools stay off (no network for them)."""
-    version = params.get("version", OPENCODE_VERSION)
-    if not isinstance(version, str) or not version or version == "latest":
-        raise InputError("opencode needs a fixed version")
     provider = {
         "anthropic": "anthropic",
         "openai": "openai",
         "openai-compatible": "maestro",
     }[protocol]
     settings: dict[str, Any] = {
-        "options": {"baseURL": model["endpoint"], "apiKey": f"{{file:{OPENCODE_KEY}}}"},
+        "options": {"baseURL": model["endpoint"], "apiKey": f"{{file:{MODEL_KEY}}}"},
         "models": {model["model_id"]: {"options": dict(model.get("params") or {})}},
     }
     if provider == "maestro":
@@ -303,6 +336,45 @@ def _opencode_config(protocol: str, model: dict, params: dict) -> dict[str, Any]
     }
 
 
+def _codex_config(protocol: str, model: dict, params: dict, version: str) -> dict[str, Any]:
+    """Codex takes the endpoint from ``openai_base_url`` in its config.toml, which Harbor
+    writes from ``OPENAI_BASE_URL``; the key comes as ``auth.json``. Codex passes only the
+    last path segment of the model name as ``--model``, so ids with a slash are refused
+    rather than silently shortened."""
+    if "/" in model["model_id"]:
+        raise InputError("codex cannot call a model id containing '/'")
+    return {
+        "import_path": "maestro_runner.agents:MaestroCodex",
+        "model_name": model["model_id"],
+        "env": {"OPENAI_BASE_URL": model["endpoint"]},
+        "kwargs": {
+            "version": version,
+            "disable_web_search": True,
+            **dict(model.get("params") or {}),
+        },
+    }
+
+
+def _claude_code_config(protocol: str, model: dict, params: dict, version: str) -> dict[str, Any]:
+    """Claude Code takes the endpoint from ``ANTHROPIC_BASE_URL`` and the key from an
+    ``apiKeyHelper`` in its settings, which prints the key file; web tools stay off.
+    Model configurations give the endpoint with its ``/v1`` (as OpenCode's Anthropic
+    provider takes it); Claude Code adds ``/v1/messages`` itself."""
+    base = model["endpoint"].rstrip("/").removesuffix("/v1")
+    return {
+        "import_path": "maestro_runner.agents:MaestroClaudeCode",
+        "model_name": model["model_id"],
+        "env": {"ANTHROPIC_BASE_URL": base},
+        "kwargs": {
+            **params,
+            **dict(model.get("params") or {}),
+            "version": version,
+            "disable_web_search": True,
+            "config": {"apiKeyHelper": f"cat {MODEL_KEY}"},
+        },
+    }
+
+
 async def _setup_with_attachments(agent, environment, setup) -> None:
     """Attachments first, then the agent's own setup; both with the setup network."""
     with environment.scoped_exec_env(INSTALL["env"]):
@@ -311,49 +383,126 @@ async def _setup_with_attachments(agent, environment, setup) -> None:
         await setup(environment)
 
 
-@functools.cache
-def _opencode():
-    import os
-    import tempfile
+async def _upload_key(environment, content: str, target: str) -> None:
+    """``content`` as a file only the agent user can read, copied in (never an argument)."""
+    fd, local = tempfile.mkstemp(prefix=".key-")
+    try:
+        with os.fdopen(fd, "w") as handle:
+            handle.write(content)
+        await environment.exec(f"mkdir -p {shlex.quote(os.path.dirname(target))}", user="root")
+        await environment.upload_file(local, target)
+    finally:
+        os.unlink(local)
+    user = environment.default_user
+    owner = f"chown {shlex.quote(str(user))} {target} && " if user is not None else ""
+    await environment.exec(f"{owner}chmod 400 {target}", user="root")
 
-    from harbor.agents.installed.opencode import OpenCode
 
-    class MaestroOpenCode(OpenCode):
-        """OpenCode with the model key in a file for the length of the agent run, and
-        nothing from the Runner's own environment."""
+def _container_harness(base):
+    """``base`` (a Harbor installed agent) with the platform's rules for harnesses that run
+    in the task container: nothing from the Runner's own environment, the install skipped
+    when the image already has the exact version, attachments before the harness's own
+    setup, and the model key a file for the length of the agent run only."""
 
+    class InContainer(base):
         def _env_sources(self):
-            return (self._extra_env,)
+            return (self._resolved_env_vars, self._extra_env)
 
         async def install(self, environment) -> None:
-            """Kept when the image already has the pinned version; installed otherwise."""
             found = await environment.exec(command=self.get_version_command() or "false")
-            if found.return_code == 0 and (found.stdout or "").strip().endswith(self._version):
+            if found.return_code == 0 and self.parse_version(found.stdout or "") == self._version:
                 return
-            await super().install(environment)
+            await self._install(environment)
+
+        async def _install(self, environment) -> None:
+            await base.install(self, environment)
 
         async def setup(self, environment) -> None:
             await _setup_with_attachments(self, environment, super().setup)
 
         async def run(self, instruction, environment, context) -> None:
-            fd, local = tempfile.mkstemp(prefix=".key-")
-            try:
-                with os.fdopen(fd, "w") as handle:
-                    handle.write(SECRETS.get("model_api_key", ""))
-                await environment.exec(f"mkdir -p {os.path.dirname(OPENCODE_KEY)}", user="root")
-                await environment.upload_file(local, OPENCODE_KEY)
-            finally:
-                os.unlink(local)
-            user = environment.default_user
-            owner = f"chown {shlex.quote(str(user))} {OPENCODE_KEY} && " if user is not None else ""
-            await environment.exec(f"{owner}chmod 400 {OPENCODE_KEY}", user="root")
+            await _upload_key(environment, SECRETS.get("model_api_key", ""), MODEL_KEY)
             try:
                 await super().run(instruction, environment, context)
             finally:
                 # Gone before verification: the verifier runs in this container.
-                await environment.exec(f"rm -f {OPENCODE_KEY}", user="root")
+                await environment.exec(f"rm -f {MODEL_KEY}", user="root")
+
+    return InContainer
+
+
+@functools.cache
+def _opencode():
+    from harbor.agents.installed.opencode import OpenCode
+
+    class MaestroOpenCode(_container_harness(OpenCode)):
+        """OpenCode reading its key file through its provider config."""
 
     return MaestroOpenCode
+
+
+@functools.cache
+def _codex():
+    from harbor.agents.installed.codex import Codex
+
+    class MaestroCodex(_container_harness(Codex)):
+        """Codex with ``auth.json`` copied in from memory instead of Harbor writing it from
+        an ``OPENAI_API_KEY`` exec variable. Harbor links it into ``CODEX_HOME`` and
+        removes its directory when the agent ends; the Runner removes it as well."""
+
+        _auth_json: Path | None = None
+
+        def _resolve_auth_json_path(self) -> Path | None:
+            return self._auth_json
+
+        async def run(self, instruction, environment, context) -> None:
+            fd, local = tempfile.mkstemp(prefix=".auth-", suffix=".json")
+            remote = (self._REMOTE_CODEX_SECRETS_DIR / "auth.json").as_posix()
+            try:
+                with os.fdopen(fd, "w") as handle:
+                    json.dump({"OPENAI_API_KEY": SECRETS.get("model_api_key", "")}, handle)
+                self._auth_json = Path(local)
+                await Codex.run(self, instruction, environment, context)
+            finally:
+                self._auth_json = None
+                os.unlink(local)
+                await environment.exec(f"rm -f {shlex.quote(remote)}", user="root")
+
+    return MaestroCodex
+
+
+@functools.cache
+def _claude_code():
+    from harbor.agents.installed.claude_code import ClaudeCode
+    from harbor.agents.installed.node_install import nvm_node_install_snippet
+
+    class MaestroClaudeCode(_container_harness(ClaudeCode)):
+        """Claude Code installed from npm everywhere (U-41), so the setup network's
+        package mirror applies; Harbor uses the official download site on glibc, which
+        only a proxy reaches. The key is read by ``apiKeyHelper``."""
+
+        async def _install(self, environment) -> None:
+            await self.ensure_system_dependencies(
+                environment, ("curl", "bash", "nodejs", "npm", "procps")
+            )
+            await self.exec_as_agent(
+                environment,
+                command=(
+                    "set -euo pipefail; "
+                    # nvm's Node does not run on musl: use the packaged one there.
+                    "if ldd --version 2>&1 | grep -qi musl || [ -f /etc/alpine-release ]; then "
+                    "node --version && npm --version; "
+                    f"else {nvm_node_install_snippet()}; fi && "
+                    f"npm i -g {PACKAGES['claude-code']}@{self._version} && "
+                    # Harbor runs ``claude`` with only ~/.local/bin added to PATH; the
+                    # package's postinstall puts the native binary in place.
+                    'mkdir -p "$HOME/.local/bin" && '
+                    'ln -sf "$(command -v claude)" "$HOME/.local/bin/claude" && '
+                    'export PATH="$HOME/.local/bin:$PATH" && claude --version'
+                ),
+            )
+
+    return MaestroClaudeCode
 
 
 @functools.cache
@@ -380,14 +529,25 @@ def _terminus():
     return MaestroTerminus2
 
 
+_CLASSES = {
+    "MaestroTerminus2": _terminus,
+    "MaestroOpenCode": _opencode,
+    "MaestroCodex": _codex,
+    "MaestroClaudeCode": _claude_code,
+}
+
+
 def agent_class(adapter: str):
-    return {"terminus-2": _terminus, "opencode": _opencode}[adapter]()
+    return {
+        "terminus-2": _terminus,
+        "opencode": _opencode,
+        "codex": _codex,
+        "claude-code": _claude_code,
+    }[adapter]()
 
 
 def __getattr__(name: str):
     # Harbor loads the class by import path; build it only then, after Harbor imports.
-    if name == "MaestroTerminus2":
-        return _terminus()
-    if name == "MaestroOpenCode":
-        return _opencode()
+    if name in _CLASSES:
+        return _CLASSES[name]()
     raise AttributeError(name)

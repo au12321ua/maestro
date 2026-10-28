@@ -178,6 +178,8 @@ class FakeExecutor:
     harness_adapters: dict = field(
         default_factory=lambda: {"fake-agent": ("anthropic", "openai", "openai-compatible")}
     )
+    harness_model_parameters: dict = field(default_factory=dict)
+    harness_upstream: dict = field(default_factory=dict)
     started: asyncio.Event = field(default_factory=asyncio.Event)
     network_restriction: bool | None = True
     on_trial: Callable | None = None

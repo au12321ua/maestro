@@ -32,6 +32,7 @@ from maestro.services.preparation import Preparer
 from maestro.services.recycle import Recycle
 from maestro.services.runs import Runs
 from maestro.services.setup_network import SetupNetworks
+from maestro.services.upstream import UpstreamVersions
 from maestro.services.worker import Worker
 
 
@@ -106,13 +107,16 @@ class Maestro:
         )
         location = environment.location_id if environment is not None else "local-docker"
         adapters = dict(executor.harness_adapters) if executor is not None else None
+        model_params = dict(getattr(executor, "harness_model_parameters", {}) or {})
         resolver = Resolver(
             host,
             adapters_of=lambda: adapters,
+            model_params_of=lambda: model_params,
             executor_id=executor.executor_id if executor is not None else None,
             network_of=lambda: executor.network_restriction if executor is not None else None,
         )
         runs = Runs(db, host, disk, resolver)
+        setup_networks = SetupNetworks(db)
         artifacts = Artifacts(db, store)
         exports = Exports(
             db, store, settings.exports_dir, runs, disk, max_bytes=settings.export_max_bytes
@@ -129,11 +133,14 @@ class Maestro:
             datasets=Datasets(db, sources, credentials),
             runs=runs,
             policies=Policies(db),
-            setup_networks=SetupNetworks(db),
+            setup_networks=setup_networks,
             models=ModelConfigs(
                 db,
                 adapters,
                 dict(getattr(executor, "harness_parameters", {}) or {}),
+                model_params,
+                dict(getattr(executor, "harness_upstream", {}) or {}),
+                UpstreamVersions(setup_networks.current),
             ),
             attachments=Attachments(db, attachment_store, adapters),
             plans=Plans(db),

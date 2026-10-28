@@ -423,10 +423,20 @@ def pinned_request(request: dict, effective: dict) -> dict:
 
 
 class Resolver:
-    def __init__(self, capacity=None, adapters_of=None, executor_id=None, network_of=None):
+    def __init__(
+        self,
+        capacity=None,
+        adapters_of=None,
+        executor_id=None,
+        network_of=None,
+        model_params_of=None,
+    ):
         self.capacity = capacity
         # Callable giving the executor's adapters (name -> protocols); None: no executor.
         self.adapters_of = adapters_of or (lambda: None)
+        # Callable giving the model parameters each adapter passes on (name -> names);
+        # an adapter not listed passes on any.
+        self.model_params_of = model_params_of or (dict)
         self.executor_id = executor_id
         # Callable: can this host restrict task networks? True, False, or None (unknown).
         self.network_of = network_of or (lambda: None)
@@ -587,6 +597,18 @@ class Resolver:
                     error="CONFIG_INCOMPATIBLE",
                 )
             )
+        allowed = self.model_params_of().get(harness["agent"])
+        dropped = sorted(set(model["params"] or {}) - set(allowed)) if allowed is not None else []
+        if dropped:
+            res.blockers.append(
+                Blocker(
+                    "HARNESS_MODEL_PARAMS_UNSUPPORTED",
+                    "/model_config_id",
+                    f"{harness['agent']} cannot pass on the model parameters "
+                    f"{', '.join(dropped)}; it takes {', '.join(sorted(allowed)) or 'none'}",
+                    error="CONFIG_INCOMPATIBLE",
+                )
+            )
         params = {}
         schema = harness["schema"].get("parameters") or {}
         for name, value in request["harness_params"].items():
@@ -630,6 +652,8 @@ class Resolver:
             "content_digest": harness["content_digest"],
             "params": dict(sorted(params.items())),
         }
+        if harness["upstream_version"] is not None:
+            effective["harness"]["upstream_version"] = harness["upstream_version"]
         res.labels["model"] = model["name"]
         res.labels["harness"] = f"{harness['name']} {harness['version']}"
         res.references["model_config"] = {"id": model["config_id"], "revision": model["revision"]}
@@ -724,6 +748,7 @@ class Resolver:
             "name": row["name"],
             "version": row["version"],
             "agent": row["agent"],
+            "upstream_version": row["upstream_version"],
             "protocols": row["protocols_json"],
             "schema": row["schema_json"],
             "content_digest": row["content_digest"],

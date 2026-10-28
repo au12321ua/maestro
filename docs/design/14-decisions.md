@@ -49,8 +49,8 @@
 | U-37 | 2026-10-27 | 只改文档、不改代码的提交跳过 CI：提交说明和 PR 标题里写 `[skip ci]`。起因是文档 PR 的 CI 在装依赖那一步因网络失败，用户照常合并并决定以后这类修改不再跑 CI | [开发流程](../guides/development-workflow.md)、[交接](../HANDOFF.md)的 CI 一条 |
 | U-38 | 2026-10-28 | Harness 安装的 Node 与 npm 下载问题用环境变量注入包镜像源解决（如 npmmirror），不由平台做本机缓存；apt 由部署方把缓存代理设为准备代理。这些设置做成管理页的网页版，与准备代理挪到网页合并成一个提案；先在 `config.toml` 里做的版本（本机分支 `feature/setup-env`）只作短暂试验，不合入 `dev`。取代 U-30 中“安装缓存先做本机包缓存代理” | [12](12-operations.md) 第 3 节；提案 N-08（已完成）；索引中 N-10 并入 N-08 |
 | U-39 | 2026-10-28 | N-08 的待定问题全部按推荐：安装网络在执行时读当前修订；`config.toml` 里旧的准备代理键忽略并在日志提醒、到网页重填；成员能看到修订完整内容；安装变量首版全局一份；“保存前试一下”以后再说。确认后开始实施 | [12](12-operations.md) 第 3 节；提案 N-08（已完成） |
-| U-40 | 2026-10-28 | 下一批三条线并行：常规 Harness（Codex 与 Claude Code）、网页侧边栏与长任务名、CD 与许可证。Codex 与 Claude Code 的真实模型实测预算合计 20 美元 | 提案 [N-09](../proposals/N-09-codex-claude-code.md) |
-| U-41 | 2026-10-28 | N-09 的待定问题全部按推荐：成员不能在单个运行里换 Harness 的上游版本；Claude Code 若 npm 包实测可用就统一走 npm 安装；版本提示默认推荐 Claude Code 的 `stable`；只支持 API 密钥，不支持订阅账号登录。确认后直接合入并开始实施 | 提案 [N-09](../proposals/N-09-codex-claude-code.md) |
+| U-40 | 2026-10-28 | 下一批三条线并行：常规 Harness（Codex 与 Claude Code）、网页侧边栏与长任务名、CD 与许可证。Codex 与 Claude Code 的真实模型实测预算合计 20 美元 | [03](03-configuration-attachments.md) 第 2 节；提案 N-09（已完成） |
+| U-41 | 2026-10-28 | N-09 的待定问题全部按推荐：成员不能在单个运行里换 Harness 的上游版本；Claude Code 若 npm 包实测可用就统一走 npm 安装；版本提示默认推荐 Claude Code 的 `stable`；只支持 API 密钥，不支持订阅账号登录。确认后直接合入并开始实施 | [03](03-configuration-attachments.md) 第 2 节；提案 N-09（已完成） |
 
 ### D-020 运行级调度（落实 U-05）
 

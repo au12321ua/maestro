@@ -256,7 +256,7 @@ open(sys.argv[3], "w").write(json.dumps(limit))
 def test_the_runner_gives_harbor_the_harness_setup_time_limit(runner_python, materials, tmp_path):
     import subprocess
 
-    from test_runner_opencode import RUNNER, RUNNER_SRC
+    from test_runner_container_harnesses import RUNNER, RUNNER_SRC
 
     if not RUNNER.exists():
         pytest.skip("Runner environment not installed")

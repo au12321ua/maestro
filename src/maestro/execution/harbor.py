@@ -143,6 +143,9 @@ class HarborExecutor:
     harness_adapters: ClassVar[dict[str, tuple[str, ...]]] = {
         "terminus-2": ("anthropic", "openai", "openai-compatible"),
         "opencode": ("anthropic", "openai", "openai-compatible"),
+        # Codex speaks the Responses API only; Claude Code the Messages API only.
+        "codex": ("openai",),
+        "claude-code": ("anthropic",),
     }
     harness_parameters: ClassVar[dict[str, frozenset[str]]] = {
         "terminus-2": frozenset(
@@ -157,13 +160,30 @@ class HarborExecutor:
                 "interleaved_thinking",
             }
         ),
-        "opencode": frozenset({"version"}),
+        "opencode": frozenset(),
+        "codex": frozenset(),
+        "claude-code": frozenset({"max_turns"}),
+    }
+    # Model configuration parameters an adapter can pass on; one not listed takes any.
+    harness_model_parameters: ClassVar[dict[str, frozenset[str]]] = {
+        "codex": frozenset({"reasoning_effort", "reasoning_summary"}),
+        "claude-code": frozenset({"reasoning_effort", "max_thinking_tokens"}),
+    }
+    # Adapters that install a program in the task container at a harness version's
+    # upstream version: its npm package and the version last smoke-tested with a real
+    # model (maestro_runner.agents.PACKAGES and TESTED).
+    harness_upstream: ClassVar[dict[str, dict[str, str]]] = {
+        "opencode": {"package": "opencode-ai", "tested": "1.18.35"},
+        "codex": {"package": "@openai/codex", "tested": "0.165.0"},
+        "claude-code": {"package": "@anthropic-ai/claude-code", "tested": "2.1.308"},
     }
     # Where each adapter calls the model from. Terminus-2 calls it from the Runner, so the
     # task container needs no network at all while the agent works.
     model_called_from: ClassVar[dict[str, str]] = {
         "terminus-2": "runner",
         "opencode": "container",
+        "codex": "container",
+        "claude-code": "container",
     }
 
     def __init__(
@@ -270,11 +290,17 @@ class HarborExecutor:
             # Never let Harbor fall back to its default agent (15 section 6).
             raise ValueError(f"unsupported execution mode: {mode!r}")
         model, harness = effective["model"], effective["harness"]
-        return {
+        params = dict(harness["params"])
+        version = harness.get("upstream_version")
+        if version is None and harness["agent"] == "opencode":
+            # Accepted before OpenCode's version was part of the harness version (N-09).
+            version = params.pop("version", None) or "1.18.35"
+        agent = {
             "adapter": harness["agent"],
             "model": {k: model[k] for k in ("protocol", "endpoint", "model_id", "params")},
-            "params": harness["params"],
+            "params": params,
         }
+        return agent if version is None else {**agent, "version": version}
 
     def _network(self, spec: RunSpec) -> dict | None:
         """Platform phase policy (U-18): model runs get the stricter of the author's and

@@ -175,6 +175,9 @@ def test_harness_versions_are_fixed_and_checked_against_the_executor(service):
                 "agent": "fake-agent",
                 "protocols": ["anthropic", "openai", "openai-compatible"],
                 "parameters": None,
+                "model_parameters": None,
+                "package": None,
+                "tested_version": None,
             }
         ]
         body = {

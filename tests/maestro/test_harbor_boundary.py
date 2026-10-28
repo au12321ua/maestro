@@ -41,13 +41,23 @@ def test_service_and_runner_agree_on_harness_adapters():
     if not runner.exists():
         pytest.skip("Runner environment not installed")
     code = (
-        "import json; from maestro_runner.agents import ADAPTERS\n"
-        "print(json.dumps({k: [sorted(v['protocols']), sorted(v['parameters'])]"
-        " for k, v in ADAPTERS.items()}))\n"
+        "import json; from maestro_runner.agents import ADAPTERS, PACKAGES, TESTED\n"
+        "print(json.dumps({k: [sorted(v['protocols']), sorted(v['parameters']),"
+        " v['model_parameters'] and sorted(v['model_parameters']),"
+        " PACKAGES.get(k), TESTED.get(k)] for k, v in ADAPTERS.items()}))\n"
     )
     result = subprocess.run([str(runner), "-c", code], capture_output=True, text=True, check=True)
+    executor = HarborExecutor
     declared = {
-        name: [sorted(protocols), sorted(HarborExecutor.harness_parameters[name])]
-        for name, protocols in HarborExecutor.harness_adapters.items()
+        name: [
+            sorted(protocols),
+            sorted(executor.harness_parameters[name]),
+            sorted(executor.harness_model_parameters[name])
+            if name in executor.harness_model_parameters
+            else None,
+            executor.harness_upstream.get(name, {}).get("package"),
+            executor.harness_upstream.get(name, {}).get("tested"),
+        ]
+        for name, protocols in executor.harness_adapters.items()
     }
     assert json.loads(result.stdout) == declared

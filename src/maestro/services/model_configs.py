@@ -22,6 +22,7 @@ from maestro.execution.agents import (
     PARAM_TYPES,
     PARAMS_MAX_BYTES,
     PROTOCOLS,
+    UPSTREAM_VERSION,
     endpoint_problem,
     param_problem,
     secret_problems,
@@ -29,6 +30,7 @@ from maestro.execution.agents import (
 from maestro.services import audit, deleted
 from maestro.services.credentials import credential_problem
 from maestro.services.principal import Principal, require_admin_session
+from maestro.services.upstream import Unavailable, UpstreamVersions
 
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}")
 PROVIDER = re.compile(r"[a-z0-9][a-z0-9_.-]{0,63}")
@@ -155,19 +157,46 @@ def check_harness_schema(schema) -> dict:
     return {"parameters": parameters}
 
 
-def harness_digest(agent: str, name: str, version: str, protocols: list, schema: dict) -> str:
-    return digest_json(
-        {"agent": agent, "name": name, "version": version, "protocols": protocols, "schema": schema}
-    )
+def harness_digest(
+    agent: str,
+    name: str,
+    version: str,
+    protocols: list,
+    schema: dict,
+    upstream_version: str | None = None,
+) -> str:
+    content = {
+        "agent": agent,
+        "name": name,
+        "version": version,
+        "protocols": protocols,
+        "schema": schema,
+    }
+    if upstream_version is not None:
+        content["upstream_version"] = upstream_version
+    return digest_json(content)
 
 
 class ModelConfigs:
-    def __init__(self, db: Database, adapters=None, parameters=None):
+    def __init__(
+        self,
+        db: Database,
+        adapters=None,
+        parameters=None,
+        model_parameters=None,
+        upstream=None,
+        versions: UpstreamVersions | None = None,
+    ):
         self.db = db
         # Executor adapters: name -> protocols; None when no executor is configured.
         self.adapters = adapters
         # Parameters each adapter accepts; an adapter not listed accepts any.
         self.parameters = parameters or {}
+        # Model configuration parameters each adapter passes on; one not listed: any.
+        self.model_parameters = model_parameters or {}
+        # Adapters that install a program: name -> {"package", "tested"} (N-09).
+        self.upstream = upstream or {}
+        self.versions = versions
 
     # --- model configurations -------------------------------------------------------
 
@@ -412,9 +441,38 @@ class ModelConfigs:
                 "agent": name,
                 "protocols": sorted(protocols),
                 "parameters": sorted(self.parameters[name]) if name in self.parameters else None,
+                "model_parameters": (
+                    sorted(self.model_parameters[name]) if name in self.model_parameters else None
+                ),
+                "package": self.upstream.get(name, {}).get("package"),
+                "tested_version": self.upstream.get(name, {}).get("tested"),
             }
             for name, protocols in sorted((self.adapters or {}).items())
         ]
+
+    def upstream_versions(self, principal: Principal, agent: str, refresh: bool = False) -> dict:
+        """What the adapter's package registry lists, for choosing an upstream version;
+        a failed lookup is reported in ``error``, not raised (the form still works)."""
+        require_admin_session(principal)
+        if agent not in self.upstream or agent not in (self.adapters or {}):
+            raise not_found("Adapter that installs a program")
+        found = {
+            "agent": agent,
+            "package": self.upstream[agent]["package"],
+            "tested_version": self.upstream[agent].get("tested"),
+            "registry": None,
+            "checked_at": None,
+            "tags": [],
+            "recent": [],
+            "error": None,
+        }
+        if self.versions is None:
+            return {**found, "error": "No registry lookup in this service"}
+        try:
+            summary = self.versions.lookup(found["package"], refresh=refresh)
+        except Unavailable as error:
+            return {**found, "error": str(error)}
+        return {**found, **{k: v for k, v in summary.items() if k != "versions"}}
 
     @staticmethod
     def _public_harness(row) -> dict:
@@ -423,6 +481,7 @@ class ModelConfigs:
             "name": row["name"],
             "version": row["version"],
             "agent": row["agent"],
+            "upstream_version": row["upstream_version"],
             "description": row["description"],
             "protocols": row["protocols_json"],
             "parameter_schema": row["schema_json"],
@@ -487,8 +546,30 @@ class ModelConfigs:
         description = body.get("description", "")
         if not isinstance(description, str) or len(description) > 512:
             errors.append(FieldError("/description", "LENGTH"))
+        upstream_version = body.get("upstream_version")
+        if agent in self.upstream:
+            if (
+                not isinstance(upstream_version, str)
+                or len(upstream_version) > 64
+                or not UPSTREAM_VERSION.fullmatch(upstream_version)
+            ):
+                errors.append(
+                    FieldError("/upstream_version", "PATTERN", "an exact version such as 1.2.3")
+                )
+        elif upstream_version is not None:
+            errors.append(
+                FieldError("/upstream_version", "UNSUPPORTED", f"{agent} installs nothing")
+            )
         if errors:
             raise _invalid("HARNESS_INVALID", "Invalid harness version", errors)
+        if agent in self.upstream and self.versions is not None:
+            package = self.upstream[agent]["package"]
+            if self.versions.exists(package, upstream_version) is False:
+                raise _invalid(
+                    "HARNESS_INVALID",
+                    f"{package} has no version {upstream_version}",
+                    [FieldError("/upstream_version", "NOT_FOUND", package)],
+                )
         schema = check_harness_schema(body.get("parameter_schema") or {"parameters": {}})
         allowed = self.parameters.get(agent)
         unknown = sorted(set(schema["parameters"]) - allowed) if allowed is not None else []
@@ -529,10 +610,13 @@ class ModelConfigs:
                     name=name,
                     version=version,
                     agent=agent,
+                    upstream_version=upstream_version,
                     description=description,
                     protocols_json=protocols,
                     schema_json=schema,
-                    content_digest=harness_digest(agent, name, version, protocols, schema),
+                    content_digest=harness_digest(
+                        agent, name, version, protocols, schema, upstream_version
+                    ),
                     enabled=True,
                     created_by=principal.user_id,
                     created_at=clock.to_text(clock.now()),
@@ -544,7 +628,12 @@ class ModelConfigs:
                 "harness.create",
                 object_type="harness_version",
                 object_id=harness_id,
-                detail={"name": name, "version": version, "agent": agent},
+                detail={
+                    "name": name,
+                    "version": version,
+                    "agent": agent,
+                    "upstream_version": upstream_version,
+                },
             )
         return self.get_harness(principal, harness_id)
 

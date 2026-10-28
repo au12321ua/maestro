@@ -43,8 +43,8 @@ MESSAGE_LIMIT = 4000
 # Agents that keep an ATIF trajectory (Terminus-2 rewrites it after every turn) are
 # followed live by turning new steps into readable log text (U-07).
 TRAJECTORY = "agent/trajectory.json"
-# OpenCode streams JSON events to this file; they are shown as readable text instead.
-EVENTS = "agent/opencode.txt"
+# Harnesses in the container stream JSON events to these files; they are shown as
+# readable text instead (see EVENT_RENDERERS below for which harness writes which).
 TRAJECTORY_MAX_BYTES = 32 * 1024 * 1024
 STEP_PART_CHARS = 20000
 
@@ -56,14 +56,15 @@ def _text(value) -> str:
     return "" if value is None else str(value)
 
 
-def _render_event(event: dict, state: dict) -> str:
+def _cut(text: str) -> str:
+    if len(text) <= STEP_PART_CHARS:
+        return text
+    return text[:STEP_PART_CHARS] + f"\n[... {len(text) - STEP_PART_CHARS} characters ...]"
+
+
+def _render_opencode(event: dict, state: dict) -> str:
     """One OpenCode event as text (``state`` counts the steps of this attempt)."""
-
-    def cut(text: str) -> str:
-        if len(text) <= STEP_PART_CHARS:
-            return text
-        return text[:STEP_PART_CHARS] + f"\n[... {len(text) - STEP_PART_CHARS} characters ...]"
-
+    cut = _cut
     kind = event.get("type")
     part = event.get("part") if isinstance(event.get("part"), dict) else {}
     if kind == "step_start":
@@ -86,6 +87,90 @@ def _render_event(event: dict, state: dict) -> str:
     if kind == "error":
         return cut(f"! error: {json.dumps(event.get('error'), ensure_ascii=False)}") + "\n"
     return ""
+
+
+def _render_codex(event: dict, state: dict) -> str:
+    """One event of ``codex exec --json`` as text: a turn is a step."""
+    kind = event.get("type")
+    item = event.get("item") if isinstance(event.get("item"), dict) else {}
+    if kind == "turn.started":
+        state["step"] = state.get("step", 0) + 1
+        return f"--- step {state['step']} · agent ---\n"
+    if kind in {"turn.failed", "error"}:
+        error = event.get("error") if kind == "turn.failed" else event
+        message = error.get("message") if isinstance(error, dict) else error
+        return _cut(f"! error: {message}") + "\n"
+    if kind != "item.completed":
+        return ""
+    sort = item.get("type")
+    if sort == "agent_message" and (text := _text(item.get("text")).strip()):
+        return _cut(text) + "\n"
+    if sort == "reasoning" and (text := _text(item.get("text")).strip()):
+        return _cut(f"(thinking) {text}") + "\n"
+    if sort == "command_execution":
+        lines = [_cut(f"$ {str(item.get('command', '')).rstrip()}")]
+        if output := _text(item.get("aggregated_output")).strip():
+            lines.append(_cut(output))
+        if item.get("exit_code") not in (None, 0):
+            lines.append(f"(exit {item.get('exit_code')})")
+        return "\n".join(lines) + "\n"
+    if sort == "file_change":
+        changes = item.get("changes") if isinstance(item.get("changes"), list) else []
+        return "".join(
+            f"> {c.get('kind')} {c.get('path')}\n" for c in changes if isinstance(c, dict)
+        )
+    if sort == "mcp_tool_call":
+        return _cut(f"> {item.get('server')}.{item.get('tool')}") + "\n"
+    if sort == "error":
+        return _cut(f"! error: {item.get('message')}") + "\n"
+    return ""
+
+
+def _render_claude_code(event: dict, state: dict) -> str:
+    """One event of Claude Code's stream-json output as text: an assistant message is a
+    step (its content blocks may arrive as separate events with the same message id)."""
+    kind = event.get("type")
+    message = event.get("message") if isinstance(event.get("message"), dict) else {}
+    content = message.get("content") if isinstance(message.get("content"), list) else []
+    blocks = [b for b in content if isinstance(b, dict)]
+    if kind == "assistant":
+        lines = []
+        if message.get("id") != state.get("message"):
+            state["message"] = message.get("id")
+            state["step"] = state.get("step", 0) + 1
+            lines.append(f"--- step {state['step']} · agent ---")
+        for block in blocks:
+            if block.get("type") == "text" and (text := _text(block.get("text")).strip()):
+                lines.append(_cut(text))
+            elif block.get("type") == "thinking" and (text := _text(block.get("thinking")).strip()):
+                lines.append(_cut(f"(thinking) {text}"))
+            elif block.get("type") == "tool_use":
+                given = block.get("input") if isinstance(block.get("input"), dict) else {}
+                command = given.get("command")
+                lines.append(
+                    _cut(f"$ {command.rstrip()}")
+                    if block.get("name") == "Bash" and isinstance(command, str)
+                    else _cut(f"> {block.get('name')} {json.dumps(given, ensure_ascii=False)}")
+                )
+        return "".join(line + "\n" for line in lines)
+    if kind == "user":
+        lines = []
+        for block in blocks:
+            if block.get("type") == "tool_result" and (text := _text(block.get("content")).strip()):
+                lines.append(_cut(f"! {text}" if block.get("is_error") else text))
+        return "".join(line + "\n" for line in lines)
+    if kind == "result":
+        ending = "error" if event.get("is_error") else event.get("subtype")
+        return f"--- result: {ending} ---\n"
+    return ""
+
+
+# Event stream of each harness that writes one -> its renderer and the log source name.
+EVENT_RENDERERS = {
+    "agent/opencode.txt": (_render_opencode, "agent/opencode"),
+    "agent/codex.txt": (_render_codex, "agent/codex"),
+    "agent/claude-code.txt": (_render_claude_code, "agent/claude-code"),
+}
 
 
 def _render_step(step: dict) -> str:
@@ -580,7 +665,7 @@ class Execution:
                 for path, info in _entries(root / directory):
                     if path.suffix not in LOG_SUFFIXES or stat.S_ISLNK(info.st_mode):
                         continue
-                    if path == root / EVENTS:
+                    if path.relative_to(root).as_posix() in EVENT_RENDERERS:
                         continue  # rendered by _tail_events
                     start = self.offsets.get(path, 0)
                     size = info.st_size
@@ -607,8 +692,13 @@ class Execution:
                         text=data.decode("utf-8", "replace"),
                         truncated=self.log_bytes[(trial_id, attempt)] >= cap,
                     )
-            self._tail_trajectory(root, trial_id, attempt, cap)
-            self._tail_events(root, trial_id, attempt, cap)
+            streams = [name for name in EVENT_RENDERERS if os.path.lexists(root / name)]
+            if not streams:
+                # A harness with an event stream also leaves a trajectory at the end;
+                # its steps were shown already.
+                self._tail_trajectory(root, trial_id, attempt, cap)
+            for name in streams:
+                self._tail_events(root, trial_id, attempt, cap, name)
 
     def _tail_trajectory(self, root: Path, trial_id: str, attempt: int, cap: int) -> None:
         """New steps of the agent's trajectory as text. The file is rewritten whole each
@@ -654,9 +744,10 @@ class Execution:
             truncated=self.log_bytes[(trial_id, attempt)] >= cap,
         )
 
-    def _tail_events(self, root: Path, trial_id: str, attempt: int, cap: int) -> None:
-        """New complete lines of OpenCode's event stream as readable text."""
-        path = root / EVENTS
+    def _tail_events(self, root: Path, trial_id: str, attempt: int, cap: int, name: str) -> None:
+        """New complete lines of a harness's event stream as readable text."""
+        render, source = EVENT_RENDERERS[name]
+        path = root / name
         try:
             info = path.lstat()
         except OSError:
@@ -687,7 +778,7 @@ class Execution:
             except ValueError:
                 continue
             if isinstance(event, dict):
-                text += _render_event(event, state)
+                text += render(event, state)
         used = self.log_bytes[(trial_id, attempt)]
         if not text or used >= cap:
             return
@@ -697,7 +788,7 @@ class Execution:
             "log",
             trial_id=trial_id,
             attempt=attempt,
-            source="agent/opencode",
+            source=source,
             text=out.decode("utf-8", "replace"),
             truncated=self.log_bytes[(trial_id, attempt)] >= cap,
         )

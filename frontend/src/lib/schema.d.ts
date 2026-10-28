@@ -272,6 +272,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/harness-adapters/{agent}/upstream-versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Upstream Versions
+         * @description Release tags and recent releases of the program an adapter installs, looked up
+         *     through the setup network; cached for a few minutes unless ``refresh``.
+         */
+        get: operations["upstream_versions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/harness-versions": {
         parameters: {
             query?: never;
@@ -2951,6 +2972,11 @@ export interface components {
             params: {
                 [key: string]: string | number | boolean;
             };
+            /**
+             * Upstream Version
+             * @description Program version installed in the task container, when any
+             */
+            upstream_version: string | null;
             /** Version */
             version: string;
             /** Version Id */
@@ -3205,6 +3231,11 @@ export interface components {
         /** Envelope[TeamPolicy] */
         Envelope_TeamPolicy_: {
             data: components["schemas"]["TeamPolicy"];
+            meta: components["schemas"]["Meta"];
+        };
+        /** Envelope[UpstreamVersions] */
+        Envelope_UpstreamVersions_: {
+            data: components["schemas"]["UpstreamVersions"];
             meta: components["schemas"]["Meta"];
         };
         /** Envelope[User] */
@@ -3731,6 +3762,11 @@ export interface components {
             parameter_schema: components["schemas"]["HarnessParameterSchema-Output"];
             /** Protocols */
             protocols: ("openai-compatible" | "openai" | "anthropic")[];
+            /**
+             * Upstream Version
+             * @description Exact version of the program installed in the task container
+             */
+            upstream_version: string | null;
             /** Version */
             version: string;
         };
@@ -3739,12 +3775,27 @@ export interface components {
             /** Agent */
             agent: string;
             /**
+             * Model Parameters
+             * @description Model configuration parameters it passes on; null means any
+             */
+            model_parameters: string[] | null;
+            /**
+             * Package
+             * @description npm package it installs at a harness version's upstream version
+             */
+            package: string | null;
+            /**
              * Parameters
              * @description Parameters a harness version may declare; null means any
              */
             parameters: string[] | null;
             /** Protocols */
             protocols: ("openai-compatible" | "openai" | "anthropic")[];
+            /**
+             * Tested Version
+             * @description Upstream version this Maestro was smoke-tested with
+             */
+            tested_version: string | null;
         };
         /** HarnessCreate */
         HarnessCreate: {
@@ -3768,6 +3819,11 @@ export interface components {
             parameter_schema?: components["schemas"]["HarnessParameterSchema-Input"];
             /** Protocols */
             protocols: ("openai-compatible" | "openai" | "anthropic")[];
+            /**
+             * Upstream Version
+             * @description Exact version of the program the adapter installs; required exactly when the adapter has a package
+             */
+            upstream_version?: string | null;
             /** Version */
             version: string;
         };
@@ -6022,6 +6078,53 @@ export interface components {
             /** Verifier Status */
             verifier_status: string | null;
         };
+        /** UpstreamRelease */
+        UpstreamRelease: {
+            /** Published At */
+            published_at: string | null;
+            /** Version */
+            version: string;
+        };
+        /** UpstreamTag */
+        UpstreamTag: {
+            /** Published At */
+            published_at: string | null;
+            /** Tag */
+            tag: string;
+            /** Version */
+            version: string;
+        };
+        /** UpstreamVersions */
+        UpstreamVersions: {
+            /** Agent */
+            agent: string;
+            /** Checked At */
+            checked_at: string | null;
+            /**
+             * Error
+             * @description Why the registry could not be asked
+             */
+            error: string | null;
+            /** Package */
+            package: string;
+            /**
+             * Recent
+             * @description Newest releases first
+             */
+            recent: components["schemas"]["UpstreamRelease"][];
+            /**
+             * Registry
+             * @description Registry asked (the setup network's npm mirror)
+             */
+            registry: string | null;
+            /**
+             * Tags
+             * @description Release tags (stable, latest)
+             */
+            tags: components["schemas"]["UpstreamTag"][];
+            /** Tested Version */
+            tested_version: string | null;
+        };
         /** UsageSummary */
         UsageSummary: {
             /** Known Totals */
@@ -6576,6 +6679,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Envelope_list_HarnessAdapter__"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    upstream_versions: {
+        parameters: {
+            query?: {
+                refresh?: boolean;
+            };
+            header?: never;
+            path: {
+                agent: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_UpstreamVersions_"];
                 };
             };
             /** @description Structured error */

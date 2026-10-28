@@ -25,6 +25,7 @@ from maestro.api.models import (
     TeamPolicy,
     TeamPolicyRevision,
     TeamPolicyUpdate,
+    UpstreamVersions,
 )
 from maestro.services.principal import Principal, require_admin_session
 
@@ -108,6 +109,20 @@ def get_resolution(resolution_id: str, request: Request, who: Principal = Depend
 def list_adapters(request: Request, who: Principal = Depends(principal)):
     require_admin_session(who)
     return ok(request, maestro(request).models.public_adapters())
+
+
+@router.get(
+    "/admin/harness-adapters/{agent}/upstream-versions",
+    response_model=Envelope[UpstreamVersions],
+    tags=["admin"],
+    dependencies=ADMIN,
+)
+def upstream_versions(
+    agent: str, request: Request, refresh: bool = False, who: Principal = Depends(principal)
+):
+    """Release tags and recent releases of the program an adapter installs, looked up
+    through the setup network; cached for a few minutes unless ``refresh``."""
+    return ok(request, maestro(request).models.upstream_versions(who, agent, refresh))
 
 
 @router.post(

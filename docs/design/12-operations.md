@@ -77,7 +77,7 @@ journald                            服务标准输出 / 错误
 - 不能含凭据，因为 Harbor 以 `docker exec -e` 传变量，本机进程列表人人可见，而且成员能看到全部内容：代理只接受 `http(s)://主机:端口`，不带用户名密码，不接受 SOCKS；变量名须是普通 shell 变量名，代理变量只能在代理一栏设置，`MAESTRO_` 开头的名字留给平台，名字像凭据（含 token、secret、password、auth、key 等）或值里带 `user:password@` 的保存时拒绝。代理写成 127.0.0.1 / localhost 时页面提醒，容器里那是容器自己。
 - 镜像源只解决下载慢或不稳，不是缓存：每个试次仍下载一遍。要在本机缓存，由部署方运行缓存代理（apt 用 squid 一类设为代理）或缓存型 registry（npm 用 Verdaccio 一类填进安装变量），平台不另外支持。
 - 拉取镜像走 Docker 守护进程自己的代理与 registry 镜像源，`maestroctl check` 报告它们，不代为修改。
-- Harbor 0.24.0 中，Codex 的安装命令写死 `NVM_NODEJS_ORG_MIRROR`，平台注入的变量优先级更高；Claude Code 在 glibc 镜像上用 curl 从官方地址下载，不走 npm，只能靠代理。
+- Codex、Claude Code 与 OpenCode 都用 npm 安装（Node 由 nvm 装，musl 镜像用系统包）：nvm 脚本来自 GitHub，需要代理；Node 与 npm 包可走 `NVM_NODEJS_ORG_MIRROR` 与 `npm_config_registry` 指定的镜像源。Harbor 0.24.0 的 Codex 安装命令写死 `NVM_NODEJS_ORG_MIRROR`，平台注入的变量优先级更高。管理页的上游版本提示也经这里的代理与 npm 镜像源查询。
 
 已知限制：
 

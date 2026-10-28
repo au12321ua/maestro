@@ -870,6 +870,9 @@ class EffectiveHarness(Model):
     name: str
     version: str
     agent: str
+    upstream_version: str | None = Field(
+        None, description="Program version installed in the task container, when any"
+    )
     content_digest: str
     params: dict[str, HarnessParamValue]
 
@@ -1016,6 +1019,11 @@ class HarnessCreate(Model):
     name: str
     version: str
     agent: str = Field(description="Executor adapter; see /admin/harness-adapters")
+    upstream_version: str | None = Field(
+        None,
+        description="Exact version of the program the adapter installs; required exactly "
+        "when the adapter has a package",
+    )
     protocols: list[Protocol]
     parameter_schema: HarnessParameterSchema = HarnessParameterSchema()
     description: str = ""
@@ -1026,6 +1034,9 @@ class Harness(Model):
     name: str
     version: str
     agent: str
+    upstream_version: str | None = Field(
+        description="Exact version of the program installed in the task container"
+    )
     description: str
     protocols: list[Protocol]
     parameter_schema: HarnessParameterSchema
@@ -1041,6 +1052,35 @@ class HarnessAdapter(Model):
     parameters: list[str] | None = Field(
         None, description="Parameters a harness version may declare; null means any"
     )
+    model_parameters: list[str] | None = Field(
+        None, description="Model configuration parameters it passes on; null means any"
+    )
+    package: str | None = Field(
+        None, description="npm package it installs at a harness version's upstream version"
+    )
+    tested_version: str | None = Field(
+        None, description="Upstream version this Maestro was smoke-tested with"
+    )
+
+
+class UpstreamRelease(Model):
+    version: str
+    published_at: str | None
+
+
+class UpstreamTag(UpstreamRelease):
+    tag: str
+
+
+class UpstreamVersions(Model):
+    agent: str
+    package: str
+    tested_version: str | None
+    registry: str | None = Field(description="Registry asked (the setup network's npm mirror)")
+    checked_at: str | None
+    tags: list[UpstreamTag] = Field(description="Release tags (stable, latest)")
+    recent: list[UpstreamRelease] = Field(description="Newest releases first")
+    error: str | None = Field(description="Why the registry could not be asked")
 
 
 class EnabledChange(Model):

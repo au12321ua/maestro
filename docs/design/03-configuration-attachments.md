@@ -22,7 +22,7 @@
 | 对象 | 管理规则 |
 | --- | --- |
 | 模型配置 | 管理员网页会话维护，每次修改生成新修订；含提供商、协议（`openai-compatible` / `openai` / `anthropic`）、地址、模型标识、请求参数、凭据引用 |
-| Harness 版本 | 管理员发布，内容固定；记录适配器（`terminus-2` 或 `opencode`，U-25）、可调用的协议与可暴露参数 |
+| Harness 版本 | 管理员发布，内容固定；记录适配器、可调用的协议、可暴露参数，以及容器内 Harness 安装的确切上游版本（下文） |
 | 附件版本 | 成员或 experiment PAT 发布；名称 + 版本全团队唯一，内容固定；发布者或管理员可停用、删除 |
 | 团队策略 | 管理员按项修改，每次一个修订（U-21）；各项见 `src/maestro/services/policy.py` |
 | 实验方案 | 部分请求，见 [04](04-plans-submission.md) 第 1 节 |
@@ -34,6 +34,21 @@
 - 作者的秘密参数只能引用“通用秘密”类凭据，模型密钥不进入任务容器（U-28）。
 
 模型标识只是请求值，远端模型权重无法固定，重跑不等于严格复现。
+
+执行器的适配器（`src/maestro/execution/harbor.py`，与 `runner/src/maestro_runner/agents.py` 一致）：
+
+| 适配器 | 协议 | 在哪里调模型 | 安装 |
+| --- | --- | --- | --- |
+| `terminus-2` | 三种都可以 | Runner 内 | 随 Harbor，无上游版本 |
+| `opencode` | 三种都可以 | 任务容器内 | npm `opencode-ai` |
+| `codex` | 只有 `openai`（Responses） | 任务容器内 | npm `@openai/codex` |
+| `claude-code` | 只有 `anthropic` | 任务容器内 | npm `@anthropic-ai/claude-code`（U-41：不用 Harbor 在 glibc 镜像上的官方下载站，这样安装网络的 npm 镜像源也能用） |
+
+- 容器内的 Harness 每个版本都固定一个**上游版本**：只接受确切的版本号（不接受 `latest`、标签或范围），计入内容摘要，成员不能在运行里换（U-41），换版本就是发布新的 Harness 版本。服务能查到 npm 时，发布不存在的版本被拒绝；查不到不影响发布。镜像里已有同一版本时跳过安装，否则每个试次在 setup 中安装一次（Claude Code 的原生二进制约 300 MB）。
+- 管理页发布表单列出上游的 `stable` / `latest` 标签与最近的正式版本（带发布日期）、这一版 Maestro 用真实模型测过的版本、团队已发布的同适配器版本；比测过的版本新时只提醒，不阻止。查询经安装网络的代理与 `npm_config_registry`（[12](12-operations.md) 第 3 节），结果缓存 10 分钟（`src/maestro/services/upstream.py`）。
+- Codex 与 Claude Code 只能传递部分模型配置参数（Codex：`reasoning_effort`、`reasoning_summary`；Claude Code：`reasoning_effort`、`max_thinking_tokens`），其余在解析阶段报 `HARNESS_MODEL_PARAMS_UNSUPPORTED`；OpenCode 与 Terminus-2 传递全部参数。Claude Code 可暴露的 Harness 参数是 `max_turns`，Codex 与 OpenCode 没有。
+- Anthropic 协议的地址写成带 `/v1` 或不带都可以，Claude Code 自己会加 `/v1/messages`，适配器去掉末尾的 `/v1`。Codex 只把模型标识最后一段当作 `--model`，所以含 `/` 的模型标识被拒绝。
+- 只支持 API 密钥，不支持订阅账号登录（U-41）。
 
 ## 3. 合并与约束
 

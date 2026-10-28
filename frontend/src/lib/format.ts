@@ -138,6 +138,7 @@ export const CONFIG_BLOCKER: Record<string, string> = {
   LIMIT_EXCEEDED: "超过团队上限",
   BELOW_AUTHOR_RESOURCES: "不能低于任务作者给的资源",
   HARNESS_PROTOCOL_UNSUPPORTED: "Harness 不支持该模型的调用协议",
+  HARNESS_MODEL_PARAMS_UNSUPPORTED: "Harness 不能传递这个模型配置里的部分参数",
   EXECUTOR_UNSUPPORTED: "执行器不支持该 Harness 与协议的组合",
   CREDENTIAL_UNAVAILABLE: "凭据不可用，需要管理员处理",
   DISABLED: "已停用",

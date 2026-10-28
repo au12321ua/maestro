@@ -17,6 +17,9 @@ PROTOCOLS = {
 }
 
 PARAM_TYPES = {"string", "integer", "number", "boolean"}
+# The program a harness version installs is pinned exactly: a run must install the same
+# one again (N-09). Not "latest", a tag or a range.
+UPSTREAM_VERSION = re.compile(r"\d+(\.\d+){1,3}([-+][0-9A-Za-z.-]+)?")
 
 # Generation-length settings look like secrets by name but are not (dev ``reject_secrets``).
 _LENGTH_KEYS = {

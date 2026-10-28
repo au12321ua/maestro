@@ -3474,6 +3474,18 @@
             "title": "Params",
             "type": "object"
           },
+          "upstream_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Program version installed in the task container, when any",
+            "title": "Upstream Version"
+          },
           "version": {
             "title": "Version",
             "type": "string"
@@ -3488,6 +3500,7 @@
           "name",
           "version",
           "agent",
+          "upstream_version",
           "content_digest",
           "params"
         ],
@@ -4329,6 +4342,23 @@
           "meta"
         ],
         "title": "Envelope[TeamPolicy]",
+        "type": "object"
+      },
+      "Envelope_UpstreamVersions_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/UpstreamVersions"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[UpstreamVersions]",
         "type": "object"
       },
       "Envelope_User_": {
@@ -6102,6 +6132,18 @@
             "title": "Protocols",
             "type": "array"
           },
+          "upstream_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Exact version of the program installed in the task container",
+            "title": "Upstream Version"
+          },
           "version": {
             "title": "Version",
             "type": "string"
@@ -6112,6 +6154,7 @@
           "name",
           "version",
           "agent",
+          "upstream_version",
           "description",
           "protocols",
           "parameter_schema",
@@ -6129,6 +6172,33 @@
           "agent": {
             "title": "Agent",
             "type": "string"
+          },
+          "model_parameters": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Model configuration parameters it passes on; null means any",
+            "title": "Model Parameters"
+          },
+          "package": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "npm package it installs at a harness version's upstream version",
+            "title": "Package"
           },
           "parameters": {
             "anyOf": [
@@ -6156,12 +6226,27 @@
             },
             "title": "Protocols",
             "type": "array"
+          },
+          "tested_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Upstream version this Maestro was smoke-tested with",
+            "title": "Tested Version"
           }
         },
         "required": [
           "agent",
           "protocols",
-          "parameters"
+          "parameters",
+          "model_parameters",
+          "package",
+          "tested_version"
         ],
         "title": "HarnessAdapter",
         "type": "object"
@@ -6200,6 +6285,18 @@
             },
             "title": "Protocols",
             "type": "array"
+          },
+          "upstream_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Exact version of the program the adapter installs; required exactly when the adapter has a package",
+            "title": "Upstream Version"
           },
           "version": {
             "title": "Version",
@@ -13256,6 +13353,150 @@
         "title": "TrialResult",
         "type": "object"
       },
+      "UpstreamRelease": {
+        "additionalProperties": false,
+        "properties": {
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "published_at"
+        ],
+        "title": "UpstreamRelease",
+        "type": "object"
+      },
+      "UpstreamTag": {
+        "additionalProperties": false,
+        "properties": {
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "tag": {
+            "title": "Tag",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "published_at",
+          "tag"
+        ],
+        "title": "UpstreamTag",
+        "type": "object"
+      },
+      "UpstreamVersions": {
+        "additionalProperties": false,
+        "properties": {
+          "agent": {
+            "title": "Agent",
+            "type": "string"
+          },
+          "checked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the registry could not be asked",
+            "title": "Error"
+          },
+          "package": {
+            "title": "Package",
+            "type": "string"
+          },
+          "recent": {
+            "description": "Newest releases first",
+            "items": {
+              "$ref": "#/components/schemas/UpstreamRelease"
+            },
+            "title": "Recent",
+            "type": "array"
+          },
+          "registry": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Registry asked (the setup network's npm mirror)",
+            "title": "Registry"
+          },
+          "tags": {
+            "description": "Release tags (stable, latest)",
+            "items": {
+              "$ref": "#/components/schemas/UpstreamTag"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "tested_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tested Version"
+          }
+        },
+        "required": [
+          "agent",
+          "package",
+          "tested_version",
+          "registry",
+          "checked_at",
+          "tags",
+          "recent",
+          "error"
+        ],
+        "title": "UpstreamVersions",
+        "type": "object"
+      },
       "UsageSummary": {
         "additionalProperties": false,
         "properties": {
@@ -14094,6 +14335,60 @@
           }
         },
         "summary": "List Adapters",
+        "tags": [
+          "configuration",
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/harness-adapters/{agent}/upstream-versions": {
+      "get": {
+        "description": "Release tags and recent releases of the program an adapter installs, looked up\nthrough the setup network; cached for a few minutes unless ``refresh``.",
+        "operationId": "upstream_versions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent",
+            "required": true,
+            "schema": {
+              "title": "Agent",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "refresh",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Refresh",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_UpstreamVersions_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Upstream Versions",
         "tags": [
           "configuration",
           "admin"

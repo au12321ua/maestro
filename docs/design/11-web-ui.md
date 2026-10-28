@@ -24,6 +24,8 @@ Vite + React + TypeScript + shadcn/ui（Radix）+ Tailwind，工程在 `frontend
 
 非管理员访问 `/admin` 被重定向到工作台；服务端仍独立校验权限。
 
+管理页“Harness”发布容器内的 Harness 时须填上游版本，表单下方列出上游标签、最近正式版本、Maestro 测过的版本与团队已发布的版本，可一键填入（[03](03-configuration-attachments.md) 第 2 节）；版本列表标出上游已有的更新版本。
+
 已知限制：运行列表只提供“我的”与日期筛选，API 支持的按数据集、模型、Harness、附件、状态筛选没有界面；方案没有修订历史视图；数据集版本没有独立地址；维护分区只读（健康、可受理、执行进程、执行器、主密钥、数据库结构），更新、备份与恢复在主机上执行（[12](12-operations.md)）。集合与比较页面见 [N-11](../proposals/N-11-collections-comparison.md)。
 
 ## 2. 新建运行流程

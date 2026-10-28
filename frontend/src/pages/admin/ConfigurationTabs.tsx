@@ -1,5 +1,5 @@
 // Administrator tabs for model configurations, harness versions and the team policy (03).
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,9 +23,11 @@ import { ApiError, api } from "@/lib/api";
 import { fmtTime } from "@/lib/format";
 import { useLoad } from "@/lib/hooks";
 import type {
+  Harness,
   ModelConfig,
   ModelProtocol,
   PolicySetting,
+  UpstreamVersions,
 } from "@/lib/types";
 
 const PROTOCOLS: [ModelProtocol, string][] = [
@@ -368,12 +370,129 @@ export function ModelsTab() {
 
 // --- harness versions -----------------------------------------------------------------------
 
+/** Numeric comparison of dotted versions; pre-release suffixes are ignored. */
+function newer(a: string, b: string): boolean {
+  const parts = (v: string) => v.split(/[-+]/)[0].split(".").map(Number);
+  const [x, y] = [parts(a), parts(b)];
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0);
+  }
+  return false;
+}
+
+function day(value: string | null | undefined): string {
+  return value ? fmtTime(value).slice(0, 10) : "";
+}
+
+/** Versions to choose an upstream version from (N-09): the package's release tags and
+ * recent releases, the version this Maestro was tested with, and what the team has. */
+function UpstreamHints({
+  found,
+  loading,
+  published,
+  chosen,
+  onPick,
+  onRefresh,
+}: {
+  found: UpstreamVersions | undefined;
+  loading: boolean;
+  published: Harness[];
+  chosen: string;
+  onPick: (version: string) => void;
+  onRefresh: () => void;
+}) {
+  const tested = found?.tested_version;
+  const pick = (version: string) => (
+    <Button type="button" size="sm" variant="outline" onClick={() => onPick(version)}>
+      填入
+    </Button>
+  );
+  const row = (left: string, version: string, note: string) => (
+    <div key={left + version} className="flex flex-wrap items-center gap-2">
+      <span className="w-24 text-muted-foreground">{left}</span>
+      <span className="font-mono">{version}</span>
+      <span className="text-muted-foreground">{note}</span>
+      {pick(version)}
+      {tested && newer(version, tested) && <Pill tone="warn">比 Maestro 测过的版本新</Pill>}
+    </div>
+  );
+  return (
+    <div className="grid gap-2 rounded-md border p-3 text-xs md:col-span-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-medium">上游版本参考</span>
+        {found?.registry && (
+          <span className="text-muted-foreground">
+            {found.package}，{found.registry}，{fmtTime(found.checked_at)} 查询
+          </span>
+        )}
+        <Button type="button" size="sm" variant="ghost" disabled={loading} onClick={onRefresh}>
+          {loading ? "查询中…" : "刷新"}
+        </Button>
+      </div>
+      {found?.error && (
+        <p className="text-muted-foreground">
+          查不到上游版本（{found.error}）。可以直接填写确切的版本号。
+        </p>
+      )}
+      {found?.tags.map((t) => row(t.tag, t.version, `${day(t.published_at)} 发布`))}
+      {tested && row("Maestro 测过", tested, "这一版 Maestro 用真实模型实测通过")}
+      {published.map((h) => (
+        <div key={h.id} className="flex flex-wrap items-center gap-2">
+          <span className="w-24 text-muted-foreground">团队已发布</span>
+          <span className="font-mono">{h.upstream_version}</span>
+          <span className="text-muted-foreground">
+            {h.name} {h.version}，{h.enabled ? "启用中" : "已停用"}
+          </span>
+        </div>
+      ))}
+      {found && found.recent.length > 0 && (
+        <details>
+          <summary className="cursor-pointer text-muted-foreground">
+            最近 {found.recent.length} 个正式版本
+          </summary>
+          <div className="mt-2 grid gap-1">
+            {found.recent.map((r) => row("", r.version, `${day(r.published_at)} 发布`))}
+          </div>
+        </details>
+      )}
+      {chosen && tested && newer(chosen, tested) && (
+        <p className="text-amber-700 dark:text-amber-400">
+          {chosen} 未经当前 Maestro 实测：上游可能改了参数或日志格式。建议发布后先跑一个小运行。
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function HarnessesTab() {
   const harnesses = useLoad(async () => (await api.get("/harness-versions")).data);
   const adapters = useLoad(async () => (await api.get("/admin/harness-adapters")).data);
+  const refreshing = useRef(false);
+  // Upstream versions of every adapter that installs a program, for the form and the list.
+  const upstream = useLoad(
+    async () => {
+      const found: Record<string, UpstreamVersions> = {};
+      await Promise.all(
+        (adapters.data ?? [])
+          .filter((a) => a.package)
+          .map(async (a) => {
+            found[a.agent] = (
+              await api.get("/admin/harness-adapters/{agent}/upstream-versions", {
+                path: { agent: a.agent },
+                query: { refresh: refreshing.current },
+              })
+            ).data;
+          }),
+      );
+      refreshing.current = false;
+      return found;
+    },
+    [adapters.data],
+  );
   const [form, setForm] = useState({
     name: "",
     version: "",
+    upstream: "",
     agent: "",
     protocols: [] as ModelProtocol[],
     schema: '{\n  "parameters": {}\n}',
@@ -394,7 +513,9 @@ export function HarnessesTab() {
       await api.post("/admin/harness-versions", {
         body: {
           name: form.name.trim(),
-          version: form.version.trim(),
+          // The name's version defaults to the program's version.
+          version: form.version.trim() || form.upstream.trim(),
+          upstream_version: adapter?.package ? form.upstream.trim() : null,
           agent,
           protocols: form.protocols.filter((p) => supported.includes(p)),
           parameter_schema: parseJson(form.schema, "参数定义"),
@@ -402,7 +523,7 @@ export function HarnessesTab() {
         },
       });
       toast.success("Harness 版本已发布；之后内容不能修改，修改需发布新版本");
-      setForm({ ...form, version: "" });
+      setForm({ ...form, version: "", upstream: "" });
       await harnesses.reload();
     } catch (err) {
       setError(err);
@@ -445,6 +566,7 @@ export function HarnessesTab() {
                   <TableRow>
                     <TableHead>名称与版本</TableHead>
                     <TableHead>适配器</TableHead>
+                    <TableHead>上游版本</TableHead>
                     <TableHead>协议</TableHead>
                     <TableHead>参数</TableHead>
                     <TableHead>状态</TableHead>
@@ -465,6 +587,18 @@ export function HarnessesTab() {
                         </div>
                       </TableCell>
                       <TableCell className="font-mono text-xs">{h.agent}</TableCell>
+                      <TableCell className="text-xs">
+                        <span className="font-mono">{h.upstream_version ?? "—"}</span>
+                        {h.upstream_version &&
+                          upstream.data?.[h.agent]?.tags
+                            .filter((t) => newer(t.version, h.upstream_version ?? ""))
+                            .slice(0, 1)
+                            .map((t) => (
+                              <div key={t.tag} className="text-muted-foreground">
+                                上游已有 {t.version}
+                              </div>
+                            ))}
+                      </TableCell>
                       <TableCell className="text-xs">
                         {h.protocols.map(protocolLabel).join("、")}
                       </TableCell>
@@ -541,7 +675,9 @@ export function HarnessesTab() {
               value={form.version}
               onChange={(e) => setForm({ ...form, version: e.target.value })}
               error={fieldErr("version")}
-              required
+              placeholder={adapter?.package ? "默认与上游版本相同" : undefined}
+              hint="Maestro 里这个 Harness 版本的名字"
+              required={!adapter?.package}
             />
             <SelectField
               id="harness-agent"
@@ -556,6 +692,31 @@ export function HarnessesTab() {
                 </option>
               ))}
             </SelectField>
+            {adapter?.package && (
+              <>
+                <TextField
+                  id="harness-upstream"
+                  label={`上游版本（${adapter.package}）`}
+                  value={form.upstream}
+                  onChange={(e) => setForm({ ...form, upstream: e.target.value.trim() })}
+                  error={fieldErr("upstream_version")}
+                  hint="容器里实际安装的版本，须是确切的版本号；发布后不能修改"
+                  placeholder="例如 1.2.3"
+                  required
+                />
+                <UpstreamHints
+                  found={upstream.data?.[agent]}
+                  loading={upstream.loading}
+                  published={(harnesses.data ?? []).filter((h) => h.agent === agent)}
+                  chosen={form.upstream}
+                  onPick={(version) => setForm({ ...form, upstream: version })}
+                  onRefresh={() => {
+                    refreshing.current = true;
+                    void upstream.reload();
+                  }}
+                />
+              </>
+            )}
             <fieldset className="grid gap-1 text-sm">
               <legend className="mb-1">可调用的协议</legend>
               {supported.map((p) => (
@@ -586,7 +747,12 @@ export function HarnessesTab() {
               </span>
               {adapter?.parameters && (
                 <span className="text-xs text-muted-foreground">
-                  这个适配器可声明的参数：{adapter.parameters.join("、")}
+                  这个适配器可声明的参数：{adapter.parameters.join("、") || "无"}
+                </span>
+              )}
+              {adapter?.model_parameters && (
+                <span className="text-xs text-muted-foreground">
+                  它能传递的模型配置参数：{adapter.model_parameters.join("、") || "无"}
                 </span>
               )}
               <textarea

@@ -72,7 +72,7 @@ Worker 在服务进程内，负责领取、租约、取消、资源和结果确�
 
 没有单独的结果目录完成标记：平台按 attempt_finished 的清单逐个核对归档文件的摘要后入库。进程退出码（0 完成、2 Runner 错误、3 取消、4 拒绝）不决定业务结果，平台按事件、租约和错误策略决定试次状态；退出码 0 不等于任务通过，非零也不抹去已确认的结果。Runner 长时间无事件（`runner_silence_sec`）视为失联并停止。
 
-**凭据。** 服务在执行时解密凭据，经 stdin 交给 Runner，不放进命令行、环境变量或可导出的作业配置。模型密钥只留在 Runner 内存；Terminus-2 在 Runner 内调用模型，OpenCode 在容器内调用，密钥以权限 400 的临时文件进入容器，Agent 结束即删除。作者参数值（含秘密参数）放进 Runner 环境变量，供 Harbor 解析任务模板。stderr 中出现的密钥值与带口令的代理地址由服务端脱敏。
+**凭据。** 服务在执行时解密凭据，经 stdin 交给 Runner，不放进命令行、环境变量或可导出的作业配置。模型密钥只留在 Runner 内存；Terminus-2 在 Runner 内调用模型，OpenCode、Codex、Claude Code 在容器内调用，密钥以权限 400 的临时文件进入容器，Agent 结束即删除（[09](09-identity-security.md) 第 5 节）。作者参数值（含秘密参数）放进 Runner 环境变量，供 Harbor 解析任务模板。stderr 中出现的密钥值与带口令的代理地址由服务端脱敏。
 
 ## 6. 作业生成与预检
 
@@ -114,6 +114,7 @@ Runner 依赖 Harbor 的私有接口与内部行为，升级 Harbor 时须逐项
 - 包装 `DockerEnvironment._apply_network_policy`：受限后不再回到 public，并拒绝未经代理重定向的 TCP（M1 发现 Harbor 会在阶段之间恢复 public、旧连接不受新策略约束）。
 - 调用 `DockerEnvironment._egress_control_kernel_support` 做网络能力预检；它在没有 `/proc/config.gz` 时乐观放行，所以真实收紧另有测试覆盖。
 - Terminus-2 为在 Runner 内传入密钥覆盖了 `_init_llm`。
+- 容器内 Harness 的包装层覆盖了 `_env_sources`（不读 Runner 环境）与 `install`（已有同一版本则跳过）；Codex 覆盖 `_resolve_auth_json_path` 并依赖 `_REMOTE_CODEX_SECRETS_DIR`，Claude Code 依赖 `config` 作为 `--settings` 上传与 `ANTHROPIC_BASE_URL` 的读取方式，并重写了安装命令。实时日志按 `agent/opencode.txt`、`agent/codex.txt`、`agent/claude-code.txt` 的事件格式渲染（`job.py`），上游改格式时只影响可读日志，不影响评分。
 - Runner 照搬 Harbor 0.24.0 TrialQueue 的重试规则推断 attempt_finished 中的“是否还会重试”（`_will_retry`）。
 
 ## 9. 为什么仍然自建

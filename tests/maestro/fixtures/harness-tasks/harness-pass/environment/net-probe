@@ -1,0 +1,24 @@
+#!/bin/bash
+# Prints NET_OPEN when example.com answers an HTTP request, directly or through a proxy the
+# container was given (HTTP_PROXY / http_proxy), else NET_CLOSED. A transparent egress
+# proxy accepts the TCP handshake before it decides, so a handshake alone proves nothing.
+# Three tries: an open route may drop one; a restricted phase refuses at once every time.
+request() {  # host port request-target
+  timeout 8 bash -c '
+    exec 3<>/dev/tcp/$1/$2 || exit 1
+    printf "HEAD $3 HTTP/1.0\r\nHost: example.com\r\n\r\n" >&3
+    read -r -t 6 line <&3 && [[ $line == HTTP/* ]]
+  ' _ "$@"
+}
+proxy=${http_proxy:-$HTTP_PROXY}
+hostport=${proxy#*://}
+hostport=${hostport%%/*}
+for try in 1 2 3; do
+  if request example.com 80 /; then
+    echo "NET_OPEN direct (try $try)"; exit 0
+  elif [ -n "$proxy" ] && request "${hostport%:*}" "${hostport##*:}" http://example.com/; then
+    echo "NET_OPEN proxy (try $try)"; exit 0
+  fi
+  sleep 1
+done
+echo "NET_CLOSED${proxy:+ (proxy tried)}"

@@ -33,7 +33,6 @@
 
 | 编号 | 提案 | 状态 | 要点 |
 | --- | --- | --- | --- |
-| N-09 | [常规 Harness：Codex 与 Claude Code，以及上游版本提示](N-09-codex-claude-code.md)（已定至少这两个） | 已确认 | 抽出 OpenCode 的“容器内 Harness”做法给两个新适配器共用，密钥以文件进容器；协议不匹配在解析阶段拒绝。上游版本成为 Harness 版本的必填字段，发布表单从 npm 列出上游正式版本、Maestro 测过的版本与团队已发布的版本。声明式配置（N-19）与升级 Harbor 另做；实测预算 20 美元（U-40）；待定问题按推荐（U-41） |
 | N-11 | [实验集合、对齐比较与分析快照](N-11-collections-comparison.md)（已定纳入） | 设计中 | 新增 Harness 后的主要用途：同一数据集上比较不同模型与 Harness |
 | N-12 | [带排空的更新与维护模式](N-12-drain-update.md)（已定纳入） | 设计中 | CD 让更新变频繁，现在有运行在跑时更新被拒绝 |
 
@@ -53,7 +52,7 @@
 | N-16 | 开源许可证 Apache 2.0（已定） | 想法 | 补 `LICENSE` 与 `NOTICE`，在各 `pyproject.toml` 与前端 `package.json` 写明许可证；发布包附第三方许可证清单。2026-10-27 核对：提交全部来自同一作者；服务、Runner（92 个包，Harbor 为 Apache-2.0、litellm 为 MIT）与前端运行时依赖中没有 GPL / AGPL / LGPL，少数 MPL-2.0 依赖（`certifi`、`pathspec`、`tqdm`，以及只用于构建的 `lightningcss`）不构成冲突。发布前对当时的锁文件重新核对 |
 | N-17 | 兼容承诺的起点 | 想法 | 0.x 期间仍可不兼容，但数据库变更从 0.3.0 起只追加迁移（已定，U-34），发布说明列出破坏性变更。自第一个面向外部用户的版本起：数据库自动迁移、公开 API 与 SDK 按语义化版本管理、配置文件带版本号。Runner 协议与内部表结构不在承诺内 |
 | N-18 | 多语言 | 想法 | 前端引入 i18n 库，抽出中文文案，先支持中文与英文；后端继续返回结构化错误码由前端翻译；新写的界面文字不写死在组件里。对外文档至少有英文版 |
-| N-19 | 外部可安装与可扩展 | 想法 | 能在干净的 Linux 上照文档安装；Harness 做成声明式配置（与 N-09 一起）；数据集来源在 Hub 之外加本地目录与 Git |
+| N-19 | 外部可安装与可扩展 | 想法 | 能在干净的 Linux 上照文档安装；Harness 做成声明式配置（N-09 已用代码实现三个容器内 Harness 与共用的包装层，声明式格式在此设计）；数据集来源在 Hub 之外加本地目录与 Git |
 | N-20 | 确认项目名 | 想法 | 已有多个知名项目叫 Maestro（移动端 UI 测试工具、Netflix 的工作流编排器），不构成法律冲突但影响检索 |
 
 ### 不做或暂缓
@@ -67,6 +66,7 @@
 
 ### 已完成
 
+- N-09 常规 Harness：Codex 与 Claude Code，以及上游版本提示（U-40、U-41）：抽出“容器内 Harness”包装层，Codex 与 Claude Code 的密钥以文件进容器；Harness 版本固定上游版本，发布表单经安装网络查 npm 给出版本提示；声明式配置（N-19）与升级 Harbor 另做。结论并入 [03](../design/03-configuration-attachments.md) 第 2 节、[09](../design/09-identity-security.md) 第 5 节、[15](../design/15-stack-harbor.md) 第 5、8 节等系统说明。
 - N-08 安装网络在管理页配置（合并原 N-10；U-38、U-39）：准备代理、包镜像源等安装变量与 Harness 安装时限放进管理页“安装网络”，按版本保存，准备与执行开始时读当前版本，执行尝试与镜像构建记下版本；`config.toml` 不再有准备代理；管理页只读显示部署配置；`maestroctl check` 报告 Docker 镜像源。结论并入 [12](../design/12-operations.md) 第 3 节等系统说明。
 - N-23 现场说明与证据进 Gitea 私有仓库（U-35、U-36）：私有仓库 `auua/maestro-site` 放各主机的现场说明与手动证据，CI 证据用 Actions artifacts；结论并入 `AGENTS.md`、交接与开发流程。
 

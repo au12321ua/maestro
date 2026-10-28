@@ -1,3 +1,5 @@
+import json
+
 from alembic.autogenerate import compare_metadata
 from alembic.runtime.migration import MigrationContext
 from sqlalchemy import inspect
@@ -50,3 +52,53 @@ def test_foreign_keys_enforced(tmp_path):
                 last_seen_at="x",
             )
         )
+
+
+def test_opencode_versions_move_into_the_harness_version(tmp_path):
+    """0003 (N-09): the version OpenCode installs leaves the parameters and becomes the
+    harness version's upstream version; what each version installed does not change."""
+    from sqlalchemy import select, text
+
+    from maestro.db import schema as t
+    from maestro.services.model_configs import harness_digest
+
+    db = Database.open(tmp_path / "app.db")
+    migrate.upgrade(db, "0002")
+    rows = {
+        "hrn_pinned": ("opencode", {"version": {"type": "string", "default": "1.9.0"}}),
+        "hrn_default": ("opencode", {"turns": {"type": "integer"}}),
+        "hrn_terminus": ("terminus-2", {"max_turns": {"type": "integer"}}),
+    }
+    with db.write() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO users (id, username, display_name, role, status, password_hash, "
+                "revision, created_at, updated_at) "
+                "VALUES ('usr_1', 'a', 'a', 'admin', 'active', 'x', 1, 'x', 'x')"
+            )
+        )
+        for harness_id, (agent, parameters) in rows.items():
+            conn.execute(
+                text(
+                    "INSERT INTO harness_versions (id, name, version, agent, description, "
+                    "protocols_json, schema_json, content_digest, enabled, created_by, "
+                    "created_at) VALUES (:id, :id, '1', :agent, '', '[\"anthropic\"]', "
+                    ":schema, 'sha256:old', 1, 'usr_1', 'x')"
+                ),
+                {
+                    "id": harness_id,
+                    "agent": agent,
+                    "schema": json.dumps({"parameters": parameters}),
+                },
+            )
+    migrate.upgrade(db)
+    with db.read() as conn:
+        found = {r["id"]: r for r in conn.execute(select(t.harness_versions)).mappings()}
+    pinned, default, terminus = found["hrn_pinned"], found["hrn_default"], found["hrn_terminus"]
+    assert pinned["upstream_version"] == "1.9.0" and pinned["schema_json"] == {"parameters": {}}
+    assert default["upstream_version"] == "1.18.35"
+    assert default["schema_json"] == {"parameters": {"turns": {"type": "integer"}}}
+    assert pinned["content_digest"] == harness_digest(
+        "opencode", "hrn_pinned", "1", ["anthropic"], {"parameters": {}}, "1.9.0"
+    )
+    assert terminus["upstream_version"] is None and terminus["content_digest"] == "sha256:old"

@@ -82,6 +82,7 @@ export type ModelConfig = S["ModelConfig"];
 export type HarnessParameterSpec = S["HarnessParameterSpec"];
 export type Harness = S["Harness"];
 export type HarnessAdapter = S["HarnessAdapter"];
+export type UpstreamVersions = S["UpstreamVersions"];
 
 export type AttachmentFile = S["AttachmentFile"];
 /** A published attachment package (03 section 6); its content never changes. */

@@ -142,6 +142,11 @@ class Executor(Protocol):
     harness_parameters: dict[str, frozenset[str]]
     """Parameters each adapter accepts; a harness version may only declare these. An
     adapter missing here accepts any (test doubles)."""
+    harness_model_parameters: dict[str, frozenset[str]]
+    """Model configuration parameters each adapter can pass on; one missing takes any."""
+    harness_upstream: dict[str, dict[str, str]]
+    """Adapters that install a program at a harness version's upstream version (N-09):
+    ``{"package": npm package, "tested": version smoke-tested with a real model}``."""
     network_restriction: bool | None
     """Whether this host can restrict task networks, which every model run needs (U-18):
     None until probed. When False, model runs are refused at acceptance."""

@@ -371,6 +371,9 @@ harness_versions = Table(
     Column("version", String(64), nullable=False),
     # Executor adapter that installs and drives this harness (e.g. Harbor's opencode).
     Column("agent", String(64), nullable=False),
+    # Exact version of the program the adapter installs in the task container (N-09);
+    # null for an adapter that installs nothing (Terminus-2 comes with the executor).
+    Column("upstream_version", String(64), nullable=True),
     Column("description", String(512), nullable=False),
     # Model protocols it can speak, and the schema of its parameters.
     _json("protocols_json"),

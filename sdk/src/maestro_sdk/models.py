@@ -395,6 +395,10 @@ class EffectiveHarness(BaseModel):
     content_digest: str
     name: str
     params: dict[str, str | int | float | bool]
+    upstream_version: Annotated[
+        str | None,
+        Field(description="Program version installed in the task container, when any"),
+    ]
     version: str
     version_id: str
 
@@ -535,11 +539,23 @@ class HarnessAdapter(BaseModel):
         extra="allow",
     )
     agent: str
+    model_parameters: Annotated[
+        list[str] | None,
+        Field(description="Model configuration parameters it passes on; null means any"),
+    ]
+    package: Annotated[
+        str | None,
+        Field(description="npm package it installs at a harness version's upstream version"),
+    ]
     parameters: Annotated[
         list[str] | None,
         Field(description="Parameters a harness version may declare; null means any"),
     ]
     protocols: list[Literal["openai-compatible", "openai", "anthropic"]]
+    tested_version: Annotated[
+        str | None,
+        Field(description="Upstream version this Maestro was smoke-tested with"),
+    ]
 
 
 class HarnessParameterSpec(BaseModel):
@@ -1512,6 +1528,39 @@ class TrialResult(BaseModel):
     verifier_status: str | None
 
 
+class UpstreamRelease(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    published_at: str | None
+    version: str
+
+
+class UpstreamTag(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    published_at: str | None
+    tag: str
+    version: str
+
+
+class UpstreamVersions(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    agent: str
+    checked_at: str | None
+    error: Annotated[str | None, Field(description="Why the registry could not be asked")]
+    package: str
+    recent: Annotated[list[UpstreamRelease], Field(description="Newest releases first")]
+    registry: Annotated[
+        str | None, Field(description="Registry asked (the setup network's npm mirror)")
+    ]
+    tags: Annotated[list[UpstreamTag], Field(description="Release tags (stable, latest)")]
+    tested_version: str | None
+
+
 class UsageSummary(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -1962,6 +2011,14 @@ class EnvelopeTeamPolicy(BaseModel):
         extra="allow",
     )
     data: TeamPolicy
+    meta: Meta
+
+
+class EnvelopeUpstreamVersions(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: UpstreamVersions
     meta: Meta
 
 
@@ -2921,6 +2978,10 @@ class Harness(BaseModel):
     name: str
     parameter_schema: HarnessParameterSchemaOutput
     protocols: list[Literal["openai-compatible", "openai", "anthropic"]]
+    upstream_version: Annotated[
+        str | None,
+        Field(description="Exact version of the program installed in the task container"),
+    ]
     version: str
 
 
@@ -2935,6 +2996,12 @@ class HarnessCreate(BaseModel):
         HarnessParameterSchemaInput | None, Field(validate_default=True)
     ] = {"parameters": {}}
     protocols: list[Literal["openai-compatible", "openai", "anthropic"]]
+    upstream_version: Annotated[
+        str | None,
+        Field(
+            description="Exact version of the program the adapter installs; required exactly when the adapter has a package"
+        ),
+    ] = None
     version: str
 
 
