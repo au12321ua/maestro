@@ -61,7 +61,7 @@ git push -u origin feature/my-change
 
 CI 在推送和 PR 时运行，不覆盖真实 Docker、Hub 与模型测试，这些仍按交接另行执行。分支保护、必需检查和远端运行结果仍需在各仓库实时核对，配置文件不代表保护已经生效。
 
-只改 Markdown 文档的推送不跑 CI（U-37）：工作流用 `paths` 自动判断，不必再写 `[skip ci]`（U-43）。`skills/` 与 `sdk/README.md` 由测试核对，改了仍会触发；改了代码、配置、依赖锁文件、前端、测试或工作流也都会触发。跳过后 CI 不会检查链接，只改文档时提交前在本地运行 `python3 tools/check_doc_links.py` 和 `git diff --check`。
+只改 Markdown 文档的推送不跑 CI（U-37）：工作流用 `paths` 自动判断，不必再写 `[skip ci]`（U-43）。`skills/` 与 `sdk/README.md` 由测试核对，改了仍会触发；改了代码、配置、依赖锁文件、前端、测试或工作流也都会触发。跳过后 CI 不会检查链接，只改文档时提交前在本地运行 `python3 tools/check_doc_links.py` 和 `git diff --check`。推送后在 Actions 页确认出现了这次的运行：Gitea 对没有新提交的推送（例如强推回旧提交）不触发，2026-10-28 还见过一次新分支首推没有触发、原因未明；没有运行时在 Actions 页手动运行 `verify`（`workflow_dispatch`），或用 API `POST /repos/<仓库>/actions/workflows/verify.yml/dispatches`。
 
 ## 资料与交付证据
 
