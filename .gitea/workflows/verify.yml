@@ -13,8 +13,11 @@ on:
   pull_request:
     paths: ["**", "!**.md", "skills/**", "sdk/README.md"]
   workflow_dispatch:
+# Publishing needs write access. Only the last step receives the token; the job's
+# artifact upload could not reach Gitea from the host runner (N-24), so the release is
+# published from the same job instead of a separate one.
 permissions:
-  contents: read
+  contents: write
 env:
   # Downloads that hang fail fast and are retried instead of using up the job (N-24).
   UV_HTTP_TIMEOUT: "60"
@@ -116,42 +119,23 @@ jobs:
             uv run python tools/build_release.py --assets --out "$out/dist"
             git log -1 --format='%s%n%n%b' > "$out/notes.md"
           fi
-          cp tools/publish_release.py "$out/"
           ls -l "$out/dist"
-      - if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref_type == 'tag') }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: release
-          path: ${{ runner.temp }}/release
-          if-no-files-found: error
-          retention-days: 7
-
-  release:
-    # Only this job can write to the repository, and it runs no project code or
-    # dependencies: it uploads what verify built and checked.
-    needs: verify
-    if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref_type == 'tag') }}
-    runs-on: ${{ vars.HH_RUNNER_LABEL || 'ubuntu-latest' }}
-    timeout-minutes: 15
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: release
-          path: release
       - name: Publish to Gitea Releases
+        if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref_type == 'tag') }}
+        # The only step that receives the write token; it runs no project code or
+        # dependencies, only the standard-library uploader on what was just checked.
         env:
           GITEA_API: ${{ github.server_url }}/api/v1
           GITEA_REPO: ${{ github.repository }}
           GITEA_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          out="$RUNNER_TEMP/release"
           sha="${{ github.sha }}"
           if [ "${{ github.ref_type }}" = tag ]; then
-            python3 -I release/publish_release.py --dist release/dist --notes release/notes.md \
+            python3 -I tools/publish_release.py --dist "$out/dist" --notes "$out/notes.md" \
               --tag "${{ github.ref_name }}" --commit "$sha"
           else
-            build="$(basename release/dist/maestro-*.tar.gz .tar.gz)"
-            python3 -I release/publish_release.py --dist release/dist --notes release/notes.md \
+            build="$(basename "$out"/dist/maestro-*.tar.gz .tar.gz)"
+            python3 -I tools/publish_release.py --dist "$out/dist" --notes "$out/notes.md" \
               --tag "dev-${sha:0:12}" --commit "$sha" --title "$build" --prerelease --keep 10
           fi

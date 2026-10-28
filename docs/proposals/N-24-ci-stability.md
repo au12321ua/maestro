@@ -12,8 +12,9 @@ N-02（持续发布）与 N-16（许可证）已经完成。N-24 中不依赖主
 
 1. **工具做进 CI 镜像**：在 `maestro-site` 里写 job 镜像的定义，装好 Python 3.12、Node 24 与 uv 0.13.5（版本以本仓库工作流与 `pyproject.toml`、`frontend/package.json` 为准），在 runner 主机上构建。之后本仓库的工作流用仓库变量引用这个镜像，去掉 `setup-python` 与 `setup-node`，并在开头核对镜像里的版本，对不上就失败并提示重建镜像。
 2. **依赖缓存跨运行保留**：建一个 CI 专用的 Docker 命名卷，在 act_runner 配置里允许并挂进 job 容器，作为 uv 与 npm 的下载缓存（工作流里设 `UV_CACHE_DIR`、`npm_config_cache` 指向它）。卷里只有公开的包，不放凭据，测试仍用隔离的 HOME。
-3. **代理**：如主机有可用代理，设仓库变量 `CI_PROXY`。工作流已经支持，只用在下载依赖与打包的步骤上。
-4. **收尾**：主机一侧就绪后，本仓库把 job 总时限从 45 分钟降到 20 分钟，把系统说明里 CI 的描述改成现状，删除本提案。
+3. **Actions artifacts 上传失败**：2026-10-28 两次运行（134 及其重跑）中，`actions/upload-artifact@v4` 都在 `CreateArtifact` 时 ECONNRESET，而同一容器从 Gitea 检出代码正常。runner 是 `gitea-runner-wsl v3.4.0`。查明 job 容器里 artifact 接口的地址（Gitea 的 `ROOT_URL` / `LOCAL_ROOT_URL`、代理设置）为什么连不通。修好之前发布在同一个 job 里完成，不依赖 artifact；U-35 约定的“CI 证据用 Actions artifacts”同样受影响。
+4. **代理**：如主机有可用代理，设仓库变量 `CI_PROXY`。工作流已经支持，只用在下载依赖与打包的步骤上。
+5. **收尾**：主机一侧就绪后，本仓库把 job 总时限从 45 分钟降到 20 分钟，把系统说明里 CI 的描述改成现状，删除本提案。
 
 主机一侧的步骤与结果记入 `maestro-site` 中 runner 主机的现场说明。
 
