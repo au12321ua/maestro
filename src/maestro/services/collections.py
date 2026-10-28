@@ -742,6 +742,67 @@ class Collections:
                 )
         return self.get(principal, collection_id)
 
+    def candidates(self, principal: Principal, collection_id: str) -> list[dict]:
+        """Recent model runs not in the collection, each with where it differs from the
+        fixed values (empty: it can be added), so a picker can offer them."""
+        with self.db.read() as conn:
+            row = self._live(conn, collection_id)
+            members = select(t.collection_members.c.run_id).where(
+                t.collection_members.c.collection_id == collection_id
+            )
+            runs = (
+                conn.execute(
+                    select(
+                        t.runs.c.id,
+                        t.runs.c.name,
+                        t.runs.c.state,
+                        t.runs.c.relation,
+                        t.runs.c.accepted_at,
+                        t.users.c.username.label("owner_username"),
+                        t.model_configs.c.name.label("model_name"),
+                        t.harness_versions.c.name.label("harness_name"),
+                        t.harness_versions.c.version.label("harness_version"),
+                    )
+                    .join(t.users, t.users.c.id == t.runs.c.owner_id)
+                    .join(t.model_configs, t.model_configs.c.id == t.runs.c.model_config_id)
+                    .join(
+                        t.harness_versions,
+                        t.harness_versions.c.id == t.runs.c.harness_version_id,
+                    )
+                    .where(t.runs.c.id.not_in(members))
+                    .order_by(t.runs.c.accepted_at.desc(), t.runs.c.id.desc())
+                    .limit(limits.COLLECTION_CANDIDATES)
+                )
+                .mappings()
+                .all()
+            )
+            ids = [r["id"] for r in runs]
+            removed = deleted.states(conn, "run", ids)
+            snapshots = _snapshots(conn, ids)
+            found = []
+            for run in runs:
+                snapshot = snapshots.get(run["id"])
+                if removed.get(run["id"]) or snapshot is None:
+                    continue
+                dims = dimensions_of(
+                    comparison_view(snapshot.effective_json),
+                    snapshot_contract(snapshot.policy_json),
+                )
+                found.append(
+                    {
+                        "run_id": run["id"],
+                        "name": run["name"],
+                        "state": run["state"],
+                        "relation": run["relation"],
+                        "owner_username": run["owner_username"],
+                        "accepted_at": run["accepted_at"],
+                        "model": run["model_name"],
+                        "harness": f"{run['harness_name']} {run['harness_version']}",
+                        "mismatches": nonconforming(row["fixed_json"], dims),
+                    }
+                )
+            return found
+
     def remove_run(self, principal: Principal, collection_id: str, run_id: str) -> dict:
         require_experiment(principal)
         with self.db.write() as conn:

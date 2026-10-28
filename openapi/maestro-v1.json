@@ -1944,6 +1944,73 @@
         "title": "CollectionBase",
         "type": "object"
       },
+      "CollectionCandidate": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted_at": {
+            "title": "Accepted At",
+            "type": "string"
+          },
+          "harness": {
+            "title": "Harness",
+            "type": "string"
+          },
+          "mismatches": {
+            "description": "Empty when the run can be added",
+            "items": {
+              "$ref": "#/components/schemas/Mismatch"
+            },
+            "title": "Mismatches",
+            "type": "array"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owner_username": {
+            "title": "Owner Username",
+            "type": "string"
+          },
+          "relation": {
+            "title": "Relation",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "preparing",
+              "running",
+              "finalizing",
+              "finished",
+              "cancelled",
+              "interrupted"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "name",
+          "state",
+          "relation",
+          "owner_username",
+          "accepted_at",
+          "model",
+          "harness",
+          "mismatches"
+        ],
+        "title": "CollectionCandidate",
+        "type": "object"
+      },
       "CollectionCopy": {
         "additionalProperties": false,
         "description": "A new collection with a changed specification; matching runs are carried over.",
@@ -6077,6 +6144,27 @@
           "meta"
         ],
         "title": "Envelope[list[Batch]]",
+        "type": "object"
+      },
+      "Envelope_list_CollectionCandidate__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/CollectionCandidate"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[list[CollectionCandidate]]",
         "type": "object"
       },
       "Envelope_list_CollectionEvent__": {
@@ -18892,6 +18980,49 @@
           }
         },
         "summary": "Update Collection",
+        "tags": [
+          "collections"
+        ]
+      }
+    },
+    "/api/v1/collections/{collection_id}/candidates": {
+      "get": {
+        "description": "Recent model runs not in the collection, with where each differs from it.",
+        "operationId": "list_collection_candidates",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_list_CollectionCandidate__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "List Collection Candidates",
         "tags": [
           "collections"
         ]

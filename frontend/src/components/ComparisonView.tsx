@@ -400,6 +400,11 @@ function Toggle({
   );
 }
 
+// Wide tables scroll sideways inside their box: cells keep to one line instead of being
+// squeezed to a character per line, and the first column stays in view.
+const NOWRAP = "[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap";
+const STICKY = "sticky left-0 z-10 bg-card";
+
 type SortKey = "mean" | "pass_rate" | "valid_trials" | "title";
 
 function Leaderboard({
@@ -436,8 +441,8 @@ function Leaderboard({
     };
     onChange({ layout: { ...layout, sort: next } });
   };
-  const head = (key: SortKey, text: string) => (
-    <TableHead>
+  const head = (key: SortKey, text: string, className?: string) => (
+    <TableHead className={className}>
       <button
         type="button"
         className="hover:underline"
@@ -451,13 +456,10 @@ function Leaderboard({
   const baseline = table.settings.baseline_run_id;
   return (
     <div className="overflow-x-auto rounded-md border">
-      <Table>
+      <Table className={NOWRAP}>
         <TableHeader>
           <TableRow>
-            {head("title", "运行")}
-            {varying.map((d) => (
-              <TableHead key={d}>{DIMENSION[d]}</TableHead>
-            ))}
+            {head("title", "运行", STICKY)}
             <TableHead className="text-right">任务</TableHead>
             {head("valid_trials", "有效 / 计划")}
             {head("mean", "均分")}
@@ -467,13 +469,12 @@ function Leaderboard({
             <TableHead>计 0 分</TableHead>
             <TableHead>剔除</TableHead>
             <TableHead>用量</TableHead>
-            <TableHead>证据</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {rows.map((row) => (
             <TableRow key={row.run_id}>
-              <TableCell className="max-w-[18rem]">
+              <TableCell className={cn(STICKY, "min-w-[12rem] max-w-[20rem]")}>
                 <Link
                   className="block truncate font-medium text-primary hover:underline"
                   to={`/runs/${row.run_id}`}
@@ -481,6 +482,13 @@ function Leaderboard({
                 >
                   {rowTitle(row)}
                 </Link>
+                {row.label && (
+                  <div className="truncate text-xs">
+                    {varying
+                      .map((d) => dimensionValue(table, d, row.run_id))
+                      .join(" · ")}
+                  </div>
+                )}
                 <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
                   {row.run_id === baseline && <Pill tone="info">基准</Pill>}
                   {!row.terminal && (
@@ -490,17 +498,11 @@ function Leaderboard({
                   <span className="truncate" title={row.name}>
                     {row.owner_username} · {row.name}
                   </span>
+                  {evidenceOf(row) !== "available" && (
+                    <span>{EVIDENCE[evidenceOf(row)] ?? evidenceOf(row)}</span>
+                  )}
                 </div>
               </TableCell>
-              {varying.map((d) => (
-                <TableCell
-                  key={d}
-                  className="max-w-[14rem] truncate text-xs"
-                  title={dimensionValue(table, d, row.run_id)}
-                >
-                  {dimensionValue(table, d, row.run_id)}
-                </TableCell>
-              ))}
               <TableCell className="text-right tabular-nums">
                 {row.task_count}
               </TableCell>
@@ -538,15 +540,6 @@ function Leaderboard({
               </TableCell>
               <TableCell className="text-xs">
                 <Usage row={row} />
-              </TableCell>
-              <TableCell className="text-xs">
-                <span
-                  className={cn(
-                    evidenceOf(row) !== "available" && "text-muted-foreground",
-                  )}
-                >
-                  {EVIDENCE[evidenceOf(row)] ?? evidenceOf(row)}
-                </span>
               </TableCell>
             </TableRow>
           ))}
@@ -733,14 +726,14 @@ function TaskTable({ table }: { table: Comparison }) {
       </CardHeader>
       <CardContent>
         <div className="max-h-[36rem] overflow-auto rounded-md border">
-          <Table>
+          <Table className="[&_td]:whitespace-nowrap">
             <TableHeader>
               <TableRow>
-                <TableHead>任务</TableHead>
+                <TableHead className={STICKY}>任务</TableHead>
                 {table.runs.map((r) => (
                   <TableHead
                     key={r.run_id}
-                    className="max-w-[10rem] truncate"
+                    className="h-auto min-w-[7rem] max-w-[10rem] whitespace-normal break-words py-2 align-bottom"
                     title={r.name}
                   >
                     {rowTitle(r)}
@@ -756,7 +749,7 @@ function TaskTable({ table }: { table: Comparison }) {
                     task.status !== "compared" && "text-muted-foreground",
                   )}
                 >
-                  <TableCell className="max-w-[18rem]">
+                  <TableCell className={cn(STICKY, "max-w-[16rem]")}>
                     <LongName value={task.task_key} prefix={prefix} />
                     {task.status === "no_valid_trials" && (
                       <div className="text-xs">因剔除未参与比较</div>

@@ -93,7 +93,7 @@ except TransportError as lost:
 | 批次（全有或全无） | `client.batches.preview(name, [cfg1, cfg2])`、`client.batches.submit(name, [cfg1, cfg2])` |
 | 实验方案 | `client.plans.create(name, template)`，提交时在配置里写 `plan_id` |
 | 比较几个运行 | `client.comparisons.compare([run_a, run_b])`：条件核对、各运行汇总与逐任务对齐；外部原因的失败默认剔除，其余失败算 0 分，`exclude=[]` 不剔除 |
-| 集合 | `c = client.collections.create(name, "models", base_run_id=run_id, run_ids=[...])`；`client.runs.submit(cfg, name=..., collection_id=c.id)` 按集合填好固定字段并自动加入；`client.collections.compare(c.id)`、`client.collections.add_runs(c.id, [run_id])` |
+| 集合 | `c = client.collections.create(name, "models", base_run_id=run_id, run_ids=[...])`；`client.runs.submit(cfg, name=..., collection_id=c.id)` 按集合填好固定字段并自动加入；`client.collections.compare(c.id)`、`client.collections.candidates(c.id)`（最近不在集合里的运行，`mismatches` 为空的可加入）、`client.collections.add_runs(c.id, [run_id])` |
 | 快照与结论 | `s = client.snapshots.create(name, collection_id=c.id)`（运行须已结束），`client.snapshots.add_note(s.id, "结论")` |
 | 附件 | `client.attachments.publish("path/to/dir")`（目录会打成 tar.gz；也接受 .zip / .tar / .tar.gz），配置里写 `attachments: [id]` |
 | 导出 | `e = client.exports.create([run_id])`、`client.operations.wait(e.operation_id)`、`client.exports.download(e.id, "export.zip")` |

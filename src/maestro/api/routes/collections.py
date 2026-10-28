@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Request
 from maestro.api.deps import maestro, ok, principal
 from maestro.api.models import (
     Collection,
+    CollectionCandidate,
     CollectionCopy,
     CollectionCreate,
     CollectionEvent,
@@ -117,6 +118,17 @@ def add_collection_runs(
             who, collection_id, body.model_dump(exclude_unset=True)
         ),
     )
+
+
+@router.get(
+    "/collections/{collection_id}/candidates",
+    response_model=Envelope[list[CollectionCandidate]],
+)
+def list_collection_candidates(
+    collection_id: str, request: Request, who: Principal = Depends(principal)
+):
+    """Recent model runs not in the collection, with where each differs from it."""
+    return ok(request, maestro(request).collections.candidates(who, collection_id))
 
 
 @router.put("/collections/{collection_id}/runs/{run_id}", response_model=Envelope[Collection])

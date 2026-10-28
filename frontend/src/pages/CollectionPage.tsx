@@ -91,6 +91,10 @@ export function CollectionPage() {
     );
   const can = (action: string) =>
     c.allowed_actions.includes(action) && !c.deletion;
+  // Members are named by what varies, as in the comparison above.
+  const titles = new Map(
+    (table.data?.runs ?? []).map((r) => [r.run_id, r.title] as const),
+  );
   const reloadAll = async () => {
     await Promise.all([collection.reload(), table.reload(), events.reload()]);
   };
@@ -265,6 +269,11 @@ export function CollectionPage() {
                       >
                         {m.run_name}
                       </Link>
+                      {titles.get(m.run_id) && (
+                        <div className="truncate text-xs text-muted-foreground">
+                          {titles.get(m.run_id)}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell className="text-xs">{m.label ?? "—"}</TableCell>
                     <TableCell>
@@ -410,39 +419,156 @@ function AddRuns({
   collection: Collection;
   onDone: () => void;
 }) {
-  const [text, setText] = useState("");
+  const path = { collection_id: collection.id };
+  const candidates = useLoad(
+    async () =>
+      (await api.get("/collections/{collection_id}/candidates", { path })).data,
+    [collection.id, collection.run_count],
+  );
+  const [chosen, setChosen] = useState<Set<string>>(new Set());
   const [error, setError] = useState<unknown>();
+  const all = candidates.data ?? [];
+  const fitting = all.filter((x) => x.mismatches.length === 0);
+  const others = all.filter((x) => x.mismatches.length > 0);
+  const toggle = (id: string) => {
+    const next = new Set(chosen);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setChosen(next);
+  };
   const add = async () => {
     setError(undefined);
-    const ids = text.split(/[\s,]+/).filter(Boolean);
     try {
       await api.post("/collections/{collection_id}/runs", {
-        path: { collection_id: collection.id },
-        body: { runs: ids.map((run_id) => ({ run_id })) },
+        path,
+        body: { runs: [...chosen].map((run_id) => ({ run_id })) },
       });
-      setText("");
-      toast.success("已加入");
+      toast.success(`已加入 ${chosen.size} 个运行`);
+      setChosen(new Set());
       onDone();
     } catch (err) {
       setError(err);
     }
   };
+  const row = (x: (typeof all)[number], pick: boolean) => (
+    <TableRow key={x.run_id}>
+      {pick && (
+        <TableCell className="w-8">
+          <input
+            type="checkbox"
+            aria-label={`选择 ${x.name}`}
+            checked={chosen.has(x.run_id)}
+            onChange={() => toggle(x.run_id)}
+          />
+        </TableCell>
+      )}
+      <TableCell className="max-w-[16rem]">
+        <Link
+          className="block truncate text-primary hover:underline"
+          to={`/runs/${x.run_id}`}
+          title={x.name}
+        >
+          {x.name}
+        </Link>
+        <div className="text-xs text-muted-foreground">
+          {x.owner_username} · {fmtTime(x.accepted_at)}
+          {x.relation === "rerun" && " · 重跑"}
+        </div>
+      </TableCell>
+      <TableCell className="text-xs">{x.model}</TableCell>
+      <TableCell className="text-xs">{x.harness}</TableCell>
+      <TableCell>
+        {pick ? (
+          <StatusPill value={label(RUN_STATE, x.state)} />
+        ) : (
+          <span className="text-xs text-muted-foreground">
+            {[
+              ...new Set(
+                x.mismatches.map((m) => DIMENSION[m.dimension as Dimension]),
+              ),
+            ].join("、")}
+            不同
+          </span>
+        )}
+      </TableCell>
+    </TableRow>
+  );
   return (
     <Card>
-      <CardContent className="grid gap-2 pt-6">
-        <TextField
-          id="add-run-ids"
-          label="运行 ID（多个用空格或逗号分开）"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          hint="固定维度与集合不同的运行会被拒绝，并列出哪里不同。也可以在运行详情页点“加入集合”。"
-        />
-        <ErrorAlert error={error} title="没有加入" />
-        <div>
-          <Button size="sm" disabled={!text.trim()} onClick={() => void add()}>
-            加入
-          </Button>
-        </div>
+      <CardHeader>
+        <CardTitle className="text-base">加入已有运行</CardTitle>
+      </CardHeader>
+      <CardContent className="grid gap-3">
+        <ErrorAlert error={candidates.error} />
+        {candidates.loading && !candidates.data && <Loading />}
+        {candidates.data && (
+          <>
+            <p className="text-sm text-muted-foreground">
+              最近的运行里，有 {fitting.length} 个符合这个集合的规格，可以加入。
+              {others.length > 0 &&
+                `另有 ${others.length} 个与固定条件不同，加不进来（见下方）。`}
+            </p>
+            {fitting.length > 0 && (
+              <div className="max-h-[24rem] overflow-auto rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-8">
+                        <input
+                          type="checkbox"
+                          aria-label="全选"
+                          checked={fitting.every((x) => chosen.has(x.run_id))}
+                          onChange={() =>
+                            setChosen(
+                              fitting.every((x) => chosen.has(x.run_id))
+                                ? new Set()
+                                : new Set(fitting.map((x) => x.run_id)),
+                            )
+                          }
+                        />
+                      </TableHead>
+                      <TableHead>运行</TableHead>
+                      <TableHead>模型</TableHead>
+                      <TableHead>Harness</TableHead>
+                      <TableHead>状态</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>{fitting.map((x) => row(x, true))}</TableBody>
+                </Table>
+              </div>
+            )}
+            <ErrorAlert error={error} title="没有加入" />
+            <div>
+              <Button
+                size="sm"
+                disabled={chosen.size === 0}
+                onClick={() => void add()}
+              >
+                加入所选{chosen.size > 0 && `（${chosen.size}）`}
+              </Button>
+            </div>
+            {others.length > 0 && (
+              <details className="text-sm">
+                <summary className="cursor-pointer text-muted-foreground">
+                  不符合规格的运行（{others.length}）
+                </summary>
+                <div className="mt-2 max-h-[24rem] overflow-auto rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>运行</TableHead>
+                        <TableHead>模型</TableHead>
+                        <TableHead>Harness</TableHead>
+                        <TableHead>原因</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>{others.map((x) => row(x, false))}</TableBody>
+                  </Table>
+                </div>
+              </details>
+            )}
+          </>
+        )}
       </CardContent>
     </Card>
   );

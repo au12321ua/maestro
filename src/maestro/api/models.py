@@ -1811,6 +1811,18 @@ class NotCarried(Model):
     mismatches: list[Mismatch]
 
 
+class CollectionCandidate(Model):
+    run_id: str
+    name: str
+    state: RunStateName
+    relation: str
+    owner_username: str
+    accepted_at: str
+    model: str
+    harness: str
+    mismatches: list[Mismatch] = Field(description="Empty when the run can be added")
+
+
 class Collection(Model):
     id: str
     name: str

@@ -50,6 +50,8 @@ ATTACHMENT_UNPACKED_MAX_BYTES = 1024 * 1024 * 1024
 ATTACHMENT_MAX_FILES = 10000
 # Runs compared at once, and runs one collection holds (06 section 8).
 COMPARISON_MAX_RUNS = 50
+# Recent runs a collection offers to add, each checked against its fixed values.
+COLLECTION_CANDIDATES = 200
 
 STRUCTURAL = (
     "IDEMPOTENCY_DAYS",

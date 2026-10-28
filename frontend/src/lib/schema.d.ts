@@ -964,6 +964,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/collections/{collection_id}/candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Collection Candidates
+         * @description Recent model runs not in the collection, with where each differs from it.
+         */
+        get: operations["list_collection_candidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/collections/{collection_id}/comparison": {
         parameters: {
             query?: never;
@@ -2636,6 +2656,33 @@ export interface components {
             /** Run Id */
             run_id?: string | null;
         };
+        /** CollectionCandidate */
+        CollectionCandidate: {
+            /** Accepted At */
+            accepted_at: string;
+            /** Harness */
+            harness: string;
+            /**
+             * Mismatches
+             * @description Empty when the run can be added
+             */
+            mismatches: components["schemas"]["Mismatch"][];
+            /** Model */
+            model: string;
+            /** Name */
+            name: string;
+            /** Owner Username */
+            owner_username: string;
+            /** Relation */
+            relation: string;
+            /** Run Id */
+            run_id: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "preparing" | "running" | "finalizing" | "finished" | "cancelled" | "interrupted";
+        };
         /**
          * CollectionCopy
          * @description A new collection with a changed specification; matching runs are carried over.
@@ -3964,6 +4011,12 @@ export interface components {
         Envelope_list_Batch__: {
             /** Data */
             data: components["schemas"]["Batch"][];
+            meta: components["schemas"]["Meta"];
+        };
+        /** Envelope[list[CollectionCandidate]] */
+        Envelope_list_CollectionCandidate__: {
+            /** Data */
+            data: components["schemas"]["CollectionCandidate"][];
             meta: components["schemas"]["Meta"];
         };
         /** Envelope[list[CollectionEvent]] */
@@ -9113,6 +9166,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Envelope_RecycleEntry_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_collection_candidates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_list_CollectionCandidate__"];
                 };
             };
             /** @description Structured error */

@@ -11,6 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { AddToCollection } from "@/components/AddToCollection";
 import {
   EmptyNote,
   ErrorAlert,
@@ -150,6 +151,7 @@ export function RunListPage() {
           <GitCompare />
           比较所选
         </Button>
+        <AddToCollection runIds={runs.filter((r) => selected.has(r.id)).map((r) => r.id)} />
         <Button
           variant="outline"
           size="sm"

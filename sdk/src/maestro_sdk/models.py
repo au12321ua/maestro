@@ -1893,6 +1893,23 @@ class CapacityOverview(BaseModel):
     providers: list[ProviderCapacity]
 
 
+class CollectionCandidate(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    accepted_at: str
+    harness: str
+    mismatches: Annotated[list[Mismatch], Field(description="Empty when the run can be added")]
+    model: str
+    name: str
+    owner_username: str
+    relation: str
+    run_id: str
+    state: Literal[
+        "queued", "preparing", "running", "finalizing", "finished", "cancelled", "interrupted"
+    ]
+
+
 class CollectionEvent(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -2384,6 +2401,14 @@ class EnvelopeListAuditEvent(BaseModel):
         extra="allow",
     )
     data: list[AuditEvent]
+    meta: Meta
+
+
+class EnvelopeListCollectionCandidate(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: list[CollectionCandidate]
     meta: Meta
 
 

@@ -562,6 +562,12 @@ class Collections(_Resource):
             _query(settings) or None,
         )
 
+    def candidates(self, collection_id: str) -> list[models.CollectionCandidate]:
+        """Recent runs not in the collection; ``mismatches`` is empty when one can join."""
+        return self._c._get(
+            f"collections/{collection_id}/candidates", list[models.CollectionCandidate]
+        )
+
     def add_runs(
         self, collection_id: str, run_ids: list[str], *, labels: Mapping[str, str] | None = None
     ) -> models.Collection:

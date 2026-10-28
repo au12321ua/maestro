@@ -1,5 +1,5 @@
-// "Add to a collection" on a run page: the run joins if it matches the collection's fixed
-// values; otherwise the refusal says what differs (06 section 8).
+// "Add to a collection" on a run page or for the runs selected in the list: they join if
+// they match the collection's fixed values; otherwise the refusal says what differs.
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Library } from "lucide-react";
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { api, errorText } from "@/lib/api";
 import type { Collection } from "@/lib/types";
 
-export function AddToCollection({ runId }: { runId: string }) {
+export function AddToCollection({ runIds }: { runIds: string[] }) {
   const [open, setOpen] = useState(false);
   const [collections, setCollections] = useState<Collection[] | null>(null);
   const [chosen, setChosen] = useState("");
@@ -29,9 +29,11 @@ export function AddToCollection({ runId }: { runId: string }) {
     try {
       await api.post("/collections/{collection_id}/runs", {
         path: { collection_id: chosen },
-        body: { runs: [{ run_id: runId }] },
+        body: { runs: runIds.map((run_id) => ({ run_id })) },
       });
-      toast.success("已加入集合");
+      toast.success(
+        runIds.length > 1 ? `已把 ${runIds.length} 个运行加入集合` : "已加入集合",
+      );
       setOpen(false);
     } catch (err) {
       toast.error(`没有加入：${errorText(err)}`, { duration: 10000 });
@@ -39,7 +41,12 @@ export function AddToCollection({ runId }: { runId: string }) {
   };
   return (
     <span className="flex items-center gap-1">
-      <Button size="sm" variant="outline" onClick={() => void show()}>
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={runIds.length === 0}
+        onClick={() => void show()}
+      >
         <Library />
         加入集合
       </Button>

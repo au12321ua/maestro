@@ -84,7 +84,7 @@ export function SnapshotPage() {
             </p>
           )}
           <p className="text-xs text-muted-foreground">
-            数字在保存时已冻结，运行或日志之后被删除、过期都不改变它们；“证据”一列是现在的情况。
+            数字在保存时已冻结，运行或日志之后被删除、过期都不改变它们；原始证据现在能否打开写在运行名下面。
           </p>
         </CardContent>
       </Card>

@@ -364,6 +364,7 @@ SDK_METHODS = {
     "copy_collection": "collections.copy",
     "delete_collection": "collections.delete",
     "compare_collection": "collections.compare",
+    "list_collection_candidates": "collections.candidates",
     "add_collection_runs": "collections.add_runs",
     "label_collection_run": "collections.label_run",
     "remove_collection_run": "collections.remove_run",

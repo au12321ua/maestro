@@ -128,6 +128,17 @@ def test_a_collection_keeps_only_matching_runs(service, version_id, executor):
         )
         assert error(refused) == (409, "COLLECTION_MISMATCH")
         assert "resources" in refused.json()["error"]["field_errors"][0]["message"]
+        # The picker offers runs not yet in, saying which ones would be refused and why.
+        again = run_of(alice, version_id, model_a, harness)
+        offered = {
+            x["run_id"]: x
+            for x in bob.get(f"/api/v1/collections/{collection_id}/candidates", expect=200).json()[
+                "data"
+            ]
+        }
+        assert set(offered) == {bigger, again}
+        assert offered[again]["mismatches"] == [] and offered[again]["model"] == "demo"
+        assert {m["dimension"] for m in offered[bigger]["mismatches"]} == {"resources"}
 
         # Submitting from the collection: it fills in the fixed fields, the run joins.
         response = bob.post(
@@ -341,9 +352,7 @@ def test_an_agent_keeps_a_collection_through_the_sdk(service, version_id, execut
         token = create_pat(member, "experiment")
         agent = MaestroClient("http://testserver", token.token, http=token.client)
         base = run_of(member, version_id, model_a, harness)
-        collection = agent.collections.create(
-            "models", "models", base_run_id=base, run_ids=[base]
-        )
+        collection = agent.collections.create("models", "models", base_run_id=base, run_ids=[base])
         executor.script = {"add-02": [RATE_LIMITED]}
         submission = agent.runs.submit(
             agent_body(model_b, harness), name="b", collection_id=collection.id
