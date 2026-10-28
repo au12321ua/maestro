@@ -51,6 +51,7 @@
 | U-39 | 2026-10-28 | N-08 的待定问题全部按推荐：安装网络在执行时读当前修订；`config.toml` 里旧的准备代理键忽略并在日志提醒、到网页重填；成员能看到修订完整内容；安装变量首版全局一份；“保存前试一下”以后再说。确认后开始实施 | [12](12-operations.md) 第 3 节；提案 N-08（已完成） |
 | U-40 | 2026-10-28 | 下一批三条线并行：常规 Harness（Codex 与 Claude Code）、网页侧边栏与长任务名、CD 与许可证。Codex 与 Claude Code 的真实模型实测预算合计 20 美元 | 提案 [N-09](../proposals/N-09-codex-claude-code.md) |
 | U-41 | 2026-10-28 | N-09 的待定问题全部按推荐：成员不能在单个运行里换 Harness 的上游版本；Claude Code 若 npm 包实测可用就统一走 npm 安装；版本提示默认推荐 Claude Code 的 `stable`；只支持 API 密钥，不支持订阅账号登录。确认后直接合入并开始实施 | 提案 [N-09](../proposals/N-09-codex-claude-code.md) |
+| U-42 | 2026-10-28 | CI 的痛点是不稳：服务器网络有问题，下载常卡到超时，网络正常时一次 CI 只要 3～4 分钟。发布包放 Gitea Releases。GitHub 的 CI/CD 也要做，但只在发布 `master` 时推送到 GitHub；主要测试在 Gitea 上做，GitHub 上不重复测试，只负责发布包 | 提案 [N-02](../proposals/N-02-release-ci-license.md)（含 N-16、N-24） |
 
 ### D-020 运行级调度（落实 U-05）
 
