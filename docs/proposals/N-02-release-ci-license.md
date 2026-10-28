@@ -1,6 +1,6 @@
 # N-02 持续发布、CI 稳定与开源许可证（含 N-16、N-24）
 
-状态：设计中 · 优先级：一 · 2026-10-28 · 相关：[运维](../design/12-operations.md) 第 1、2 节、[测试与验收](../design/13-testing-plan.md) 第 2、9 节、[开发流程](../guides/development-workflow.md)“发布与运行版本”、[开发交接](../HANDOFF.md) 的 CI 一条、U-29、U-31、U-37、U-40、U-42
+状态：已确认 · 优先级：一 · 2026-10-28 · 相关：[运维](../design/12-operations.md) 第 1、2 节、[测试与验收](../design/13-testing-plan.md) 第 2、9 节、[开发流程](../guides/development-workflow.md)“发布与运行版本”、[开发交接](../HANDOFF.md) 的 CI 一条、U-29、U-31、U-37、U-40、U-42、U-43
 
 三件事合在一份提案里，因为它们改的是同一处：CI 工作流与发布包。CD 依赖 CI 稳定，许可证清单本身又是发布包的一部分。索引里仍保留三个编号：N-24 CI 稳定、N-16 许可证、N-02 发布。
 
@@ -31,8 +31,8 @@ U-31 定了 Apache 2.0。旧历史里加过 `LICENSE.txt`（`55b4274`），重�
 
 目标：锁文件没变的推送，除了 Gitea 本身不需要连外网；网络卡住的下载要尽快失败并重试，不要等满 45 分钟。
 
-1. **工具做进 CI 镜像**：Python 3.12、Node 24 和固定版本的 uv 直接装在 job 镜像里，工作流里去掉 `setup-python` 与 `setup-node`。镜像定义放在本仓库（`.gitea/ci/Dockerfile`），因为它的版本要和 `pyproject.toml`、`frontend/package.json` 对应；由管理员在 runner 主机上手动构建，很少重建。只剩 `actions/checkout` 一个外部 action。
-2. **依赖缓存跨运行保留**：用一个 CI 专用的 Docker 命名卷放 uv 与 npm 的下载缓存，通过 act_runner 配置挂进 job 容器。缓存里只有公开的包，不放凭据；测试仍用隔离的 HOME，与主机上的真实实例互不相干。锁文件没变时，`uv sync` 与 `npm ci` 全部命中缓存。
+1. **工具做进 CI 镜像**：Python 3.12、Node 24 和固定版本的 uv 直接装在 job 镜像里，工作流里去掉 `setup-python` 与 `setup-node`，只剩 `actions/checkout` 一个外部 action。镜像定义放私有仓库 `maestro-site`（U-43），由部署者在 runner 主机上构建，很少重建；本仓库的工作流只按名字引用它（仓库变量，未设置时用现在的 `ci-base:ubuntu-24.04`），并在开头核对镜像里的 Python、Node 与 uv 版本，与 `pyproject.toml`、`frontend/package.json` 对不上时直接失败并说明要重建镜像。
+2. **依赖缓存跨运行保留**：用一个 CI 专用的 Docker 命名卷放 uv 与 npm 的下载缓存，通过 act_runner 配置挂进 job 容器（主机一侧的配置同样由部署者做，见“影响”）。缓存里只有公开的包，不放凭据；测试仍用隔离的 HOME，与主机上的真实实例互不相干。锁文件没变时，`uv sync` 与 `npm ci` 全部命中缓存。
 3. **需要下载时走代理**：仓库变量 `CI_PROXY`（可以为空）设给依赖安装那几步的 `HTTPS_PROXY`，可以用部署主机已有的代理。不改 uv 的索引地址，因为那会让 `uv.lock` 在 `--locked` 下被判为过期。
 4. **快速失败、自动重试**：安装依赖的步骤设单步时限（10 分钟），uv 与 npm 设较短的连接超时，整步失败后再重试两次。job 总时限从 45 分钟降到 20 分钟。
 5. **小幅精简**：`test_sdk.py::test_generated_contract_and_sdk_models_are_current` 和 CI 的 `generate_clients.py --check` 查的是同一件事，CI 里只保留一处。`pytest-xdist` 并行（预计把 107 秒降到 1 分钟以内）先试：测试之间如果共享端口、文件或子进程，就不做。
@@ -78,10 +78,10 @@ U-31 定了 Apache 2.0。旧历史里加过 `LICENSE.txt`（`55b4274`），重�
 
 ## 影响
 
-- 工作流：`.gitea/workflows/verify.yml`（镜像、缓存、代理、时限、`release` job）；新增 `.gitea/ci/Dockerfile`、`.github/workflows/release.yml`。
+- 工作流：`.gitea/workflows/verify.yml`（引用镜像与核对版本、缓存路径、代理、时限、`release` job）；新增 `.github/workflows/release.yml`。
 - 代码：新增 `tools/third_party_licenses.py`；`tools/build_release.py` 加入许可证清单与 `SHA256SUMS`（如需字节一致，再加时间戳固定）；`dev` 改为 `.dev0` 版本号。
 - 仓库根目录：`LICENSE`、`NOTICE`，以及 README 的许可证说明；三个 `pyproject.toml` 与 `frontend/package.json` 写明许可证。
-- runner 主机：构建 CI 镜像、创建缓存卷、在 act_runner 配置中允许挂载这个卷，并设置仓库变量 `CI_PROXY`。具体步骤写进私有仓库 `maestro-site` 中 runner 主机的现场说明。
+- runner 主机（U-43：由用户在主机上另找 Agent 实施，本仓库只给思路）：在 `maestro-site` 里写 CI 镜像定义并在主机上构建；创建缓存卷，在 act_runner 配置中允许并挂载它；设置镜像名与 `CI_PROXY` 两个仓库变量；步骤与结果记入 runner 主机的现场说明。本仓库的工作流改动在主机一侧就绪之后合入，否则 CI 会因找不到镜像或卷而失败。
 - 系统说明：[12](../design/12-operations.md) 第 1、2 节（发布物从哪里来）、[13](../design/13-testing-plan.md) 第 2、9 节、[开发流程](../guides/development-workflow.md)“发布与运行版本”、[开发交接](../HANDOFF.md) 的 CI 一条、[部署指南](../guides/deployment.md)（从 Releases 下载）。
 
 ## 验收
@@ -93,12 +93,16 @@ U-31 定了 Apache 2.0。旧历史里加过 `LICENSE.txt`（`55b4274`），重�
 - 在测试用的 GitHub 仓库或 fork 上推送 tag，产生 GitHub Release，且没有运行任何测试。
 - 给许可证脚本一个含 GPL 依赖的样例时，它失败。
 
-## 待定问题
+## 已定问题
 
-1. CI 镜像定义放本仓库（推荐，版本与锁文件一起改），还是放 `maestro-site`？
-2. 依赖缓存用 CI 专用的命名卷（推荐，简单，不依赖 act_runner 的缓存服务），还是用 `actions/cache`？
-3. 正式版本的 tag 推送要不要再完整跑一次 `verify`？推荐再跑一次：多约 4 分钟，但能保证发布物来自刚测过的同一份代码，不必去查之前那次运行的状态。
-4. GitHub 上由 tag 重新构建（推荐），还是要求两边的包字节完全一致（需要固定时间戳，多一点工作量）？
-5. `NOTICE` 里的版权人写 `auua`，还是写 “The Maestro Authors”？后者便于以后接受外部贡献。
-6. 是否用工作流的 `paths-ignore` 自动跳过只改 Markdown 的推送，代替手写 `[skip ci]`（U-37）？推荐采用：判断规则相同，只是不再靠人记。
-7. `pytest-xdist` 先试再决定（推荐），还是这次不碰？
+2026-10-28 用户确认（U-43）：
+
+1. CI 镜像定义放 `maestro-site`，主机一侧（镜像、缓存卷、act_runner 配置、仓库变量）由用户在主机上另找 Agent 实施；本提案只写思路。
+2. 依赖缓存用 CI 专用的命名卷。
+3. 正式版本的 tag 推送再完整跑一次 `verify`。
+4. GitHub 上由 tag 重新构建，不要求与 Gitea 的包字节一致。
+5. `NOTICE` 的版权人写 “The Maestro Authors”。
+6. 用 `paths-ignore` 自动跳过只改 Markdown 的推送，代替手写 `[skip ci]`；判断规则与 U-37 相同。
+7. `pytest-xdist` 先试再决定。
+
+仍需实测确认：Gitea 存在 `.gitea/workflows` 时忽略 `.github/workflows`；`release` job 的自动令牌能创建发布、删除旧预发布与 tag；`paths-ignore` 在本 Gitea 版本上按预期生效。
