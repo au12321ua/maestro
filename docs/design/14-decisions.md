@@ -53,6 +53,7 @@
 | U-41 | 2026-10-28 | N-09 的待定问题全部按推荐：成员不能在单个运行里换 Harness 的上游版本；Claude Code 若 npm 包实测可用就统一走 npm 安装；版本提示默认推荐 Claude Code 的 `stable`；只支持 API 密钥，不支持订阅账号登录。确认后直接合入并开始实施 | [03](03-configuration-attachments.md) 第 2 节；提案 N-09（已完成） |
 | U-42 | 2026-10-28 | CI 的痛点是不稳：服务器网络有问题，下载常卡到超时，网络正常时一次 CI 只要 3～4 分钟。发布包放 Gitea Releases。GitHub 的 CI/CD 也要做，但只在发布 `master` 时推送到 GitHub；主要测试在 Gitea 上做，GitHub 上不重复测试，只负责发布包 | 提案 N-02、N-16（已完成）与 [N-24](../proposals/N-24-ci-stability.md) |
 | U-43 | 2026-10-28 | N-02（含 N-16、N-24）确认：CI 镜像定义放私有仓库 `maestro-site`，主机一侧由用户在主机上另找 Agent 实施，提案只写思路；其余待定问题按推荐——缓存用 CI 专用命名卷、正式版本 tag 再跑一次完整 CI、GitHub 由 tag 重新构建、`NOTICE` 版权人写 “The Maestro Authors”、用 `paths-ignore` 代替手写 `[skip ci]`、`pytest-xdist` 先试再定 | 提案 N-02、N-16（已完成）与 [N-24](../proposals/N-24-ci-stability.md) |
+| U-44 | 2026-10-28 | OpenCode 补上 2.x 版本线（npm `@opencode/cli`，新架构），1.x 是上游逐步放弃的版本线；两条线并存 | [03](03-configuration-attachments.md) 第 2 节 |
 
 ### D-020 运行级调度（落实 U-05）
 

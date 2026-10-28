@@ -38,7 +38,7 @@ Maestro 是自托管的 Agent 评测平台：在本机 Docker 中用 Harbor 执�
 | 模块 | 提供 | 不提供 |
 | --- | --- | --- |
 | 数据集（[02](02-datasets-preparation.md)） | Hub 搜索与导入、不可变版本、管理员首次准备与准入、局部可提交、运行内共享恢复 | Hub 之外的来源（N-19）；独立验证环境与辅助服务（N-01）；跨任务共享镜像（N-14） |
-| 配置（[03](03-configuration-attachments.md)） | 团队模型配置与凭据、Harness（Terminus-2、OpenCode、Codex、Claude Code）与 Oracle 测试模式、附件、分层解析与内容快照 | 通用容器内 Harness 如 Codex、Claude Code（N-09）；个人模型 key |
+| 配置（[03](03-configuration-attachments.md)） | 团队模型配置与凭据、Harness（Terminus-2、OpenCode 1.x 与 2.x、Codex、Claude Code）与 Oracle 测试模式、附件、分层解析与内容快照 | 通用容器内 Harness 如 Codex、Claude Code（N-09）；个人模型 key |
 | 提交（[04](04-plans-submission.md)） | 方案、单次与批次提交、幂等、PAT 额度、重跑与修改后运行、取消 | 实验矩阵生成；private 实验 |
 | 执行（[05](05-scheduling-execution.md)） | 按受理顺序领取（大运行不挡放得下的小运行）、资源准入、重启对账、环境清理 | 试次粒度调度（[N-13](../proposals/N-13-trial-granularity.md)）；公平调度；多机 Worker；GPU；金额或 token 预算 |
 | 结果（[06](06-results-scoring.md)、[07](07-artifacts-export.md)） | 运行与任务结果、基本统计、日志、下载、批量导出、回收站 | 集合、对齐比较与分析快照（[N-11](../proposals/N-11-collections-comparison.md)） |

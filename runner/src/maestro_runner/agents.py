@@ -73,10 +73,18 @@ TERMINUS_PARAMETERS = {
 # it must be reproducible from its snapshot.
 PACKAGES = {
     "opencode": "opencode-ai",
+    # OpenCode 2 is a new line (a background server and clients) published as another
+    # package; Harbor 0.24.0 and 0.25.0 drive the 1.x line only.
+    "opencode-2": "@opencode/cli",
     "codex": "@openai/codex",
     "claude-code": "@anthropic-ai/claude-code",
 }
-TESTED = {"opencode": "1.18.35", "codex": "0.165.0", "claude-code": "2.1.308"}
+TESTED = {
+    "opencode": "1.18.35",
+    "opencode-2": "2.2.0",
+    "codex": "0.165.0",
+    "claude-code": "2.1.308",
+}
 EXACT_VERSION = re.compile(r"\d+(\.\d+){1,3}([-+][0-9A-Za-z.-]+)?")
 MODEL_KEY = "/run/maestro/model-key"
 ADAPTERS = {
@@ -86,6 +94,11 @@ ADAPTERS = {
         "model_parameters": None,
     },
     "opencode": {
+        "protocols": ("anthropic", "openai", "openai-compatible"),
+        "parameters": set(),
+        "model_parameters": None,
+    },
+    "opencode-2": {
         "protocols": ("anthropic", "openai", "openai-compatible"),
         "parameters": set(),
         "model_parameters": None,
@@ -140,6 +153,7 @@ def agent_config(agent: dict) -> dict[str, Any]:
             raise InputError(f"{adapter} needs an exact upstream version, not {version!r}")
         return {
             "opencode": _opencode_config,
+            "opencode-2": functools.partial(_opencode_config, line="opencode-2"),
             "codex": _codex_config,
             "claude-code": _claude_code_config,
         }[adapter](protocol, model, params, version)
@@ -311,9 +325,12 @@ async def install(agent, environment) -> None:
         report(trial_name, records)
 
 
-def _opencode_config(protocol: str, model: dict, params: dict, version: str) -> dict[str, Any]:
+def _opencode_config(
+    protocol: str, model: dict, params: dict, version: str, line: str = "opencode"
+) -> dict[str, Any]:
     """OpenCode reads its provider from its own config: the endpoint and a key file, and
-    the model's parameters as provider options. Web tools stay off (no network for them)."""
+    the model's parameters as provider options. Web tools stay off (no network for them).
+    Both lines read the same config."""
     provider = {
         "anthropic": "anthropic",
         "openai": "openai",
@@ -326,7 +343,8 @@ def _opencode_config(protocol: str, model: dict, params: dict, version: str) -> 
     if provider == "maestro":
         settings |= {"npm": "@ai-sdk/openai-compatible", "name": "maestro"}
     return {
-        "import_path": "maestro_runner.agents:MaestroOpenCode",
+        "import_path": "maestro_runner.agents:"
+        + ("MaestroOpenCode2" if line == "opencode-2" else "MaestroOpenCode"),
         "model_name": f"{provider}/{model['model_id']}",
         "kwargs": {
             "version": version,
@@ -442,6 +460,78 @@ def _opencode():
 
 
 @functools.cache
+def _opencode_2():
+    from harbor.agents.installed.base import with_prompt_template
+    from harbor.agents.installed.node_install import nvm_node_install_snippet
+    from harbor.agents.installed.opencode import OpenCode
+
+    class OpenCode2(OpenCode):
+        """The 2.x line through Harbor's OpenCode agent, which writes the same config
+        (``~/.config/opencode/opencode.json``) and reads the same event stream; only the
+        package, the version output and the command differ. ``--standalone`` keeps the
+        server inside this process instead of a background service, ``--auto`` replaces
+        1.x's ``--dangerously-skip-permissions``, and the agent phase cannot reach
+        anything but the model, so updates and the models.dev catalogue stay off."""
+
+        def parse_version(self, stdout: str) -> str:
+            found = re.search(r"\d+\.\d+\.\d+\S*", stdout)
+            return found.group(0) if found else stdout.strip()
+
+        async def install(self, environment) -> None:
+            await self.ensure_system_dependencies(
+                environment, ("curl", "bash", "coreutils", "nodejs", "npm")
+            )
+            await self.exec_as_agent(
+                environment,
+                command=(
+                    "set -euo pipefail; "
+                    "if ldd --version 2>&1 | grep -qi musl || [ -f /etc/alpine-release ]; then "
+                    "node --version && npm --version; "
+                    f"else {nvm_node_install_snippet()}; fi && "
+                    f"npm i -g {PACKAGES['opencode-2']}@{self._version} && "
+                    "opencode --version"
+                ),
+            )
+
+        @with_prompt_template
+        async def run(self, instruction, environment, context) -> None:
+            self._instruction = instruction
+            env = {
+                **self.model_connection.env,
+                "OPENCODE_FAKE_VCS": "git",
+                "OPENCODE_DISABLE_AUTOUPDATE": "1",
+                "OPENCODE_DISABLE_MODELS_FETCH": "1",
+                "XDG_DATA_HOME": (self.environment_logs_dir / "opencode" / "xdg-data").as_posix(),
+                "XDG_STATE_HOME": (self.environment_logs_dir / "opencode" / "xdg-state").as_posix(),
+            }
+            config = self._build_register_config_command()
+            if config:
+                await self.exec_as_agent(environment, command=config, env=env)
+            output = (self.environment_logs_dir / self._OUTPUT_FILENAME).as_posix()
+            await self.exec_as_agent(
+                environment,
+                command=(
+                    "[ -f ~/.nvm/nvm.sh ] && . ~/.nvm/nvm.sh; "
+                    "opencode run --standalone --auto --format json --thinking "
+                    f"--model {shlex.quote(self.model_name)} -- {shlex.quote(instruction)} "
+                    f"2>&1 </dev/null | stdbuf -oL tee {shlex.quote(output)}"
+                ),
+                env=env,
+            )
+            if messages := self._error_messages():
+                from harbor.agents.installed.base import NonZeroAgentExitCodeError
+
+                raise NonZeroAgentExitCodeError(
+                    "OpenCode emitted error event(s): " + "; ".join(messages[:3])
+                )
+
+    class MaestroOpenCode2(_container_harness(OpenCode2)):
+        """OpenCode 2 reading its key file through its provider config."""
+
+    return MaestroOpenCode2
+
+
+@functools.cache
 def _codex():
     from harbor.agents.installed.codex import Codex
 
@@ -532,6 +622,7 @@ def _terminus():
 _CLASSES = {
     "MaestroTerminus2": _terminus,
     "MaestroOpenCode": _opencode,
+    "MaestroOpenCode2": _opencode_2,
     "MaestroCodex": _codex,
     "MaestroClaudeCode": _claude_code,
 }
@@ -541,6 +632,7 @@ def agent_class(adapter: str):
     return {
         "terminus-2": _terminus,
         "opencode": _opencode,
+        "opencode-2": _opencode_2,
         "codex": _codex,
         "claude-code": _claude_code,
     }[adapter]()

@@ -114,6 +114,7 @@ Runner 依赖 Harbor 的私有接口与内部行为，升级 Harbor 时须逐项
 - 包装 `DockerEnvironment._apply_network_policy`：受限后不再回到 public，并拒绝未经代理重定向的 TCP（M1 发现 Harbor 会在阶段之间恢复 public、旧连接不受新策略约束）。
 - 调用 `DockerEnvironment._egress_control_kernel_support` 做网络能力预检；它在没有 `/proc/config.gz` 时乐观放行，所以真实收紧另有测试覆盖。
 - Terminus-2 为在 Runner 内传入密钥覆盖了 `_init_llm`。
+- OpenCode 2.x 借用 Harbor 1.x OpenCode 类的配置写入、事件解析与用量统计，自己重写安装、版本解析与运行命令；上游 2.x 改事件格式时用量会变成未知。
 - 容器内 Harness 的包装层覆盖了 `_env_sources`（不读 Runner 环境）与 `install`（已有同一版本则跳过）；Codex 覆盖 `_resolve_auth_json_path` 并依赖 `_REMOTE_CODEX_SECRETS_DIR`，Claude Code 依赖 `config` 作为 `--settings` 上传与 `ANTHROPIC_BASE_URL` 的读取方式，并重写了安装命令。实时日志按 `agent/opencode.txt`、`agent/codex.txt`、`agent/claude-code.txt` 的事件格式渲染（`job.py`），上游改格式时只影响可读日志，不影响评分。
 - Runner 照搬 Harbor 0.24.0 TrialQueue 的重试规则推断 attempt_finished 中的“是否还会重试”（`_will_retry`）。
 

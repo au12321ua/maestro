@@ -40,13 +40,15 @@
 | 适配器 | 协议 | 在哪里调模型 | 安装 |
 | --- | --- | --- | --- |
 | `terminus-2` | 三种都可以 | Runner 内 | 随 Harbor，无上游版本 |
-| `opencode` | 三种都可以 | 任务容器内 | npm `opencode-ai` |
+| `opencode` | 三种都可以 | 任务容器内 | npm `opencode-ai`（1.x，上游在逐步放弃） |
+| `opencode-2` | 三种都可以 | 任务容器内 | npm `@opencode/cli`（2.x，新架构：后台服务加客户端；U-44） |
 | `codex` | 只有 `openai`（Responses） | 任务容器内 | npm `@openai/codex` |
 | `claude-code` | 只有 `anthropic` | 任务容器内 | npm `@anthropic-ai/claude-code`（U-41：不用 Harbor 在 glibc 镜像上的官方下载站，这样安装网络的 npm 镜像源也能用） |
 
 - 容器内的 Harness 每个版本都固定一个**上游版本**：只接受确切的版本号（不接受 `latest`、标签或范围），计入内容摘要，成员不能在运行里换（U-41），换版本就是发布新的 Harness 版本。服务能查到 npm 时，发布不存在的版本被拒绝；查不到不影响发布。镜像里已有同一版本时跳过安装，否则每个试次在 setup 中安装一次（Claude Code 的原生二进制约 300 MB）。
 - 管理页发布表单列出上游的 `stable` / `latest` 标签与最近的正式版本（带发布日期）、这一版 Maestro 用真实模型测过的版本、团队已发布的同适配器版本；比测过的版本新时只提醒，不阻止。查询经安装网络的代理与 `npm_config_registry`（[12](12-operations.md) 第 3 节），结果缓存 10 分钟（`src/maestro/services/upstream.py`）。
 - Codex 与 Claude Code 只能传递部分模型配置参数（Codex：`reasoning_effort`、`reasoning_summary`；Claude Code：`reasoning_effort`、`max_thinking_tokens`），其余在解析阶段报 `HARNESS_MODEL_PARAMS_UNSUPPORTED`；OpenCode 与 Terminus-2 传递全部参数。Claude Code 可暴露的 Harness 参数是 `max_turns`，Codex 与 OpenCode 没有。
+- OpenCode 的两条版本线是两个适配器，包名和命令行不同，读同一份 provider 配置、写同一种事件流。2.x 以 `run --standalone --auto` 运行（服务留在本进程内，不起后台服务），并关掉自动更新与 models.dev 目录拉取（Agent 阶段只能访问模型主机）。Harbor 0.24.0 与 0.25.0 自带的 OpenCode 都只支持 1.x。
 - Anthropic 协议的地址写成带 `/v1` 或不带都可以，Claude Code 自己会加 `/v1/messages`，适配器去掉末尾的 `/v1`。Codex 只把模型标识最后一段当作 `--model`，所以含 `/` 的模型标识被拒绝。
 - 只支持 API 密钥，不支持订阅账号登录（U-41）。
 

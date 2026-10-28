@@ -6,7 +6,7 @@ Maestro 让受邀的可信团队通过网页和 SDK 提交、观察、比较和�
 
 ## 当前状态
 
-0.3.0 已有：Hub 数据集导入与环境准备、分层配置与 Harness（Terminus-2、OpenCode、Codex、Claude Code）、附件、提交与批次、重跑、实时执行页、评分与产物、导出与回收站、Python SDK，以及 `maestroctl` 系统级安装、更新、备份恢复与卸载。系统怎样工作见[系统说明](docs/design/README.md)，下一步计划见[提案索引](docs/proposals/README.md)。
+0.3.0 已有：Hub 数据集导入与环境准备、分层配置与 Harness（Terminus-2、OpenCode 1.x 与 2.x、Codex、Claude Code）、附件、提交与批次、重跑、实时执行页、评分与产物、导出与回收站、Python SDK，以及 `maestroctl` 系统级安装、更新、备份恢复与卸载。系统怎样工作见[系统说明](docs/design/README.md)，下一步计划见[提案索引](docs/proposals/README.md)。
 
 ## 部署
 

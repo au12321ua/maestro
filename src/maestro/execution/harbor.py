@@ -143,6 +143,7 @@ class HarborExecutor:
     harness_adapters: ClassVar[dict[str, tuple[str, ...]]] = {
         "terminus-2": ("anthropic", "openai", "openai-compatible"),
         "opencode": ("anthropic", "openai", "openai-compatible"),
+        "opencode-2": ("anthropic", "openai", "openai-compatible"),
         # Codex speaks the Responses API only; Claude Code the Messages API only.
         "codex": ("openai",),
         "claude-code": ("anthropic",),
@@ -161,6 +162,7 @@ class HarborExecutor:
             }
         ),
         "opencode": frozenset(),
+        "opencode-2": frozenset(),
         "codex": frozenset(),
         "claude-code": frozenset({"max_turns"}),
     }
@@ -174,6 +176,7 @@ class HarborExecutor:
     # model (maestro_runner.agents.PACKAGES and TESTED).
     harness_upstream: ClassVar[dict[str, dict[str, str]]] = {
         "opencode": {"package": "opencode-ai", "tested": "1.18.35"},
+        "opencode-2": {"package": "@opencode/cli", "tested": "2.2.0"},
         "codex": {"package": "@openai/codex", "tested": "0.165.0"},
         "claude-code": {"package": "@anthropic-ai/claude-code", "tested": "2.1.308"},
     }
@@ -182,6 +185,7 @@ class HarborExecutor:
     model_called_from: ClassVar[dict[str, str]] = {
         "terminus-2": "runner",
         "opencode": "container",
+        "opencode-2": "container",
         "codex": "container",
         "claude-code": "container",
     }

@@ -1096,7 +1096,8 @@ def container_harness_with_a_real_model(
             )
             return pat.get(f"/api/v1/artifacts/{found['id']}/download", expect=200).text
 
-        live = f"agent/{adapter}"
+        # Both OpenCode lines write agent/opencode.txt.
+        live = "agent/opencode" if adapter.startswith("opencode") else f"agent/{adapter}"
         print("\nOPERATION", operation["status"], "USAGE", summary.get("usage"))
         print(
             "TRIALS",
@@ -1156,6 +1157,7 @@ def test_opencode_with_a_real_model(settings):
         ("codex", "openai", "MAESTRO_CODEX"),
         ("claude-code", "anthropic", "MAESTRO_CLAUDE"),
         ("opencode", "openai-compatible", "MAESTRO_MODEL"),
+        ("opencode-2", "openai-compatible", "MAESTRO_MODEL"),
     ],
 )
 def test_installed_harness_with_a_real_model(settings, adapter, protocol, prefix):

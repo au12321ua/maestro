@@ -59,6 +59,10 @@ def test_opencode_reads_the_key_from_a_file(agents):  # noqa: F811
     assert provider["models"] == {"gpt-test": {"options": {"temperature": 0}}}
     assert KEY not in json.dumps(found)
     assert config(agents, "opencode", "anthropic")["model_name"] == "anthropic/gpt-test"
+    # The 2.x line reads the same config through its own class.
+    second = config(agents, "opencode-2", "openai-compatible", temperature=0)
+    assert second["import_path"] == "maestro_runner.agents:MaestroOpenCode2"
+    assert second["kwargs"] == kwargs
 
 
 def test_codex_gets_the_endpoint_in_its_config_and_the_key_as_auth_json(agents):  # noqa: F811
@@ -125,7 +129,7 @@ def test_codex_refuses_a_model_id_it_would_shorten(agents):  # noqa: F811
         )
 
 
-@pytest.mark.parametrize("adapter", ["opencode", "codex", "claude-code"])
+@pytest.mark.parametrize("adapter", ["opencode", "opencode-2", "codex", "claude-code"])
 def test_the_agent_phase_reaches_the_model_host_only(runner_python, materials, tmp_path, adapter):  # noqa: F811
     spec = agent_spec(materials, tmp_path)
     harness = {
@@ -190,11 +194,12 @@ async def fake_run(self, instruction, environment, context):
     if outcome == "fail":
         raise RuntimeError("model said no")
 
-for base in (OpenCode, ClaudeCode, Codex):
-    base.run = fake_run
 agents.SECRETS["model_api_key"] = key
-cls = {"opencode": agents.MaestroOpenCode, "claude-code": agents.MaestroClaudeCode,
-       "codex": agents.MaestroCodex}[adapter]
+cls = {"opencode": agents.MaestroOpenCode, "opencode-2": agents.MaestroOpenCode2,
+       "claude-code": agents.MaestroClaudeCode, "codex": agents.MaestroCodex}[adapter]
+for base in cls.__mro__:
+    if base.__name__ in ("OpenCode", "OpenCode2", "ClaudeCode", "Codex"):
+        base.run = fake_run
 agent = cls.__new__(cls)
 env = Env()
 try:
@@ -208,7 +213,7 @@ print(json.dumps(seen))
 
 
 @pytest.mark.parametrize("outcome", ["ok", "fail"])
-@pytest.mark.parametrize("adapter", ["opencode", "claude-code", "codex"])
+@pytest.mark.parametrize("adapter", ["opencode", "opencode-2", "claude-code", "codex"])
 def test_the_key_file_exists_only_while_the_agent_runs(tmp_path, adapter, outcome):
     if not RUNNER.exists():
         pytest.skip("Runner environment not installed")
@@ -231,6 +236,53 @@ def test_the_key_file_exists_only_while_the_agent_runs(tmp_path, adapter, outcom
     assert ("error" in seen) == (outcome == "fail")
     assert all(KEY not in command for command, _ in seen["commands"])
     assert list(tmp_path.iterdir()) == []  # the local copy is gone
+
+
+OPENCODE_2 = """
+import asyncio, json, sys, types
+from pathlib import Path, PurePosixPath
+sys.path.insert(0, sys.argv[1])
+from maestro_runner import agents
+
+cls = agents.MaestroOpenCode2
+base = next(b for b in cls.__mro__ if b.__name__ == "OpenCode2")
+agent = base(logs_dir=Path(sys.argv[2]), model_name="maestro/gpt-test", version="2.2.0",
+             opencode_config={"provider": {"maestro": {"models": {"gpt-test": {}}}}})
+calls = []
+
+class Env:
+    default_user = "agent"
+    async def exec(self, command, user=None, env=None, **kw):
+        calls.append({"command": command, "env": env or {}})
+        return types.SimpleNamespace(return_code=0, stdout="", stderr="")
+
+asyncio.run(base.run(agent, "do it", Env(), types.SimpleNamespace()))
+print(json.dumps({"calls": calls, "version": agent.parse_version("opencode v2.2.0")}))
+"""
+
+
+def test_opencode_2_runs_standalone_without_updates_or_the_model_catalogue(tmp_path):
+    if not RUNNER.exists():
+        pytest.skip("Runner environment not installed")
+    result = subprocess.run(
+        [str(RUNNER), "-c", OPENCODE_2, str(RUNNER_SRC), str(tmp_path)],
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=tmp_path,
+        env={"PATH": os.environ["PATH"], "TMPDIR": str(tmp_path)},
+    )
+    seen = json.loads(result.stdout.strip().splitlines()[-1])
+    assert seen["version"] == "2.2.0"
+    config, run = seen["calls"]
+    assert "~/.config/opencode/opencode.json" in config["command"]
+    assert (
+        "opencode run --standalone --auto --format json --thinking --model maestro/gpt-test"
+        in (run["command"])
+    )
+    assert "--dangerously-skip-permissions" not in run["command"]
+    assert run["env"]["OPENCODE_DISABLE_AUTOUPDATE"] == "1"
+    assert run["env"]["OPENCODE_DISABLE_MODELS_FETCH"] == "1"
 
 
 def show(tmp_path, name: str, chunks: list[str]) -> list[tuple[str, str]]:

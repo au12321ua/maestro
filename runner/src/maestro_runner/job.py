@@ -167,6 +167,7 @@ def _render_claude_code(event: dict, state: dict) -> str:
 
 # Event stream of each harness that writes one -> its renderer and the log source name.
 EVENT_RENDERERS = {
+    # Both OpenCode lines write this file.
     "agent/opencode.txt": (_render_opencode, "agent/opencode"),
     "agent/codex.txt": (_render_codex, "agent/codex"),
     "agent/claude-code.txt": (_render_claude_code, "agent/claude-code"),

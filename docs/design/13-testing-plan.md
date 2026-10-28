@@ -18,7 +18,7 @@ UI 文案与纯样式变更不写低价值单元测试；优先验证会导致�
 | Runner 单元 | 网络收紧、附件安装、Harness 适配 | `test_runner_*.py`、`test_fix_m5_review.py` 等；需要 `runner/` 的 uv 环境，没装时跳过 |
 | 真实 Docker | Oracle 全链路、准备原件与恢复、取消与杀进程后的清理、网络收紧、附件在试次容器内安装 | `test_harbor_docker.py`，需 `MAESTRO_DOCKER_TESTS=1`；只用本地 fixture 任务与已有基础镜像，不调用模型和 Hub；每个测试用独立实例标签与 `maestro-prep/<实例>` 仓库名，结束时核对清空 |
 | 真实 Hub | 目录调用、失败分类、导入与首次准备 | `test_hub_live.py`，需 `MAESTRO_HUB_TESTS=1`；匿名读取公开数据集 |
-| 真实模型冒烟 | Terminus-2、OpenCode、Codex、Claude Code 各一个试次 | `test_harbor_docker.py -k real_model`，需 `MAESTRO_MODEL_TESTS=1` 及模型地址、key 文件；Codex 与 Claude Code 另需各自的 Responses / Messages 地址，并在 setup 中真实安装（见交接）；会产生费用，须核对当前授权与预算 |
+| 真实模型冒烟 | Terminus-2、OpenCode（1.x 与 2.x）、Codex、Claude Code 各一个试次 | `test_harbor_docker.py -k real_model`，需 `MAESTRO_MODEL_TESTS=1` 及模型地址、key 文件；Codex 与 Claude Code 另需各自的 Responses / Messages 地址，并在 setup 中真实安装（见交接）；会产生费用，须核对当前授权与预算 |
 | 安装运维 | 安装、更新、失败回退、备份恢复、卸载与清除 | `test_install.py`，需 `MAESTRO_INSTALL_TESTS=1`；用隐藏参数 `--test-root` 把布局放进临时目录，以 systemd 用户单元运行；规则部分在 `test_maestroctl.py`、`test_backup.py`，默认运行 |
 | 网页 | 关键路径冒烟 | `frontend/qa/smoke.spec.ts`（Playwright），需要全新的一次性 state 与 `serve --demo-executor` |
 | CI | lint、文档链接、默认 pytest（含契约与 SDK 模型漂移）、网页 lint / `check:api` / build、第三方许可证 | `.gitea/workflows/verify.yml`，每次改了 Markdown 以外内容的推送；pytest 并行，只传 PATH 与临时 HOME。`dev` 与版本 tag 通过后发布（[12](12-operations.md) 第 1 节）。真实 Docker、Hub、模型与安装测试不在 CI，手动运行 |
