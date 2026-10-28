@@ -216,6 +216,113 @@ class CapacityUse(BaseModel):
     slots: int
 
 
+class CollectionRunLabel(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    label: str | None = None
+
+
+class CollectionRunRef(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    label: str | None = None
+    run_id: str
+
+
+class CollectionRunsAdd(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    runs: list[CollectionRunRef]
+
+
+class ComparisonCell(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    excluded_by_group: dict[str, int]
+    excluded_trials: int
+    failed_by_group: dict[str, int]
+    failed_trials: Annotated[
+        int, Field(description="Failures counted as failed (0 when higher is better)")
+    ]
+    mean: int | float | None
+    passed_trials: int | None
+    pending_trials: int
+    planned_trials: int
+    scored_trials: int
+    scores: list[int | float | None]
+    trial_ids: list[str]
+    valid_trials: int
+
+
+class ComparisonDifference(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    mean: int | float | None
+    pass_rate: int | float | None
+
+
+class ComparisonDimension(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    key: Literal[
+        "dataset",
+        "scoring",
+        "model",
+        "harness",
+        "attachments",
+        "resources",
+        "repetitions",
+        "parameters",
+        "other",
+    ]
+    labels: Annotated[
+        dict[str, str], Field(description="A short name of each run's value, by run id")
+    ]
+    paths: Annotated[
+        list[str],
+        Field(description="JSON pointers where some run differs from the first"),
+    ]
+    varies: bool
+
+
+class ComparisonNotice(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    all: int | None = None
+    code: str
+    common: int | None = None
+    dimension: (
+        Literal[
+            "dataset",
+            "scoring",
+            "model",
+            "harness",
+            "attachments",
+            "resources",
+            "repetitions",
+            "parameters",
+            "other",
+        ]
+        | None
+    ) = None
+    run_ids: list[str] | None = None
+
+
+class ComparisonUsage(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    known_totals: dict[str, int | float]
+    known_trials: int
+
+
 class ConfigWarning(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -490,6 +597,28 @@ class ExportSummary(BaseModel):
     warnings: int
 
 
+class FailureGroupCount(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    excluded: bool
+    key: Literal[
+        "provider_unavailable",
+        "provider_access",
+        "environment_setup",
+        "preparation",
+        "executor_unsupported",
+        "platform_stop",
+        "out_of_memory",
+        "verifier",
+        "attachment",
+        "provider_request",
+        "unclassified",
+    ]
+    side: Literal["external", "subject"]
+    trials: int
+
+
 class FieldErrorModel(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -502,13 +631,14 @@ class FieldErrorModel(BaseModel):
 
 class FieldSource(BaseModel):
     """
-    Which layer gave a value: author, team policy, plan, harness default or override.
+    Which layer gave a value: author, team policy, plan, collection, harness default or
+    override.
     """
 
     model_config = ConfigDict(
         extra="allow",
     )
-    layer: Literal["author", "team", "plan", "override", "harness"]
+    layer: Literal["author", "team", "plan", "collection", "override", "harness"]
     revision: int | None = None
     source_id: str | None = None
 
@@ -712,6 +842,22 @@ class JsonValue(RootModel[Any]):
     root: Any
 
 
+class LayoutSortInput(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    descending: bool | None = False
+    key: str
+
+
+class LayoutSortOutput(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    descending: bool
+    key: str
+
+
 class LoginRequest(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -761,6 +907,24 @@ class Meta(BaseModel):
     )
     next_cursor: str | None = None
     request_id: str
+
+
+class Mismatch(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    dimension: Literal[
+        "dataset",
+        "scoring",
+        "model",
+        "harness",
+        "attachments",
+        "resources",
+        "repetitions",
+        "parameters",
+        "other",
+    ]
+    path: str
 
 
 class ModelConfigCreate(BaseModel):
@@ -820,6 +984,29 @@ class NoProgress(BaseModel):
     model_config = ConfigDict(
         extra="allow",
     )
+
+
+class NotCarried(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    mismatches: list[Mismatch]
+    name: str
+    run_id: str
+
+
+class NoteBody(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    body: str
+
+
+class ObjectRef(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    id: str
 
 
 class OperationResource(BaseModel):
@@ -1059,6 +1246,8 @@ class RecycleEntry(BaseModel):
         "harness_version",
         "attachment_version",
         "experiment_plan",
+        "collection",
+        "analysis_snapshot",
     ]
     owner_id: str | None
     owner_username: str | None
@@ -1248,6 +1437,15 @@ class SessionInfo(BaseModel):
     user: Me
 
 
+class SetAsideRun(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    name: str
+    reason: Literal["deleted"]
+    run_id: str
+
+
 class SetupNetwork(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -1316,6 +1514,46 @@ class SetupStatus(BaseModel):
         extra="allow",
     )
     needs_setup: bool
+
+
+class SnapshotNote(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    author_id: str
+    author_username: str | None
+    body: str
+    created_at: str
+    editable: bool
+    id: str
+    pat_id: str | None
+    updated_at: str
+
+
+class SnapshotSpec(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    fixed: dict[str, dict[str, JsonValue]]
+    scenario: Literal["models", "harnesses", "model_harness", "attachments", "repeats", "custom"]
+    variable_dimensions: list[
+        Literal["model", "harness", "attachments", "resources", "repetitions", "parameters"]
+    ]
+
+
+class SnapshotSummary(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    allowed_actions: list[str]
+    collection_id: str | None
+    created_at: str
+    id: str
+    name: str
+    owner_id: str
+    owner_username: str | None
+    pat_id: str | None
+    run_count: int
 
 
 class SourceDataset(BaseModel):
@@ -1655,6 +1893,86 @@ class CapacityOverview(BaseModel):
     providers: list[ProviderCapacity]
 
 
+class CollectionEvent(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    action: str
+    actor_username: str | None
+    at: str
+    detail: dict[str, JsonValue]
+    id: str
+    pat_id: str | None
+    run_id: str | None
+
+
+class CollectionMember(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    added_at: str
+    added_by_username: str | None
+    deletion: DeletionState | None
+    label: str | None
+    run_id: str
+    run_name: str
+    run_state: str
+
+
+class ComparedRunRow(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    accepted_at: str
+    actual_models: list[str]
+    batch_id: str | None
+    difference: Annotated[
+        ComparisonDifference | None,
+        Field(
+            description="To the baseline; only for the same dataset content and scoring over common tasks"
+        ),
+    ]
+    evidence: Literal["available", "none", "deleted", "purged"]
+    excluded_by_group: dict[str, int]
+    excluded_trials: int
+    failed_by_group: dict[str, int]
+    failed_trials: int
+    finished_at: str | None
+    label: str | None
+    mean: Annotated[
+        int | float | None, Field(description="Macro mean of the compared tasks' means")
+    ]
+    name: str
+    owner_username: str | None
+    pass_rate: int | float | None
+    passed_trials: int | None
+    pending_trials: int
+    planned_trials: int
+    relation: str
+    run_id: str
+    scored_trials: int
+    source_run_id: str | None
+    state: str
+    stddev: Annotated[
+        int | float | None,
+        Field(description="Sample standard deviation of the task means"),
+    ]
+    task_count: int
+    terminal: bool
+    title: Annotated[str, Field(description="The run's values of the varying dimensions")]
+    usage: ComparisonUsage
+    valid_trials: int
+
+
+class ComparedTask(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    cells: dict[str, ComparisonCell | None]
+    status: Literal["compared", "no_valid_trials", "not_common"]
+    task_key: str
+
+
 class ConfigDifference(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -1676,6 +1994,12 @@ class ConfigRequestInput(BaseModel):
         list[str] | None,
         Field(description="Attachment version ids in load order (model runs only)"),
     ] = []
+    collection_id: Annotated[
+        str | None,
+        Field(
+            description="Join this collection: its fixed fields fill in what is left out, and the run must match them"
+        ),
+    ] = None
     concurrency: int | None = None
     dataset_version_id: Annotated[
         str | None, Field(description="Required unless the plan has it")
@@ -1724,6 +2048,12 @@ class ConfigRequestOutput(BaseModel):
     attachments: Annotated[
         list[str],
         Field(description="Attachment version ids in load order (model runs only)"),
+    ]
+    collection_id: Annotated[
+        str | None,
+        Field(
+            description="Join this collection: its fixed fields fill in what is left out, and the run must match them"
+        ),
     ]
     concurrency: int | None
     dataset_version_id: Annotated[str | None, Field(description="Required unless the plan has it")]
@@ -2054,6 +2384,14 @@ class EnvelopeListAuditEvent(BaseModel):
     meta: Meta
 
 
+class EnvelopeListCollectionEvent(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: list[CollectionEvent]
+    meta: Meta
+
+
 class EnvelopeListCredentialName(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -2123,6 +2461,14 @@ class EnvelopeListSetupNetwork(BaseModel):
         extra="allow",
     )
     data: list[SetupNetwork]
+    meta: Meta
+
+
+class EnvelopeListSnapshotSummary(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: list[SnapshotSummary]
     meta: Meta
 
 
@@ -2211,6 +2557,88 @@ class ImportProgress(BaseModel):
     resolved_digest: str | None
     tasks_done: int | None
     tasks_total: int | None
+
+
+class LayoutInput(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    columns: (
+        Literal[
+            "dataset",
+            "scoring",
+            "model",
+            "harness",
+            "attachments",
+            "resources",
+            "repetitions",
+            "parameters",
+            "other",
+        ]
+        | None
+    ) = None
+    mode: Annotated[
+        Literal["leaderboard", "matrix"] | None,
+        Field(
+            description="leaderboard: a row per run; matrix: two varying dimensions as rows and columns"
+        ),
+    ] = "leaderboard"
+    rows: (
+        Literal[
+            "dataset",
+            "scoring",
+            "model",
+            "harness",
+            "attachments",
+            "resources",
+            "repetitions",
+            "parameters",
+            "other",
+        ]
+        | None
+    ) = None
+    sort: LayoutSortInput | None = None
+
+
+class LayoutOutput(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    columns: (
+        Literal[
+            "dataset",
+            "scoring",
+            "model",
+            "harness",
+            "attachments",
+            "resources",
+            "repetitions",
+            "parameters",
+            "other",
+        ]
+        | None
+    )
+    mode: Annotated[
+        Literal["leaderboard", "matrix"],
+        Field(
+            description="leaderboard: a row per run; matrix: two varying dimensions as rows and columns"
+        ),
+    ]
+    rows: (
+        Literal[
+            "dataset",
+            "scoring",
+            "model",
+            "harness",
+            "attachments",
+            "resources",
+            "repetitions",
+            "parameters",
+            "other",
+        ]
+        | None
+    )
+    sort: LayoutSortOutput | None
 
 
 class ModelConfig(BaseModel):
@@ -2343,6 +2771,7 @@ class ReferenceRevisions(BaseModel):
         extra="allow",
     )
     attachments: list[str] | None = None
+    collection: ObjectRef | None = None
     harness_version: str | None = None
     model_config_: Annotated[RevisionRef | None, Field(alias="model_config")] = None
     plan: RevisionRef | None = None
@@ -2432,6 +2861,12 @@ class RunCreate(BaseModel):
         Field(description="Attachment version ids in load order (model runs only)"),
     ] = []
     client_request_id: str | None = None
+    collection_id: Annotated[
+        str | None,
+        Field(
+            description="Join this collection: its fixed fields fill in what is left out, and the run must match them"
+        ),
+    ] = None
     concurrency: int | None = None
     dataset_version_id: str | None = None
     execution_mode: Literal["agent", "oracle"] | None = None
@@ -2742,6 +3177,109 @@ class Capabilities(BaseModel):
     schema_revision: str
     service_version: str
     team_policy_revision: int
+
+
+class CollectionBase(BaseModel):
+    """
+    Where the fixed values come from: a run, or a full configuration request.
+    """
+
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    request: ConfigRequestInput | None = None
+    run_id: str | None = None
+
+
+class ComparisonRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    baseline_run_id: str | None = None
+    exclude: Annotated[
+        list[
+            Literal[
+                "provider_unavailable",
+                "provider_access",
+                "environment_setup",
+                "preparation",
+                "executor_unsupported",
+                "platform_stop",
+                "out_of_memory",
+                "verifier",
+                "attachment",
+                "provider_request",
+                "unclassified",
+            ]
+        ]
+        | None,
+        Field(description="Failure groups left out; failures of other groups count as failed"),
+    ] = None
+    layout: LayoutInput | None = None
+    run_ids: Annotated[list[str], Field(description="Runs in display order")]
+    scope: Annotated[
+        Literal["common", "all"] | None,
+        Field(description="common: tasks every run has; all: every task, no differences"),
+    ] = None
+
+
+class ComparisonSettings(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    baseline_run_id: str | None
+    exclude: list[
+        Literal[
+            "provider_unavailable",
+            "provider_access",
+            "environment_setup",
+            "preparation",
+            "executor_unsupported",
+            "platform_stop",
+            "out_of_memory",
+            "verifier",
+            "attachment",
+            "provider_request",
+            "unclassified",
+        ]
+    ]
+    layout: LayoutOutput
+    scope: Literal["common", "all"]
+
+
+class ComparisonSettingsInput(BaseModel):
+    """
+    Unset fields keep the saved (or default) value.
+    """
+
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    baseline_run_id: str | None = None
+    exclude: Annotated[
+        list[
+            Literal[
+                "provider_unavailable",
+                "provider_access",
+                "environment_setup",
+                "preparation",
+                "executor_unsupported",
+                "platform_stop",
+                "out_of_memory",
+                "verifier",
+                "attachment",
+                "provider_request",
+                "unclassified",
+            ]
+        ]
+        | None,
+        Field(description="Failure groups left out; failures of other groups count as failed"),
+    ] = None
+    layout: LayoutInput | None = None
+    scope: Annotated[
+        Literal["common", "all"] | None,
+        Field(description="common: tasks every run has; all: every task, no differences"),
+    ] = None
 
 
 class ConfigBlocker(BaseModel):
@@ -3119,6 +3657,17 @@ class RunSnapshot(BaseModel):
     snapshot_digest: str
 
 
+class SnapshotCreate(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    collection_id: str | None = None
+    name: str
+    note: str | None = None
+    run_ids: Annotated[list[str] | None, Field(description="Without a collection")] = None
+    settings: ComparisonSettingsInput | None = None
+
+
 class Task(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -3192,6 +3741,128 @@ class BatchPreviewRun(BaseModel):
     warnings: list[ConfigWarning] | None = None
 
 
+class Collection(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    allowed_actions: list[str]
+    base_run_id: str | None
+    copied_from: str | None
+    created_at: str
+    deletion: DeletionState | None
+    description: str
+    fixed: Annotated[
+        dict[str, dict[str, JsonValue]],
+        Field(description="Fixed dimensions and their values"),
+    ]
+    fixed_labels: dict[str, str]
+    id: str
+    members: list[CollectionMember] | None
+    name: str
+    not_carried: Annotated[
+        list[NotCarried] | None,
+        Field(description="After a copy: runs left behind and what differs"),
+    ]
+    owner_id: str
+    owner_username: str | None
+    run_count: int
+    scenario: Literal["models", "harnesses", "model_harness", "attachments", "repeats", "custom"]
+    settings: ComparisonSettings
+    template: Annotated[
+        PlanTemplateOutput,
+        Field(description="Fills in runs submitted from the collection"),
+    ]
+    updated_at: str
+    variable_dimensions: list[
+        Literal["model", "harness", "attachments", "resources", "repetitions", "parameters"]
+    ]
+
+
+class CollectionCopy(BaseModel):
+    """
+    A new collection with a changed specification; matching runs are carried over.
+    """
+
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    base: Annotated[
+        CollectionBase | None,
+        Field(description="Required when a dimension that varied becomes fixed"),
+    ] = None
+    description: str | None = None
+    name: str | None = None
+    scenario: (
+        Literal["models", "harnesses", "model_harness", "attachments", "repeats", "custom"] | None
+    ) = None
+    settings: ComparisonSettingsInput | None = None
+    variable_dimensions: (
+        list[Literal["model", "harness", "attachments", "resources", "repetitions", "parameters"]]
+        | None
+    ) = None
+
+
+class CollectionCreate(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    base: CollectionBase
+    description: str | None = ""
+    name: str
+    run_ids: list[str] | None = []
+    scenario: Literal["models", "harnesses", "model_harness", "attachments", "repeats", "custom"]
+    settings: ComparisonSettingsInput | None = None
+    variable_dimensions: Annotated[
+        list[Literal["model", "harness", "attachments", "resources", "repetitions", "parameters"]]
+        | None,
+        Field(description="Only for the custom scenario"),
+    ] = None
+
+
+class CollectionUpdate(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    description: str | None = None
+    name: str | None = None
+    settings: ComparisonSettingsInput | None = None
+
+
+class Comparison(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    all_tasks: int
+    blockers: list[ComparisonNotice]
+    common_tasks: int
+    comparable: Annotated[bool, Field(description="Same dataset content and scoring contract")]
+    comparison_version: int
+    dimensions: list[ComparisonDimension]
+    dropped_tasks: Annotated[
+        int, Field(description="Common tasks left out: a run had no valid trial")
+    ]
+    grouping_version: int
+    groups: list[FailureGroupCount]
+    runs: list[ComparedRunRow]
+    set_aside: list[SetAsideRun]
+    settings: ComparisonSettings
+    tasks: list[ComparedTask]
+    varying: list[
+        Literal[
+            "dataset",
+            "scoring",
+            "model",
+            "harness",
+            "attachments",
+            "resources",
+            "repetitions",
+            "parameters",
+            "other",
+        ]
+    ]
+    warnings: list[ComparisonNotice]
+
+
 class ConfigResolution(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -3221,6 +3892,22 @@ class EnvelopeBatchAccepted(BaseModel):
         extra="allow",
     )
     data: BatchAccepted
+    meta: Meta
+
+
+class EnvelopeCollection(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: Collection
+    meta: Meta
+
+
+class EnvelopeComparison(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: Comparison
     meta: Meta
 
 
@@ -3269,6 +3956,14 @@ class EnvelopeRunAccepted(BaseModel):
         extra="allow",
     )
     data: RunAccepted
+    meta: Meta
+
+
+class EnvelopeListCollection(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: list[Collection]
     meta: Meta
 
 
@@ -3369,6 +4064,30 @@ class RunDetail(BaseModel):
     stop_requested: bool
 
 
+class Snapshot(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    allowed_actions: list[str]
+    collection_id: str | None
+    created_at: str
+    deletion: DeletionState | None
+    evidence: Annotated[
+        dict[str, Literal["available", "none", "deleted", "purged"]],
+        Field(description="Whether each run's files still open"),
+    ]
+    id: str
+    name: str
+    notes: list[SnapshotNote]
+    owner_id: str
+    owner_username: str | None
+    pat_id: str | None
+    result: Comparison
+    run_count: int
+    settings: ComparisonSettings
+    spec: SnapshotSpec | None
+
+
 class BatchPreview(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -3394,6 +4113,14 @@ class EnvelopeRunDetail(BaseModel):
         extra="allow",
     )
     data: RunDetail
+    meta: Meta
+
+
+class EnvelopeSnapshot(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: Snapshot
     meta: Meta
 
 

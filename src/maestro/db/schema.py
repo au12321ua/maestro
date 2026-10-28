@@ -707,6 +707,93 @@ exports = Table(
     CheckConstraint("state IN ('queued','building','ready','failed','expired')", name="state"),
 )
 
+# --- Collections and analysis snapshots (06 section 8) ------------------------------
+# A collection is a list of run references its members keep up; its specification (the
+# scenario, which dimensions may vary, the fixed values) never changes after creation.
+collections = Table(
+    "collections",
+    metadata,
+    _id(),
+    Column("name", String(128), nullable=False),
+    Column("description", String(1024), nullable=False),
+    _ref("owner_id", "users"),
+    _ref("pat_id", "pats", nullable=True),
+    Column("scenario", String(32), nullable=False),
+    _json("variable_json"),
+    _json("fixed_json"),
+    # The request the fixed values came from, to fill in runs submitted from here.
+    _json("template_json"),
+    _ref("base_run_id", "runs", nullable=True),
+    # Layout, failure groups excluded, task scope and baseline; the team edits these.
+    _json("settings_json"),
+    _ref("copied_from", "collections", nullable=True),
+    _time("created_at"),
+    _time("updated_at"),
+    Index("ix_collections_name", "name"),
+)
+
+collection_members = Table(
+    "collection_members",
+    metadata,
+    _ref("collection_id", "collections"),
+    _ref("run_id", "runs"),
+    Column("label", String(128), nullable=True),
+    _ref("added_by", "users"),
+    _ref("pat_id", "pats", nullable=True),
+    _time("added_at"),
+    PrimaryKeyConstraint("collection_id", "run_id"),
+    Index("ix_collection_members_run", "run_id"),
+)
+
+# Who added or removed which run, renamed the collection or changed its settings.
+collection_events = Table(
+    "collection_events",
+    metadata,
+    _id(),
+    _ref("collection_id", "collections"),
+    Column("action", String(32), nullable=False),
+    Column("run_id", String(40), nullable=True),
+    _ref("actor_id", "users"),
+    _ref("pat_id", "pats", nullable=True),
+    _time("at"),
+    _json("detail_json"),
+    Index("ix_collection_events_collection_at", "collection_id", "at", "id"),
+)
+
+# A frozen comparison: the run list with copies of what identified each run, the
+# settings, the specification, and the computed table. It never reads the runs again
+# for its numbers, so purged runs and expired artifacts leave it intact.
+analysis_snapshots = Table(
+    "analysis_snapshots",
+    metadata,
+    _id(),
+    Column("name", String(256), nullable=False),
+    _ref("collection_id", "collections", nullable=True),
+    _ref("owner_id", "users"),
+    _ref("pat_id", "pats", nullable=True),
+    _json("runs_json"),
+    _json("settings_json"),
+    _json("spec_json", nullable=True),
+    _json("result_json"),
+    _time("created_at"),
+    Index("ix_analysis_snapshots_created", "created_at", "id"),
+    Index("ix_analysis_snapshots_collection", "collection_id"),
+)
+
+# A conclusion written by a person or an agent, kept apart from the computed table.
+snapshot_notes = Table(
+    "snapshot_notes",
+    metadata,
+    _id(),
+    _ref("snapshot_id", "analysis_snapshots"),
+    _ref("author_id", "users"),
+    _ref("pat_id", "pats", nullable=True),
+    Column("body", Text, nullable=False),
+    _time("created_at"),
+    _time("updated_at"),
+    Index("ix_snapshot_notes_snapshot", "snapshot_id", "created_at"),
+)
+
 # --- Deletion (07 section 8, U-08 / U-19) ------------------------------------------
 # One row per deleted object: 'recycled' hides it and blocks new references; 'purged'
 # means content and files are gone and the row is the deletion receipt. Restoring

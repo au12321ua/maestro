@@ -27,6 +27,7 @@ from maestro.db import schema as t
 from maestro.db.engine import Database
 from maestro.domain.states import RUN_TERMINAL, Role, UserStatus
 from maestro.services import audit, deleted, pagination
+from maestro.services.collections import drop_purged_run
 from maestro.services.principal import (
     Principal,
     require_admin_session,
@@ -151,6 +152,7 @@ class RunHandler(Handler):
         conn.execute(delete(t.work_items).where(t.work_items.c.trial_id.in_(trials)))
         conn.execute(delete(t.trials).where(t.trials.c.run_id == run_id))
         conn.execute(delete(t.run_snapshots).where(t.run_snapshots.c.run_id == run_id))
+        drop_purged_run(conn, run_id, actor_id)
         # Artifacts of this run already in the bin are gone with it.
         service.mark_purged(conn, "artifact", ids, actor_id)
         keys = [a.storage_key for a in artifacts]
@@ -605,6 +607,53 @@ class PlanHandler(Handler):
         return Purged()
 
 
+class CollectionHandler(Handler):
+    """Snapshots keep their own copies; purging empties the member list, the row stays."""
+
+    object_type = "collection"
+    table = t.collections
+
+    def label(self, conn, row):
+        return row["name"]
+
+    def owner(self, row):
+        return row["owner_id"]
+
+    def authorize(self, principal, row):
+        require_manage_owned(principal, row["owner_id"])
+
+    def purge(self, conn, row, service, actor_id):
+        removed = conn.execute(
+            delete(t.collection_members).where(t.collection_members.c.collection_id == row["id"])
+        ).rowcount
+        return Purged({"runs": removed})
+
+
+class SnapshotHandler(Handler):
+    object_type = "analysis_snapshot"
+    table = t.analysis_snapshots
+
+    def label(self, conn, row):
+        return row["name"]
+
+    def owner(self, row):
+        return row["owner_id"]
+
+    def authorize(self, principal, row):
+        require_manage_owned(principal, row["owner_id"])
+
+    def purge(self, conn, row, service, actor_id):
+        notes = conn.execute(
+            delete(t.snapshot_notes).where(t.snapshot_notes.c.snapshot_id == row["id"])
+        ).rowcount
+        conn.execute(
+            update(t.analysis_snapshots)
+            .where(t.analysis_snapshots.c.id == row["id"])
+            .values(runs_json=[], result_json={}, settings_json={}, spec_json=None)
+        )
+        return Purged({"notes": notes})
+
+
 HANDLERS: dict[str, Handler] = {
     h.object_type: h
     for h in (
@@ -619,6 +668,8 @@ HANDLERS: dict[str, Handler] = {
         HarnessHandler(),
         AttachmentHandler(),
         PlanHandler(),
+        CollectionHandler(),
+        SnapshotHandler(),
     )
 }
 

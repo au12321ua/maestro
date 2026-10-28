@@ -603,6 +603,11 @@ class RunConfigFields(Model):
     plan_revision: int | None = Field(
         None, description="Refuse unless the plan is still at this revision"
     )
+    collection_id: str | None = Field(
+        None,
+        description="Join this collection: its fixed fields fill in what is left out, and "
+        "the run must match them",
+    )
     task_selection: TaskSelection = TaskSelection()
     model_config_id: str | None = None
     model_revision: int | None = Field(
@@ -749,9 +754,10 @@ class ConfigWarning(Model):
 
 
 class FieldSource(Sparse):
-    """Which layer gave a value: author, team policy, plan, harness default or override."""
+    """Which layer gave a value: author, team policy, plan, collection, harness default or
+    override."""
 
-    layer: Literal["author", "team", "plan", "override", "harness"]
+    layer: Literal["author", "team", "plan", "collection", "override", "harness"]
     source_id: str | None = None
     revision: int | None = None
 
@@ -787,12 +793,17 @@ class RevisionRef(Model):
     revision: int
 
 
+class ObjectRef(Model):
+    id: str
+
+
 class ReferenceRevisions(Sparse):
     team_policy: int | None = None
     model_config_ref: RevisionRef | None = Field(None, alias="model_config")
     harness_version: str | None = None
     attachments: list[str] | None = None
     plan: RevisionRef | None = None
+    collection: ObjectRef | None = None
 
 
 class ParameterChoice(Sparse):
@@ -1542,6 +1553,348 @@ class Export(Model):
     links: dict[str, str]
 
 
+# --- comparisons, collections and analysis snapshots (06 section 8) -------------------
+
+Dimension = Literal[
+    "dataset",
+    "scoring",
+    "model",
+    "harness",
+    "attachments",
+    "resources",
+    "repetitions",
+    "parameters",
+    "other",
+]
+VariableDimension = Literal[
+    "model", "harness", "attachments", "resources", "repetitions", "parameters"
+]
+FailureGroup = Literal[
+    "provider_unavailable",
+    "provider_access",
+    "environment_setup",
+    "preparation",
+    "executor_unsupported",
+    "platform_stop",
+    "out_of_memory",
+    "verifier",
+    "attachment",
+    "provider_request",
+    "unclassified",
+]
+Scenario = Literal["models", "harnesses", "model_harness", "attachments", "repeats", "custom"]
+Evidence = Literal["available", "none", "deleted", "purged"]
+
+
+class LayoutSort(Model):
+    key: str
+    descending: bool = False
+
+
+class Layout(Model):
+    mode: Literal["leaderboard", "matrix"] = Field(
+        "leaderboard",
+        description="leaderboard: a row per run; matrix: two varying dimensions as rows "
+        "and columns",
+    )
+    rows: Dimension | None = None
+    columns: Dimension | None = None
+    sort: LayoutSort | None = None
+
+
+class ComparisonSettingsInput(Model):
+    """Unset fields keep the saved (or default) value."""
+
+    exclude: list[FailureGroup] | None = Field(
+        None, description="Failure groups left out; failures of other groups count as failed"
+    )
+    scope: Literal["common", "all"] | None = Field(
+        None, description="common: tasks every run has; all: every task, no differences"
+    )
+    baseline_run_id: str | None = None
+    layout: Layout | None = None
+
+
+class ComparisonSettings(Model):
+    exclude: list[FailureGroup]
+    scope: Literal["common", "all"]
+    baseline_run_id: str | None
+    layout: Layout
+
+
+class ComparisonRequest(ComparisonSettingsInput):
+    run_ids: list[str] = Field(description="Runs in display order")
+
+
+class ComparisonDimension(Model):
+    key: Dimension
+    varies: bool
+    paths: list[str] = Field(description="JSON pointers where some run differs from the first")
+    labels: dict[str, str] = Field(description="A short name of each run's value, by run id")
+
+
+class ComparisonNotice(Sparse):
+    code: str
+    dimension: Dimension | None = None
+    run_ids: list[str] | None = None
+    common: int | None = None
+    all: int | None = None
+
+
+class FailureGroupCount(Model):
+    key: FailureGroup
+    side: Literal["external", "subject"]
+    excluded: bool
+    trials: int
+
+
+class ComparisonCell(Model):
+    planned_trials: int
+    scored_trials: int
+    failed_trials: int = Field(description="Failures counted as failed (0 when higher is better)")
+    excluded_trials: int
+    pending_trials: int
+    valid_trials: int
+    mean: Number | None
+    passed_trials: int | None
+    excluded_by_group: dict[str, int]
+    failed_by_group: dict[str, int]
+    trial_ids: list[str]
+    scores: list[Number | None]
+
+
+class ComparedTask(Model):
+    task_key: str
+    status: Literal["compared", "no_valid_trials", "not_common"]
+    cells: dict[str, ComparisonCell | None]
+
+
+class ComparisonDifference(Model):
+    mean: Number | None
+    pass_rate: Number | None
+
+
+class ComparisonUsage(Model):
+    known_trials: int
+    known_totals: dict[str, Number]
+
+
+class ComparedRunRow(Model):
+    run_id: str
+    name: str
+    label: str | None
+    title: str = Field(description="The run's values of the varying dimensions")
+    owner_username: str | None
+    state: str
+    terminal: bool
+    relation: str
+    source_run_id: str | None
+    batch_id: str | None
+    accepted_at: str
+    finished_at: str | None
+    evidence: Evidence
+    task_count: int
+    valid_trials: int
+    mean: Number | None = Field(description="Macro mean of the compared tasks' means")
+    stddev: Number | None = Field(description="Sample standard deviation of the task means")
+    passed_trials: int | None
+    pass_rate: Number | None
+    planned_trials: int
+    scored_trials: int
+    failed_trials: int
+    excluded_trials: int
+    pending_trials: int
+    excluded_by_group: dict[str, int]
+    failed_by_group: dict[str, int]
+    usage: ComparisonUsage
+    actual_models: list[str]
+    difference: ComparisonDifference | None = Field(
+        description="To the baseline; only for the same dataset content and scoring over "
+        "common tasks"
+    )
+
+
+class SetAsideRun(Model):
+    run_id: str
+    name: str
+    reason: Literal["deleted"]
+
+
+class Comparison(Model):
+    comparison_version: int
+    grouping_version: int
+    settings: ComparisonSettings
+    comparable: bool = Field(description="Same dataset content and scoring contract")
+    blockers: list[ComparisonNotice]
+    warnings: list[ComparisonNotice]
+    dimensions: list[ComparisonDimension]
+    varying: list[Dimension]
+    groups: list[FailureGroupCount]
+    runs: list[ComparedRunRow]
+    tasks: list[ComparedTask]
+    common_tasks: int
+    all_tasks: int
+    dropped_tasks: int = Field(description="Common tasks left out: a run had no valid trial")
+    set_aside: list[SetAsideRun]
+
+
+class CollectionBase(Model):
+    """Where the fixed values come from: a run, or a full configuration request."""
+
+    run_id: str | None = None
+    request: ConfigRequest | None = None
+
+
+class CollectionCreate(Model):
+    name: str
+    description: str = ""
+    scenario: Scenario
+    variable_dimensions: list[VariableDimension] | None = Field(
+        None, description="Only for the custom scenario"
+    )
+    base: CollectionBase
+    run_ids: list[str] = []
+    settings: ComparisonSettingsInput | None = None
+
+
+class CollectionUpdate(Model):
+    name: str | None = None
+    description: str | None = None
+    settings: ComparisonSettingsInput | None = None
+
+
+class CollectionCopy(Model):
+    """A new collection with a changed specification; matching runs are carried over."""
+
+    name: str | None = None
+    description: str | None = None
+    scenario: Scenario | None = None
+    variable_dimensions: list[VariableDimension] | None = None
+    base: CollectionBase | None = Field(
+        None, description="Required when a dimension that varied becomes fixed"
+    )
+    settings: ComparisonSettingsInput | None = None
+
+
+class CollectionRunRef(Model):
+    run_id: str
+    label: str | None = None
+
+
+class CollectionRunsAdd(Model):
+    runs: list[CollectionRunRef]
+
+
+class CollectionRunLabel(Model):
+    label: str | None = None
+
+
+class CollectionMember(Model):
+    run_id: str
+    run_name: str
+    run_state: str
+    label: str | None
+    added_by_username: str | None
+    added_at: str
+    deletion: DeletionState | None
+
+
+class Mismatch(Model):
+    dimension: Dimension
+    path: str
+
+
+class NotCarried(Model):
+    run_id: str
+    name: str
+    mismatches: list[Mismatch]
+
+
+class Collection(Model):
+    id: str
+    name: str
+    description: str
+    owner_id: str
+    owner_username: str | None
+    scenario: Scenario
+    variable_dimensions: list[VariableDimension]
+    fixed: dict[str, JsonObject] = Field(description="Fixed dimensions and their values")
+    fixed_labels: dict[str, str]
+    template: PlanTemplate = Field(description="Fills in runs submitted from the collection")
+    base_run_id: str | None
+    settings: ComparisonSettings
+    copied_from: str | None
+    run_count: int
+    created_at: str
+    updated_at: str
+    allowed_actions: list[str]
+    members: list[CollectionMember] | None = None
+    deletion: DeletionState | None = None
+    not_carried: list[NotCarried] | None = Field(
+        None, description="After a copy: runs left behind and what differs"
+    )
+
+
+class CollectionEvent(Model):
+    id: str
+    action: str
+    run_id: str | None
+    actor_username: str | None
+    pat_id: str | None
+    at: str
+    detail: JsonObject
+
+
+class SnapshotCreate(Model):
+    name: str
+    collection_id: str | None = None
+    run_ids: list[str] | None = Field(None, description="Without a collection")
+    settings: ComparisonSettingsInput | None = None
+    note: str | None = None
+
+
+class SnapshotSpec(Model):
+    scenario: Scenario
+    variable_dimensions: list[VariableDimension]
+    fixed: dict[str, JsonObject]
+
+
+class SnapshotNote(Model):
+    id: str
+    author_id: str
+    author_username: str | None
+    pat_id: str | None
+    body: str
+    created_at: str
+    updated_at: str
+    editable: bool
+
+
+class NoteBody(Model):
+    body: str
+
+
+class SnapshotSummary(Model):
+    id: str
+    name: str
+    collection_id: str | None
+    owner_id: str
+    owner_username: str | None
+    pat_id: str | None
+    run_count: int
+    created_at: str
+    allowed_actions: list[str]
+
+
+class Snapshot(SnapshotSummary):
+    settings: ComparisonSettings
+    spec: SnapshotSpec | None
+    result: Comparison
+    evidence: dict[str, Evidence] = Field(description="Whether each run's files still open")
+    notes: list[SnapshotNote]
+    deletion: DeletionState | None
+
+
 # --- deletion and recycle bin ---------------------------------------------------------
 
 ObjectType = Literal[
@@ -1556,6 +1909,8 @@ ObjectType = Literal[
     "harness_version",
     "attachment_version",
     "experiment_plan",
+    "collection",
+    "analysis_snapshot",
 ]
 
 

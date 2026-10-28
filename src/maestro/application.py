@@ -17,6 +17,7 @@ from maestro.services.artifacts import Artifacts
 from maestro.services.attachments import Attachments
 from maestro.services.capacity import Capacity, HostCapacity
 from maestro.services.catalog import Catalog
+from maestro.services.collections import Collections, Comparisons, Snapshots
 from maestro.services.configuration import Resolver
 from maestro.services.credentials import Credentials
 from maestro.services.datasets import Datasets
@@ -53,6 +54,9 @@ class Maestro:
     models: ModelConfigs
     attachments: Attachments
     plans: Plans
+    comparisons: Comparisons
+    collections: Collections
+    snapshots: Snapshots
     artifacts: Artifacts
     exports: Exports
     recycle: Recycle
@@ -144,6 +148,9 @@ class Maestro:
             ),
             attachments=Attachments(db, attachment_store, adapters),
             plans=Plans(db),
+            comparisons=Comparisons(db),
+            collections=runs.collections,
+            snapshots=Snapshots(db, runs.collections),
             artifacts=artifacts,
             exports=exports,
             recycle=Recycle(db, store, materials, exports, environment, attachment_store),

@@ -1727,6 +1727,1540 @@
         "title": "CapacityUse",
         "type": "object"
       },
+      "Collection": {
+        "additionalProperties": false,
+        "properties": {
+          "allowed_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Actions",
+            "type": "array"
+          },
+          "base_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Run Id"
+          },
+          "copied_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Copied From"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "deletion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeletionState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "fixed": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/JsonValue"
+              },
+              "type": "object"
+            },
+            "description": "Fixed dimensions and their values",
+            "title": "Fixed",
+            "type": "object"
+          },
+          "fixed_labels": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Fixed Labels",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "members": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CollectionMember"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Members"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "not_carried": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/NotCarried"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "After a copy: runs left behind and what differs",
+            "title": "Not Carried"
+          },
+          "owner_id": {
+            "title": "Owner Id",
+            "type": "string"
+          },
+          "owner_username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Username"
+          },
+          "run_count": {
+            "title": "Run Count",
+            "type": "integer"
+          },
+          "scenario": {
+            "enum": [
+              "models",
+              "harnesses",
+              "model_harness",
+              "attachments",
+              "repeats",
+              "custom"
+            ],
+            "title": "Scenario",
+            "type": "string"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/ComparisonSettings"
+          },
+          "template": {
+            "$ref": "#/components/schemas/PlanTemplate-Output",
+            "description": "Fills in runs submitted from the collection"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "variable_dimensions": {
+            "items": {
+              "enum": [
+                "model",
+                "harness",
+                "attachments",
+                "resources",
+                "repetitions",
+                "parameters"
+              ],
+              "type": "string"
+            },
+            "title": "Variable Dimensions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "owner_id",
+          "owner_username",
+          "scenario",
+          "variable_dimensions",
+          "fixed",
+          "fixed_labels",
+          "template",
+          "base_run_id",
+          "settings",
+          "copied_from",
+          "run_count",
+          "created_at",
+          "updated_at",
+          "allowed_actions",
+          "members",
+          "deletion",
+          "not_carried"
+        ],
+        "title": "Collection",
+        "type": "object"
+      },
+      "CollectionBase": {
+        "additionalProperties": false,
+        "description": "Where the fixed values come from: a run, or a full configuration request.",
+        "properties": {
+          "request": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConfigRequest-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          }
+        },
+        "title": "CollectionBase",
+        "type": "object"
+      },
+      "CollectionCopy": {
+        "additionalProperties": false,
+        "description": "A new collection with a changed specification; matching runs are carried over.",
+        "properties": {
+          "base": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CollectionBase"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Required when a dimension that varied becomes fixed"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "scenario": {
+            "anyOf": [
+              {
+                "enum": [
+                  "models",
+                  "harnesses",
+                  "model_harness",
+                  "attachments",
+                  "repeats",
+                  "custom"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario"
+          },
+          "settings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ComparisonSettingsInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "variable_dimensions": {
+            "anyOf": [
+              {
+                "items": {
+                  "enum": [
+                    "model",
+                    "harness",
+                    "attachments",
+                    "resources",
+                    "repetitions",
+                    "parameters"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variable Dimensions"
+          }
+        },
+        "title": "CollectionCopy",
+        "type": "object"
+      },
+      "CollectionCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "base": {
+            "$ref": "#/components/schemas/CollectionBase"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "run_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Run Ids",
+            "type": "array"
+          },
+          "scenario": {
+            "enum": [
+              "models",
+              "harnesses",
+              "model_harness",
+              "attachments",
+              "repeats",
+              "custom"
+            ],
+            "title": "Scenario",
+            "type": "string"
+          },
+          "settings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ComparisonSettingsInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "variable_dimensions": {
+            "anyOf": [
+              {
+                "items": {
+                  "enum": [
+                    "model",
+                    "harness",
+                    "attachments",
+                    "resources",
+                    "repetitions",
+                    "parameters"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Only for the custom scenario",
+            "title": "Variable Dimensions"
+          }
+        },
+        "required": [
+          "name",
+          "scenario",
+          "base"
+        ],
+        "title": "CollectionCreate",
+        "type": "object"
+      },
+      "CollectionEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "actor_username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Username"
+          },
+          "at": {
+            "title": "At",
+            "type": "string"
+          },
+          "detail": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Detail",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "pat_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pat Id"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          }
+        },
+        "required": [
+          "id",
+          "action",
+          "run_id",
+          "actor_username",
+          "pat_id",
+          "at",
+          "detail"
+        ],
+        "title": "CollectionEvent",
+        "type": "object"
+      },
+      "CollectionMember": {
+        "additionalProperties": false,
+        "properties": {
+          "added_at": {
+            "title": "Added At",
+            "type": "string"
+          },
+          "added_by_username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Added By Username"
+          },
+          "deletion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeletionState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "run_name": {
+            "title": "Run Name",
+            "type": "string"
+          },
+          "run_state": {
+            "title": "Run State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "run_name",
+          "run_state",
+          "label",
+          "added_by_username",
+          "added_at",
+          "deletion"
+        ],
+        "title": "CollectionMember",
+        "type": "object"
+      },
+      "CollectionRunLabel": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          }
+        },
+        "title": "CollectionRunLabel",
+        "type": "object"
+      },
+      "CollectionRunRef": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id"
+        ],
+        "title": "CollectionRunRef",
+        "type": "object"
+      },
+      "CollectionRunsAdd": {
+        "additionalProperties": false,
+        "properties": {
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/CollectionRunRef"
+            },
+            "title": "Runs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "runs"
+        ],
+        "title": "CollectionRunsAdd",
+        "type": "object"
+      },
+      "CollectionUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "settings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ComparisonSettingsInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "CollectionUpdate",
+        "type": "object"
+      },
+      "ComparedRunRow": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted_at": {
+            "title": "Accepted At",
+            "type": "string"
+          },
+          "actual_models": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Actual Models",
+            "type": "array"
+          },
+          "batch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch Id"
+          },
+          "difference": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ComparisonDifference"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "To the baseline; only for the same dataset content and scoring over common tasks"
+          },
+          "evidence": {
+            "enum": [
+              "available",
+              "none",
+              "deleted",
+              "purged"
+            ],
+            "title": "Evidence",
+            "type": "string"
+          },
+          "excluded_by_group": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Excluded By Group",
+            "type": "object"
+          },
+          "excluded_trials": {
+            "title": "Excluded Trials",
+            "type": "integer"
+          },
+          "failed_by_group": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Failed By Group",
+            "type": "object"
+          },
+          "failed_trials": {
+            "title": "Failed Trials",
+            "type": "integer"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "mean": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Macro mean of the compared tasks' means",
+            "title": "Mean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owner_username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Username"
+          },
+          "pass_rate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pass Rate"
+          },
+          "passed_trials": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Passed Trials"
+          },
+          "pending_trials": {
+            "title": "Pending Trials",
+            "type": "integer"
+          },
+          "planned_trials": {
+            "title": "Planned Trials",
+            "type": "integer"
+          },
+          "relation": {
+            "title": "Relation",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "scored_trials": {
+            "title": "Scored Trials",
+            "type": "integer"
+          },
+          "source_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Run Id"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "stddev": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Sample standard deviation of the task means",
+            "title": "Stddev"
+          },
+          "task_count": {
+            "title": "Task Count",
+            "type": "integer"
+          },
+          "terminal": {
+            "title": "Terminal",
+            "type": "boolean"
+          },
+          "title": {
+            "description": "The run's values of the varying dimensions",
+            "title": "Title",
+            "type": "string"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/ComparisonUsage"
+          },
+          "valid_trials": {
+            "title": "Valid Trials",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "run_id",
+          "name",
+          "label",
+          "title",
+          "owner_username",
+          "state",
+          "terminal",
+          "relation",
+          "source_run_id",
+          "batch_id",
+          "accepted_at",
+          "finished_at",
+          "evidence",
+          "task_count",
+          "valid_trials",
+          "mean",
+          "stddev",
+          "passed_trials",
+          "pass_rate",
+          "planned_trials",
+          "scored_trials",
+          "failed_trials",
+          "excluded_trials",
+          "pending_trials",
+          "excluded_by_group",
+          "failed_by_group",
+          "usage",
+          "actual_models",
+          "difference"
+        ],
+        "title": "ComparedRunRow",
+        "type": "object"
+      },
+      "ComparedTask": {
+        "additionalProperties": false,
+        "properties": {
+          "cells": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ComparisonCell"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Cells",
+            "type": "object"
+          },
+          "status": {
+            "enum": [
+              "compared",
+              "no_valid_trials",
+              "not_common"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "task_key": {
+            "title": "Task Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_key",
+          "status",
+          "cells"
+        ],
+        "title": "ComparedTask",
+        "type": "object"
+      },
+      "Comparison": {
+        "additionalProperties": false,
+        "properties": {
+          "all_tasks": {
+            "title": "All Tasks",
+            "type": "integer"
+          },
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/ComparisonNotice"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "common_tasks": {
+            "title": "Common Tasks",
+            "type": "integer"
+          },
+          "comparable": {
+            "description": "Same dataset content and scoring contract",
+            "title": "Comparable",
+            "type": "boolean"
+          },
+          "comparison_version": {
+            "title": "Comparison Version",
+            "type": "integer"
+          },
+          "dimensions": {
+            "items": {
+              "$ref": "#/components/schemas/ComparisonDimension"
+            },
+            "title": "Dimensions",
+            "type": "array"
+          },
+          "dropped_tasks": {
+            "description": "Common tasks left out: a run had no valid trial",
+            "title": "Dropped Tasks",
+            "type": "integer"
+          },
+          "grouping_version": {
+            "title": "Grouping Version",
+            "type": "integer"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/FailureGroupCount"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/ComparedRunRow"
+            },
+            "title": "Runs",
+            "type": "array"
+          },
+          "set_aside": {
+            "items": {
+              "$ref": "#/components/schemas/SetAsideRun"
+            },
+            "title": "Set Aside",
+            "type": "array"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/ComparisonSettings"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/ComparedTask"
+            },
+            "title": "Tasks",
+            "type": "array"
+          },
+          "varying": {
+            "items": {
+              "enum": [
+                "dataset",
+                "scoring",
+                "model",
+                "harness",
+                "attachments",
+                "resources",
+                "repetitions",
+                "parameters",
+                "other"
+              ],
+              "type": "string"
+            },
+            "title": "Varying",
+            "type": "array"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/ComparisonNotice"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "comparison_version",
+          "grouping_version",
+          "settings",
+          "comparable",
+          "blockers",
+          "warnings",
+          "dimensions",
+          "varying",
+          "groups",
+          "runs",
+          "tasks",
+          "common_tasks",
+          "all_tasks",
+          "dropped_tasks",
+          "set_aside"
+        ],
+        "title": "Comparison",
+        "type": "object"
+      },
+      "ComparisonCell": {
+        "additionalProperties": false,
+        "properties": {
+          "excluded_by_group": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Excluded By Group",
+            "type": "object"
+          },
+          "excluded_trials": {
+            "title": "Excluded Trials",
+            "type": "integer"
+          },
+          "failed_by_group": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Failed By Group",
+            "type": "object"
+          },
+          "failed_trials": {
+            "description": "Failures counted as failed (0 when higher is better)",
+            "title": "Failed Trials",
+            "type": "integer"
+          },
+          "mean": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean"
+          },
+          "passed_trials": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Passed Trials"
+          },
+          "pending_trials": {
+            "title": "Pending Trials",
+            "type": "integer"
+          },
+          "planned_trials": {
+            "title": "Planned Trials",
+            "type": "integer"
+          },
+          "scored_trials": {
+            "title": "Scored Trials",
+            "type": "integer"
+          },
+          "scores": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Scores",
+            "type": "array"
+          },
+          "trial_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Trial Ids",
+            "type": "array"
+          },
+          "valid_trials": {
+            "title": "Valid Trials",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "planned_trials",
+          "scored_trials",
+          "failed_trials",
+          "excluded_trials",
+          "pending_trials",
+          "valid_trials",
+          "mean",
+          "passed_trials",
+          "excluded_by_group",
+          "failed_by_group",
+          "trial_ids",
+          "scores"
+        ],
+        "title": "ComparisonCell",
+        "type": "object"
+      },
+      "ComparisonDifference": {
+        "additionalProperties": false,
+        "properties": {
+          "mean": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean"
+          },
+          "pass_rate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pass Rate"
+          }
+        },
+        "required": [
+          "mean",
+          "pass_rate"
+        ],
+        "title": "ComparisonDifference",
+        "type": "object"
+      },
+      "ComparisonDimension": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "enum": [
+              "dataset",
+              "scoring",
+              "model",
+              "harness",
+              "attachments",
+              "resources",
+              "repetitions",
+              "parameters",
+              "other"
+            ],
+            "title": "Key",
+            "type": "string"
+          },
+          "labels": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "A short name of each run's value, by run id",
+            "title": "Labels",
+            "type": "object"
+          },
+          "paths": {
+            "description": "JSON pointers where some run differs from the first",
+            "items": {
+              "type": "string"
+            },
+            "title": "Paths",
+            "type": "array"
+          },
+          "varies": {
+            "title": "Varies",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "varies",
+          "paths",
+          "labels"
+        ],
+        "title": "ComparisonDimension",
+        "type": "object"
+      },
+      "ComparisonNotice": {
+        "additionalProperties": false,
+        "properties": {
+          "all": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "All"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "common": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Common"
+          },
+          "dimension": {
+            "anyOf": [
+              {
+                "enum": [
+                  "dataset",
+                  "scoring",
+                  "model",
+                  "harness",
+                  "attachments",
+                  "resources",
+                  "repetitions",
+                  "parameters",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dimension"
+          },
+          "run_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Ids"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "ComparisonNotice",
+        "type": "object"
+      },
+      "ComparisonRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "baseline_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Run Id"
+          },
+          "exclude": {
+            "anyOf": [
+              {
+                "items": {
+                  "enum": [
+                    "provider_unavailable",
+                    "provider_access",
+                    "environment_setup",
+                    "preparation",
+                    "executor_unsupported",
+                    "platform_stop",
+                    "out_of_memory",
+                    "verifier",
+                    "attachment",
+                    "provider_request",
+                    "unclassified"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Failure groups left out; failures of other groups count as failed",
+            "title": "Exclude"
+          },
+          "layout": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Layout-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "run_ids": {
+            "description": "Runs in display order",
+            "items": {
+              "type": "string"
+            },
+            "title": "Run Ids",
+            "type": "array"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "enum": [
+                  "common",
+                  "all"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "common: tasks every run has; all: every task, no differences",
+            "title": "Scope"
+          }
+        },
+        "required": [
+          "run_ids"
+        ],
+        "title": "ComparisonRequest",
+        "type": "object"
+      },
+      "ComparisonSettings": {
+        "additionalProperties": false,
+        "properties": {
+          "baseline_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Run Id"
+          },
+          "exclude": {
+            "items": {
+              "enum": [
+                "provider_unavailable",
+                "provider_access",
+                "environment_setup",
+                "preparation",
+                "executor_unsupported",
+                "platform_stop",
+                "out_of_memory",
+                "verifier",
+                "attachment",
+                "provider_request",
+                "unclassified"
+              ],
+              "type": "string"
+            },
+            "title": "Exclude",
+            "type": "array"
+          },
+          "layout": {
+            "$ref": "#/components/schemas/Layout-Output"
+          },
+          "scope": {
+            "enum": [
+              "common",
+              "all"
+            ],
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "exclude",
+          "scope",
+          "baseline_run_id",
+          "layout"
+        ],
+        "title": "ComparisonSettings",
+        "type": "object"
+      },
+      "ComparisonSettingsInput": {
+        "additionalProperties": false,
+        "description": "Unset fields keep the saved (or default) value.",
+        "properties": {
+          "baseline_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Run Id"
+          },
+          "exclude": {
+            "anyOf": [
+              {
+                "items": {
+                  "enum": [
+                    "provider_unavailable",
+                    "provider_access",
+                    "environment_setup",
+                    "preparation",
+                    "executor_unsupported",
+                    "platform_stop",
+                    "out_of_memory",
+                    "verifier",
+                    "attachment",
+                    "provider_request",
+                    "unclassified"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Failure groups left out; failures of other groups count as failed",
+            "title": "Exclude"
+          },
+          "layout": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Layout-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "enum": [
+                  "common",
+                  "all"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "common: tasks every run has; all: every task, no differences",
+            "title": "Scope"
+          }
+        },
+        "title": "ComparisonSettingsInput",
+        "type": "object"
+      },
+      "ComparisonUsage": {
+        "additionalProperties": false,
+        "properties": {
+          "known_totals": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "title": "Known Totals",
+            "type": "object"
+          },
+          "known_trials": {
+            "title": "Known Trials",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "known_trials",
+          "known_totals"
+        ],
+        "title": "ComparisonUsage",
+        "type": "object"
+      },
       "ConfigBlocker": {
         "additionalProperties": false,
         "description": "Why this configuration cannot be submitted; ``path`` points at the field.",
@@ -1886,6 +3420,18 @@
             },
             "title": "Attachments",
             "type": "array"
+          },
+          "collection_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Join this collection: its fixed fields fill in what is left out, and the run must match them",
+            "title": "Collection Id"
           },
           "concurrency": {
             "anyOf": [
@@ -2073,6 +3619,18 @@
             "title": "Attachments",
             "type": "array"
           },
+          "collection_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Join this collection: its fixed fields fill in what is left out, and the run must match them",
+            "title": "Collection Id"
+          },
           "concurrency": {
             "anyOf": [
               {
@@ -2247,6 +3805,7 @@
         "required": [
           "plan_id",
           "plan_revision",
+          "collection_id",
           "task_selection",
           "model_config_id",
           "model_revision",
@@ -3834,6 +5393,40 @@
         "title": "Envelope[CapacityOverview]",
         "type": "object"
       },
+      "Envelope_Collection_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Collection"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[Collection]",
+        "type": "object"
+      },
+      "Envelope_Comparison_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Comparison"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[Comparison]",
+        "type": "object"
+      },
       "Envelope_ConfigRequest_": {
         "additionalProperties": false,
         "properties": {
@@ -4293,6 +5886,23 @@
         "title": "Envelope[SetupStatus]",
         "type": "object"
       },
+      "Envelope_Snapshot_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Snapshot"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[Snapshot]",
+        "type": "object"
+      },
       "Envelope_SourceVersionDetail_": {
         "additionalProperties": false,
         "properties": {
@@ -4460,6 +6070,48 @@
           "meta"
         ],
         "title": "Envelope[list[Batch]]",
+        "type": "object"
+      },
+      "Envelope_list_CollectionEvent__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/CollectionEvent"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[list[CollectionEvent]]",
+        "type": "object"
+      },
+      "Envelope_list_Collection__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/Collection"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[list[Collection]]",
         "type": "object"
       },
       "Envelope_list_CredentialName__": {
@@ -4775,6 +6427,27 @@
           "meta"
         ],
         "title": "Envelope[list[SetupNetwork]]",
+        "type": "object"
+      },
+      "Envelope_list_SnapshotSummary__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotSummary"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[list[SnapshotSummary]]",
         "type": "object"
       },
       "Envelope_list_SourceDataset__": {
@@ -5705,6 +7378,52 @@
         "title": "ExportSummary",
         "type": "object"
       },
+      "FailureGroupCount": {
+        "additionalProperties": false,
+        "properties": {
+          "excluded": {
+            "title": "Excluded",
+            "type": "boolean"
+          },
+          "key": {
+            "enum": [
+              "provider_unavailable",
+              "provider_access",
+              "environment_setup",
+              "preparation",
+              "executor_unsupported",
+              "platform_stop",
+              "out_of_memory",
+              "verifier",
+              "attachment",
+              "provider_request",
+              "unclassified"
+            ],
+            "title": "Key",
+            "type": "string"
+          },
+          "side": {
+            "enum": [
+              "external",
+              "subject"
+            ],
+            "title": "Side",
+            "type": "string"
+          },
+          "trials": {
+            "title": "Trials",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "side",
+          "excluded",
+          "trials"
+        ],
+        "title": "FailureGroupCount",
+        "type": "object"
+      },
       "FieldErrorModel": {
         "additionalProperties": false,
         "properties": {
@@ -5753,13 +7472,14 @@
       },
       "FieldSource": {
         "additionalProperties": false,
-        "description": "Which layer gave a value: author, team policy, plan, harness default or override.",
+        "description": "Which layer gave a value: author, team policy, plan, collection, harness default or\noverride.",
         "properties": {
           "layer": {
             "enum": [
               "author",
               "team",
               "plan",
+              "collection",
               "override",
               "harness"
             ],
@@ -7081,6 +8801,193 @@
         "type": "object"
       },
       "JsonValue": {},
+      "Layout-Input": {
+        "additionalProperties": false,
+        "properties": {
+          "columns": {
+            "anyOf": [
+              {
+                "enum": [
+                  "dataset",
+                  "scoring",
+                  "model",
+                  "harness",
+                  "attachments",
+                  "resources",
+                  "repetitions",
+                  "parameters",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Columns"
+          },
+          "mode": {
+            "default": "leaderboard",
+            "description": "leaderboard: a row per run; matrix: two varying dimensions as rows and columns",
+            "enum": [
+              "leaderboard",
+              "matrix"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "rows": {
+            "anyOf": [
+              {
+                "enum": [
+                  "dataset",
+                  "scoring",
+                  "model",
+                  "harness",
+                  "attachments",
+                  "resources",
+                  "repetitions",
+                  "parameters",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rows"
+          },
+          "sort": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LayoutSort-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "Layout",
+        "type": "object"
+      },
+      "Layout-Output": {
+        "additionalProperties": false,
+        "properties": {
+          "columns": {
+            "anyOf": [
+              {
+                "enum": [
+                  "dataset",
+                  "scoring",
+                  "model",
+                  "harness",
+                  "attachments",
+                  "resources",
+                  "repetitions",
+                  "parameters",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Columns"
+          },
+          "mode": {
+            "default": "leaderboard",
+            "description": "leaderboard: a row per run; matrix: two varying dimensions as rows and columns",
+            "enum": [
+              "leaderboard",
+              "matrix"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "rows": {
+            "anyOf": [
+              {
+                "enum": [
+                  "dataset",
+                  "scoring",
+                  "model",
+                  "harness",
+                  "attachments",
+                  "resources",
+                  "repetitions",
+                  "parameters",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rows"
+          },
+          "sort": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LayoutSort-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "mode",
+          "rows",
+          "columns",
+          "sort"
+        ],
+        "title": "Layout",
+        "type": "object"
+      },
+      "LayoutSort-Input": {
+        "additionalProperties": false,
+        "properties": {
+          "descending": {
+            "default": false,
+            "title": "Descending",
+            "type": "boolean"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "title": "LayoutSort",
+        "type": "object"
+      },
+      "LayoutSort-Output": {
+        "additionalProperties": false,
+        "properties": {
+          "descending": {
+            "default": false,
+            "title": "Descending",
+            "type": "boolean"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "descending"
+        ],
+        "title": "LayoutSort",
+        "type": "object"
+      },
       "LocalPreparation": {
         "additionalProperties": false,
         "properties": {
@@ -7393,6 +9300,36 @@
           "request_id"
         ],
         "title": "Meta",
+        "type": "object"
+      },
+      "Mismatch": {
+        "additionalProperties": false,
+        "properties": {
+          "dimension": {
+            "enum": [
+              "dataset",
+              "scoring",
+              "model",
+              "harness",
+              "attachments",
+              "resources",
+              "repetitions",
+              "parameters",
+              "other"
+            ],
+            "title": "Dimension",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dimension",
+          "path"
+        ],
+        "title": "Mismatch",
         "type": "object"
       },
       "ModelConfig": {
@@ -7902,6 +9839,61 @@
           "parameters"
         ],
         "title": "NormalizedRequest",
+        "type": "object"
+      },
+      "NotCarried": {
+        "additionalProperties": false,
+        "properties": {
+          "mismatches": {
+            "items": {
+              "$ref": "#/components/schemas/Mismatch"
+            },
+            "title": "Mismatches",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "name",
+          "mismatches"
+        ],
+        "title": "NotCarried",
+        "type": "object"
+      },
+      "NoteBody": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "title": "NoteBody",
+        "type": "object"
+      },
+      "ObjectRef": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "ObjectRef",
         "type": "object"
       },
       "Operation": {
@@ -9442,7 +11434,9 @@
               "model_config",
               "harness_version",
               "attachment_version",
-              "experiment_plan"
+              "experiment_plan",
+              "collection",
+              "analysis_snapshot"
             ],
             "title": "Object Type",
             "type": "string"
@@ -9535,6 +11529,16 @@
               }
             ],
             "title": "Attachments"
+          },
+          "collection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ObjectRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "harness_version": {
             "anyOf": [
@@ -10308,6 +12312,18 @@
               }
             ],
             "title": "Client Request Id"
+          },
+          "collection_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Join this collection: its fixed fields fill in what is left out, and the run must match them",
+            "title": "Collection Id"
           },
           "concurrency": {
             "anyOf": [
@@ -11828,6 +13844,31 @@
         "title": "SessionInfo",
         "type": "object"
       },
+      "SetAsideRun": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "reason": {
+            "const": "deleted",
+            "title": "Reason",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "name",
+          "reason"
+        ],
+        "title": "SetAsideRun",
+        "type": "object"
+      },
       "SetupNetwork": {
         "additionalProperties": false,
         "properties": {
@@ -12019,6 +14060,388 @@
           "needs_setup"
         ],
         "title": "SetupStatus",
+        "type": "object"
+      },
+      "Snapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "allowed_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Actions",
+            "type": "array"
+          },
+          "collection_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection Id"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "deletion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeletionState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evidence": {
+            "additionalProperties": {
+              "enum": [
+                "available",
+                "none",
+                "deleted",
+                "purged"
+              ],
+              "type": "string"
+            },
+            "description": "Whether each run's files still open",
+            "title": "Evidence",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotNote"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "owner_id": {
+            "title": "Owner Id",
+            "type": "string"
+          },
+          "owner_username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Username"
+          },
+          "pat_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pat Id"
+          },
+          "result": {
+            "$ref": "#/components/schemas/Comparison"
+          },
+          "run_count": {
+            "title": "Run Count",
+            "type": "integer"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/ComparisonSettings"
+          },
+          "spec": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SnapshotSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "collection_id",
+          "owner_id",
+          "owner_username",
+          "pat_id",
+          "run_count",
+          "created_at",
+          "allowed_actions",
+          "settings",
+          "spec",
+          "result",
+          "evidence",
+          "notes",
+          "deletion"
+        ],
+        "title": "Snapshot",
+        "type": "object"
+      },
+      "SnapshotCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "collection_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection Id"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "run_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Without a collection",
+            "title": "Run Ids"
+          },
+          "settings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ComparisonSettingsInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "SnapshotCreate",
+        "type": "object"
+      },
+      "SnapshotNote": {
+        "additionalProperties": false,
+        "properties": {
+          "author_id": {
+            "title": "Author Id",
+            "type": "string"
+          },
+          "author_username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Username"
+          },
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "editable": {
+            "title": "Editable",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "pat_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pat Id"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "author_id",
+          "author_username",
+          "pat_id",
+          "body",
+          "created_at",
+          "updated_at",
+          "editable"
+        ],
+        "title": "SnapshotNote",
+        "type": "object"
+      },
+      "SnapshotSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "fixed": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/JsonValue"
+              },
+              "type": "object"
+            },
+            "title": "Fixed",
+            "type": "object"
+          },
+          "scenario": {
+            "enum": [
+              "models",
+              "harnesses",
+              "model_harness",
+              "attachments",
+              "repeats",
+              "custom"
+            ],
+            "title": "Scenario",
+            "type": "string"
+          },
+          "variable_dimensions": {
+            "items": {
+              "enum": [
+                "model",
+                "harness",
+                "attachments",
+                "resources",
+                "repetitions",
+                "parameters"
+              ],
+              "type": "string"
+            },
+            "title": "Variable Dimensions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "scenario",
+          "variable_dimensions",
+          "fixed"
+        ],
+        "title": "SnapshotSpec",
+        "type": "object"
+      },
+      "SnapshotSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "allowed_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Actions",
+            "type": "array"
+          },
+          "collection_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection Id"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owner_id": {
+            "title": "Owner Id",
+            "type": "string"
+          },
+          "owner_username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Username"
+          },
+          "pat_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pat Id"
+          },
+          "run_count": {
+            "title": "Run Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "collection_id",
+          "owner_id",
+          "owner_username",
+          "pat_id",
+          "run_count",
+          "created_at",
+          "allowed_actions"
+        ],
+        "title": "SnapshotSummary",
         "type": "object"
       },
       "SourceDataset": {
@@ -15245,7 +17668,9 @@
                     "model_config",
                     "harness_version",
                     "attachment_version",
-                    "experiment_plan"
+                    "experiment_plan",
+                    "collection",
+                    "analysis_snapshot"
                   ],
                   "type": "string"
                 },
@@ -15579,6 +18004,291 @@
         "tags": [
           "configuration",
           "admin"
+        ]
+      }
+    },
+    "/api/v1/analysis-snapshots": {
+      "get": {
+        "operationId": "list_snapshots",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "collection_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Collection Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_list_SnapshotSummary__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "List Snapshots",
+        "tags": [
+          "collections"
+        ]
+      },
+      "post": {
+        "description": "Freeze the comparison of ended runs, a collection's or the runs named.",
+        "operationId": "create_snapshot",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SnapshotCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_Snapshot_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Create Snapshot",
+        "tags": [
+          "collections"
+        ]
+      }
+    },
+    "/api/v1/analysis-snapshots/{snapshot_id}": {
+      "delete": {
+        "operationId": "delete_snapshot",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_RecycleEntry_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Delete Snapshot",
+        "tags": [
+          "collections"
+        ]
+      },
+      "get": {
+        "operationId": "get_snapshot",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_Snapshot_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Get Snapshot",
+        "tags": [
+          "collections"
+        ]
+      }
+    },
+    "/api/v1/analysis-snapshots/{snapshot_id}/notes": {
+      "post": {
+        "operationId": "add_snapshot_note",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NoteBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_Snapshot_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Add Snapshot Note",
+        "tags": [
+          "collections"
+        ]
+      }
+    },
+    "/api/v1/analysis-snapshots/{snapshot_id}/notes/{note_id}": {
+      "put": {
+        "description": "Only the note's author edits it.",
+        "operationId": "update_snapshot_note",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "note_id",
+            "required": true,
+            "schema": {
+              "title": "Note Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NoteBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_Snapshot_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Update Snapshot Note",
+        "tags": [
+          "collections"
         ]
       }
     },
@@ -15973,6 +18683,569 @@
         "summary": "Capabilities",
         "tags": [
           "system"
+        ]
+      }
+    },
+    "/api/v1/collections": {
+      "get": {
+        "operationId": "list_collections",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_list_Collection__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "List Collections",
+        "tags": [
+          "collections"
+        ]
+      },
+      "post": {
+        "description": "The specification (scenario and fixed values) cannot change afterwards.",
+        "operationId": "create_collection",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_Collection_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Create Collection",
+        "tags": [
+          "collections"
+        ]
+      }
+    },
+    "/api/v1/collections/{collection_id}": {
+      "delete": {
+        "operationId": "delete_collection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_RecycleEntry_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Delete Collection",
+        "tags": [
+          "collections"
+        ]
+      },
+      "get": {
+        "operationId": "get_collection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_Collection_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Get Collection",
+        "tags": [
+          "collections"
+        ]
+      },
+      "put": {
+        "description": "Name, description and comparison settings.",
+        "operationId": "update_collection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectionUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_Collection_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Update Collection",
+        "tags": [
+          "collections"
+        ]
+      }
+    },
+    "/api/v1/collections/{collection_id}/comparison": {
+      "post": {
+        "description": "The collection's comparison with its saved settings, or with these for this view.",
+        "operationId": "compare_collection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ComparisonSettingsInput"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_Comparison_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Compare Collection",
+        "tags": [
+          "collections"
+        ]
+      }
+    },
+    "/api/v1/collections/{collection_id}/copy": {
+      "post": {
+        "operationId": "copy_collection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectionCopy"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_Collection_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Copy Collection",
+        "tags": [
+          "collections"
+        ]
+      }
+    },
+    "/api/v1/collections/{collection_id}/events": {
+      "get": {
+        "operationId": "list_collection_events",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_list_CollectionEvent__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "List Collection Events",
+        "tags": [
+          "collections"
+        ]
+      }
+    },
+    "/api/v1/collections/{collection_id}/runs": {
+      "post": {
+        "description": "Runs that differ from the fixed values are refused with what differs.",
+        "operationId": "add_collection_runs",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectionRunsAdd"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_Collection_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Add Collection Runs",
+        "tags": [
+          "collections"
+        ]
+      }
+    },
+    "/api/v1/collections/{collection_id}/runs/{run_id}": {
+      "delete": {
+        "operationId": "remove_collection_run",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_Collection_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Remove Collection Run",
+        "tags": [
+          "collections"
+        ]
+      },
+      "put": {
+        "operationId": "label_collection_run",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectionRunLabel"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_Collection_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Label Collection Run",
+        "tags": [
+          "collections"
+        ]
+      }
+    },
+    "/api/v1/comparisons": {
+      "post": {
+        "description": "Compute a comparison of these runs; nothing is saved.",
+        "operationId": "compare_runs",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComparisonRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_Comparison_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Compare Runs",
+        "tags": [
+          "collections"
         ]
       }
     },

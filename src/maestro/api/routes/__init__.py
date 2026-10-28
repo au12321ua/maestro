@@ -3,6 +3,7 @@ from maestro.api.routes import (
     attachments,
     batches,
     catalog,
+    collections,
     configuration,
     identity,
     plans,
@@ -22,4 +23,5 @@ def routers():
         plans.router,
         runs.router,
         batches.router,
+        collections.router,
     ]

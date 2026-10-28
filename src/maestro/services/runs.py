@@ -49,6 +49,7 @@ from maestro.services import (
 from maestro.services.artifacts import stamp_expiry
 from maestro.services.capacity import HostCapacity, refuse_if_never_fits
 from maestro.services.catalog import ADMITTED
+from maestro.services.collections import Collections, mark_sources
 from maestro.services.configuration import (
     EXECUTION_MODES,
     Resolution,
@@ -74,7 +75,7 @@ ACTION_CANCEL = "runs.cancel"
 ACTION_RERUN = "runs.rerun"
 ACTION_BATCH = "runs.submit_batch"
 RERUN_MODES = ("all", "unfinished", "explicit")
-RUN_FIELDS = {"name", "client_request_id", "resolution_id", "source_run_id"}
+RUN_FIELDS = {"name", "client_request_id", "resolution_id", "source_run_id", "collection_id"}
 __all__ = ["EXECUTION_MODES", "Runs"]
 
 
@@ -95,6 +96,9 @@ def _check_run_fields(body: dict) -> dict:
     source_run_id = body.get("source_run_id")
     if source_run_id is not None and not isinstance(source_run_id, str):
         errors.append(FieldError("/source_run_id", "TYPE"))
+    collection_id = body.get("collection_id")
+    if collection_id is not None and not isinstance(collection_id, str):
+        errors.append(FieldError("/collection_id", "TYPE"))
     if resolution_id is not None:
         # The resolution fixed the configuration; a field beside it would be ignored.
         errors += [
@@ -114,6 +118,7 @@ def _check_run_fields(body: dict) -> dict:
         "client_request_id": client_request_id,
         "resolution_id": resolution_id,
         "source_run_id": source_run_id,
+        "collection_id": collection_id,
     }
 
 
@@ -287,6 +292,7 @@ class Runs:
         self.capacity = capacity
         self.disk = disk
         self.resolver = resolver or Resolver(capacity)
+        self.collections = Collections(db, self.resolver)
 
     # --- resolution (03 section 4) -----------------------------------------------
 
@@ -294,10 +300,8 @@ class Runs:
         """Resolve and keep the result for confirmation; nothing is reserved. Readers may
         look too: a read PAT sees what a submission would do but cannot submit it."""
         with self.db.read() as conn:
-            body = Plans.apply(conn, body)
-        request = check_request(body)
-        with self.db.read() as conn:
-            res = self.resolver.resolve(conn, request)
+            res = self._resolve_body(conn, body)
+        request = res.request
         now = clock.now()
         row = {
             "id": new_id("res"),
@@ -312,6 +316,24 @@ class Runs:
         with self.db.write() as conn:
             conn.execute(insert(t.config_resolutions).values(**row))
         return public_resolution(row, principal)
+
+    def _resolve_body(self, conn: Connection, body: dict) -> Resolution:
+        """An experiment plan, then a collection, fill in what the body leaves out; a
+        collection adds blockers where the result differs from its fixed values."""
+        body, applied = self.collections.apply(conn, Plans.apply(conn, body))
+        res = self.resolver.resolve(conn, check_request(body))
+        if applied:
+            mark_sources(res, applied)
+            res.blockers.extend(self.collections.check(conn, applied["collection_id"], res))
+        return res
+
+    def _require_collection(self, conn: Connection, collection_id: str | None, res) -> None:
+        """A confirmed resolution was made without the collection: check it now."""
+        if collection_id is None:
+            return
+        blockers = self.collections.check(conn, collection_id, res)
+        if blockers:
+            Resolution(request={}, blockers=blockers).raise_if_blocked()
 
     def sweep_resolutions(self) -> int:
         """Drop resolutions a day past their expiry: they reserve nothing, and accepted
@@ -389,8 +411,9 @@ class Runs:
         with self.db.read() as conn:
             if run["resolution_id"]:
                 res = self._confirmed(conn, principal, run["resolution_id"])
+                self._require_collection(conn, run["collection_id"], res)
             else:
-                res = self.resolver.resolve(conn, check_request(Plans.apply(conn, body)))
+                res = self._resolve_body(conn, body)
                 res.raise_if_blocked()
         source = None
         if run["source_run_id"]:
@@ -415,6 +438,8 @@ class Runs:
             if principal.channel == Channel.PAT:
                 self._charge_pat(conn, principal.pat_id)
             response = self._insert_run(conn, principal, run, res, source)
+            if run.get("collection_id"):
+                self.collections.join(conn, principal, run["collection_id"], response["run_id"])
             idempotency.store(
                 conn, principal.idempotency_principal, action, key, req_hash, 202, response
             )
@@ -648,22 +673,18 @@ class Runs:
         for index, item in enumerate(items):
             with _prefixed(f"/runs/{index}"):
                 run = _check_run_fields(item)
-                if run["resolution_id"]:
-                    request = None
-                else:
-                    with self.db.read() as conn:
-                        request = check_request(Plans.apply(conn, item))
-            prepared.append((run, request))
+            prepared.append((run, item))
         if self.disk:
             self.disk.refuse_if_low()
         members = []
         with self.db.read() as conn:
-            for index, (run, request) in enumerate(prepared):
+            for index, (run, item) in enumerate(prepared):
                 with _prefixed(f"/runs/{index}"):
-                    if request is None:
+                    if run["resolution_id"]:
                         res = self._confirmed(conn, principal, run["resolution_id"])
+                        self._require_collection(conn, run["collection_id"], res)
                     else:
-                        res = self.resolver.resolve(conn, request)
+                        res = self._resolve_body(conn, item)
                         res.raise_if_blocked()
                     source = None
                     if run["source_run_id"]:
@@ -715,10 +736,15 @@ class Runs:
                     created_at=clock.to_text(clock.now()),
                 )
             )
-            accepted = [
-                self._insert_run(conn, principal, run, res, source, batch_id=batch_id)
-                for run, res, source in members
-            ]
+            accepted = []
+            for index, (run, res, source) in enumerate(members):
+                response = self._insert_run(conn, principal, run, res, source, batch_id=batch_id)
+                if run.get("collection_id"):
+                    with _prefixed(f"/runs/{index}"):
+                        self.collections.join(
+                            conn, principal, run["collection_id"], response["run_id"]
+                        )
+                accepted.append(response)
             response = {
                 "batch_id": batch_id,
                 "operation_id": op_id,
@@ -762,10 +788,13 @@ class Runs:
                     run = _check_run_fields(item)
                     if run["resolution_id"]:
                         stored = self._resolution_row(conn, principal, run["resolution_id"])
-                        request = stored["request_json"]
+                        res = self.resolver.resolve(conn, stored["request_json"])
+                        if run["collection_id"]:
+                            res.blockers.extend(
+                                self.collections.check(conn, run["collection_id"], res)
+                            )
                     else:
-                        request = check_request(Plans.apply(conn, item))
-                    res = self.resolver.resolve(conn, request)
+                        res = self._resolve_body(conn, item)
                     entry.update(
                         config_digest=res.config_digest,
                         planned_trials=len(res.tasks) * res.effective["repetitions"]
