@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AlertTriangle, LogOut } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ErrorAlert, Loading, Pill } from "@/components/common";
+import { Sidebar } from "@/components/Sidebar";
 import { ApiError, api, errorText, setCsrfToken, setUnauthorizedHandler } from "@/lib/api";
 import { SessionContext, useInterval, useSession, type SessionState } from "@/lib/hooks";
+import type { Tone } from "@/lib/format";
 import type { Capabilities, Me, SessionInfo, SystemStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { InvitePage, LoginPage, SetupPage } from "@/pages/AuthPages";
@@ -215,79 +217,74 @@ function Shell({ children }: { children: React.ReactNode }) {
     void pollHealth();
   }, [pollHealth]);
   useInterval(() => void pollHealth(), 30000, true);
-  const links = [
-    { to: "/", label: "工作台", end: true },
-    { to: "/runs", label: "运行", end: true },
-    { to: "/runs/new", label: "新建运行", end: true },
-    { to: "/batches", label: "批次" },
-    { to: "/datasets", label: "数据集" },
-    { to: "/plans", label: "方案" },
-    { to: "/attachments", label: "附件" },
-    { to: "/exports", label: "导出" },
-    { to: "/settings", label: "设置" },
-    ...(me.role === "admin" ? [{ to: "/admin", label: "管理" }] : []),
-  ];
-  return (
-    <div className="min-h-screen">
-      <header className="sticky top-0 z-10 border-b bg-sidebar text-sidebar-foreground">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2">
-          <NavLink to="/" className="text-lg font-semibold tracking-wide text-sidebar-primary">
-            Maestro
-          </NavLink>
-          <nav className="flex flex-wrap gap-1">
-            {links.map((link) => (
-              <NavLink
-                key={link.to}
-                to={link.to}
-                end={link.end}
-                className={({ isActive }) =>
-                  cn(
-                    "rounded-md px-3 py-1.5 text-sm",
-                    isActive ? "bg-sidebar-accent text-white" : "hover:bg-sidebar-accent/60",
-                  )
-                }
-              >
-                {link.label}
-              </NavLink>
-            ))}
-          </nav>
-          <div className="ml-auto flex items-center gap-3 text-sm">
+  const sidebar = (
+    <Sidebar
+      footer={
+        <>
+          <div>
             <SystemIndicator health={health} error={healthError} />
-            <span title={me.id}>
+          </div>
+          <div className="flex min-w-0 items-center gap-2 text-sm">
+            <span className="min-w-0 truncate" title={me.id}>
               {me.display_name || me.username}
               <span className="ml-1 opacity-70">({me.role === "admin" ? "管理员" : "成员"})</span>
             </span>
             <Button
               size="sm"
               variant="ghost"
-              className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-white"
+              className="ml-auto text-sidebar-foreground hover:bg-sidebar-accent hover:text-white"
               onClick={() => void signOut()}
             >
               <LogOut />
               退出
             </Button>
           </div>
-        </div>
-      </header>
-      <SystemNotice health={health} />
-      <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
+        </>
+      }
+      collapsedFooter={<SystemIndicator health={health} error={healthError} compact />}
+    />
+  );
+  return (
+    <div className="min-h-screen md:flex">
+      {sidebar}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <SystemNotice health={health} />
+        <main className="mx-auto w-full min-w-0 max-w-[100rem] px-4 py-6 md:px-6">{children}</main>
+      </div>
     </div>
   );
 }
 
-function SystemIndicator({ health, error }: { health: SystemStatus | null; error: unknown }) {
-  if (error)
+function SystemIndicator({
+  health,
+  error,
+  compact = false,
+}: {
+  health: SystemStatus | null;
+  error: unknown;
+  compact?: boolean;
+}) {
+  const [tone, text]: [Tone, string] | [null, null] = error
+    ? ["bad", "状态未知"]
+    : !health
+      ? [null, null]
+      : health.status !== "ready"
+        ? ["bad", "维护中"]
+        : health.accepting_runs
+          ? ["good", "可受理运行"]
+          : ["warn", "暂不受理运行"];
+  if (!tone) return null;
+  const title = error ? errorText(error) : text;
+  if (compact) {
+    const dot = { good: "bg-emerald-400", warn: "bg-amber-400", bad: "bg-red-500" }[tone as string];
     return (
-      <Pill tone="bad" title={errorText(error)}>
-        状态未知
-      </Pill>
+      <span title={title} aria-label={text} className={cn("mx-auto size-2.5 rounded-full", dot)} />
     );
-  if (!health) return null;
-  if (health.status !== "ready") return <Pill tone="bad">维护中</Pill>;
-  return health.accepting_runs ? (
-    <Pill tone="good">可受理运行</Pill>
-  ) : (
-    <Pill tone="warn">暂不受理运行</Pill>
+  }
+  return (
+    <Pill tone={tone} title={title}>
+      {text}
+    </Pill>
   );
 }
 
@@ -302,13 +299,13 @@ function SystemNotice({ health }: { health: SystemStatus | null }) {
   if (detail.storage.level !== "ok") reasons.push("存储空间不足");
   return (
     <div className="border-b border-amber-300 bg-amber-50 text-amber-900">
-      <div className="mx-auto flex max-w-7xl items-start gap-2 px-4 py-2 text-sm">
+      <div className="flex items-start gap-2 px-4 py-2 text-sm md:px-6">
         <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-        <div>
+        <div className="min-w-0">
           <b>当前无法受理新运行。</b> {reasons.join("；") || "原因未知"}。已有记录仍可查看。
           <details className="mt-1">
             <summary className="cursor-pointer text-xs">详情</summary>
-            <pre className="text-xs">{JSON.stringify(detail, null, 2)}</pre>
+            <pre className="overflow-x-auto text-xs">{JSON.stringify(detail, null, 2)}</pre>
           </details>
         </div>
       </div>

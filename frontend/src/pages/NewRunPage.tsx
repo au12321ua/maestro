@@ -22,6 +22,7 @@ import {
   ErrorAlert,
   JsonBlock,
   Loading,
+  LongName,
   PageTitle,
   Pill,
   SelectField,
@@ -32,6 +33,7 @@ import {
   CONFIG_BLOCKER,
   SOURCE_LAYER,
   blockerText,
+  commonPrefix,
   fmtTime,
 } from "@/lib/format";
 import { limit, useLoad, useSession } from "@/lib/hooks";
@@ -142,6 +144,7 @@ export function NewRunPage() {
         : ([] as Task[]),
     [versionId],
   );
+  const taskPrefix = commonPrefix(tasks.data?.map((t) => t.task_key) ?? []);
   const detail = useLoad(
     async () =>
       versionId
@@ -965,8 +968,8 @@ export function NewRunPage() {
                               />
                             </TableCell>
                           )}
-                          <TableCell className="font-mono text-xs">
-                            {task.task_key}
+                          <TableCell className="max-w-[24rem] font-mono text-xs">
+                            <LongName value={task.task_key} prefix={taskPrefix} />
                             {task.required_parameters.length > 0 && (
                               <div className="text-[11px] text-muted-foreground">
                                 需要参数：{task.required_parameters.join("、")}

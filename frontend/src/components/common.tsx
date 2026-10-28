@@ -1,14 +1,13 @@
-import { useState, type ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 import { AlertTriangle, Check, Copy, Loader2 } from "lucide-react";
-import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ApiError, errorText } from "@/lib/api";
-import { fmtNum, type Tone } from "@/lib/format";
+import { elideMiddle, fmtNum, type Tone } from "@/lib/format";
 import type { RunScoring } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cn, copyText } from "@/lib/utils";
 
 const TONES: Record<Tone, string> = {
   neutral: "border-slate-300 bg-slate-100 text-slate-800",
@@ -84,7 +83,9 @@ export function Loading({ text = "加载中…" }: { text?: string }) {
 export function PageTitle({ title, children }: { title: string; children?: ReactNode }) {
   return (
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-      <h1 className="text-xl font-semibold">{title}</h1>
+      <h1 className="min-w-0 break-words text-xl font-semibold [overflow-wrap:anywhere]">
+        {title}
+      </h1>
       <div className="flex flex-wrap items-center gap-2">{children}</div>
     </div>
   );
@@ -101,6 +102,71 @@ export function JsonBlock({ value, summary }: { value: unknown; summary: string 
   );
 }
 
+/** Inside a SettingsForm, fields are rows: a label column, then the control with its hint
+ * and error below, so controls line up however long a label or hint is (U-45). */
+const RowLayout = createContext(false);
+
+/** A settings form (administration and settings pages); short forms stay stacked. */
+export function SettingsForm({ className, ...props }: React.ComponentProps<"form">) {
+  return (
+    <RowLayout.Provider value={true}>
+      <form className={cn("grid max-w-3xl gap-4", className)} {...props} />
+    </RowLayout.Provider>
+  );
+}
+
+const ROW = "md:grid-cols-[12rem_minmax(0,1fr)] md:gap-x-4";
+
+/** One field: label, then the control with its hint and error. */
+export function FormRow({
+  label,
+  htmlFor,
+  hint,
+  error,
+  children,
+}: {
+  label: ReactNode;
+  htmlFor?: string;
+  hint?: ReactNode;
+  error?: string;
+  children: ReactNode;
+}) {
+  const rows = useContext(RowLayout);
+  return (
+    <div className={cn("grid gap-1.5", rows && ROW)}>
+      <Label htmlFor={htmlFor} className={cn("leading-snug", rows && "md:pt-2")}>
+        {label}
+      </Label>
+      <div className="grid min-w-0 gap-1.5">
+        {children}
+        {hint && !error && <div className="text-xs text-muted-foreground">{hint}</div>}
+        {error && <p className="text-xs text-destructive">{error}</p>}
+      </div>
+    </div>
+  );
+}
+
+/** A heading between groups of rows. */
+export function FormSection({ title, children }: { title: string; children?: ReactNode }) {
+  return (
+    <div className="grid gap-1 border-t pt-4 first:border-t-0 first:pt-0">
+      <h3 className="font-medium">{title}</h3>
+      {children && <div className="text-xs text-muted-foreground">{children}</div>}
+    </div>
+  );
+}
+
+/** The buttons, under the controls column. */
+export function FormActions({ children }: { children: ReactNode }) {
+  const rows = useContext(RowLayout);
+  return (
+    <div className={cn("grid", rows && ROW)}>
+      {rows && <span className="hidden md:block" />}
+      <div className="flex flex-wrap items-center gap-2">{children}</div>
+    </div>
+  );
+}
+
 export function TextField({
   id,
   label,
@@ -109,17 +175,14 @@ export function TextField({
   ...props
 }: React.ComponentProps<typeof Input> & {
   id: string;
-  label: string;
+  label: ReactNode;
   error?: string;
-  hint?: string;
+  hint?: ReactNode;
 }) {
   return (
-    <div className="grid gap-1.5">
-      <Label htmlFor={id}>{label}</Label>
+    <FormRow label={label} htmlFor={id} hint={hint} error={error}>
       <Input id={id} aria-invalid={error ? true : undefined} {...props} />
-      {hint && !error && <p className="text-xs text-muted-foreground">{hint}</p>}
-      {error && <p className="text-xs text-destructive">{error}</p>}
-    </div>
+    </FormRow>
   );
 }
 
@@ -127,21 +190,98 @@ export function SelectField({
   id,
   label,
   error,
+  hint,
   children,
   ...props
-}: React.ComponentProps<"select"> & { id: string; label: string; error?: string }) {
+}: React.ComponentProps<"select"> & {
+  id: string;
+  label: ReactNode;
+  error?: string;
+  hint?: ReactNode;
+}) {
   return (
-    <div className="grid gap-1.5">
-      <Label htmlFor={id}>{label}</Label>
+    <FormRow label={label} htmlFor={id} hint={hint} error={error}>
       <select
         id={id}
-        className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        className="h-9 min-w-0 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         {...props}
       >
         {children}
       </select>
-      {error && <p className="text-xs text-destructive">{error}</p>}
-    </div>
+    </FormRow>
+  );
+}
+
+export function TextAreaField({
+  id,
+  label,
+  error,
+  hint,
+  ...props
+}: React.ComponentProps<"textarea"> & {
+  id: string;
+  label: ReactNode;
+  error?: string;
+  hint?: ReactNode;
+}) {
+  return (
+    <FormRow label={label} htmlFor={id} hint={hint} error={error}>
+      <textarea
+        id={id}
+        className="min-h-24 rounded-md border bg-background p-2 font-mono text-xs"
+        aria-invalid={error ? true : undefined}
+        {...props}
+      />
+    </FormRow>
+  );
+}
+
+/**
+ * A long name (task key, artifact path, run name) on one line: cut to fit, the full name on
+ * hover, with a copy button. Names sharing ``prefix`` with their list lose its middle, so the
+ * part that tells them apart stays visible. ``wrap`` is for a name shown once (a title): it is
+ * kept whole and may break anywhere (U-45).
+ */
+export function LongName({
+  value,
+  prefix = "",
+  copy = true,
+  wrap = false,
+  className,
+}: {
+  value: string;
+  prefix?: string;
+  copy?: boolean;
+  wrap?: boolean;
+  className?: string;
+}) {
+  return (
+    <span
+      className={cn(
+        "group/name inline-flex min-w-0 max-w-full items-center gap-1",
+        wrap && "items-start",
+        className,
+      )}
+    >
+      <span className={wrap ? "min-w-0 break-all" : "truncate"} title={value}>
+        {wrap ? value : elideMiddle(value, prefix)}
+      </span>
+      {copy && (
+        <button
+          type="button"
+          aria-label={`复制 ${value}`}
+          title="复制"
+          className="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 group-hover/name:opacity-100 hover:bg-muted focus-visible:opacity-100"
+          onClick={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            void copyText(value);
+          }}
+        >
+          <Copy className="size-3" />
+        </button>
+      )}
+    </span>
   );
 }
 
@@ -156,15 +296,7 @@ export function OneTimeSecret({
   onDismiss: () => void;
 }) {
   const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-      toast.success("已复制");
-    } catch {
-      toast.error("复制失败，请手动选择文本复制");
-    }
-  };
+  const copy = async () => setCopied(await copyText(value));
   return (
     <Alert className="border-amber-400 bg-amber-50">
       <AlertTriangle className="size-4 text-amber-700" />

@@ -33,6 +33,7 @@ import {
   ErrorAlert,
   JsonBlock,
   Loading,
+  LongName,
   PageTitle,
   Pill,
   StatusPill,
@@ -54,6 +55,7 @@ import {
   fmtDuration,
   fmtNum,
   fmtPct,
+  commonPrefix,
   fmtTime,
   label,
   shortId,
@@ -421,7 +423,17 @@ function RunDetailView({ runId }: { runId: string }) {
           {!trials && <Loading />}
           {trials && trials.length === 0 && <EmptyNote>没有试次。</EmptyNote>}
           {trials && trials.length > 0 && (
-            <ExecutionView trials={trials} artifacts={artifacts ?? []} live={active} />
+            <ExecutionView
+              trials={trials}
+              artifacts={artifacts ?? []}
+              live={active}
+              onShowArtifacts={(trialId) => {
+                const next = new URLSearchParams(params);
+                next.set("tab", "artifacts");
+                next.set("artifacts_of", trialId);
+                setParams(next);
+              }}
+            />
           )}
         </TabsContent>
         <TabsContent value="results" className="mt-3">
@@ -454,6 +466,13 @@ function RunDetailView({ runId }: { runId: string }) {
             <ArtifactTable
               artifacts={artifacts}
               trials={trials ?? []}
+              trialId={params.get("artifacts_of") ?? ""}
+              onTrialId={(trialId) => {
+                const next = new URLSearchParams(params);
+                if (trialId) next.set("artifacts_of", trialId);
+                else next.delete("artifacts_of");
+                setParams(next, { replace: true });
+              }}
               onDelete={canDeleteArtifacts ? removeArtifact : undefined}
             />
           )}
@@ -681,10 +700,12 @@ function ExecutionView({
   trials,
   artifacts,
   live,
+  onShowArtifacts,
 }: {
   trials: Trial[];
   artifacts: Artifact[];
   live: boolean;
+  onShowArtifacts: (trialId: string) => void;
 }) {
   const [params, setParams] = useSearchParams();
   const chosen = trials.find((t) => t.id === params.get("trial"));
@@ -695,8 +716,9 @@ function ExecutionView({
     setParams(next, { replace: true });
   };
   const own = artifacts.filter((a) => a.trial_id === selected.id);
+  const prefix = commonPrefix(trials.map((t) => t.task_key));
   return (
-    <div className="grid items-start gap-4 md:grid-cols-[minmax(14rem,20rem)_1fr]">
+    <div className="grid items-start gap-4 md:grid-cols-[minmax(14rem,20rem)_minmax(0,1fr)]">
       <nav aria-label="试次" className="grid gap-0.5 rounded-md border p-1">
         {trials.map((trial) => (
           <button
@@ -712,7 +734,12 @@ function ExecutionView({
           >
             <span className="flex items-center gap-2">
               {trialIcon(trial.state)}
-              <span className="truncate font-mono text-xs">{trial.task_key}</span>
+              <LongName
+                value={trial.task_key}
+                prefix={prefix}
+                copy={false}
+                className="font-mono text-xs"
+              />
               <span className="text-xs text-muted-foreground">#{trial.repetition_index}</span>
               <span className="ml-auto text-xs tabular-nums text-muted-foreground">
                 {trialDuration(trial)}
@@ -724,11 +751,11 @@ function ExecutionView({
           </button>
         ))}
       </nav>
-      <Card data-testid="trial-panel">
+      <Card data-testid="trial-panel" className="min-w-0">
         <CardHeader className="gap-1">
           <CardTitle className="flex flex-wrap items-center gap-2 text-base">
             {trialIcon(selected.state)}
-            <span className="font-mono">{selected.task_key}</span>
+            <LongName value={selected.task_key} wrap className="font-mono" />
             <span className="text-sm font-normal text-muted-foreground">
               第 {selected.repetition_index} 次重复
             </span>
@@ -759,7 +786,14 @@ function ExecutionView({
         </CardHeader>
         <CardContent className="grid gap-2">
           <AttemptSteps key={selected.id} trial={selected} artifacts={own} live={live} />
-          <TrialArtifacts artifacts={own} />
+          {own.length > 0 && (
+            <div>
+              <Button size="sm" variant="ghost" onClick={() => onShowArtifacts(selected.id)}>
+                产物 {own.length} 个
+                <ChevronRight />
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
@@ -957,10 +991,17 @@ function LogView({ artifact, live }: { artifact: Artifact; live: boolean }) {
     if (live && pre.current) pre.current.scrollTop = pre.current.scrollHeight;
   }, [live, text]);
   return (
-    <div className="my-1 ml-5">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <code>{artifact.relative_path}</code>
+    <div className="my-1 ml-5 min-w-0">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+        <code className="break-all">{artifact.relative_path}</code>
         <span>{fmtBytes(artifact.size_bytes)}</span>
+        <a
+          className="inline-flex items-center gap-1 text-primary hover:underline"
+          href={`${API}/artifacts/${artifact.id}/download`}
+        >
+          <Download className="size-3" />
+          下载
+        </a>
         {live && <Loader2 className="size-3 animate-spin" />}
         {lines.length > LOG_TAIL_LINES && <span>仅显示最后 {LOG_TAIL_LINES} 行</span>}
       </div>
@@ -974,17 +1015,6 @@ function LogView({ artifact, live }: { artifact: Artifact; live: boolean }) {
           {shown.join("\n") || "（空）"}
         </pre>
       )}
-    </div>
-  );
-}
-
-function TrialArtifacts({ artifacts }: { artifacts: Artifact[] }) {
-  if (artifacts.length === 0) return null;
-  return (
-    <div className="mt-2 flex flex-wrap gap-2 text-xs">
-      {artifacts.map((a) => (
-        <ArtifactLink key={a.id} artifact={a} />
-      ))}
     </div>
   );
 }
@@ -1016,76 +1046,113 @@ function ArtifactLink({ artifact }: { artifact: Artifact }) {
   );
 }
 
+/** All of a run's artifacts, or one trial's (``trialId``, kept in the URL). */
 function ArtifactTable({
   artifacts,
   trials,
+  trialId,
+  onTrialId,
   onDelete,
 }: {
   artifacts: Artifact[];
   trials: Trial[];
+  trialId: string;
+  onTrialId: (trialId: string) => void;
   onDelete?: (artifact: Artifact) => Promise<void>;
 }) {
   const trialName = new Map(trials.map((t) => [t.id, `${t.task_key} #${t.repetition_index}`]));
+  const prefix = commonPrefix(trials.map((t) => t.task_key));
+  const shown = trialId ? artifacts.filter((a) => a.trial_id === trialId) : artifacts;
   return (
-    <div className="rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>文件</TableHead>
-            <TableHead>类型</TableHead>
-            <TableHead>试次</TableHead>
-            <TableHead>大小</TableHead>
-            <TableHead>状态</TableHead>
-            <TableHead>到期</TableHead>
-            {onDelete && <TableHead />}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {artifacts.map((a) => (
-            <TableRow key={a.id}>
-              <TableCell>
-                <ArtifactLink artifact={a} />
-                <div className="font-mono text-xs text-muted-foreground">{a.relative_path}</div>
-              </TableCell>
-              <TableCell className="text-xs">{a.kind}</TableCell>
-              <TableCell className="text-xs">
-                {a.trial_id ? trialName.get(a.trial_id) ?? shortId(a.trial_id) : "运行级"}
-              </TableCell>
-              <TableCell className="text-xs tabular-nums">{fmtBytes(a.size_bytes)}</TableCell>
-              <TableCell>
-                <StatusPill value={label(ARTIFACT_STATUS, a.status)} />
-                {artifactReason(a) && (
-                  <div className="mt-1 text-xs text-muted-foreground">{artifactReason(a)}</div>
-                )}
-              </TableCell>
-              <TableCell className="text-xs">
-                {a.expires_at ? (
-                  <span className={cn(a.status === "expired" && "text-amber-800")}>
-                    {fmtTime(a.expires_at)}
-                    {a.status === "expired" && "（已过期）"}
-                  </span>
-                ) : (
-                  <span className="text-muted-foreground">试次结束后起算</span>
-                )}
-              </TableCell>
-              {onDelete && (
-                <TableCell className="text-right">
-                  {a.status !== "deleted" && a.status !== "deleting" && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      aria-label={`删除产物 ${a.relative_path}`}
-                      onClick={() => void onDelete(a)}
-                    >
-                      删除
-                    </Button>
+    <div className="grid gap-2">
+      <div className="flex min-w-0 items-center gap-2 text-sm">
+        <label htmlFor="artifacts-of" className="shrink-0 text-muted-foreground">
+          试次
+        </label>
+        <select
+          id="artifacts-of"
+          className="h-8 min-w-0 max-w-full rounded-md border border-input bg-background px-2 text-sm"
+          value={trialId}
+          onChange={(e) => onTrialId(e.target.value)}
+        >
+          <option value="">全部（{artifacts.length}）</option>
+          {trials.map((t) => (
+            <option key={t.id} value={t.id}>
+              {trialName.get(t.id)}（{artifacts.filter((a) => a.trial_id === t.id).length}）
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>文件</TableHead>
+              <TableHead>类型</TableHead>
+              <TableHead>试次</TableHead>
+              <TableHead>大小</TableHead>
+              <TableHead>状态</TableHead>
+              <TableHead>到期</TableHead>
+              {onDelete && <TableHead />}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {shown.map((a) => (
+              <TableRow key={a.id}>
+                <TableCell className="max-w-[28rem]">
+                  <ArtifactLink artifact={a} />
+                  <div className="break-all font-mono text-xs text-muted-foreground">
+                    {a.relative_path}
+                  </div>
+                </TableCell>
+                <TableCell className="text-xs">{a.kind}</TableCell>
+                <TableCell className="max-w-[16rem] text-xs">
+                  {a.trial_id ? (
+                    trialName.has(a.trial_id) ? (
+                      <LongName value={trialName.get(a.trial_id)!} prefix={prefix} copy={false} />
+                    ) : (
+                      shortId(a.trial_id)
+                    )
+                  ) : (
+                    "运行级"
                   )}
                 </TableCell>
-              )}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+                <TableCell className="text-xs tabular-nums">{fmtBytes(a.size_bytes)}</TableCell>
+                <TableCell>
+                  <StatusPill value={label(ARTIFACT_STATUS, a.status)} />
+                  {artifactReason(a) && (
+                    <div className="mt-1 text-xs text-muted-foreground">{artifactReason(a)}</div>
+                  )}
+                </TableCell>
+                <TableCell className="text-xs">
+                  {a.expires_at ? (
+                    <span className={cn(a.status === "expired" && "text-amber-800")}>
+                      {fmtTime(a.expires_at)}
+                      {a.status === "expired" && "（已过期）"}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">试次结束后起算</span>
+                  )}
+                </TableCell>
+                {onDelete && (
+                  <TableCell className="text-right">
+                    {a.status !== "deleted" && a.status !== "deleting" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        aria-label={`删除产物 ${a.relative_path}`}
+                        onClick={() => void onDelete(a)}
+                      >
+                        删除
+                      </Button>
+                    )}
+                  </TableCell>
+                )}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 }
@@ -1152,6 +1219,7 @@ function ResultSummary({ summary, error }: { summary?: RunSummary; error: unknow
   }
   const c = summary.contract;
   const causes = Object.entries(summary.excluded_by_cause);
+  const summaryPrefix = commonPrefix(summary.tasks.map((t) => t.task_key));
   return (
     <Card data-testid="result-summary">
       <CardHeader>
@@ -1281,8 +1349,8 @@ function ResultSummary({ summary, error }: { summary?: RunSummary; error: unknow
               <TableBody>
                 {summary.tasks.map((task) => (
                   <TableRow key={task.task_key} data-testid="task-summary-row">
-                    <TableCell className="font-mono text-xs">
-                      {task.task_key}
+                    <TableCell className="max-w-[24rem] font-mono text-xs">
+                      <LongName value={task.task_key} prefix={summaryPrefix} />
                       {task.partial && (
                         <span className="ml-2" title="部分计划的重复没有得分，均值基于更少的样本">
                           <Pill tone="warn">部分</Pill>

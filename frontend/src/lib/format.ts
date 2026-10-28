@@ -21,6 +21,29 @@ export function shortId(id: string | null | undefined, length = 12): string {
   return id.length > length ? `${id.slice(0, length)}…` : id;
 }
 
+/** The prefix all of ``names`` share, cut back to a separator so a word is not split. */
+export function commonPrefix(names: string[]): string {
+  if (names.length < 2) return "";
+  let prefix = names[0];
+  for (const name of names.slice(1)) {
+    let i = 0;
+    while (i < prefix.length && i < name.length && prefix[i] === name[i]) i++;
+    prefix = prefix.slice(0, i);
+    if (!prefix) return "";
+  }
+  const cut = Math.max(...["/", "-", "_", ".", ":"].map((sep) => prefix.lastIndexOf(sep)));
+  return cut < 0 ? "" : prefix.slice(0, cut + 1);
+}
+
+/** Keep the start and the part after a long shared ``prefix``: "swebench…-11099". */
+export function elideMiddle(name: string, prefix: string, keep = 8): string {
+  if (prefix.length <= keep + 4 || !name.startsWith(prefix) || name.length === prefix.length) {
+    return name;
+  }
+  const head = prefix.slice(0, keep);
+  return `${head}…${name.slice(prefix.length - 1)}`;
+}
+
 type Labels = Record<string, [string, Tone]>;
 
 export const RUN_TERMINAL = new Set(["finished", "cancelled", "interrupted"]);

@@ -13,10 +13,12 @@ import {
 import {
   EmptyNote,
   ErrorAlert,
+  FormActions,
   Loading,
   OneTimeSecret,
   PageTitle,
   SelectField,
+  SettingsForm,
   StatusPill,
   TextField,
 } from "@/components/common";
@@ -145,7 +147,7 @@ function PasswordCard() {
         <CardTitle className="text-base">修改密码</CardTitle>
       </CardHeader>
       <CardContent>
-        <form className="grid max-w-md gap-3" onSubmit={submit}>
+        <SettingsForm onSubmit={submit}>
           <TextField
             id="pw-current"
             label="当前密码"
@@ -176,12 +178,12 @@ function PasswordCard() {
             required
           />
           <ErrorAlert error={error} title="修改失败" />
-          <div>
+          <FormActions>
             <Button type="submit" disabled={busy}>
               {busy ? "提交中…" : "修改密码"}
             </Button>
-          </div>
-        </form>
+          </FormActions>
+        </SettingsForm>
       </CardContent>
     </Card>
   );
@@ -267,7 +269,7 @@ function PatCard() {
             onDismiss={() => setIssued(null)}
           />
         )}
-        <form className="grid gap-3 md:grid-cols-5 md:items-end" onSubmit={submit}>
+        <SettingsForm onSubmit={submit}>
           <TextField
             id="pat-name"
             label="名称"
@@ -288,7 +290,8 @@ function PatCard() {
           </SelectField>
           <TextField
             id="pat-days"
-            label={`有效天数（≤ ${maxDays}）`}
+            label="有效天数"
+            hint={`最多 ${maxDays} 天`}
             type="number"
             min={1}
             max={maxDays}
@@ -298,7 +301,8 @@ function PatCard() {
           />
           <TextField
             id="pat-runs"
-            label={`运行上限（≤ ${maxRuns}）`}
+            label="运行上限"
+            hint={`这个令牌最多提交 ${maxRuns} 个运行`}
             type="number"
             min={1}
             max={maxRuns}
@@ -306,10 +310,12 @@ function PatCard() {
             onChange={(e) => setRuns(e.target.value)}
             error={field("run_limit")}
           />
-          <Button type="submit" disabled={busy}>
-            {busy ? "创建中…" : "创建令牌"}
-          </Button>
-        </form>
+          <FormActions>
+            <Button type="submit" disabled={busy}>
+              {busy ? "创建中…" : "创建令牌"}
+            </Button>
+          </FormActions>
+        </SettingsForm>
         <ErrorAlert error={error} title="创建失败" />
         <ErrorAlert error={pats.error} title="无法加载令牌" />
         {pats.loading && !pats.data && <Loading />}

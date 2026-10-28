@@ -2,6 +2,7 @@
 import { useRef, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -14,9 +15,14 @@ import {
 import {
   EmptyNote,
   ErrorAlert,
+  FormActions,
+  FormRow,
+  FormSection,
   Loading,
   Pill,
   SelectField,
+  SettingsForm,
+  TextAreaField,
   TextField,
 } from "@/components/common";
 import { ApiError, api } from "@/lib/api";
@@ -268,7 +274,7 @@ export function ModelsTab() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <form className="grid gap-3 md:grid-cols-2" onSubmit={save}>
+          <SettingsForm onSubmit={save}>
             {!editing && (
               <TextField
                 id="model-name"
@@ -281,7 +287,8 @@ export function ModelsTab() {
             )}
             <TextField
               id="model-provider"
-              label="提供商（并发上限按它计算）"
+              label="提供商"
+              hint="并发上限按提供商计算"
               value={form.provider}
               onChange={(e) => setForm({ ...form, provider: e.target.value })}
               error={fieldErr("provider")}
@@ -301,7 +308,8 @@ export function ModelsTab() {
             </SelectField>
             <TextField
               id="model-endpoint"
-              label="服务地址（http/https，不含密钥或查询参数）"
+              label="服务地址"
+              hint="http/https，不含密钥或查询参数"
               value={form.endpoint}
               onChange={(e) => setForm({ ...form, endpoint: e.target.value })}
               error={fieldErr("endpoint")}
@@ -317,7 +325,8 @@ export function ModelsTab() {
             />
             <SelectField
               id="model-credential"
-              label="凭据（模型 API 密钥）"
+              label="凭据"
+              hint="模型 API 密钥"
               value={form.credential_id}
               onChange={(e) => setForm({ ...form, credential_id: e.target.value })}
               error={fieldErr("credential_id")}
@@ -330,25 +339,21 @@ export function ModelsTab() {
                 </option>
               ))}
             </SelectField>
-            <label className="grid gap-1 text-sm md:col-span-2" htmlFor="model-params">
-              <span>请求参数（JSON 对象，例如 {'{"temperature": 0}'}）</span>
-              <textarea
-                id="model-params"
-                className="min-h-24 rounded-md border bg-background p-2 font-mono text-xs"
-                value={form.params}
-                onChange={(e) => setForm({ ...form, params: e.target.value })}
-              />
-              {fieldErr("params") && (
-                <span className="text-xs text-destructive">{fieldErr("params")}</span>
-              )}
-            </label>
+            <TextAreaField
+              id="model-params"
+              label="请求参数"
+              hint={<>JSON 对象，例如 {'{"temperature": 0}'}</>}
+              value={form.params}
+              onChange={(e) => setForm({ ...form, params: e.target.value })}
+              error={fieldErr("params")}
+            />
             <TextField
               id="model-description"
               label="说明（可选）"
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
             />
-            <div className="flex items-end gap-2">
+            <FormActions>
               <Button type="submit" disabled={busy}>
                 {editing ? "保存为新修订" : "创建"}
               </Button>
@@ -357,8 +362,8 @@ export function ModelsTab() {
                   取消
                 </Button>
               )}
-            </div>
-          </form>
+            </FormActions>
+          </SettingsForm>
           <div className="mt-3">
             <ErrorAlert error={error} />
           </div>
@@ -417,7 +422,7 @@ function UpstreamHints({
     </div>
   );
   return (
-    <div className="grid gap-2 rounded-md border p-3 text-xs md:col-span-2">
+    <div className="grid gap-2 rounded-md border p-3 text-xs">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">上游版本参考</span>
         {found?.registry && (
@@ -660,7 +665,7 @@ export function HarnessesTab() {
           )}
         </CardHeader>
         <CardContent>
-          <form className="grid gap-3 md:grid-cols-2" onSubmit={create}>
+          <SettingsForm onSubmit={create}>
             <TextField
               id="harness-name"
               label="名称"
@@ -693,14 +698,17 @@ export function HarnessesTab() {
               ))}
             </SelectField>
             {adapter?.package && (
-              <>
-                <TextField
+              <FormRow
+                label="上游版本"
+                htmlFor="harness-upstream"
+                error={fieldErr("upstream_version")}
+                hint={`${adapter.package} 在容器里实际安装的版本，须是确切的版本号；发布后不能修改`}
+              >
+                <Input
                   id="harness-upstream"
-                  label={`上游版本（${adapter.package}）`}
                   value={form.upstream}
                   onChange={(e) => setForm({ ...form, upstream: e.target.value.trim() })}
-                  error={fieldErr("upstream_version")}
-                  hint="容器里实际安装的版本，须是确切的版本号；发布后不能修改"
+                  aria-invalid={fieldErr("upstream_version") ? true : undefined}
                   placeholder="例如 1.2.3"
                   required
                 />
@@ -715,65 +723,63 @@ export function HarnessesTab() {
                     void upstream.reload();
                   }}
                 />
-              </>
+              </FormRow>
             )}
-            <fieldset className="grid gap-1 text-sm">
-              <legend className="mb-1">可调用的协议</legend>
-              {supported.map((p) => (
-                <label key={p} className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={form.protocols.includes(p)}
-                    onChange={() =>
-                      setForm({
-                        ...form,
-                        protocols: form.protocols.includes(p)
-                          ? form.protocols.filter((x) => x !== p)
-                          : [...form.protocols, p],
-                      })
-                    }
-                  />
-                  {protocolLabel(p)}
-                </label>
-              ))}
-              {fieldErr("protocols") && (
-                <span className="text-xs text-destructive">{fieldErr("protocols")}</span>
-              )}
-            </fieldset>
-            <label className="grid gap-1 text-sm md:col-span-2" htmlFor="harness-schema">
-              <span>
-                参数定义（JSON）：
-                {'{"parameters": {"max_turns": {"type": "integer", "default": 30}}}'}
-              </span>
-              {adapter?.parameters && (
-                <span className="text-xs text-muted-foreground">
-                  这个适配器可声明的参数：{adapter.parameters.join("、") || "无"}
-                </span>
-              )}
-              {adapter?.model_parameters && (
-                <span className="text-xs text-muted-foreground">
-                  它能传递的模型配置参数：{adapter.model_parameters.join("、") || "无"}
-                </span>
-              )}
-              <textarea
-                id="harness-schema"
-                className="min-h-24 rounded-md border bg-background p-2 font-mono text-xs"
-                value={form.schema}
-                onChange={(e) => setForm({ ...form, schema: e.target.value })}
-              />
-            </label>
+            <FormRow label="可调用的协议" error={fieldErr("protocols")}>
+              <div className="grid gap-1 text-sm md:pt-2">
+                {supported.map((p) => (
+                  <label key={p} className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={form.protocols.includes(p)}
+                      onChange={() =>
+                        setForm({
+                          ...form,
+                          protocols: form.protocols.includes(p)
+                            ? form.protocols.filter((x) => x !== p)
+                            : [...form.protocols, p],
+                        })
+                      }
+                    />
+                    {protocolLabel(p)}
+                  </label>
+                ))}
+              </div>
+            </FormRow>
+            <TextAreaField
+              id="harness-schema"
+              label="参数定义"
+              hint={
+                <div className="grid gap-0.5">
+                  <span>
+                    JSON，例如{" "}
+                    {'{"parameters": {"max_turns": {"type": "integer", "default": 30}}}'}
+                  </span>
+                  {adapter?.parameters && (
+                    <span>这个适配器可声明的参数：{adapter.parameters.join("、") || "无"}</span>
+                  )}
+                  {adapter?.model_parameters && (
+                    <span>
+                      它能传递的模型配置参数：{adapter.model_parameters.join("、") || "无"}
+                    </span>
+                  )}
+                </div>
+              }
+              value={form.schema}
+              onChange={(e) => setForm({ ...form, schema: e.target.value })}
+            />
             <TextField
               id="harness-description"
               label="说明（可选）"
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
             />
-            <div className="flex items-end">
+            <FormActions>
               <Button type="submit" disabled={busy || !agent || form.protocols.length === 0}>
                 发布
               </Button>
-            </div>
-          </form>
+            </FormActions>
+          </SettingsForm>
           <div className="mt-3">
             <ErrorAlert error={error} />
           </div>
@@ -864,15 +870,15 @@ export function PolicyTab() {
         {policy.loading && !data && <Loading />}
         <ErrorAlert error={policy.error} />
         {data && (
-          <form className="grid gap-4" onSubmit={save}>
+          <SettingsForm onSubmit={save}>
             <p className="text-muted-foreground">
               当前修订 {data.revision}
               {data.revision === 0 ? "（内置初值，尚未修改过）" : ""}
             </p>
             {GROUPS.map(([group, title]) => (
-              <div key={group} className="grid gap-2">
-                <h3 className="font-medium">{title}</h3>
-                <div className="grid gap-x-4 gap-y-2 md:grid-cols-2">
+              <div key={group} className="grid gap-4">
+                <FormSection title={title} />
+                <div className="grid gap-4">
                   {data.settings
                     .filter((s) => s.group === group)
                     .map((s) => (
@@ -892,7 +898,7 @@ export function PolicyTab() {
                 </div>
               </div>
             ))}
-            <div className="flex items-center gap-3">
+            <FormActions>
               <Button type="submit" disabled={busy || Object.keys(changed).length === 0}>
                 保存（{Object.keys(changed).length} 项改动）
               </Button>
@@ -901,9 +907,9 @@ export function PolicyTab() {
                   放弃改动
                 </Button>
               )}
-            </div>
+            </FormActions>
             <ErrorAlert error={error} />
-          </form>
+          </SettingsForm>
         )}
         <PolicyHistory revision={data?.revision} />
       </CardContent>

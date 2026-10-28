@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/table";
 import {
   EmptyNote,
+  LongName,
   ErrorAlert,
   Loading,
   PageTitle,
@@ -23,7 +24,7 @@ import {
 } from "@/components/common";
 import { TaskStatusCells } from "@/components/TaskStatusCells";
 import { api, errorText } from "@/lib/api";
-import { fmtTime, OPERATION_STATUS, shortId } from "@/lib/format";
+import { commonPrefix, fmtTime, OPERATION_STATUS, shortId } from "@/lib/format";
 import { useInterval, useLoad, useSession } from "@/lib/hooks";
 import type {
   Dataset,
@@ -168,7 +169,7 @@ export function DatasetsPage() {
       <ErrorAlert error={datasets.error} />
       {datasets.loading && !datasets.data && <Loading />}
       {datasets.data && datasets.data.length === 0 && <EmptyNote>还没有数据集。</EmptyNote>}
-      <div className="grid gap-4 lg:grid-cols-[minmax(260px,1fr)_3fr]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(260px,1fr)_minmax(0,3fr)]">
         <div className="grid content-start gap-3">
           {datasets.data?.map((dataset) => (
             <Card key={dataset.id}>
@@ -334,7 +335,7 @@ function AddDataset({ onImported }: { onImported: (versionId?: string) => Promis
         </p>
       </CardHeader>
       <CardContent className="grid gap-3">
-        <div className="grid gap-3 md:grid-cols-[160px_1fr_1fr]">
+        <div className="grid gap-3 md:grid-cols-[160px_minmax(0,1fr)_minmax(0,1fr)]">
           <SelectField
             id="source"
             label="来源"
@@ -449,7 +450,7 @@ function AddDataset({ onImported }: { onImported: (versionId?: string) => Promis
             {preview.description && <p className="text-muted-foreground">{preview.description}</p>}
             <div className="max-h-40 overflow-auto font-mono text-xs text-muted-foreground">
               {preview.tasks.map((t) => (
-                <div key={t.task_key}>
+                <div key={t.task_key} className="break-all">
                   {t.task_key} {shortId(t.content_digest, 19)}
                 </div>
               ))}
@@ -518,6 +519,7 @@ function VersionTasks({
         .data,
     [versionId],
   );
+  const taskPrefix = commonPrefix(tasks.data?.map((t) => t.task_key) ?? []);
   const [open, setOpen] = useState<string>();
   const [operations, setOperations] = useState<{ id: string; label: string }[]>([]);
   const restoring = tasks.data?.some((t) => t.local_preparation.cache_state === "restoring");
@@ -650,13 +652,13 @@ function VersionTasks({
                 {tasks.data.map((task) => (
                   <Fragment key={task.id}>
                     <TableRow>
-                      <TableCell className="font-mono text-xs">
+                      <TableCell className="max-w-[24rem] font-mono text-xs">
                         <button
                           type="button"
-                          className="text-left underline-offset-2 hover:underline"
+                          className="flex max-w-full text-left underline-offset-2 hover:underline"
                           onClick={() => setOpen(open === task.id ? undefined : task.id)}
                         >
-                          {task.task_key}
+                          <LongName value={task.task_key} prefix={taskPrefix} copy={false} />
                         </button>
                       </TableCell>
                       <TaskStatusCells task={task} />

@@ -9,10 +9,15 @@ const token = process.env.MAESTRO_SETUP_TOKEN;
 const password = "smoke-password-123";
 const shots = process.env.MAESTRO_SHOTS ?? "/tmp";
 
-/** A link in the top navigation (pages also have their own links with the same names). */
+/** A link in the sidebar (pages also have their own links with the same names). */
 const nav = (page: Page, name: string) =>
-  page.locator("header").getByRole("link", { name, exact: true });
-/** A link in the administration sub-navigation. */
+  page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name, exact: true });
+/** The new-run form, from the button on the run list. */
+const newRun = async (page: Page) => {
+  await nav(page, "运行").click();
+  await page.getByRole("link", { name: "新建运行" }).click();
+};
+/** A link in the administration sections, under "管理" in the sidebar. */
 const adminNav = (page: Page, name: string) =>
   page.getByRole("navigation", { name: "管理" }).getByRole("link", { name, exact: true });
 
@@ -49,7 +54,7 @@ test("setup, run, PAT, admin and invitation flow", async ({ page, browser }) => 
   await page.screenshot({ path: `${shots}/datasets-cold.png`, fullPage: true });
 
   // New run, explicit task selection.
-  await nav(page, "新建运行").click();
+  await newRun(page);
   await page.getByLabel("运行名称").fill("smoke run");
   await page.getByLabel("手动选择").check();
   await page.getByLabel("选择 add-01").check();
@@ -135,7 +140,7 @@ test("setup, run, PAT, admin and invitation flow", async ({ page, browser }) => 
   await adminNav(page, "凭据与主密钥").click();
   await page.getByLabel("名称").fill("smoke-key");
   await page.getByLabel("提供商").fill("fake");
-  await page.getByLabel("值（只写）").fill("not-a-real-secret");
+  await page.getByLabel("值", { exact: true }).fill("not-a-real-secret");
   await page.getByRole("button", { name: "添加凭据" }).click();
   await expect(page.getByRole("cell", { name: "smoke-key" })).toBeVisible();
   await expect(page.getByText("代（generation）")).toBeVisible();
@@ -199,62 +204,80 @@ test("setup, run, PAT, admin and invitation flow", async ({ page, browser }) => 
   await page.screenshot({ path: `${shots}/recycle-receipts.png`, fullPage: true });
 });
 
+// Fixtures for the tests below that intercept API responses (no backend state touched).
+const meta = { request_id: "req_test" };
+const me = {
+  id: "usr_1", username: "u", display_name: "U", role: "member", status: "active",
+  revision: 1, created_at: "2026-10-22T00:00:00Z", disabled_at: null,
+  auth_channel: "web_session", pat_id: null, pat_scope: null,
+};
+const run = {
+  id: "run_x", name: "fixture run", owner_id: "usr_2",
+  owner: { username: "gone", display_name: "Gone", deleted: true },
+  scoring: null, deletion: null, queue_reason: null, heartbeat_at: null,
+  dataset_version_deletion: { state: "recycled", deleted_at: "2026-10-22T01:00:00Z", purged_at: null },
+  pat_id: null, relation: "initial",
+  source_run_id: null, dataset_version_id: "dsv_1", operation_id: "op_1",
+  client_request_id: null, state: "finished", result_completeness: "partial",
+  artifact_state: "failed", cleanup_state: "failed", stop_requested: false, stop_reason: null,
+  counts: { planned: 3, terminal: 3, scored: 1, errors: 2, not_started: 0, cancelled: 0,
+    interrupted: 0, active: 0, queued: 0 },
+  accepted_at: "2026-10-22T00:00:00Z", started_at: null, finished_at: null,
+  deadline_at: "2026-10-25T00:00:00Z", allowed_actions: ["view"], links: {},
+  snapshot: { schema_version: 1, effective: {}, provenance: {}, policy: {},
+    config_digest: "c", snapshot_digest: "s", comparison_digest: "d" },
+};
+const trial = (key: string, state: string, result: unknown, reason: string | null) => ({
+  id: `trl_${key}`, task_id: `tsk_${key}`, task_key: key, repetition_index: 1, state,
+  phase: null, reason_code: reason, artifact_state: "complete", cleanup_state: "complete",
+  artifact_counts: { available: 1, failed: 0, expired: 0 },
+  result, attempts: [{ id: `att_${key}`, attempt_index: 1, state: "failed", phase: "executing",
+    steps: [], executor_ref: null,
+    started_at: "2026-10-22T00:00:00Z", ended_at: "2026-10-22T00:00:01Z",
+    error: { code: "AGENT_TIMEOUT", message: "agent timed out" } }],
+});
+const result = (score: number | null, cause: string | null) => ({
+  raw_score: score, reward_valid: score !== null, score, failure_cause: cause,
+  exception_type: null, verifier_status: cause === "verifier_failed" ? "no_reward" : "ok",
+  policy_version: "p", attempt_id: "att",
+});
+/** A member session on a service that cannot accept runs. */
+const sessionRoutes: Record<string, unknown> = {
+  "/api/v1/setup": { needs_setup: false },
+  "/api/v1/session": { user: me, csrf_token: "csrf" },
+  // Fixtures follow the contract (SystemStatus, Capabilities in src/lib/schema.d.ts).
+  "/api/v1/capabilities": { api_version: "v1", service_version: "t", schema_revision: "t",
+    contract_digest: "sha256:t", team_policy_revision: 0, features: {}, limits: {},
+    auth: { pat_header: "Authorization: Bearer <token>", session_cookie: true,
+      csrf_header: "X-CSRF-Token" },
+    actions: {},
+    execution: { executor: null, modes: ["agent", "oracle"], harness_adapters: [],
+      policy_version: "t", capacity: { slots: 1, cpus: 1, memory_mb: 1024 } } },
+  "/api/v1/system-status": { status: "ready", accepting_runs: false,
+    detail: { master_key_available: false, executor: null, worker_running: false,
+      needs_setup: false, schema: { compatible: true, current: "t", head: "t" },
+      storage: { level: "ok", free_bytes: 1, total_bytes: 1,
+        accept_min_free: { gib: 0, percent: 0 }, dispatch_min_free: { gib: 0, percent: 0 } } } },
+};
+
+/** Answer API calls from ``routes`` (a path to its data); anything else is a 404. */
+async function serveFixtures(page: Page, routes: Record<string, unknown>) {
+  await page.route("**/api/v1/**", (route) => {
+    const path = new URL(route.request().url()).pathname;
+    const data = routes[path];
+    return data === undefined
+      ? route.fulfill({ status: 404, json: { error: { code: "NOT_FOUND", message: path,
+          field_errors: [], retryable: false, suggested_actions: [] }, meta } })
+      : route.fulfill({ json: { data, meta } });
+  });
+}
+
 // Score rendering rules with intercepted API responses (no backend state touched):
 // a valid 0, a missing score and an execution failure stay distinct; four run dimensions
 // stay separate.
 test("score and dimension rendering", async ({ page }) => {
-  const meta = { request_id: "req_test" };
-  const me = {
-    id: "usr_1", username: "u", display_name: "U", role: "member", status: "active",
-    revision: 1, created_at: "2026-10-22T00:00:00Z", disabled_at: null,
-    auth_channel: "web_session", pat_id: null, pat_scope: null,
-  };
-  const run = {
-    id: "run_x", name: "fixture run", owner_id: "usr_2",
-    owner: { username: "gone", display_name: "Gone", deleted: true },
-    scoring: null, deletion: null, queue_reason: null, heartbeat_at: null,
-    dataset_version_deletion: { state: "recycled", deleted_at: "2026-10-22T01:00:00Z", purged_at: null },
-    pat_id: null, relation: "initial",
-    source_run_id: null, dataset_version_id: "dsv_1", operation_id: "op_1",
-    client_request_id: null, state: "finished", result_completeness: "partial",
-    artifact_state: "failed", cleanup_state: "failed", stop_requested: false, stop_reason: null,
-    counts: { planned: 3, terminal: 3, scored: 1, errors: 2, not_started: 0, cancelled: 0,
-      interrupted: 0, active: 0, queued: 0 },
-    accepted_at: "2026-10-22T00:00:00Z", started_at: null, finished_at: null,
-    deadline_at: "2026-10-25T00:00:00Z", allowed_actions: ["view"], links: {},
-    snapshot: { schema_version: 1, effective: {}, provenance: {}, policy: {},
-      config_digest: "c", snapshot_digest: "s", comparison_digest: "d" },
-  };
-  const trial = (key: string, state: string, result: unknown, reason: string | null) => ({
-    id: `trl_${key}`, task_id: `tsk_${key}`, task_key: key, repetition_index: 1, state,
-    phase: null, reason_code: reason, artifact_state: "complete", cleanup_state: "complete",
-    artifact_counts: { available: 1, failed: 0, expired: 0 },
-    result, attempts: [{ id: `att_${key}`, attempt_index: 1, state: "failed", phase: "executing",
-      steps: [], executor_ref: null,
-      started_at: "2026-10-22T00:00:00Z", ended_at: "2026-10-22T00:00:01Z",
-      error: { code: "AGENT_TIMEOUT", message: "agent timed out" } }],
-  });
-  const result = (score: number | null, cause: string | null) => ({
-    raw_score: score, reward_valid: score !== null, score, failure_cause: cause,
-    exception_type: null, verifier_status: cause === "verifier_failed" ? "no_reward" : "ok",
-    policy_version: "p", attempt_id: "att",
-  });
   const routes: Record<string, unknown> = {
-    "/api/v1/setup": { needs_setup: false },
-    "/api/v1/session": { user: me, csrf_token: "csrf" },
-    // Fixtures follow the contract (SystemStatus, Capabilities in src/lib/schema.d.ts).
-    "/api/v1/capabilities": { api_version: "v1", service_version: "t", schema_revision: "t",
-      contract_digest: "sha256:t", team_policy_revision: 0, features: {}, limits: {},
-      auth: { pat_header: "Authorization: Bearer <token>", session_cookie: true,
-        csrf_header: "X-CSRF-Token" },
-      actions: {},
-      execution: { executor: null, modes: ["agent", "oracle"], harness_adapters: [],
-        policy_version: "t", capacity: { slots: 1, cpus: 1, memory_mb: 1024 } } },
-    "/api/v1/system-status": { status: "ready", accepting_runs: false,
-      detail: { master_key_available: false, executor: null, worker_running: false,
-        needs_setup: false, schema: { compatible: true, current: "t", head: "t" },
-        storage: { level: "ok", free_bytes: 1, total_bytes: 1,
-          accept_min_free: { gib: 0, percent: 0 }, dispatch_min_free: { gib: 0, percent: 0 } } } },
+    ...sessionRoutes,
     "/api/v1/runs/run_x": run,
     "/api/v1/runs/run_x/trials": [
       trial("zero", "scored", result(0, null), null),
@@ -264,14 +287,7 @@ test("score and dimension rendering", async ({ page }) => {
     ],
     "/api/v1/runs/run_x/artifacts": [],
   };
-  await page.route("**/api/v1/**", (route) => {
-    const path = new URL(route.request().url()).pathname;
-    const data = routes[path];
-    return data === undefined
-      ? route.fulfill({ status: 404, json: { error: { code: "NOT_FOUND", message: path,
-          field_errors: [], retryable: false, suggested_actions: [] }, meta } })
-      : route.fulfill({ json: { data, meta } });
-  });
+  await serveFixtures(page, routes);
   await page.goto("/runs/run_x");
   await expect(page.getByText("当前无法受理新运行")).toBeVisible();
   await expect(page.getByRole("link", { name: "管理" })).toHaveCount(0);
@@ -294,6 +310,70 @@ test("score and dimension rendering", async ({ page }) => {
   await expect(page.getByText("AGENT_TIMEOUT：agent timed out")).toBeVisible();
 });
 
+// Long names and long lines stay inside their boxes (U-45): no page is wider than the window,
+// on a desktop or a phone.
+test("long content does not widen the page", async ({ page }) => {
+  const prefix = "swebench-verified-django__django-";
+  const keys = [`${prefix}11099`, `${prefix}11133`, `${prefix}${"x".repeat(300)}`];
+  const longTrial = (key: string) => {
+    const t = trial(key, "scored", result(1, null), null);
+    t.attempts[0].steps = [
+      { step: "agent", at: "2026-10-22T00:00:00Z" },
+      { step: "verifying", at: "2026-10-22T00:00:01Z" },
+    ] as never;
+    return t;
+  };
+  const log = {
+    id: "art_log", run_id: "run_x", trial_id: `trl_${keys[0]}`, attempt_id: `att_${keys[0]}`,
+    kind: "log", relative_path: "agent/opencode", size_bytes: 6000, status: "available",
+    status_reason: null, expires_at: null, digest: null, created_at: "2026-10-22T00:00:00Z",
+  };
+  const deep = { ...log, id: "art_deep", kind: "agent",
+    relative_path: `agent/${"very-long-directory-name/".repeat(12)}trajectory.json` };
+  await serveFixtures(page, {
+    ...sessionRoutes,
+    "/api/v1/runs/run_x": { ...run, name: `fixture run ${"with a long name ".repeat(12)}` },
+    "/api/v1/runs/run_x/trials": keys.map(longTrial),
+    "/api/v1/runs/run_x/artifacts": [log, deep],
+  });
+  await page.route("**/api/v1/artifacts/art_log/download*", (route) =>
+    route.fulfill({ contentType: "text/plain", body: `$ echo ${"y".repeat(6000)}\n` }),
+  );
+  const fits = async () =>
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+    ).toBeLessThanOrEqual(0);
+
+  await page.goto(`/runs/run_x?trial=trl_${keys[0]}`);
+  // Names sharing a prefix lose its middle; the full name is on hover.
+  await expect(page.getByTestId("trial-row").nth(1)).toContainText("swebench…-11133");
+  await page.getByTestId("trial-panel").getByRole("button", { name: /Agent/ }).click();
+  await expect(page.getByTestId("step-log")).toContainText("yyyy");
+  await fits();
+  // The execution view links to the trial's artifacts instead of listing them.
+  await page.getByRole("button", { name: /产物 2 个/ }).click();
+  await expect(page).toHaveURL(/tab=artifacts/);
+  await expect(page.getByText("very-long-directory-name", { exact: false })).toBeVisible();
+  await fits();
+  await page.screenshot({ path: `${shots}/long-artifacts.png`, fullPage: true });
+  // Folding the sidebar is remembered by the browser.
+  await page.getByRole("button", { name: "收起侧边栏" }).click();
+  await page.reload();
+  await expect(page.getByRole("button", { name: "展开侧边栏" })).toBeVisible();
+  await fits();
+  await page.getByRole("button", { name: "展开侧边栏" }).click();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/runs/run_x?trial=trl_${keys[2]}`);
+  await expect(page.getByTestId("trial-panel")).toBeVisible();
+  await fits();
+  await page.getByRole("button", { name: "打开导航" }).click();
+  await expect(page.getByRole("navigation", { name: "主导航" })).toBeVisible();
+  await page.screenshot({ path: `${shots}/phone-drawer.png` });
+  await nav(page, "设置").click();
+  await expect(page.getByRole("navigation", { name: "主导航" })).toHaveCount(0);
+});
+
 // M5: rerun a run, save and use an experiment plan, and submit a batch.
 test("rerun, plan and batch", async ({ page }) => {
   test.skip(!token, "MAESTRO_SETUP_TOKEN not set");
@@ -304,7 +384,7 @@ test("rerun, plan and batch", async ({ page }) => {
   await page.getByRole("button", { name: "登录" }).click();
   await expect(page.getByRole("heading", { name: "工作台" })).toBeVisible();
 
-  await nav(page, "新建运行").click();
+  await newRun(page);
   await page.getByLabel("运行名称").fill("m5 source");
   await page.getByLabel(/^Oracle/).check();
   await page.getByLabel("把当前表单另存为方案").fill("smoke plan");

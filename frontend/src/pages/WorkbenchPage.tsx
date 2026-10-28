@@ -271,7 +271,9 @@ function RunRows({ runs, empty, showOwner }: { runs: Run[]; empty: string; showO
             className="flex flex-wrap items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted"
           >
             <StatusPill value={label(RUN_STATE, run.state)} />
-            <span className="font-medium">{run.name}</span>
+            <span className="min-w-0 truncate font-medium" title={run.name}>
+              {run.name}
+            </span>
             {showOwner && (
               <span className="text-xs text-muted-foreground">{run.owner.display_name}</span>
             )}

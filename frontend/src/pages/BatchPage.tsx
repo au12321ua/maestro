@@ -45,8 +45,12 @@ export function BatchListPage() {
             <TableBody>
               {list.data.map((b) => (
                 <TableRow key={b.id}>
-                  <TableCell>
-                    <Link className="font-medium text-primary underline" to={`/batches/${b.id}`}>
+                  <TableCell className="max-w-[24rem]">
+                    <Link
+                      className="block truncate font-medium text-primary underline"
+                      to={`/batches/${b.id}`}
+                      title={b.name}
+                    >
                       {b.name}
                     </Link>
                   </TableCell>

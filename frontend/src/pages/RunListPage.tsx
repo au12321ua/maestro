@@ -192,8 +192,12 @@ export function RunListPage() {
                       onChange={() => toggle(run.id)}
                     />
                   </TableCell>
-                  <TableCell>
-                    <Link className="font-medium text-primary hover:underline" to={`/runs/${run.id}`}>
+                  <TableCell className="max-w-[24rem]">
+                    <Link
+                      className="block truncate font-medium text-primary hover:underline"
+                      to={`/runs/${run.id}`}
+                      title={run.name}
+                    >
                       {run.name}
                     </Link>
                     <div className="text-xs text-muted-foreground">{shortId(run.id, 16)}</div>

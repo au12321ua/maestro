@@ -4,7 +4,14 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { ErrorAlert, Loading, TextField } from "@/components/common";
+import {
+  ErrorAlert,
+  FormActions,
+  FormRow,
+  Loading,
+  SettingsForm,
+  TextField,
+} from "@/components/common";
 import { ApiError, api } from "@/lib/api";
 import { fmtTime } from "@/lib/format";
 import { useLoad } from "@/lib/hooks";
@@ -90,7 +97,7 @@ export function SetupNetworkTab() {
           {network.loading && !data && <Loading />}
           <ErrorAlert error={network.error} />
           {data && form && (
-            <form className="grid gap-4" onSubmit={save}>
+            <SettingsForm onSubmit={save}>
               <p className="text-muted-foreground">
                 当前第 {data.revision} 版
                 {data.revision === 0
@@ -102,33 +109,35 @@ export function SetupNetworkTab() {
                   {w}
                 </p>
               ))}
-              <div className="grid gap-x-4 gap-y-2 md:grid-cols-2">
-                <TextField
-                  id="setup-proxy"
-                  label="代理"
-                  placeholder="http://10.0.0.5:3128"
-                  value={form.proxy}
-                  onChange={(e) => change({ proxy: e.target.value })}
-                  hint="容器要能访问到的地址，不能是 127.0.0.1；留空表示不用代理。用于镜像构建、Harness 安装和附件脚本"
-                  error={fieldError("proxy")}
-                />
-                <TextField
-                  id="setup-no-proxy"
-                  label="不走代理"
-                  placeholder="localhost,10.0.0.0/8"
-                  value={form.no_proxy}
-                  onChange={(e) => change({ no_proxy: e.target.value })}
-                  hint="逗号分隔，不含空格"
-                  error={fieldError("no_proxy")}
-                />
-              </div>
-              <div className="grid gap-2">
-                <h3 className="font-medium">安装变量</h3>
-                <p className="text-xs text-muted-foreground">
-                  交给 Harness 安装和附件脚本的环境变量，常用来指定包镜像源，例如
-                  npm_config_registry、NVM_NODEJS_ORG_MIRROR、PIP_INDEX_URL。不用于镜像构建。代理只能在上面一栏设置，
-                  MAESTRO_ 开头的名字留给平台，像凭据的名字（含 token、key、auth 等）会被拒绝。
-                </p>
+              <TextField
+                id="setup-proxy"
+                label="代理"
+                placeholder="http://10.0.0.5:3128"
+                value={form.proxy}
+                onChange={(e) => change({ proxy: e.target.value })}
+                hint="容器要能访问到的地址，不能是 127.0.0.1；留空表示不用代理。用于镜像构建、Harness 安装和附件脚本"
+                error={fieldError("proxy")}
+              />
+              <TextField
+                id="setup-no-proxy"
+                label="不走代理"
+                placeholder="localhost,10.0.0.0/8"
+                value={form.no_proxy}
+                onChange={(e) => change({ no_proxy: e.target.value })}
+                hint="逗号分隔，不含空格"
+                error={fieldError("no_proxy")}
+              />
+              <FormRow
+                label="安装变量"
+                error={fieldError("env")}
+                hint={
+                  <>
+                    交给 Harness 安装和附件脚本的环境变量，常用来指定包镜像源，例如
+                    npm_config_registry、NVM_NODEJS_ORG_MIRROR、PIP_INDEX_URL。不用于镜像构建。代理只能在上面一栏设置，
+                    MAESTRO_ 开头的名字留给平台，像凭据的名字（含 token、key、auth 等）会被拒绝。
+                  </>
+                }
+              >
                 {form.env.map((row, index) => (
                   <div key={index} className="grid gap-1">
                     <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_auto] gap-2">
@@ -172,32 +181,27 @@ export function SetupNetworkTab() {
                     添加变量
                   </Button>
                 </div>
-                {fieldError("env") && (
-                  <p className="text-xs text-destructive">{fieldError("env")}</p>
-                )}
-              </div>
-              <div className="grid gap-x-4 gap-y-2 md:grid-cols-2">
-                <TextField
-                  id="setup-timeout"
-                  label="Harness 安装时限（秒）"
-                  type="number"
-                  min={30}
-                  max={86400}
-                  value={form.timeout}
-                  onChange={(e) => change({ timeout: e.target.value })}
-                  hint="留空用 Harness 自己的默认值（多数为 360 秒）；带附件时另加附件的安装时间"
-                  error={fieldError("harness_setup_timeout_sec")}
-                />
-                <TextField
-                  id="setup-note"
-                  label="说明（写入这一版）"
-                  value={form.note}
-                  onChange={(e) => change({ note: e.target.value })}
-                  placeholder="例如：换 npmmirror，nodejs.org 经代理常断"
-                  error={fieldError("note")}
-                />
-              </div>
-              <div className="flex items-center gap-3">
+              </FormRow>
+              <TextField
+                id="setup-timeout"
+                label="Harness 安装时限（秒）"
+                type="number"
+                min={30}
+                max={86400}
+                value={form.timeout}
+                onChange={(e) => change({ timeout: e.target.value })}
+                hint="留空用 Harness 自己的默认值（多数为 360 秒）；带附件时另加附件的安装时间"
+                error={fieldError("harness_setup_timeout_sec")}
+              />
+              <TextField
+                id="setup-note"
+                label="说明（写入这一版）"
+                value={form.note}
+                onChange={(e) => change({ note: e.target.value })}
+                placeholder="例如：换 npmmirror，nodejs.org 经代理常断"
+                error={fieldError("note")}
+              />
+              <FormActions>
                 <Button type="submit" disabled={busy || draft === null}>
                   保存为第 {data.revision + 1} 版
                 </Button>
@@ -206,9 +210,9 @@ export function SetupNetworkTab() {
                     放弃改动
                   </Button>
                 )}
-              </div>
+              </FormActions>
               <ErrorAlert error={error} />
-            </form>
+            </SettingsForm>
           )}
           <SetupNetworkHistory revision={data?.revision} />
         </CardContent>

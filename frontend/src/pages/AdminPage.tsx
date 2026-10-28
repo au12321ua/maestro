@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { Link, NavLink, Navigate, useParams } from "react-router-dom";
+import { Link, Navigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,11 +14,13 @@ import {
 import {
   EmptyNote,
   ErrorAlert,
+  FormActions,
   Loading,
   OneTimeSecret,
   PageTitle,
   Pill,
   SelectField,
+  SettingsForm,
   StatusPill,
   TextField,
 } from "@/components/common";
@@ -36,6 +38,7 @@ import {
 import { limit, useLoad, useSession } from "@/lib/hooks";
 import { HarnessesTab, ModelsTab, PolicyTab } from "@/pages/admin/ConfigurationTabs";
 import { SetupNetworkTab } from "@/pages/admin/SetupNetworkTab";
+import { ADMIN_SECTIONS, type AdminSection } from "@/pages/admin/sections";
 import type {
   AuditEvent,
   Credential,
@@ -53,65 +56,39 @@ function inviteLink(token: string) {
   return `${window.location.origin}/invite#${encodeURIComponent(token)}`;
 }
 
-const SECTIONS: { id: string; label: string; render: () => ReactNode }[] = [
-  {
-    id: "members",
-    label: "成员与邀请",
-    render: () => (
-      <>
-        <MembersTab />
-        <InvitationsTab />
-      </>
-    ),
-  },
-  {
-    id: "credentials",
-    label: "凭据与主密钥",
-    render: () => (
-      <>
-        <CredentialsTab />
-        <MasterKeyTab />
-      </>
-    ),
-  },
-  { id: "models", label: "模型", render: () => <ModelsTab /> },
-  { id: "harnesses", label: "Harness", render: () => <HarnessesTab /> },
-  { id: "policy", label: "团队策略", render: () => <PolicyTab /> },
-  { id: "capacity", label: "容量", render: () => <CapacityTab /> },
-  { id: "setup-network", label: "安装网络", render: () => <SetupNetworkTab /> },
-  { id: "datasets", label: "数据集导入", render: () => <DatasetImportsTab /> },
-  { id: "recycle-bin", label: "回收站", render: () => <RecycleBinTab /> },
-  { id: "audit", label: "审计", render: () => <AuditTab /> },
-  { id: "maintenance", label: "维护", render: () => <MaintenanceTab /> },
-];
+const RENDER: Record<AdminSection, () => ReactNode> = {
+  members: () => (
+    <>
+      <MembersTab />
+      <InvitationsTab />
+    </>
+  ),
+  credentials: () => (
+    <>
+      <CredentialsTab />
+      <MasterKeyTab />
+    </>
+  ),
+  models: () => <ModelsTab />,
+  harnesses: () => <HarnessesTab />,
+  policy: () => <PolicyTab />,
+  capacity: () => <CapacityTab />,
+  "setup-network": () => <SetupNetworkTab />,
+  datasets: () => <DatasetImportsTab />,
+  "recycle-bin": () => <RecycleBinTab />,
+  audit: () => <AuditTab />,
+  maintenance: () => <MaintenanceTab />,
+};
 
-/** Administration with a left sub-navigation; each section has its own URL (/admin/<id>). */
+/** Administration: each section has its own URL (/admin/<id>), reached from the sidebar. */
 export function AdminPage() {
   const { section } = useParams();
-  const current = SECTIONS.find((s) => s.id === section);
+  const current = ADMIN_SECTIONS.find((s) => s.id === section);
   if (!current) return <Navigate to="/admin/members" replace />;
   return (
     <div>
       <PageTitle title={`管理 · ${current.label}`} />
-      <div className="grid items-start gap-6 md:grid-cols-[11rem_1fr]">
-        <nav aria-label="管理" className="grid gap-0.5 md:sticky md:top-16">
-          {SECTIONS.map((s) => (
-            <NavLink
-              key={s.id}
-              to={`/admin/${s.id}`}
-              className={({ isActive }) =>
-                cn(
-                  "rounded-md px-3 py-1.5 text-sm",
-                  isActive ? "bg-muted font-medium" : "text-muted-foreground hover:bg-muted/60",
-                )
-              }
-            >
-              {s.label}
-            </NavLink>
-          ))}
-        </nav>
-        <div className="grid min-w-0 gap-8">{current.render()}</div>
-      </div>
+      <div className="grid min-w-0 gap-8">{RENDER[current.id]()}</div>
     </div>
   );
 }
@@ -295,7 +272,7 @@ function InvitationsTab() {
         {issued && (
           <OneTimeSecret title="邀请链接" value={issued} onDismiss={() => setIssued(null)} />
         )}
-        <form className="grid gap-3 md:grid-cols-4 md:items-end" onSubmit={submit}>
+        <SettingsForm onSubmit={submit}>
           <SelectField
             id="inv-role"
             label="角色"
@@ -322,10 +299,12 @@ function InvitationsTab() {
             onChange={(e) => setHours(e.target.value)}
             error={field("valid_hours")}
           />
-          <Button type="submit" disabled={busy}>
-            {busy ? "生成中…" : "生成邀请链接"}
-          </Button>
-        </form>
+          <FormActions>
+            <Button type="submit" disabled={busy}>
+              {busy ? "生成中…" : "生成邀请链接"}
+            </Button>
+          </FormActions>
+        </SettingsForm>
         <ErrorAlert error={error} title="生成失败" />
         <ErrorAlert error={invitations.error} />
         {invitations.data && invitations.data.length === 0 && <EmptyNote>还没有邀请。</EmptyNote>}
@@ -453,7 +432,7 @@ function CredentialsTab() {
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
-        <form className="grid gap-3 md:grid-cols-3" onSubmit={submit} autoComplete="off">
+        <SettingsForm onSubmit={submit} autoComplete="off">
           <TextField
             id="cred-name"
             label="名称"
@@ -492,7 +471,8 @@ function CredentialsTab() {
           />
           <TextField
             id="cred-value"
-            label="值（只写）"
+            label="值"
+            hint="只写：保存后不再显示"
             type="password"
             autoComplete="new-password"
             value={form.value}
@@ -500,12 +480,12 @@ function CredentialsTab() {
             error={field("value")}
             required
           />
-          <div className="flex items-end">
+          <FormActions>
             <Button type="submit" disabled={busy}>
               {busy ? "保存中…" : "添加凭据"}
             </Button>
-          </div>
-        </form>
+          </FormActions>
+        </SettingsForm>
         <ErrorAlert error={error} title="保存失败" />
         <ErrorAlert error={credentials.error} />
         {credentials.data && credentials.data.length === 0 && <EmptyNote>还没有凭据。</EmptyNote>}
@@ -607,10 +587,11 @@ function ReplaceValue({ credential, onDone }: { credential: Credential; onDone: 
     }
   };
   return (
-    <form className="grid max-w-xl gap-2" onSubmit={submit} autoComplete="off">
+    <SettingsForm onSubmit={submit} autoComplete="off">
       <TextField
         id={`replace-${credential.id}`}
-        label={`「${credential.name}」的新值（只写）`}
+        label="新值"
+        hint={`替换「${credential.name}」的值；只写，保存后不再显示`}
         type="password"
         autoComplete="new-password"
         value={value}
@@ -618,12 +599,12 @@ function ReplaceValue({ credential, onDone }: { credential: Credential; onDone: 
         required
       />
       <ErrorAlert error={error} title="替换失败" />
-      <div>
+      <FormActions>
         <Button type="submit" size="sm" disabled={busy}>
           {busy ? "保存中…" : "保存新值"}
         </Button>
-      </div>
-    </form>
+      </FormActions>
+    </SettingsForm>
   );
 }
 
@@ -728,7 +709,7 @@ function CapacityTab() {
             </Table>
           </div>
         )}
-        <form className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end" onSubmit={submit}>
+        <SettingsForm onSubmit={submit}>
           <TextField
             id="capacity-provider"
             label="提供商"
@@ -738,17 +719,20 @@ function CapacityTab() {
           />
           <TextField
             id="capacity-limit"
-            label="同时运行的试次上限（留空表示不限）"
+            label="同时运行的试次上限"
+            hint="留空表示不限"
             type="number"
             min={1}
             value={form.limit}
             onChange={(e) => setForm({ ...form, limit: e.target.value })}
             error={error instanceof ApiError ? error.field("max_concurrent_trials") : undefined}
           />
-          <Button type="submit" disabled={busy || !form.provider.trim()}>
-            保存
-          </Button>
-        </form>
+          <FormActions>
+            <Button type="submit" disabled={busy || !form.provider.trim()}>
+              保存
+            </Button>
+          </FormActions>
+        </SettingsForm>
         {error !== undefined && !(error instanceof ApiError && error.field("max_concurrent_trials")) && (
           <ErrorAlert error={error} />
         )}
