@@ -1,6 +1,6 @@
 # N-13 试次粒度调度（撤销 D-020）
 
-状态：想法 · 优先级：三 · 2026-10-27 · 相关：[05](../design/05-scheduling-execution.md)、[06](../design/06-results-scoring.md) 第 4 节、[15](../design/15-stack-harbor.md) 第 4、6 节、[14](../design/14-decisions.md) U-05、D-020、V-12
+状态：暂缓（U-57） · 优先级：暂缓 · 2026-10-27 · 相关：[05](../design/05-scheduling-execution.md)、[06](../design/06-results-scoring.md) 第 4 节、[15](../design/15-stack-harbor.md) 第 4、6 节、[14](../design/14-decisions.md) U-05、D-020、V-12
 
 ## 问题
 
