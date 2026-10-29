@@ -9,7 +9,7 @@ import json
 import os
 from datetime import UTC, datetime
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
 
 _stream = os.fdopen(os.dup(1), "w", buffering=1, encoding="utf-8")
 os.dup2(2, 1)

@@ -1,13 +1,14 @@
-"""Docker preparation environment (02 sections 5-8, M1 TECH-03, U-17).
+"""Docker preparation environment (02 sections 5-8, M1 TECH-03, U-17, N-01).
 
-The platform prepares a task's image itself, without Harbor and without an agent:
-a reproducible ``buildx`` build of the task's ``environment/`` directory, or a pull
-of the author's image pinned to its repository digest. The result is identified by
-its image id, tagged ``maestro-prep/<instance>:<spec hex>`` and exported with
-``docker save`` as the recoverable original. Eviction removes only the local image.
+The platform prepares every image a task's trials start itself, without Harbor and
+without an agent: a reproducible ``buildx`` build of a directory, or a pull of the
+author's image pinned to its repository digest. Each image is pushed to the local image
+registry and identified by its manifest digest there; layers are stored once, however
+many tasks share them. An identical definition (same files, build options and method)
+is built once and reused by every task that has it.
 
-Restore loads the original and checks the image id; only when the original is gone
-does it rebuild or re-pull, and a different image id is a mismatch that is never
+Restore pulls each image from the registry by digest; only when the registry has lost
+it does it rebuild or re-pull, and a different digest is a mismatch that is never
 published. Work happens under a temporary tag, so a late or orphaned build cannot
 replace a published image.
 """
@@ -15,14 +16,16 @@ replace a published image.
 import asyncio
 import contextlib
 import ctypes
-import hashlib
 import logging
 import os
 import re
 import secrets
 import shutil
 import signal
+from dataclasses import replace
 from pathlib import Path
+
+import httpx
 
 from maestro.boundaries.environment import (
     AUTH,
@@ -33,17 +36,24 @@ from maestro.boundaries.environment import (
     UNSUPPORTED,
     PreparationError,
     PreparationSpec,
+    PreparedImage,
     PreparedOutput,
     Progress,
 )
-from maestro.execution.materials import MAX_BUILD_TIMEOUT, build_timeout
+from maestro.execution.materials import MAX_BUILD_TIMEOUT, build_timeout, image_key
 
 log = logging.getLogger(__name__)
 
-LABEL_SPEC = "io.maestro.spec_digest"
+LABEL_KEY = "io.maestro.image_key"
+DEFAULT_REGISTRY = "127.0.0.1:8425"
 DEFAULT_BUILD_TIMEOUT = 600.0
 PULL_TIMEOUT = 1800.0
-SAVE_TIMEOUT = 1800.0
+PUSH_TIMEOUT = 1800.0
+MANIFESTS = (
+    "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json, "
+    "application/vnd.docker.distribution.manifest.v2+json, "
+    "application/vnd.docker.distribution.manifest.list.v2+json"
+)
 # Failure classification works on the docker client's stderr. Output of the Dockerfile's
 # own RUN steps ("#7 3.2 ..." while building, "3.2 ..." in the failure summary) is the
 # task's business, not the registry's: a pip "401 Unauthorized" in a RUN step is not a
@@ -101,45 +111,51 @@ def _die_with_parent() -> None:
         ctypes.CDLL(None, use_errno=True).prctl(1, signal.SIGTERM)  # PR_SET_PDEATHSIG
 
 
-def _file_digest(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1 << 20), b""):
-            digest.update(chunk)
-    return "sha256:" + digest.hexdigest()
-
-
 class DockerEnvironment:
     location_id = "local-docker"
 
     def __init__(
         self,
-        archive_dir: Path,
+        registry: str = DEFAULT_REGISTRY,
         docker: str | None = None,
         *,
         build_timeout: float = DEFAULT_BUILD_TIMEOUT,
         build_timeout_max: float = MAX_BUILD_TIMEOUT,
         pull_timeout: float = PULL_TIMEOUT,
-        save_timeout: float = SAVE_TIMEOUT,
+        push_timeout: float = PUSH_TIMEOUT,
+        legacy_dir: Path | None = None,
     ):
-        self.archive_dir = archive_dir
+        self.registry = registry
         self.docker = docker or shutil.which("docker") or "docker"
-        self.repository: str | None = None
+        self.path: str | None = None
         # A task's own build time is capped at ``build_timeout_max`` every time it builds,
         # so lowering the maximum also reaches versions imported earlier.
         self.build_timeout = build_timeout
         self.build_timeout_max = build_timeout_max
         self.pull_timeout = pull_timeout
-        self.save_timeout = save_timeout
+        self.push_timeout = push_timeout
+        self.legacy_dir = legacy_dir
+        # One producer per definition: a second task with it waits and reuses the result.
+        self._locks: dict[str, asyncio.Lock] = {}
 
     def bind(self, instance_id: str) -> None:
         """Images live under a per-instance repository, so instances never collide."""
-        self.repository = f"maestro-prep/{instance_id.lower()}"
+        self.path = f"maestro-prep/{instance_id.lower()}"
 
-    def ref(self, spec_digest: str) -> str:
-        if self.repository is None:
+    @property
+    def repository(self) -> str:
+        if self.path is None:
             raise RuntimeError("environment is not bound to an instance")
-        return f"{self.repository}:{spec_digest.split(':', 1)[1]}"
+        return f"{self.registry}/{self.path}"
+
+    def ref(self, digest: str) -> str:
+        return f"{self.repository}@{digest}"
+
+    def tag(self, key: str) -> str:
+        return f"{self.repository}:{key.split(':', 1)[1]}"
+
+    def _lock(self, key: str) -> asyncio.Lock:
+        return self._locks.setdefault(key, asyncio.Lock())
 
     # --- docker client ---------------------------------------------------------------
 
@@ -175,16 +191,88 @@ class DockerEnvironment:
     async def _untag(self, ref: str) -> None:
         await self._run("image", "rm", "--no-prune", ref, timeout=120)
 
+    async def _present(self, ref: str) -> bool:
+        return await self._image_id(ref) is not None
+
+    # --- the registry ------------------------------------------------------------------
+
+    def _manifest_url(self, reference: str) -> str:
+        return f"http://{self.registry}/v2/{self.path}/manifests/{reference}"
+
+    async def _registry_digest(self, key: str) -> str:
+        """The manifest digest the registry holds under a definition's tag."""
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.head(
+                    self._manifest_url(key.split(":", 1)[1]), headers={"Accept": MANIFESTS}
+                )
+        except httpx.HTTPError as error:
+            raise PreparationError(TRANSIENT, f"the image registry is unreachable: {error}")
+        digest = response.headers.get("Docker-Content-Digest", "")
+        if response.status_code != 200 or not digest.startswith("sha256:"):
+            raise PreparationError(
+                TRANSIENT,
+                f"the image registry did not report the pushed image ({response.status_code})",
+            )
+        return digest
+
+    async def _delete_manifest(self, digest: str) -> None:
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.delete(self._manifest_url(digest))
+        except httpx.HTTPError as error:
+            raise PreparationError(TRANSIENT, f"the image registry is unreachable: {error}")
+        if response.status_code not in {200, 202, 404}:
+            raise PreparationError(
+                TRANSIENT,
+                f"the image registry refused to delete {digest} ({response.status_code})",
+            )
+
+    async def _fetch(self, ref: str, progress: Progress) -> bool:
+        """Pull an image from the local registry by digest: False when the registry no
+        longer has it, so it must be obtained again."""
+        if await self._present(ref):
+            return True
+        await progress("pulling")
+        code, _, err = await self._run("pull", "--quiet", ref, timeout=self.pull_timeout)
+        if code == 0:
+            return await self._present(ref)
+        if _MISSING.search(err):
+            return False
+        raise PreparationError(
+            classify(err), "pulling from the image registry failed", {"stderr_tail": err[-2000:]}
+        )
+
+    async def _push(self, temporary: str, key: str, progress: Progress) -> str:
+        """Publish a produced image under its definition's tag; returns its digest and
+        leaves the image present locally under ``ref(digest)``."""
+        await progress("pushing")
+        tag = self.tag(key)
+        code, _, err = await self._run("tag", temporary, tag, timeout=60)
+        await self._untag(temporary)
+        if code:
+            raise PreparationError(TRANSIENT, "tagging the image failed", {"stderr": err[-500:]})
+        code, _, err = await self._run("push", "--quiet", tag, timeout=self.push_timeout)
+        if code:
+            raise PreparationError(
+                classify(err), "pushing to the image registry failed", {"stderr_tail": err[-2000:]}
+            )
+        # Docker's own record of the pushed digest can name content the registry does not
+        # hold (an index of which only one platform was pushed): ask the registry.
+        digest = await self._registry_digest(key)
+        if not await self._fetch(self.ref(digest), progress):
+            raise PreparationError(TRANSIENT, "the pushed image is not in the image registry")
+        return digest
+
     # --- producing an image ------------------------------------------------------------
 
-    async def _build(self, spec: PreparationSpec, tag: str, progress: Progress) -> dict:
-        env_dir = spec.task_dir / "environment"
-        if not (env_dir / "Dockerfile").is_file():
-            raise PreparationError(UNSUPPORTED, "the task has no environment/Dockerfile")
+    async def _build(self, spec: PreparationSpec, entry: dict, tag: str, progress: Progress):
+        context = spec.task_dir / entry["context"]
+        dockerfile = context / entry["dockerfile"]
+        if not dockerfile.is_file():
+            raise PreparationError(UNSUPPORTED, f"{entry['role']}: no {entry['dockerfile']}")
         await progress("building")
-        timeout = build_timeout(
-            spec.spec["environment"].get("build_timeout_sec"), self.build_timeout_max
-        )
+        timeout = build_timeout(spec.spec.get("build_timeout_sec"), self.build_timeout_max)
         # The setup network's proxy as Docker's predefined proxy build arguments: RUN steps
         # can download through it, and Docker keeps them out of the image's history and the
         # build cache. Its other variables are not passed (N-08).
@@ -194,25 +282,31 @@ class DockerEnvironment:
             for k, v in sorted(network.proxy_env().items())
             for arg in ("--build-arg", f"{k}={v}")
         ]
+        author_args = [
+            arg for k, v in sorted(entry["args"].items()) for arg in ("--build-arg", f"{k}={v}")
+        ]
+        target = ["--target", entry["target"]] if entry.get("target") else []
         code, _, err = await self._run(
             "buildx",
             "build",
             "--provenance=false",
             *proxy_args,
+            *author_args,
+            *target,
             "--build-arg",
             "SOURCE_DATE_EPOCH=0",
             "--label",
-            f"{LABEL_SPEC}={spec.spec_digest.split(':', 1)[1]}",
+            f"{LABEL_KEY}={image_key(entry).split(':', 1)[1]}",
             "--output",
             f"type=docker,rewrite-timestamp=true,name={tag}",
             "-f",
-            str(env_dir / "Dockerfile"),
-            str(env_dir),
+            str(dockerfile),
+            str(context),
             timeout=timeout or self.build_timeout,
         )
         if code:
             raise PreparationError(
-                classify(err), "image build failed", {"stderr_tail": err[-2000:]}
+                classify(err), f"{entry['role']}: image build failed", {"stderr_tail": err[-2000:]}
             )
         return {
             "method": "build",
@@ -242,122 +336,111 @@ class DockerEnvironment:
             raise PreparationError(TRANSIENT, "tagging the pulled image failed")
         return {"method": "pull", "reference": reference, "repo_digest": pinned}
 
-    async def _produce(self, spec: PreparationSpec, progress: Progress, pinned: str | None):
-        """Build or pull under a temporary tag; returns (temporary tag, image id, detail)."""
-        environment = spec.spec.get("environment") or {}
-        tag = f"{self.ref(spec.spec_digest)}-tmp-{secrets.token_hex(4)}"
+    async def _produce(
+        self, spec: PreparationSpec, entry: dict, progress: Progress, pinned: str | None
+    ) -> tuple[str, dict]:
+        """Build or pull one image under a temporary tag and push it; returns (digest, detail)."""
+        key = image_key(entry)
+        temporary = f"{self.tag(key)}-tmp-{secrets.token_hex(4)}"
         try:
-            if environment.get("kind") == "build":
-                detail = await self._build(spec, tag, progress)
-            elif environment.get("kind") == "image":
-                detail = await self._pull(pinned or environment["docker_image"], tag, progress)
+            if entry["source"] == "build":
+                detail = await self._build(spec, entry, temporary, progress)
+            elif entry["source"] == "pull":
+                detail = await self._pull(pinned or entry["reference"], temporary, progress)
             else:
-                raise PreparationError(UNSUPPORTED, "the task has no supported environment")
-            await progress("checking")
-            image_id = await self._image_id(tag)
-            if image_id is None:
+                raise PreparationError(UNSUPPORTED, f"{entry['role']}: unsupported source")
+            if not await self._present(temporary):
                 raise PreparationError(TRANSIENT, "the prepared image is not present")
+            digest = await self._push(temporary, key, progress)
         except BaseException:
             with contextlib.suppress(Exception):
-                await asyncio.shield(self._untag(tag))
+                await asyncio.shield(self._untag(temporary))
             raise
-        return tag, image_id, detail
-
-    async def _publish(self, tag: str, ref: str) -> None:
-        code, _, err = await self._run("tag", tag, ref, timeout=60)
-        await self._untag(tag)
-        if code:
-            raise PreparationError(TRANSIENT, "publishing the image tag failed", {"stderr": err})
-
-    async def _export(self, ref: str, spec_digest: str, progress: Progress) -> dict:
-        """``docker save`` to a temporary file, digest it, then rename into place."""
-        await progress("exporting")
-        self.archive_dir.mkdir(parents=True, exist_ok=True)
-        name = spec_digest.split(":", 1)[1] + ".tar"
-        temporary = self.archive_dir / f".{name}.{secrets.token_hex(4)}.tmp"
-        try:
-            code, _, err = await self._run(
-                "save", "-o", str(temporary), ref, timeout=self.save_timeout
-            )
-            if code:
-                raise PreparationError(
-                    TRANSIENT, "exporting the image failed", {"stderr": err[-500:]}
-                )
-            digest = await asyncio.to_thread(_file_digest, temporary)
-            size = temporary.stat().st_size
-            os.replace(temporary, self.archive_dir / name)
-        finally:
-            temporary.unlink(missing_ok=True)
-        return {"name": name, "digest": digest, "size_bytes": size}
+        return digest, detail
 
     # --- boundary -----------------------------------------------------------------------
 
     async def prepare(self, spec: PreparationSpec, progress: Progress) -> PreparedOutput:
-        ref = self.ref(spec.spec_digest)
-        tag, image_id, detail = await self._produce(spec, progress, None)
-        await self._publish(tag, ref)
-        archive = await self._export(ref, spec.spec_digest, progress)
-        return PreparedOutput(image_id, ref, archive, detail)
+        entries = spec.spec.get("images") or []
+        if not entries:
+            raise PreparationError(UNSUPPORTED, "the task has no supported environment")
+        images = []
+        for entry in entries:
+            key = image_key(entry)
+            async with self._lock(key):
+                known = spec.known.get(key)
+                if known is not None and await self._fetch(self.ref(known.digest), progress):
+                    # The same definition was prepared before, for this task or another.
+                    image = replace(known, role=entry["role"], ref=self.ref(known.digest))
+                else:
+                    digest, detail = await self._produce(spec, entry, progress, None)
+                    image = PreparedImage(entry["role"], digest, self.ref(digest), key, detail)
+            images.append(image)
+        network = spec.setup_network
+        return PreparedOutput(tuple(images), {"setup_network_revision": network.revision})
 
     async def check(self, expected: PreparedOutput) -> bool:
-        return await self._image_id(expected.image_ref) == expected.image_id
-
-    async def _load(self, expected: PreparedOutput, progress: Progress) -> bool:
-        archive = expected.archive or {}
-        path = self.archive_dir / str(archive.get("name") or "")
-        if not archive.get("name") or not path.is_file():
-            return False
-        await progress("loading")
-        if await asyncio.to_thread(_file_digest, path) != archive.get("digest"):
-            log.warning("preparation original %s is damaged", path.name)
-            return False
-        code, _, err = await self._run(
-            "load", "--quiet", "-i", str(path), timeout=self.save_timeout
-        )
-        if code:
-            raise PreparationError(TRANSIENT, "loading the original failed", {"stderr": err[-500:]})
-        return await self.check(expected)
+        for image in expected.images:
+            if not await self._present(self.ref(image.digest)):
+                return False
+        return bool(expected.images)
 
     async def restore(
         self, spec: PreparationSpec, expected: PreparedOutput, progress: Progress
     ) -> PreparedOutput:
         await progress("checking")
-        if await self.check(expected):
-            return expected
-        if await self._load(expected, progress):
-            return expected
-        # The original is missing or damaged: obtain the fixed content again, but
-        # only an identical image may be published (02 section 5).
-        tag, image_id, detail = await self._produce(
-            spec, progress, (expected.detail or {}).get("repo_digest")
-        )
-        if image_id != expected.image_id:
-            await self._untag(tag)
-            raise PreparationError(
-                MISMATCH,
-                "the rebuilt image differs from the prepared original",
-                {"expected_digest": expected.image_id, "actual_digest": image_id},
-            )
-        await self._publish(tag, expected.image_ref)
-        archive = await self._export(expected.image_ref, spec.spec_digest, progress)
-        return PreparedOutput(image_id, expected.image_ref, archive, {**expected.detail, **detail})
+        entries = {entry["role"]: entry for entry in spec.spec.get("images") or []}
+        images = []
+        for image in expected.images:
+            ref = self.ref(image.digest)
+            async with self._lock(image.key):
+                if not await self._fetch(ref, progress):
+                    # The registry lost it: obtain the fixed content again, but only an
+                    # identical image may be published (02 section 5).
+                    entry = entries.get(image.role)
+                    if entry is None or image_key(entry) != image.key:
+                        raise PreparationError(
+                            UNAVAILABLE,
+                            f"{image.role}: the image is gone and its definition changed",
+                            {"expected_digest": image.digest},
+                        )
+                    digest, _ = await self._produce(
+                        spec, entry, progress, (image.detail or {}).get("repo_digest")
+                    )
+                    if digest != image.digest:
+                        raise PreparationError(
+                            MISMATCH,
+                            f"{image.role}: the rebuilt image differs from the prepared one",
+                            {"expected_digest": image.digest, "actual_digest": digest},
+                        )
+            images.append(replace(image, ref=ref))
+        return PreparedOutput(tuple(images), expected.detail)
 
-    async def evict(self, expected: PreparedOutput) -> None:
-        if await self._image_id(expected.image_ref) is None:
-            return
-        code, _, err = await self._run("image", "rm", expected.image_ref, timeout=120)
-        if code and await self._image_id(expected.image_ref) is not None:
-            raise PreparationError(TRANSIENT, "the image is still in use", {"stderr": err[-500:]})
+    async def evict(self, expected: PreparedOutput, keep: frozenset[str] = frozenset()) -> None:
+        for image in expected.images:
+            if image.digest in keep:
+                continue
+            ref = self.ref(image.digest)
+            names = [name for name in (ref, self.tag(image.key)) if await self._present(name)]
+            if not names:
+                continue
+            code, _, err = await self._run("image", "rm", *names, timeout=120)
+            if code and await self._present(ref):
+                raise PreparationError(
+                    TRANSIENT, "the image is still in use", {"stderr": err[-500:]}
+                )
 
-    async def discard(self, expected: PreparedOutput) -> None:
-        await self.evict(expected)
-        name = (expected.archive or {}).get("name")
-        if name:
-            (self.archive_dir / name).unlink(missing_ok=True)
+    async def discard(self, expected: PreparedOutput, keep: frozenset[str] = frozenset()) -> None:
+        """Local images and registry manifests go; the registry's garbage collection frees
+        the layers no remaining manifest uses (12)."""
+        await self.evict(expected, keep)
+        for image in expected.images:
+            if image.digest not in keep:
+                await self._delete_manifest(image.digest)
 
     async def sweep_temporary(self) -> list[str]:
         """Restart: drop temporary tags an interrupted preparation left behind."""
-        if self.repository is None:
+        if self.path is None:
             return []
         code, out, _ = await self._run(
             "image", "ls", self.repository, "--format", "{{.Repository}}:{{.Tag}}", timeout=60
@@ -369,12 +452,11 @@ class DockerEnvironment:
                 removed.append(ref)
         return removed
 
-    async def sweep_archives(self) -> list[str]:
-        """Restart: drop half-written exports a killed ``docker save`` left behind."""
-        removed = []
-        if self.archive_dir.is_dir():
-            for path in sorted(self.archive_dir.glob(".*.tmp")):
-                if path.is_file():
-                    path.unlink(missing_ok=True)
-                    removed.append(path.name)
+    def sweep_legacy(self) -> list[str]:
+        """Remove what the archive-based preparation left (``docker save`` originals): the
+        registry holds every image now, and older preparations are prepared again (U-53)."""
+        if self.legacy_dir is None or not self.legacy_dir.is_dir():
+            return []
+        removed = sorted(path.name for path in self.legacy_dir.iterdir())
+        shutil.rmtree(self.legacy_dir, ignore_errors=True)
         return removed

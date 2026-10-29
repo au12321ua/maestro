@@ -868,7 +868,7 @@ class Runs:
             ).mappings()
         }
         digests = [x["content_digest"] for x in res.tasks] + [
-            x["expected_image_id"] for x in res.tasks if x["expected_image_id"]
+            x["expected_content_id"] for x in res.tasks if x["expected_content_id"]
         ]
         unavailable = set(
             conn.execute(
@@ -885,7 +885,7 @@ class Runs:
             or row["state"] != ADMITTED
             or row["revision"] != x["admission_revision"]
             or x["content_digest"] in unavailable
-            or x["expected_image_id"] in unavailable
+            or x["expected_content_id"] in unavailable
         ]
         if changed:
             raise MaestroError(
@@ -1011,7 +1011,7 @@ class Runs:
                         "admission_revision",
                         "preparation_method_digest",
                         "spec_digest",
-                        "expected_image_id",
+                        "expected_content_id",
                     )
                 }
                 for x in res.tasks

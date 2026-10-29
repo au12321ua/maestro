@@ -93,25 +93,31 @@ def _apply(section, author, platform: dict | None) -> dict:
 
 
 def unrouted_services(task_dir: Path) -> list[str]:
-    """Services of the author's compose file that set their own networks. Harbor routes
-    only services without them through the egress sidecar, so these would stay open."""
+    """Services of the author's compose files that set their own networks: the agent's
+    environment and a separate verifier's under ``tests/``. Harbor routes only services
+    without them through the egress sidecar, so these would stay open."""
     import yaml
 
-    path = task_dir / "environment" / "docker-compose.yaml"
-    if not path.is_file():
-        return []
-    try:
-        document = yaml.safe_load(path.read_text())
-    except yaml.YAMLError:
-        return ["(unreadable compose file)"]
-    services = document.get("services") if isinstance(document, dict) else None
-    if not isinstance(services, dict):
-        return []
-    return sorted(
-        str(name)
-        for name, config in services.items()
-        if isinstance(config, dict) and ("network_mode" in config or "networks" in config)
-    )
+    found = []
+    for directory in ("environment", "tests"):
+        path = task_dir / directory / "docker-compose.yaml"
+        if not path.is_file():
+            continue
+        try:
+            document = yaml.safe_load(path.read_text())
+        except yaml.YAMLError:
+            found.append(f"{directory}/(unreadable compose file)")
+            continue
+        services = document.get("services") if isinstance(document, dict) else None
+        if not isinstance(services, dict):
+            continue
+        prefix = "" if directory == "environment" else f"{directory}/"
+        found += [
+            f"{prefix}{name}"
+            for name, config in services.items()
+            if isinstance(config, dict) and ("network_mode" in config or "networks" in config)
+        ]
+    return sorted(found)
 
 
 def restricted(plan: dict) -> bool:

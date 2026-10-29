@@ -43,7 +43,8 @@ def test_component_defaults_match_the_configuration_defaults(tmp_path):
     assert default(DockerEnvironment.__init__, "build_timeout") == s.build_timeout_default_sec
     assert default(DockerEnvironment.__init__, "build_timeout_max") == s.build_timeout_max_sec
     assert default(DockerEnvironment.__init__, "pull_timeout") == s.pull_timeout_sec
-    assert default(DockerEnvironment.__init__, "save_timeout") == s.save_timeout_sec
+    assert default(DockerEnvironment.__init__, "push_timeout") == s.push_timeout_sec
+    assert default(DockerEnvironment.__init__, "registry") == s.image_registry
     assert default(Preparer.__init__, "restore_slots") == s.restore_slots
     assert default(Preparer.__init__, "build_timeout_max") == s.build_timeout_max_sec
     assert default(HubSource.__init__, "max_runners") == s.hub_runner_slots
@@ -55,7 +56,7 @@ spec = json.loads(sys.stdin.read())
 with open({capture!r}, "w") as handle:
     json.dump(spec, handle)
 def emit(sequence, kind, **payload):
-    print(json.dumps({{"protocol_version": 1, "run_id": spec["run_id"], "sequence": sequence,
+    print(json.dumps({{"protocol_version": 2, "run_id": spec["run_id"], "sequence": sequence,
                       "type": kind, "at": "x", "payload": payload}}), flush=True)
 emit(1, "started", harbor_version="0.24.0", runner_version="1", n_trials=0)
 emit(2, "completed", status="completed")
@@ -130,12 +131,15 @@ def test_the_command_line_builds_the_preparation_side_from_the_settings(tmp_path
         build_timeout_default_sec=100,
         build_timeout_max_sec=200,
         pull_timeout_sec=300,
-        save_timeout_sec=400,
+        push_timeout_sec=400,
+        image_registry="127.0.0.1:9999",
         hub_runner_slots=3,
     )
     environment, sources = cli._preparation(settings)
     assert (environment.build_timeout, environment.build_timeout_max) == (100, 200)
-    assert (environment.pull_timeout, environment.save_timeout) == (300, 400)
+    assert (environment.pull_timeout, environment.push_timeout) == (300, 400)
+    assert environment.registry == "127.0.0.1:9999"
+    assert environment.legacy_dir == settings.legacy_preparation_dir
     assert sources["hub"].max_runners == 3
 
 

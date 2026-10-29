@@ -4,6 +4,7 @@ Business defaults, quotas and policies live in the database; this file only hold
 what must be known before the database opens.
 """
 
+import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,7 +27,7 @@ TUNING = {
     "build_timeout_default_sec": (30, 86_400),
     "build_timeout_max_sec": (30, 86_400),
     "pull_timeout_sec": (30, 86_400),
-    "save_timeout_sec": (30, 86_400),
+    "push_timeout_sec": (30, 86_400),
     "restore_slots": (1, 16),
     "hub_runner_slots": (1, 16),
     "runner_heartbeat_sec": (1, 60),
@@ -40,6 +41,7 @@ HEARTBEATS_BEFORE_LOST = 3
 RETIRED = {
     "setup_proxy": "the setup network is set on the admin page now",
     "setup_no_proxy": "the setup network is set on the admin page now",
+    "save_timeout_sec": "prepared images are kept in the local image registry now",
 }
 
 
@@ -73,14 +75,18 @@ class Settings:
     artifact_max_files: int = 500
     artifact_file_max_mb: int = 64
     artifact_attempt_max_mb: int = 1024
-    # Environment preparation (docker build, pull, save / load). A task may ask for its own
-    # build time up to the maximum; the default applies when it asks for none. A build
-    # holds one of ``restore_slots`` for as long as it runs. Imported versions record the
-    # limit they were imported with; the maximum is applied again at every build.
+    # Environment preparation (docker build, pull, push). A task may ask for its own build
+    # time up to the maximum; the default applies when it asks for none. A build holds one
+    # of ``restore_slots`` for as long as it runs. Imported versions record the limit they
+    # were imported with; the maximum is applied again at every build.
     build_timeout_default_sec: int = 600
     build_timeout_max_sec: int = 3600
     pull_timeout_sec: int = 1800
-    save_timeout_sec: int = 1800
+    push_timeout_sec: int = 1800
+    # The local image registry prepared images are kept in (N-01): ``host:port`` that the
+    # Docker daemon reaches over plain HTTP. ``maestroctl`` runs it as a container with its
+    # data under ``data_dir/registry``.
+    image_registry: str = "127.0.0.1:8425"
     restore_slots: int = 2
     # One-shot Runner processes for Hub searches and downloads that may run at once.
     hub_runner_slots: int = 4
@@ -109,8 +115,13 @@ class Settings:
         return self.data_dir / "exports"
 
     @property
-    def preparation_dir(self) -> Path:
-        """Recoverable originals of prepared images (U-17): data, not cache."""
+    def registry_dir(self) -> Path:
+        """The local image registry's storage: prepared images are data, not cache (U-17)."""
+        return self.data_dir / "registry"
+
+    @property
+    def legacy_preparation_dir(self) -> Path:
+        """Where ``docker save`` originals were kept before the registry (N-01)."""
         return self.data_dir / "preparations"
 
     @property
@@ -141,7 +152,7 @@ class Settings:
             "build_timeout_default_sec": self.build_timeout_default_sec,
             "build_timeout_max_sec": self.build_timeout_max_sec,
             "pull_timeout_sec": self.pull_timeout_sec,
-            "save_timeout_sec": self.save_timeout_sec,
+            "push_timeout_sec": self.push_timeout_sec,
             "restore_slots": self.restore_slots,
             "hub_runner_slots": self.hub_runner_slots,
         }
@@ -176,6 +187,8 @@ class Settings:
         if keys.is_relative_to(data) or data.is_relative_to(keys):
             # Backups copy data_dir; the master key must travel separately (O-08).
             raise MaestroError("CONFIG_INVALID", "master_key_dir must be outside data_dir", 500)
+        if not re.fullmatch(r"[A-Za-z0-9.-]+:[0-9]{1,5}", self.image_registry):
+            raise MaestroError("CONFIG_INVALID", "image_registry must be host:port", 500)
         self._check_limits()
         return self
 

@@ -199,17 +199,18 @@ def test_image_builds_get_the_proxy_as_build_arguments_and_nothing_else(tmp_path
         calls.append(args)
         return 0, "", ""
 
-    environment = DockerEnvironment(tmp_path / "archives")
+    environment = DockerEnvironment()
     environment._run = run
     spec = replace(make_spec(tmp_path), setup_network=NETWORK)
-    detail = asyncio.run(environment._build(spec, "t:tmp", no_progress))
+    entry = spec.spec["images"][0]
+    detail = asyncio.run(environment._build(spec, entry, "t:tmp", no_progress))
     (args,) = calls
     assert f"HTTP_PROXY={PROXY}" in args and f"https_proxy={PROXY}" in args
     assert args[args.index(f"HTTP_PROXY={PROXY}") - 1] == "--build-arg"
     assert not any("npm_config_registry" in a for a in args)
     assert detail == {"method": "build", "proxy": True, "setup_network_revision": 4}
     calls.clear()
-    detail = asyncio.run(environment._build(make_spec(tmp_path), "t:tmp", no_progress))
+    detail = asyncio.run(environment._build(make_spec(tmp_path), entry, "t:tmp", no_progress))
     assert not any("PROXY" in a.upper() for a in calls[0])
     assert detail["setup_network_revision"] == 0
 

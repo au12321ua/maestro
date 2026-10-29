@@ -797,6 +797,13 @@ function TaskDetail({ task }: { task: Task }) {
           {resources.storage_mb != null && ` · 磁盘 ${String(resources.storage_mb)} MB`}
           （作者建议值，约束强度未知）
         </div>
+        {resources.environments.map((e) => (
+          <div key={e.role}>
+            {e.role === "verifier" ? "独立验证器" : e.role}：CPU{" "}
+            {String(e.cpus ?? "团队默认")} · 内存{" "}
+            {e.memory_mb == null ? "团队默认" : `${String(e.memory_mb)} MB`}
+          </div>
+        ))}
         <div>
           时限：Agent {String(timeouts.agent_sec ?? "—")} 秒 · 验证{" "}
           {String(timeouts.verifier_sec ?? "—")} 秒 · 构建 {String(timeouts.build_sec ?? "—")} 秒

@@ -34,10 +34,10 @@ def admission_blocker(admission) -> dict | None:
     return blocker
 
 
-def expected_image(admission) -> str | None:
+def expected_content(admission) -> str | None:
     if admission is None or admission["state"] != ADMITTED:
         return None
-    return ((admission["evidence_json"] or {}).get("output") or {}).get("image_id")
+    return ((admission["evidence_json"] or {}).get("output") or {}).get("content_id")
 
 
 def task_blockers(task, admission, availability: dict) -> list[dict]:
@@ -47,7 +47,7 @@ def task_blockers(task, admission, availability: dict) -> list[dict]:
     if blocked:
         blockers.append(blocked)
     resources = [("task_content", task["content_digest"])]
-    image = expected_image(admission)
+    image = expected_content(admission)
     if image:
         resources.append(("environment_image", image))
     for kind, digest in resources:
@@ -117,7 +117,7 @@ def task_view(task, admission, availability: dict, preparation, location_id: str
         warnings.append({"code": "PREPARATION_CACHE_MISS", "action": "restore_on_run"})
         required.append({"action": "restore_cache", "spec_digest": task["spec_digest"]})
     resources = [("task_content", task["content_digest"])]
-    image = expected_image(admission)
+    image = expected_content(admission)
     if image:
         resources.append(("environment_image", image))
     content = []
@@ -298,7 +298,7 @@ class Catalog:
         )
         admissions = load_admissions(conn, [x["id"] for x in tasks])
         digests = [x["content_digest"] for x in tasks] + [
-            d for a in admissions.values() if (d := expected_image(a))
+            d for a in admissions.values() if (d := expected_content(a))
         ]
         availability = load_availability(conn, digests)
         preparations = {
@@ -347,17 +347,15 @@ class Catalog:
                 )
             ).all()
         output = row["output_json"] or {}
-        archive = output.get("archive")
         return {
             **preparation_view(row, self.location_id),
             "spec_digest": row["spec_digest"],
             "generation": row["generation"],
-            "image_id": output.get("image_id"),
-            "archive": (
-                {"digest": archive.get("digest"), "size_bytes": archive.get("size_bytes")}
-                if archive
-                else None
-            ),
+            "content_id": output.get("content_id"),
+            "images": [
+                {"role": i["role"], "digest": i["digest"], "ref": i["ref"]}
+                for i in output.get("images") or []
+            ],
             "waiters": [
                 {
                     "run_id": w["run_id"],

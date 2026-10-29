@@ -27,7 +27,7 @@ from maestro.execution.materials import DEFAULT_CPUS, DEFAULT_MEMORY_MB, RESERVE
 from maestro.services import deleted, policy
 from maestro.services.capacity import never_fits, reservation
 from maestro.services.catalog import (
-    expected_image,
+    expected_content,
     load_admissions,
     load_availability,
     task_blockers,
@@ -891,7 +891,7 @@ class Resolver:
         availability = load_availability(
             conn,
             [r["content_digest"] for r in rows]
-            + [d for a in admissions.values() if (d := expected_image(a))],
+            + [d for a in admissions.values() if (d := expected_content(a))],
         )
         overrides = {
             "cpus": request["resources"]["cpus"],
@@ -906,7 +906,7 @@ class Resolver:
             admission = admissions.get(row["id"])
             definition = row["definition_json"] or {}
             found = task_blockers(row, admission, availability)
-            settings = self._task_settings(definition, overrides)
+            settings = self._task_settings(definition, overrides, team)
             found.extend(self._task_limits(team, settings, overrides))
             found.extend(self._task_parameters(definition, parameters))
             blocked[row["id"]] = found
@@ -921,7 +921,7 @@ class Resolver:
                     "preparation_method_digest": (
                         admission["preparation_method_digest"] if admission else None
                     ),
-                    "expected_image_id": expected_image(admission),
+                    "expected_content_id": expected_content(admission),
                     "definition": definition,
                     "settings": settings,
                     "parameters": sorted(p["name"] for p in definition.get("parameters") or []),
@@ -953,7 +953,7 @@ class Resolver:
                 }
             )
         )
-        self._sources_and_baseline(overrides, chosen, effective, res)
+        self._sources_and_baseline(overrides, chosen, effective, res, team)
         unknown = sorted(set(request["parameters"]) - declared)
         for name in unknown:
             res.blockers.append(
@@ -991,21 +991,51 @@ class Resolver:
                 )
 
     @staticmethod
-    def _task_settings(definition: dict, overrides: dict) -> dict:
+    def environments(definition: dict, team) -> list[dict]:
+        """Every container a trial starts, with its CPUs and memory: the main environment,
+        then a separate verifier and the Compose services; the team default fills in
+        where the author gave no limit (U-53, U-55)."""
         resources = definition.get("resources") or {}
+        found = [
+            {
+                "role": "environment/main",
+                "cpus": resources.get("cpus") or DEFAULT_CPUS,
+                "memory_mb": resources.get("memory_mb") or DEFAULT_MEMORY_MB,
+                "default": False,
+            }
+        ]
+        for other in resources.get("environments") or []:
+            found.append(
+                {
+                    "role": other["role"],
+                    "cpus": other.get("cpus") or team.service_cpus_default,
+                    "memory_mb": other.get("memory_mb") or team.service_memory_mb_default,
+                    # The Runner sets a limit only where the author gave none.
+                    "default": other.get("cpus") is None or other.get("memory_mb") is None,
+                }
+            )
+        return found
+
+    @staticmethod
+    def _task_settings(definition: dict, overrides: dict, team) -> dict:
+        """A trial's resources are the sum over its containers, reserved together even
+        though a separate verifier starts after the agent's environment stops (U-53). An
+        override is a new total; what it adds goes to the main environment."""
         timeouts = definition.get("timeouts") or {}
+        environments = Resolver.environments(definition, team)
 
         def finite(value):
             return value if _number(value) else None
 
         author = {
-            "cpus": resources.get("cpus") or DEFAULT_CPUS,
-            "memory_mb": resources.get("memory_mb") or DEFAULT_MEMORY_MB,
+            "cpus": sum(e["cpus"] for e in environments),
+            "memory_mb": sum(e["memory_mb"] for e in environments),
             # None: the task gives no limit and the executor's default applies.
             "agent_timeout_sec": finite(timeouts.get("agent_sec")),
             "verifier_timeout_sec": finite(timeouts.get("verifier_sec")),
         }
-        return {k: author[k] if overrides[k] is None else overrides[k] for k in author}
+        settings = {k: author[k] if overrides[k] is None else overrides[k] for k in author}
+        return {**settings, "environments": environments}
 
     @staticmethod
     def _override_limits(team, overrides: dict, res: Resolution) -> None:
@@ -1171,7 +1201,7 @@ class Resolver:
         return sorted(chosen, key=lambda r: r["task_key"])
 
     @staticmethod
-    def _sources_and_baseline(overrides: dict, chosen: list, effective: dict, res) -> None:
+    def _sources_and_baseline(overrides: dict, chosen: list, effective: dict, res, team) -> None:
         paths = {
             "cpus": "/resources/cpus",
             "memory_mb": "/resources/memory_mb",
@@ -1186,7 +1216,7 @@ class Resolver:
                 continue
             res.field_sources[path] = {"layer": "override"}
             authors = [
-                Resolver._task_settings(x["definition"], dict.fromkeys(overrides))[name]
+                Resolver._task_settings(x["definition"], dict.fromkeys(overrides), team)[name]
                 for x in chosen
             ]
             lower = sum(1 for a in authors if a is not None and value < a)

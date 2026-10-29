@@ -18,6 +18,8 @@ case "$1" in
   images) [ -f '{state}/image' ] || echo i1 ;;
   network)
     if [ "$2" = ls ]; then [ -f '{state}/network' ] || echo n1; else touch '{state}/network'; fi ;;
+  volume)
+    if [ "$2" = ls ]; then [ -f '{state}/volume' ] || echo v1; else touch '{state}/volume'; fi ;;
   rm) touch '{state}/container' ;;
   image) touch '{state}/image' ;;
   *) echo "unexpected docker call: $@" >&2; exit 64 ;;
@@ -62,13 +64,22 @@ def test_a_scoped_sweep_filters_every_list_call_and_removes_only_what_it_listed(
         "--filter",
         "label=io.maestro.run_id=run_1",
     ]
-    listed = [c for c in calls() if c[0] in {"ps", "images"} or c[:2] == ["network", "ls"]]
-    assert len(listed) == 6  # each kind once to find, once to confirm
+    listed = [
+        c
+        for c in calls()
+        if c[0] in {"ps", "images"} or c[:2] in (["network", "ls"], ["volume", "ls"])
+    ]
+    assert len(listed) == 8  # each kind once to find, once to confirm
     for call in listed:
         assert call[-4:] == filters
         assert filters[1] in call and filters[3] in call
     removed = [c for c in calls() if c not in listed]
-    assert removed == [["rm", "-f", "-v", "c1"], ["network", "rm", "n1"], ["image", "rm", "i1"]]
+    assert removed == [
+        ["rm", "-f", "-v", "c1"],
+        ["network", "rm", "n1"],
+        ["volume", "rm", "v1"],
+        ["image", "rm", "i1"],
+    ]
 
 
 def test_a_docker_failure_is_reported_not_raised_and_not_released(tmp_path):

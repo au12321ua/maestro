@@ -156,11 +156,12 @@ def _docker_environment(settings):
     from maestro.execution.preparation import DockerEnvironment
 
     return DockerEnvironment(
-        settings.preparation_dir,
+        settings.image_registry,
         build_timeout=settings.build_timeout_default_sec,
         build_timeout_max=settings.build_timeout_max_sec,
         pull_timeout=settings.pull_timeout_sec,
-        save_timeout=settings.save_timeout_sec,
+        push_timeout=settings.push_timeout_sec,
+        legacy_dir=settings.legacy_preparation_dir,
     )
 
 

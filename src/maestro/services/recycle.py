@@ -29,6 +29,7 @@ from maestro.execution.attachments import display
 from maestro.services import audit, deleted, pagination
 from maestro.services.attachments import release_contents
 from maestro.services.collections import drop_purged_run
+from maestro.services.preparation import recorded_outputs
 from maestro.services.principal import (
     Principal,
     require_admin_session,
@@ -1000,9 +1001,10 @@ class Recycle:
         return None
 
     def discard_preparations(self, outputs: list[tuple[str, dict]]) -> dict | None:
-        """Local images and their originals; runs from a request thread after commit.
-        A spec that a new import prepared again meanwhile has a live row: keep it.
-        Each image is tried on its own; the failures are logged and returned."""
+        """Local images and their registry copies; runs from a request thread after commit.
+        A spec that a new import prepared again meanwhile has a live row: keep it, and
+        images another task still records stay (tasks share identical images, N-01).
+        Each preparation is tried on its own; the failures are logged and returned."""
         if self.environment is None or not outputs:
             return None
         with self.db.read() as conn:
@@ -1013,6 +1015,9 @@ class Recycle:
                     )
                 ).scalars()
             )
+            keep = frozenset(
+                image.digest for output in recorded_outputs(conn) for image in output.images
+            )
 
         async def discard() -> int:
             failed = 0
@@ -1020,7 +1025,7 @@ class Recycle:
                 if spec in live:
                     continue
                 try:
-                    await self.environment.discard(PreparedOutput.from_json(output))
+                    await self.environment.discard(PreparedOutput.from_json(output), keep)
                 except Exception:
                     log.exception("prepared image of %s could not be discarded after a purge", spec)
                     failed += 1

@@ -27,8 +27,8 @@ MANIFEST = "manifest.json"
 DATABASE = "app.db"
 # Business files under data_dir that a database refers to. ``work`` (Runner scratch) and
 # ``exports`` (temporary packages) are left out; cache_dir is rebuilt on demand, and
-# prepared images come back from the originals under ``preparations``.
-FILE_DIRS = ("attachments", "preparations", "artifacts")
+# prepared images come back from the local image registry's storage under ``registry``.
+FILE_DIRS = ("attachments", "registry", "artifacts")
 _CHUNK = 1024 * 1024
 
 

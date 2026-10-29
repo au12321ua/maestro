@@ -87,7 +87,7 @@ n = 0
 def emit(kind, **payload):
     global n
     n += 1
-    print(json.dumps({"protocol_version": 1, "run_id": spec["run_id"], "sequence": n,
+    print(json.dumps({"protocol_version": 2, "run_id": spec["run_id"], "sequence": n,
                       "type": kind, "at": "2026-10-23T00:00:00+00:00", "payload": payload}),
           flush=True)
 emit("started", harbor_version="0.24.0", runner_version="fake", n_trials=1)

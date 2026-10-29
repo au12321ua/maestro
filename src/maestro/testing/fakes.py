@@ -24,6 +24,7 @@ from maestro.boundaries.environment import (
     CleanupReport,
     PreparationError,
     PreparationSpec,
+    PreparedImage,
     PreparedOutput,
 )
 from maestro.boundaries.executor import (
@@ -35,6 +36,7 @@ from maestro.boundaries.executor import (
     RunSpec,
 )
 from maestro.core.digests import digest_json
+from maestro.execution.materials import image_key
 from maestro.execution.policy import harbor_outcome
 
 
@@ -248,15 +250,16 @@ class FakeExecutor:
 
 
 class FakeEnvironment:
-    """Images and originals in memory. Per task key, ``fail_prepare`` / ``fail_restore``
-    queue failure kinds; ``gate`` blocks preparation until set; ``nondeterministic``
-    tasks rebuild to a different image id; ``lose_archive`` drops an original."""
+    """Images in memory: ``registry`` holds what was pushed (by digest), ``images`` what is
+    present locally. Per task key, ``fail_prepare`` / ``fail_restore`` queue failure kinds;
+    ``gate`` blocks preparation until set; ``nondeterministic`` tasks rebuild to a
+    different digest; ``lose`` drops a preparation's images from the registry."""
 
     location_id = "fake-host"
 
     def __init__(self):
-        self.images: dict[str, str] = {}
-        self.archives: dict[str, str] = {}
+        self.images: set[str] = set()
+        self.registry: set[str] = set()
         self.fail_prepare: dict[str, list[str]] = {}
         self.fail_restore: dict[str, list[str]] = {}
         self.nondeterministic: set[str] = set()
@@ -264,13 +267,15 @@ class FakeEnvironment:
         self.prepares: list[str] = []
         self.restores: list[str] = []
         self.loads: list[str] = []
+        self.reused: list[str] = []
+        self.outputs: dict[str, PreparedOutput] = {}  # by spec digest, for tests
         self.started = asyncio.Event()
         self.builds = 0
 
-    def ref(self, spec_digest: str) -> str:
-        return f"fake-prep:{spec_digest[7:23]}"
+    def ref(self, digest: str) -> str:
+        return f"fake-registry/prep@{digest}"
 
-    async def _work(self, spec: PreparationSpec, progress, queue: dict[str, list[str]]):
+    async def _work(self, spec: PreparationSpec, progress, queue: dict[str, list[str]]) -> int:
         self.started.set()
         await progress("building")
         if self.gate is not None:
@@ -282,59 +287,90 @@ class FakeEnvironment:
         if not (spec.task_dir / "task.toml").is_file():
             raise PreparationError(TRANSIENT, "task material missing")
         self.builds += 1
-        salt = self.builds if spec.task_key in self.nondeterministic else 0
-        return digest_json({"spec": spec.spec_digest, "salt": salt})
+        return self.builds if spec.task_key in self.nondeterministic else 0
+
+    @staticmethod
+    def _entries(spec: PreparationSpec) -> list[dict]:
+        return (spec.spec or {}).get("images") or [
+            {"role": "environment/main", "source": "build", "definition_digest": spec.spec_digest}
+        ]
+
+    def _digest(self, entry: dict, salt: int) -> str:
+        return digest_json({"key": image_key(entry), "salt": salt})
 
     async def prepare(self, spec: PreparationSpec, progress) -> PreparedOutput:
         self.prepares.append(spec.task_key)
-        image_id = await self._work(spec, progress, self.fail_prepare)
-        ref = self.ref(spec.spec_digest)
-        self.images[ref] = image_id
-        self.archives[ref] = image_id
-        return PreparedOutput(
-            image_id,
-            ref,
-            {"name": ref, "digest": image_id, "size_bytes": 1},
-            {"method": "build", "setup_network_revision": spec.setup_network.revision},
+        salt = await self._work(spec, progress, self.fail_prepare)
+        images = []
+        for entry in self._entries(spec):
+            key = image_key(entry)
+            known = spec.known.get(key)
+            if known is not None and known.digest in self.registry:
+                self.reused.append(entry["role"])
+                digest, detail = known.digest, known.detail
+            else:
+                digest, detail = self._digest(entry, salt), {"method": entry["source"]}
+            self.registry.add(digest)
+            self.images.add(digest)
+            images.append(PreparedImage(entry["role"], digest, self.ref(digest), key, detail))
+        output = PreparedOutput(
+            tuple(images), {"setup_network_revision": spec.setup_network.revision}
         )
+        self.outputs[spec.spec_digest] = output
+        return output
 
     async def restore(self, spec: PreparationSpec, expected: PreparedOutput, progress):
         self.restores.append(spec.task_key)
         if await self.check(expected):
             return expected
-        if self.archives.get(expected.image_ref) == expected.image_id and not self.fail_restore.get(
-            spec.task_key
-        ):
+        digests = [i.digest for i in expected.images]
+        if all(d in self.registry for d in digests) and not self.fail_restore.get(spec.task_key):
             self.started.set()
-            await progress("loading")
+            await progress("pulling")
             if self.gate is not None:
                 await self.gate.wait()
             self.loads.append(spec.task_key)
-            self.images[expected.image_ref] = expected.image_id
+            self.images.update(digests)
             return expected
-        image_id = await self._work(spec, progress, self.fail_restore)
-        if image_id != expected.image_id:
-            raise PreparationError(
-                PREP_MISMATCH,
-                "rebuilt image differs",
-                {"expected_digest": expected.image_id, "actual_digest": image_id},
-            )
-        self.images[expected.image_ref] = image_id
-        self.archives[expected.image_ref] = image_id
+        salt = await self._work(spec, progress, self.fail_restore)
+        entries = {e["role"]: e for e in self._entries(spec)}
+        for image in expected.images:
+            if image.digest in self.registry:
+                continue
+            actual = self._digest(entries[image.role], salt)
+            if actual != image.digest:
+                raise PreparationError(
+                    PREP_MISMATCH,
+                    "rebuilt image differs",
+                    {"expected_digest": image.digest, "actual_digest": actual},
+                )
+            self.registry.add(actual)
+        self.images.update(digests)
         return expected
 
     async def check(self, expected: PreparedOutput) -> bool:
-        return self.images.get(expected.image_ref) == expected.image_id
+        return bool(expected.images) and all(i.digest in self.images for i in expected.images)
 
-    async def evict(self, expected: PreparedOutput) -> None:
-        self.images.pop(expected.image_ref, None)
+    async def evict(self, expected: PreparedOutput, keep: frozenset[str] = frozenset()) -> None:
+        for image in expected.images:
+            if image.digest not in keep:
+                self.images.discard(image.digest)
 
-    async def discard(self, expected: PreparedOutput) -> None:
-        self.images.pop(expected.image_ref, None)
-        self.archives.pop(expected.image_ref, None)
+    async def discard(self, expected: PreparedOutput, keep: frozenset[str] = frozenset()) -> None:
+        await self.evict(expected, keep)
+        for image in expected.images:
+            if image.digest not in keep:
+                self.registry.discard(image.digest)
 
-    def lose_archive(self, image_ref: str) -> None:
-        self.archives.pop(image_ref, None)
+    def present(self, spec_digest: str) -> bool:
+        """Are the images first prepared for this spec all local?"""
+        output = self.outputs.get(spec_digest)
+        return output is not None and all(i.digest in self.images for i in output.images)
+
+    def lose(self, spec_digest: str) -> None:
+        """The registry loses the images first prepared for this spec."""
+        for image in self.outputs[spec_digest].images:
+            self.registry.discard(image.digest)
 
 
 class MemoryArtifactStore:

@@ -17,7 +17,7 @@ if spec.get("command") == "probe":
     answer = sys.argv[1] if len(sys.argv) > 1 else "network"
     if answer != "silent":
         payload = {"status": "ok", "data": {"network_restriction": answer == "network"}}
-        print(json.dumps({"protocol_version": 1, "type": "result", "payload": payload}))
+        print(json.dumps({"protocol_version": 2, "type": "result", "payload": payload}))
     sys.exit(0)
 out = Path(spec["output_dir"])
 mode = spec["tasks"][0]["task_key"]
@@ -30,7 +30,7 @@ def emit(kind, run_id=None, **payload):
     global sequence
     sequence += 1
     line = {
-        "protocol_version": 1,
+        "protocol_version": 2,
         "run_id": run_id or spec["run_id"],
         "sequence": sequence,
         "type": kind,

@@ -4,12 +4,15 @@ Material is stored by its upstream content digest under ``<cache_dir>/tasks/<hex
 and checked against a second digest of the local files (``tree_digest``): the
 upstream identity and the unpacked material are separate facts and never swapped.
 
-Inspection reads ``task.toml`` without Harbor: what the platform needs before
-execution (resources, timeouts, environment kind, author parameters) and the
-normalized preparation spec whose digest is the cache key.
+Inspection reads ``task.toml`` and the author's Compose files without Harbor: what the
+platform needs before execution (resources of every environment, timeouts, author
+parameters) and the normalized preparation spec whose digest is the cache key. The spec
+lists every image a trial starts: the main environment, a separate verifier's own image
+and each Compose service besides ``main`` (N-01).
 """
 
 import hashlib
+import json
 import math
 import os
 import re
@@ -30,6 +33,7 @@ from maestro.boundaries.dataset_source import (
     SourceVersion,
 )
 from maestro.core.digests import digest_json
+from maestro.execution import compose
 
 DEFAULT_CPUS = 1
 DEFAULT_MEMORY_MB = 2048
@@ -42,12 +46,20 @@ MAX_BUILD_TIMEOUT = 3600.0
 # How the platform prepares an environment. A change here is a new preparation
 # method and needs a new admission (02 section 5).
 PREPARATION_METHOD = {
-    "adapter": "maestro-docker-prep/1",
-    "environment_abi_version": "1",
+    "adapter": "maestro-docker-prep/2",
+    "environment_abi_version": "2",
     # Reproducible build settings (M1 TECH-03): fixed timestamps, no provenance.
     "build": {"provenance": False, "source_date_epoch": 0, "rewrite_timestamp": True},
 }
 PREPARATION_METHOD_DIGEST = digest_json(PREPARATION_METHOD)
+
+
+def image_key(entry: dict) -> str:
+    """The definition of one image, without where it sits in the task: two tasks with
+    identical files, options and method share the image (N-01)."""
+    fields = ("source", "reference", "definition_digest", "dockerfile", "args", "target")
+    return digest_json({"method": PREPARATION_METHOD_DIGEST, **{k: entry.get(k) for k in fields}})
+
 
 _MATERIAL_NAME = re.compile(r"[0-9a-f]{64}")
 _TEMPLATE = re.compile(r"\$\{([^}:]+)(?::-(.*))?\}")
@@ -270,9 +282,12 @@ def _compose_variables(file: Path) -> list[tuple[str, bool, str]]:
     return output
 
 
-def _parameters(config: dict, task_dir: Path) -> tuple[list[dict], list[dict]]:
+def _parameters(
+    config: dict, task_dir: Path, frozen: set[str] = frozenset()
+) -> tuple[list[dict], list[dict]]:
     """Author parameters (03): environment-variable templates in task.toml and the
-    variables of author compose files."""
+    variables of author compose files. Variables frozen into a prepared image (``frozen``:
+    used only in ``image:`` or ``build:``) are not parameters: no value could change it."""
     found: dict[str, dict] = {}
     issues: list[dict] = []
 
@@ -314,10 +329,194 @@ def _parameters(config: dict, task_dir: Path) -> tuple[list[dict], list[dict]]:
             issues.append({"code": "COMPOSE_DISCOVERY_FAILED", "file": relative})
             continue
         for name, required, default in variables:
-            if name in _INFRA or name.startswith("EGRESS_CONTROL_"):
+            if name in _INFRA or name.startswith("EGRESS_CONTROL_") or name in frozen:
                 continue
             add(name, default or None, required, relative)
     return sorted(found.values(), key=lambda p: p["name"]), issues
+
+
+def _build_entry(
+    role: str, task_dir: Path, directory: Path, build: dict, where: str, frozen: dict
+) -> dict:
+    """A ``build:`` the platform runs itself. The context stays inside the environment
+    directory and only content-deciding options are kept, frozen at their defaults."""
+    if isinstance(build, str):
+        build = {"context": build}
+    other = sorted(set(build) - compose.FROZEN_BUILD - compose.IGNORED_BUILD)
+    if other:
+        raise compose.ComposeUnsupported(f"{where}: build option {other[0]} is unsupported")
+    context = Path(compose.freeze(build.get("context", "."), where, frozen))
+    context = (context if context.is_absolute() else directory / context).resolve()
+    if not context.is_relative_to(directory.resolve()) or not context.is_dir():
+        raise compose.ComposeUnsupported(f"{where}: the build context must be inside {role}")
+    dockerfile = compose.freeze(build.get("dockerfile") or "Dockerfile", where, frozen)
+    path = (context / dockerfile).resolve()
+    if not path.is_relative_to(context) or not path.is_file():
+        raise compose.ComposeUnsupported(f"{where}: the Dockerfile must be inside its context")
+    raw = build.get("args") or {}
+    if isinstance(raw, list):
+        raw = dict(item.split("=", 1) if "=" in item else (item, None) for item in raw)
+    args = {}
+    for name, value in sorted(raw.items()):
+        if value is None:
+            raise compose.ComposeUnsupported(f"{where}: build argument {name} needs a value")
+        args[str(name)] = compose.freeze(value, f"{where} args.{name}", frozen)
+    target = build.get("target")
+    try:
+        digest = tree_digest(context)
+    except ValueError as error:
+        raise compose.ComposeUnsupported(f"{where}: {error}") from None
+    return {
+        "role": role,
+        "source": "build",
+        "context": context.relative_to(task_dir.resolve()).as_posix(),
+        "dockerfile": path.relative_to(context).as_posix(),
+        "args": args,
+        "target": None if target is None else compose.freeze(target, where, frozen),
+        "definition_digest": digest,
+    }
+
+
+def _pull_entry(role: str, reference, where: str, frozen: dict) -> dict:
+    reference = compose.freeze(reference, where, frozen).strip()
+    if not reference or any(c.isspace() for c in reference):
+        raise compose.ComposeUnsupported(f"{where}: the image reference is not usable")
+    return {"role": role, "source": "pull", "reference": reference}
+
+
+def _resources(section: dict) -> dict:
+    return {
+        "cpus": section.get("cpus") or DEFAULT_CPUS,
+        "memory_mb": section.get("memory_mb") or DEFAULT_MEMORY_MB,
+    }
+
+
+def _images(config: dict, task_dir: Path) -> tuple[list[dict], list[dict], set[str], dict]:
+    """Every image a trial of this task starts (N-01): (images, the containers besides
+    the main one with their resources, Compose variables frozen into images, reasons the
+    task cannot be prepared as {code: message})."""
+    images: list[dict] = []
+    environments: list[dict] = []
+    frozen: dict[str, str] = {}
+    elsewhere: set[str] = set()
+    reasons: dict[str, str] = {}
+    environment = config.get("environment") or {}
+
+    def services(directory: Path) -> None:
+        prefix = directory.name
+        try:
+            document = compose.read(directory)
+        except (compose.ComposeUnsupported, OSError, subprocess.TimeoutExpired) as error:
+            reasons.setdefault("compose", str(error) or f"{prefix}: compose file unreadable")
+            return
+        if document is None:
+            return
+        for kind in ("networks", "volumes"):
+            for name, settings in (document.get(kind) or {}).items():
+                if isinstance(settings, dict) and (
+                    settings.get("external") or settings.get("name")
+                ):
+                    reasons.setdefault(
+                        "compose_external_resources",
+                        f"{prefix}/{compose.COMPOSE_FILE} {kind}.{name}: external or named "
+                        "resources are unsupported",
+                    )
+        for name, service in sorted((document.get("services") or {}).items()):
+            service = service if isinstance(service, dict) else {}
+            where = f"{prefix}/{compose.COMPOSE_FILE} services.{name}"
+            content = {"image", "build", "cpus", "mem_limit", "deploy"}
+            elsewhere.update(
+                compose.variables({k: v for k, v in service.items() if k not in content})
+            )
+            if name == compose.MAIN:
+                if "image" in service or "build" in service:
+                    reasons.setdefault(
+                        "compose_main_image", f"{where}: main's image comes from the task"
+                    )
+                continue
+            role = f"{prefix}/{name}"
+            try:
+                if "build" in service:
+                    images.append(
+                        _build_entry(role, task_dir, directory, service["build"], where, frozen)
+                    )
+                elif "image" in service:
+                    images.append(_pull_entry(role, service["image"], where, frozen))
+                else:
+                    raise compose.ComposeUnsupported(f"{where}: neither image nor build")
+                limits = {
+                    key: compose.freeze(value, where, frozen) if isinstance(value, str) else value
+                    for key, value in service.items()
+                    if key in {"cpus", "mem_limit"}
+                }
+                deploy = service.get("deploy")
+                if deploy is not None:
+                    limits["deploy"] = json.loads(compose.freeze(json.dumps(deploy), where, frozen))
+                environments.append({"role": role, **compose.limits(limits, where)})
+            except compose.ComposeUnsupported as error:
+                reasons.setdefault("compose_service", str(error))
+
+    env_dir = task_dir / "environment"
+    if environment.get("docker_image"):
+        try:
+            images.append(
+                _pull_entry("environment/main", environment["docker_image"], "task.toml", frozen)
+            )
+        except compose.ComposeUnsupported as error:
+            reasons.setdefault("environment_image", str(error))
+    elif (env_dir / "Dockerfile").is_file():
+        images.append(
+            _build_entry(
+                "environment/main", task_dir, env_dir, {"context": "."}, "environment", frozen
+            )
+        )
+    else:
+        reasons.setdefault(
+            "no_environment_definition",
+            "the task has neither environment/Dockerfile nor docker_image",
+        )
+    if env_dir.is_dir():
+        services(env_dir)
+
+    verifier = config.get("verifier") or {}
+    separate = verifier.get("environment_mode") == "separate" or (
+        verifier.get("environment_mode") is None and verifier.get("environment") is not None
+    )
+    steps = [s for s in config.get("steps") or [] if isinstance(s, dict)]
+    step_separate = any(
+        (s.get("verifier") or {}).get("environment_mode") == "separate"
+        or (s.get("verifier") or {}).get("environment") is not None
+        for s in steps
+    )
+    if step_separate or (separate and steps):
+        reasons.setdefault(
+            "separate_verifier_steps", "separate verifiers of multi-step tasks are unsupported"
+        )
+    elif separate:
+        # Harbor's order: the verifier's own image, then a definition under tests/, else a
+        # fresh container of the main environment.
+        tests = task_dir / "tests"
+        own = verifier.get("environment") or {}
+        if own.get("docker_image"):
+            try:
+                images.append(
+                    _pull_entry("tests/main", own["docker_image"], "[verifier.environment]", frozen)
+                )
+            except compose.ComposeUnsupported as error:
+                reasons.setdefault("verifier_image", str(error))
+            services(tests)
+        elif any((tests / name).is_file() for name in ("Dockerfile", compose.COMPOSE_FILE)):
+            if (tests / "Dockerfile").is_file():
+                images.append(
+                    _build_entry("tests/main", task_dir, tests, {"context": "."}, "tests", frozen)
+                )
+            else:
+                reasons.setdefault(
+                    "verifier_definition", "tests/docker-compose.yaml without tests/Dockerfile"
+                )
+            services(tests)
+        environments.append({"role": "verifier", **_resources(own or environment)})
+    return images, environments, set(frozen) - elsewhere, reasons
 
 
 def inspect_task(
@@ -336,26 +535,12 @@ def inspect_task(
     unsupported = []
     if environment.get("gpus"):
         unsupported.append("gpus")  # O-09: no GPU in the first release
-    if (config.get("verifier") or {}).get("environment"):
-        unsupported.append("separate_verifier_environment")
     steps = config.get("steps") or []
     if any(isinstance(step, dict) and step.get("environment") for step in steps):
         unsupported.append("step_environments")
-    if any(
-        isinstance(step, dict) and ((step.get("verifier") or {}).get("environment"))
-        for step in steps
-    ):
-        unsupported.append("separate_verifier_environment")
-    env_dir = task_dir / "environment"
-    image = environment.get("docker_image")
-    if image:
-        kind = "image"
-    elif (env_dir / "Dockerfile").is_file():
-        kind = "build"
-    else:
-        kind = None
-        unsupported.append("no_environment_definition")
-    parameters, issues = _parameters(config, task_dir)
+    images, environments, frozen, reasons = _images(config, task_dir)
+    unsupported.extend(code for code in reasons if code not in unsupported)
+    parameters, issues = _parameters(config, task_dir, frozen)
     build_limit = build_timeout(environment.get("build_timeout_sec"), build_timeout_max)
     instruction = task_dir / "instruction.md"
     definition = {
@@ -370,6 +555,9 @@ def inspect_task(
             "storage_mb": environment.get("storage_mb"),
             # Author resource values are suggestions unless stated otherwise (02 section 3).
             "constraint_strength": "unknown",
+            # Every container a trial starts besides the main one, with the author's limits
+            # (None: the team default applies). A trial reserves their sum (U-53).
+            "environments": environments,
         },
         "timeouts": {
             "agent_sec": (config.get("agent") or {}).get("timeout_sec"),
@@ -384,17 +572,14 @@ def inspect_task(
         "parameters": parameters,
         "parameter_issues": issues,
         "unsupported": unsupported,
+        "unsupported_reason": "; ".join(reasons.values()) or None,
     }
     spec = {
-        "schema_version": 1,
+        "schema_version": 2,
         "task_content_digest": content_digest,
         "materialization_digest": material_digest,
-        "environment": {
-            "kind": kind,
-            "docker_image": image,
-            "definition_digest": tree_digest(env_dir) if env_dir.is_dir() else None,
-            "build_timeout_sec": build_limit,
-        },
+        "images": images,
+        "build_timeout_sec": build_limit,
         "preparation_parameters": {},
         "preparation_method_digest": PREPARATION_METHOD_DIGEST,
         "environment_abi_version": PREPARATION_METHOD["environment_abi_version"],

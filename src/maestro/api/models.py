@@ -426,13 +426,28 @@ class AuthorParameter(Model):
     used_in: list[str]
 
 
+class EnvironmentResources(Model):
+    role: str = Field(
+        description="environment/main, verifier, or <directory>/<service> of a Compose service"
+    )
+    cpus: Number | None = Field(description="null: the team default for services applies")
+    memory_mb: int | None
+    default: bool | None = Field(
+        None, description="In a run: a team default fills in a limit the author left out"
+    )
+
+
 class TaskResources(Model):
-    """What the task's author asks for; a run may raise CPU and memory, never lower them."""
+    """What the task's author asks for; a run may raise CPU and memory, never lower them.
+    ``cpus`` and ``memory_mb`` are the main environment's."""
 
     cpus: Number | None = None
     memory_mb: int | None = None
     storage_mb: int | None = None
     constraint_strength: str | None = None
+    environments: list[EnvironmentResources] = Field(
+        [], description="Other containers a trial starts: a separate verifier, Compose services"
+    )
 
 
 class TaskTimeouts(Model):
@@ -472,18 +487,19 @@ class PreparationPin(Model):
     holder_id: str
 
 
-class PreparationArchive(Model):
-    """The saved original the cache is restored from (U-17)."""
+class PreparationImage(Model):
+    """One image of a preparation, kept in the local image registry (N-01)."""
 
-    digest: str | None
-    size_bytes: int | None
+    role: str = Field(description="<directory>/<service>, e.g. environment/main, tests/main")
+    digest: str = Field(description="Manifest digest in the local image registry")
+    ref: str
 
 
 class Preparation(LocalPreparation):
     spec_digest: str
     generation: int
-    image_id: str | None
-    archive: PreparationArchive | None
+    content_id: str | None = Field(description="All images as one content identity")
+    images: list[PreparationImage]
     waiters: list[PreparationWaiter]
     pins: list[PreparationPin]
 
@@ -902,8 +918,11 @@ class EffectiveTask(Model):
     task_key: str
     content_digest: str
     spec_digest: str
-    cpus: Number
+    cpus: Number = Field(description="The trial's total over every container it starts")
     memory_mb: int
+    environments: list[EnvironmentResources] = Field(
+        [], description="Each container's share; an override's extra goes to environment/main"
+    )
     agent_timeout_sec: Number | None = Field(description="null: the executor's default")
     verifier_timeout_sec: Number | None
 
@@ -1326,7 +1345,7 @@ class AdmissionRecord(Model):
     admission_revision: int | None
     preparation_method_digest: str | None
     spec_digest: str
-    expected_image_id: str | None
+    expected_content_id: str | None
 
 
 class ConfigDifference(Model):
@@ -2112,7 +2131,7 @@ class FirstPreparationProgress(Model):
 class FirstPreparationTask(Sparse):
     state: Literal["pending", "admitted", "first_failed", "revoked"]
     skipped: bool | None = Field(None, description="Already decided by an earlier attempt")
-    image_id: str | None = None
+    content_id: str | None = None
     error: Problem | None = None
 
 
@@ -2132,11 +2151,18 @@ class RestoreProgress(Model):
     waiters: int | None = None
 
 
-class PreparedOutputView(Model):
-    image_id: str
-    image_ref: str
-    archive: JsonObject | None = Field(description="The saved original (U-17)")
+class PreparedImageView(Model):
+    role: str
+    digest: str
+    ref: str
+    key: str = Field(description="The definition: identical ones share the image")
     detail: JsonObject = Field(description="How it was prepared; depends on the environment")
+
+
+class PreparedOutputView(Model):
+    content_id: str
+    images: list[PreparedImageView]
+    detail: JsonObject
 
 
 class RestoreResult(Model):

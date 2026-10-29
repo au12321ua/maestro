@@ -226,7 +226,7 @@ def test_ds05_rebuild_with_different_digest_is_not_accepted(service, source, env
         image = task["content"]["resources"][1]["digest"]
         evict(admin, task)
         environment.nondeterministic.add("solo")
-        environment.lose_archive(environment.ref(task["spec_digest"]))
+        environment.lose(task["spec_digest"])
         run = submit(admin, version_id).json()["data"]
         trial = admin.get(f"/api/v1/runs/{run['run_id']}/trials").json()["data"]
         wait_run(admin, run["run_id"])

@@ -240,14 +240,148 @@ def _builds_image(task_dir: Path) -> bool:
     return not config.environment.docker_image
 
 
-def _with_image(copy: Path, image: str) -> None:
-    """Point the task copy at the platform-prepared image, so Harbor neither builds nor
-    pulls it (M1 TECH-03)."""
-    from harbor.models.task.config import TaskConfig as TaskFile
+def _with_images(copy: Path, task: dict, overrides: dict) -> None:
+    """Point the task copy at the platform-prepared images, so Harbor neither builds nor
+    pulls them (M1 TECH-03, N-01), and give the main environment what an override adds.
 
+    Only ``task.toml`` changes, through Harbor's own model; the author's Compose files are
+    pinned by an override per environment directory instead (``_pin_overrides``).
+    """
+    from harbor.models.task.config import TaskConfig as TaskFile
+    from harbor.models.task.verifier_mode import resolve_task_verifier_mode
+
+    images = task["images"]
     config = TaskFile.model_validate_toml((copy / "task.toml").read_text())
-    config.environment.docker_image = image
+    config.environment.docker_image = images["environment/main"]
+    if "tests/main" in images:
+        # The verifier's own image, built from tests/ or named by the author: as a named
+        # image Harbor neither builds nor pulls it and still runs it from tests/.
+        if config.verifier.environment is None:
+            config.verifier.environment = config.environment.model_copy(deep=True)
+        config.verifier.environment.docker_image = images["tests/main"]
+    # The trial's resources are the sum over its containers (U-53); an override is a new
+    # total and its extra goes to the main environment. A verifier that is a fresh copy of
+    # the main environment gets the same settings from Harbor, so each takes half.
+    inherited = (
+        resolve_task_verifier_mode(config).value == "separate" and "tests/main" not in images
+    )
+    environments = task.get("environments") or []
+    for key in ("cpus", "memory_mb"):
+        value = overrides.get(key)
+        if value is None or not environments:
+            continue
+        extra = int(max(0, value - sum(e[key] for e in environments)))
+        main = getattr(config.environment, key) or environments[0][key]
+        setattr(config.environment, key, int(main) + (extra // 2 if inherited else extra))
     (copy / "task.toml").write_text(config.model_dump_toml())
+
+
+def _author_compose(file: Path) -> tuple[dict, list[str], list[str]]:
+    """The services, networks and volumes an author Compose file declares. Read only:
+    nothing from it is written back, because YAML 1.1 (PyYAML) and Compose read some plain
+    values differently (``yes``, ``22:22``)."""
+    import yaml
+
+    if not file.is_file():
+        return {}, [], []
+    try:
+        document = yaml.safe_load(file.read_text())
+    except yaml.YAMLError:
+        raise Rejected("RUNNER_INPUT_INVALID", f"{file.parent.name}: unreadable compose file")
+    document = document if isinstance(document, dict) else {}
+    services = document.get("services")
+    services = services if isinstance(services, dict) else {}
+    names = {}
+    for kind in ("networks", "volumes"):
+        objects = document.get(kind)
+        names[kind] = [str(name) for name in objects] if isinstance(objects, dict) else []
+    return (
+        {str(k): v if isinstance(v, dict) else {} for k, v in services.items()},
+        names["networks"],
+        names["volumes"],
+    )
+
+
+def _pin_overrides(path: Path, task: dict, labels: dict, out: Path) -> dict[str, Path]:
+    """One Compose override per environment directory of a prepared task, keyed by the
+    directory's resolved path.
+
+    Each override pins every service to its prepared image and never pulls, drops the
+    author's ``build`` (Compose builds a missing image even with ``pull_policy: never``;
+    ``!reset`` needs Compose 2.24), gives a service without limits the team default
+    (U-55), and labels services, networks and volumes for cleanup after a killed Runner
+    (05 section 7).
+    """
+    images = task["images"]
+    limits = {e["role"]: e for e in task.get("environments") or [] if e.get("default")}
+    out.mkdir(parents=True, exist_ok=True)
+    body = "".join(
+        f"      {json.dumps(key)}: {json.dumps(value)}\n" for key, value in sorted(labels.items())
+    )
+    result = {}
+    for directory in sorted({role.split("/", 1)[0] for role in images}):
+        services, networks, volumes = _author_compose(path / directory / "docker-compose.yaml")
+        text = "services:\n"
+        for role, image in sorted(images.items()):
+            folder, service = role.split("/", 1)
+            if folder != directory:
+                continue
+            text += f"  {json.dumps(service)}:\n    image: {json.dumps(image)}\n"
+            text += "    pull_policy: never\n"
+            if "build" in services.get(service, {}):
+                text += "    build: !reset null\n"
+            if role in limits:
+                text += f"    cpus: {json.dumps(limits[role]['cpus'])}\n"
+                text += f"    mem_limit: {json.dumps(str(limits[role]['memory_mb']) + 'm')}\n"
+            text += "    labels:\n" + body
+        for kind, names in (("networks", ["default", *networks]), ("volumes", volumes)):
+            if names:
+                text += f"{kind}:\n"
+                for name in dict.fromkeys(names):
+                    text += f"  {json.dumps(name)}:\n    labels:\n" + body
+        file = out / f"{directory}.yaml"
+        file.write_text(text)
+        result[str((path / directory).resolve())] = file
+    return result
+
+
+def _environment_overrides(out: Path, labels: dict, pins: dict[str, Path]) -> None:
+    """Give every environment Harbor creates the platform's Compose files.
+
+    Harbor applies the job's overlays to the agent's environment only and clears them for
+    a separate verifier (PRs 1676, 3193): the verifier gets the platform labels here. The
+    pins differ per task, so each environment also gets its own directory's override. Both
+    go through Harbor's one entry point for creating environments.
+    """
+    from harbor.environments.factory import EnvironmentFactory
+
+    # Written once, before any trial runs: trials start verifiers concurrently and Compose
+    # reads these files for as long as a container lives.
+    verifier = {
+        restricted: _labels_override(
+            out / f"verifier-labels-{int(restricted)}.yaml",
+            labels,
+            label_build=False,
+            prepared=True,
+            sidecar=restricted,
+        )
+        for restricted in (False, True)
+    }
+    original = EnvironmentFactory.create_environment_from_config
+
+    def create(cls, config, *args, **kwargs):
+        extra = list(config.extra_docker_compose)
+        if not extra:
+            policies = [kwargs.get("network_policy"), *kwargs.get("phase_network_policies", [])]
+            extra.append(verifier[any(p and p.network_mode.value != "public" for p in policies)])
+        where = kwargs.get("environment_dir")
+        if where is not None and (pin := pins.get(str(Path(where).resolve()))):
+            extra.append(pin)
+        if extra != list(config.extra_docker_compose):
+            config = config.model_copy(update={"extra_docker_compose": extra})
+        return original(config, *args, **kwargs)
+
+    EnvironmentFactory.create_environment_from_config = classmethod(create)
 
 
 def _entries(top: Path) -> list[tuple[Path, os.stat_result]]:
@@ -425,19 +559,24 @@ class Execution:
             raise Rejected("RUNNER_INPUT_INVALID", "every task needs the same trial count")
         task_dirs = []
         prepared = 0
+        pins: dict[str, Path] = {}
         platform = self.spec.get("network")
         restricted = False
+        overrides = self.spec.get("overrides") or {}
         for index, task in enumerate(tasks):
             path = Path(task["path"]).resolve()
             if not (path / "task.toml").is_file():
                 raise Rejected("TASK_MATERIAL_MISSING", f"no task.toml for {task['task_key']}")
-            if task.get("docker_image") or platform:
+            if task.get("images") or platform:
                 # A private copy: the cached material is shared and never changed.
                 copy = self.out / "tasks" / str(index)
                 shutil.copytree(path, copy, symlinks=True)
                 path = copy
-            if task.get("docker_image"):
-                _with_image(path, task["docker_image"])
+            if task.get("images"):
+                _with_images(path, task, overrides)
+                pins.update(
+                    _pin_overrides(path, task, self.spec["labels"], self.out / "pins" / str(index))
+                )
                 prepared += 1
             if platform:
                 plan = network.tighten(path, platform)
@@ -471,7 +610,14 @@ class Execution:
             prepared == len(tasks),
             sidecar=restricted,
         )
-        overrides = self.spec.get("overrides") or {}
+        if 0 < prepared < len(tasks):
+            # Prepared tasks take resource overrides in task.toml; the job-wide one is for
+            # the rest, and it would reach the prepared ones' verifiers too.
+            raise Rejected(
+                "RUNNER_INPUT_INVALID", "prepared and unprepared tasks cannot share a job"
+            )
+        if prepared:
+            _environment_overrides(self.out, self.spec["labels"], pins)
         agent = self.spec["agent"]
         if agent.get("adapter"):
             try:
@@ -513,8 +659,9 @@ class Execution:
                 type="docker",
                 delete=True,
                 extra_docker_compose=[override],
-                override_cpus=overrides.get("cpus"),
-                override_memory_mb=overrides.get("memory_mb"),
+                # Prepared tasks already carry each environment's resources (_with_images).
+                override_cpus=None if prepared else overrides.get("cpus"),
+                override_memory_mb=None if prepared else overrides.get("memory_mb"),
             ),
             verifier=VerifierConfig(override_timeout_sec=overrides.get("verifier_timeout_sec")),
             agents=[AgentConfig(**agent)],

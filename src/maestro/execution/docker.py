@@ -1,7 +1,7 @@
 """Label-based Docker cleanup (05 sections 7-8, EXE-06).
 
 Ending a Runner's process group does not stop what the Docker daemon runs for it.
-Every container, network and built image of a run carries the platform labels, so
+Every container, network, volume and built image of a run carries the platform labels, so
 cleanup removes exactly those and then confirms nothing labelled remains. Other
 instances, unlabelled and manually created resources are never touched.
 """
@@ -20,13 +20,17 @@ LABEL_RUN = "io.maestro.run_id"
 _LIST = {
     "container": ["ps", "-aq", "--no-trunc"],
     "network": ["network", "ls", "-q", "--no-trunc"],
+    "volume": ["volume", "ls", "-q"],
     "image": ["images", "-q", "--no-trunc"],
 }
 _REMOVE = {
     "container": ["rm", "-f", "-v"],
     "network": ["network", "rm"],
+    "volume": ["volume", "rm"],
     "image": ["image", "rm"],
 }
+# Containers first: networks, volumes and images cannot go while a container uses them.
+_ORDER = ("container", "network", "volume", "image")
 
 
 class DockerError(RuntimeError):
@@ -57,8 +61,7 @@ class DockerResources:
 
     async def _sweep(self, labels: dict[str, str]) -> CleanupReport:
         errors = []
-        # Containers first: networks and images cannot go while a container uses them.
-        for kind in ("container", "network", "image"):
+        for kind in _ORDER:
             ids = await self._list(kind, labels)
             if ids:
                 try:
@@ -66,9 +69,7 @@ class DockerResources:
                 except DockerError as error:
                     errors.append(f"{kind}: {error}")
         remaining = [
-            f"{kind}:{item[:19]}"
-            for kind in ("container", "network", "image")
-            for item in await self._list(kind, labels)
+            f"{kind}:{item[:19]}" for kind in _ORDER for item in await self._list(kind, labels)
         ]
         if errors and remaining:
             log.warning("cleanup %s left %s: %s", labels, remaining, errors)

@@ -35,7 +35,7 @@ class AdmissionRecord(BaseModel):
     )
     admission_id: str | None
     admission_revision: int | None
-    expected_image_id: str | None
+    expected_content_id: str | None
     preparation_method_digest: str | None
     spec_digest: str
     task_key: str
@@ -569,26 +569,32 @@ class EffectiveOverrides(BaseModel):
     verifier_timeout_sec: int | float | None = None
 
 
-class EffectiveTask(BaseModel):
-    model_config = ConfigDict(
-        extra="allow",
-    )
-    agent_timeout_sec: Annotated[
-        int | float | None, Field(description="null: the executor's default")
-    ]
-    content_digest: str
-    cpus: int | float
-    memory_mb: int
-    spec_digest: str
-    task_key: str
-    verifier_timeout_sec: int | float | None
-
-
 class EnabledChange(BaseModel):
     model_config = ConfigDict(
         extra="allow",
     )
     enabled: bool
+
+
+class EnvironmentResources(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    cpus: Annotated[
+        int | float | None,
+        Field(description="null: the team default for services applies"),
+    ]
+    default: Annotated[
+        bool | None,
+        Field(description="In a run: a team default fills in a limit the author left out"),
+    ]
+    memory_mb: int | None
+    role: Annotated[
+        str,
+        Field(
+            description="environment/main, verifier, or <directory>/<service> of a Compose service"
+        ),
+    ]
 
 
 class ExportCreate(BaseModel):
@@ -1201,16 +1207,20 @@ class PolicySetting(BaseModel):
     name: str
 
 
-class PreparationArchive(BaseModel):
+class PreparationImage(BaseModel):
     """
-    The saved original the cache is restored from (U-17).
+    One image of a preparation, kept in the local image registry (N-01).
     """
 
     model_config = ConfigDict(
         extra="allow",
     )
-    digest: str | None
-    size_bytes: int | None
+    digest: Annotated[str, Field(description="Manifest digest in the local image registry")]
+    ref: str
+    role: Annotated[
+        str,
+        Field(description="<directory>/<service>, e.g. environment/main, tests/main"),
+    ]
 
 
 class PreparationPin(BaseModel):
@@ -1231,17 +1241,27 @@ class PreparationWaiter(BaseModel):
     state: str
 
 
-class PreparedOutputView(BaseModel):
+class PreparedImageView(BaseModel):
     model_config = ConfigDict(
         extra="allow",
     )
-    archive: Annotated[dict[str, JsonValue] | None, Field(description="The saved original (U-17)")]
     detail: Annotated[
         dict[str, JsonValue],
         Field(description="How it was prepared; depends on the environment"),
     ]
-    image_id: str
-    image_ref: str
+    digest: str
+    key: Annotated[str, Field(description="The definition: identical ones share the image")]
+    ref: str
+    role: str
+
+
+class PreparedOutputView(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    content_id: str
+    detail: dict[str, JsonValue]
+    images: list[PreparedImageView]
 
 
 class ProviderCapacity(BaseModel):
@@ -1699,6 +1719,7 @@ class TaskContent(BaseModel):
 class TaskResources(BaseModel):
     """
     What the task's author asks for; a run may raise CPU and memory, never lower them.
+    ``cpus`` and ``memory_mb`` are the main environment's.
     """
 
     model_config = ConfigDict(
@@ -1706,6 +1727,10 @@ class TaskResources(BaseModel):
     )
     constraint_strength: str | None
     cpus: int | float | None
+    environments: Annotated[
+        list[EnvironmentResources],
+        Field(description="Other containers a trial starts: a separate verifier, Compose services"),
+    ]
     memory_mb: int | None
     storage_mb: int | None
 
@@ -2260,6 +2285,28 @@ class EffectiveModel(BaseModel):
     protocol: Literal["openai-compatible", "openai", "anthropic"]
     provider: str
     revision: int
+
+
+class EffectiveTask(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    agent_timeout_sec: Annotated[
+        int | float | None, Field(description="null: the executor's default")
+    ]
+    content_digest: str
+    cpus: Annotated[
+        int | float,
+        Field(description="The trial's total over every container it starts"),
+    ]
+    environments: Annotated[
+        list[EnvironmentResources],
+        Field(description="Each container's share; an override's extra goes to environment/main"),
+    ]
+    memory_mb: int
+    spec_digest: str
+    task_key: str
+    verifier_timeout_sec: int | float | None
 
 
 class EnvelopeAdmissionRevoked(BaseModel):
@@ -3604,8 +3651,8 @@ class FirstPreparationTask(BaseModel):
     model_config = ConfigDict(
         extra="allow",
     )
+    content_id: str | None = None
     error: Problem | None = None
-    image_id: str | None = None
     skipped: Annotated[bool | None, Field(description="Already decided by an earlier attempt")] = (
         None
     )
@@ -3702,11 +3749,11 @@ class Preparation(BaseModel):
     model_config = ConfigDict(
         extra="allow",
     )
-    archive: PreparationArchive | None
     cache_state: Literal["absent", "restoring", "ready", "stale"]
+    content_id: Annotated[str | None, Field(description="All images as one content identity")]
     generation: int
     id: str | None
-    image_id: str | None
+    images: list[PreparationImage]
     last_restore_error: Problem | None
     last_used_at: str | None
     location_id: str

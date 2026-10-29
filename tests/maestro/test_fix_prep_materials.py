@@ -203,17 +203,17 @@ def test_recover_sweeps_material_no_task_refers_to(service, version_id):
 
 
 def test_recover_reports_every_sweep(service, version_id):
-    """The environment's own sweeps (images, exports) and the material sweep all run."""
+    """The environment's own sweeps (images, old originals) and the material sweep all run."""
 
-    async def sweep_archives():
-        return [".abc.tar.1.tmp"]
+    def sweep_legacy():
+        return ["abc.tar"]
 
-    service.preparer.environment.sweep_archives = sweep_archives
+    service.preparer.environment.sweep_legacy = sweep_legacy
     (service.preparer.materials.root / ".install-crashed").mkdir()
     report = asyncio.run(service.preparer.recover())
     assert report == {
         "temporary_images_removed": [],
-        "leftovers_removed": [".abc.tar.1.tmp", ".install-crashed"],
+        "leftovers_removed": ["abc.tar", ".install-crashed"],
     }
 
 
@@ -250,7 +250,7 @@ def test_inspection_records_the_normalized_limit(tmp_path, toml, expected):
     task = make_task(tmp_path / "t")
     (task / "task.toml").write_text(f"[environment]\nbuild_timeout_sec = {toml}\n")
     definition = inspect_task(task, DIGEST, tree_digest(task))  # inf must not break the digest
-    assert definition["preparation"]["spec"]["environment"]["build_timeout_sec"] == expected
+    assert definition["preparation"]["spec"]["build_timeout_sec"] == expected
     assert definition["timeouts"]["build_sec"] == expected
 
 

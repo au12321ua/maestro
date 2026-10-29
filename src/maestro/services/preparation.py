@@ -207,6 +207,45 @@ def load_context(conn: Connection, task_id: str) -> TaskContext:
     )
 
 
+def recorded_outputs(conn: Connection, exclude_task_ids=()) -> list[PreparedOutput]:
+    """Every preparation result still on record: cache rows and admission evidence (an
+    evicted cache keeps its output; a purged version has neither)."""
+    rows = conn.execute(
+        select(t.preparations.c.output_json).where(t.preparations.c.output_json.is_not(None))
+    ).scalars()
+    found = [PreparedOutput.from_json(row) for row in rows]
+    evidence = conn.execute(
+        select(t.task_admissions.c.evidence_json).where(
+            t.task_admissions.c.evidence_json.is_not(None),
+            t.task_admissions.c.task_id.not_in(list(exclude_task_ids)),
+        )
+    ).scalars()
+    found += [PreparedOutput.from_json(e["output"]) for e in evidence if e.get("output")]
+    return found
+
+
+def in_use(conn: Connection, exclude: str) -> frozenset[str]:
+    """Image digests another cache needs locally now: pinned, or being restored. Tasks
+    share identical images (N-01), so evicting one task must not pull them from under
+    another."""
+    busy = select(t.preparations.c.output_json).where(
+        t.preparations.c.id != exclude,
+        t.preparations.c.output_json.is_not(None),
+        (t.preparations.c.active_operation_id.is_not(None))
+        | t.preparations.c.id.in_(select(t.preparation_pins.c.preparation_id)),
+    )
+    return frozenset(
+        image.digest
+        for output in conn.execute(busy).scalars()
+        for image in PreparedOutput.from_json(output).images
+    )
+
+
+def known_images(conn: Connection) -> dict[str, env.PreparedImage]:
+    """Recorded images by definition key, so an identical definition is reused (N-01)."""
+    return {image.key: image for output in recorded_outputs(conn) for image in output.images}
+
+
 def set_availability(
     conn: Connection, digest: str, resource_kind: str, availability: str, evidence: dict
 ) -> None:
@@ -345,8 +384,8 @@ class Preparer:
         import or preparation starts, so it cannot race a live fetch or install."""
         sweep = getattr(self.environment, "sweep_temporary", None)
         removed = await sweep() if sweep is not None else []
-        sweep = getattr(self.environment, "sweep_archives", None)
-        files = await sweep() if sweep is not None else []
+        sweep = getattr(self.environment, "sweep_legacy", None)
+        files = await asyncio.to_thread(sweep) if sweep is not None else []
         with self.db.read() as conn:
             referenced = set(conn.execute(select(t.tasks.c.content_digest)).scalars())
         files += await asyncio.to_thread(self.materials.sweep, referenced)
@@ -649,7 +688,9 @@ class Preparer:
                     t.task_admissions.c.state == "admitted",
                 )
             ).all()
-            images = {task: ((e or {}).get("output") or {}).get("image_id") for task, e in admitted}
+            images = {
+                task: ((e or {}).get("output") or {}).get("content_id") for task, e in admitted
+            }
             lost = set(
                 conn.execute(
                     select(t.content_availability.c.content_digest).where(
@@ -672,7 +713,7 @@ class Preparer:
             with self.db.write() as conn:  # (a cache that was still ready never published)
                 set_availability(
                     conn,
-                    output.image_id,
+                    output.content_id,
                     "environment_image",
                     "available",
                     {"reverified_by": op_id, "spec_digest": ctx.spec_digest},
@@ -824,10 +865,8 @@ class Preparer:
         async def one(task_id: str) -> None:
             with self.db.read() as conn:
                 ctx = load_context(conn, task_id)
-                definition = conn.execute(
-                    select(t.tasks.c.definition_json).where(t.tasks.c.id == task_id)
-                ).scalar()
             try:
+                ctx, definition = await self._reinspect(ctx)
                 if definition.get("unsupported"):
                     reason = definition.get("unsupported_reason")
                     raise PreparationFailure(
@@ -868,6 +907,41 @@ class Preparer:
                 ),
             )
 
+    async def _reinspect(self, ctx: TaskContext) -> tuple[TaskContext, dict]:
+        """Inspect a task that is not admitted yet again from its material: how the
+        platform prepares may have changed since the import (U-53). An admitted task keeps
+        what it was admitted with."""
+        with self.db.read() as conn:
+            recorded = conn.execute(
+                select(t.tasks.c.definition_json).where(t.tasks.c.id == ctx.task_id)
+            ).scalar()
+        if not ctx.material_digest:  # recorded as unsupported at import
+            return ctx, recorded
+
+        async def quiet(phase: str) -> None:
+            pass
+
+        path = await self._material(ctx, quiet)
+        try:
+            definition = await asyncio.to_thread(
+                inspect_task, path, ctx.content_digest, ctx.material_digest, self.build_timeout_max
+            )
+        except SourceError:
+            return ctx, recorded
+        definition["source"] = recorded.get("source") or {}
+        if definition == recorded:
+            return ctx, recorded
+        with self.db.write() as conn:
+            conn.execute(
+                update(t.tasks)
+                .where(t.tasks.c.id == ctx.task_id)
+                .values(
+                    definition_json=definition,
+                    spec_digest=definition["preparation"]["spec_digest"],
+                )
+            )
+            return load_context(conn, ctx.task_id), definition
+
     def _admit(self, op, ctx: TaskContext, output: PreparedOutput) -> dict:
         at = _now()
         evidence = {
@@ -905,12 +979,12 @@ class Preparer:
             )
             set_availability(
                 conn,
-                output.image_id,
+                output.content_id,
                 "environment_image",
                 "available",
                 {"verified_by": op["id"], "spec_digest": ctx.spec_digest},
             )
-        return {"state": "admitted", "image_id": output.image_id}
+        return {"state": "admitted", "content_id": output.content_id}
 
     def _first_failed(self, op, ctx: TaskContext, error: dict) -> dict:
         with self.db.write() as conn:
@@ -972,9 +1046,10 @@ class Preparer:
                 .where(t.preparations.c.id == preparation_id)
                 .values(cache_state="stale", eviction_operation_id=op_id)
             )
+            keep = in_use(conn, exclude=preparation_id)
         status, error = OperationStatus.SUCCEEDED, None
         try:
-            await self.environment.evict(PreparedOutput.from_json(row["output_json"]))
+            await self.environment.evict(PreparedOutput.from_json(row["output_json"]), keep)
         except PreparationError as exc:
             status = OperationStatus.FAILED
             error = {"code": "EVICTION_FAILED", "message": redact(exc.message)}
@@ -1080,12 +1155,15 @@ class Preparer:
             if row is None or row["cache_state"] != "ready" or row["eviction_operation_id"]:
                 return None
             output = PreparedOutput.from_json(row["output_json"])
-            if ctx.expected and output.image_id != ctx.expected.image_id:
+            if ctx.expected and output.content_id != ctx.expected.content_id:
                 # Never hand out something other than the admitted result.
                 return failure(
                     env.MISMATCH,
                     "The cached preparation differs from the admitted result",
-                    {"expected_digest": ctx.expected.image_id, "actual_digest": output.image_id},
+                    {
+                        "expected_digest": ctx.expected.content_id,
+                        "actual_digest": output.content_id,
+                    },
                 )
             self._pin(conn, row["id"], holder_kind, holder_id, deadline_at)
             conn.execute(
@@ -1340,7 +1418,10 @@ class Preparer:
                 path = await self._material(ctx, progress)
                 with self.db.read() as conn:
                     network = setup_network.current(conn)
-                spec = PreparationSpec(ctx.spec_digest, ctx.task_key, path, ctx.spec, network)
+                    known = known_images(conn)
+                spec = PreparationSpec(
+                    ctx.spec_digest, ctx.task_key, path, ctx.spec, network, known
+                )
                 if expected is None:
                     output = await self.environment.prepare(spec, progress)
                 else:
@@ -1492,10 +1573,10 @@ class Preparer:
                 )
                 .values(state="released", ended_at=at)
             )
-            if ctx.expected is not None or output.image_id:
+            if output.images:
                 set_availability(
                     conn,
-                    output.image_id,
+                    output.content_id,
                     "environment_image",
                     "available",
                     {"verified_by": active.op_id, "spec_digest": ctx.spec_digest},
@@ -1541,7 +1622,7 @@ class Preparer:
                 # No copy of the recorded image is left and the source cannot give it back.
                 set_availability(
                     conn,
-                    expected.image_id,
+                    expected.content_id,
                     "environment_image",
                     "unavailable",
                     {"operation_id": active.op_id, **error.get("evidence", {})},
@@ -1550,7 +1631,7 @@ class Preparer:
                     **error,
                     "code": "RESOURCE_CONTENT_UNAVAILABLE",
                     "resource_kind": "environment_image",
-                    "expected_digest": expected.image_id,
+                    "expected_digest": expected.content_id,
                 }
             conn.execute(
                 update(t.preparation_waiters)
