@@ -1,20 +1,14 @@
 """Regressions for the findings of the independent M5 review (2026-10-24)."""
 
-import gzip
-import io
 import json
-import resource
-import shutil
 import subprocess
 import sys
-import tarfile
 import uuid
-import zipfile
 from pathlib import Path
 
 import pytest
 from support import invite_member, running, setup_admin, submit, wait_operation
-from test_attachments import manifest, package, publish, tar_package
+from test_attachments import manifest, package, publish, upload
 from test_batches import batch_body, post_batch
 from test_configuration import error
 from test_datasets import import_and_prepare
@@ -22,7 +16,6 @@ from test_reruns import rerun
 
 from maestro.core.errors import MaestroError
 from maestro.execution.agents import endpoint_problem
-from maestro.execution.attachments import AttachmentStore, PackageError
 from maestro.testing.fakes import FakeDatasetSource
 
 
@@ -173,74 +166,35 @@ def test_an_endpoint_with_a_key_in_its_path_is_refused():
 # --- attachments -----------------------------------------------------------------------------
 
 
-def _manifest_tar(**fields) -> bytes:
-    return tar_package({"manifest.json": json.dumps({**manifest(), **fields}).encode()})
-
-
-def test_a_long_name_header_is_refused_before_it_is_read(tmp_path):
-    size = 64 * 1024 * 1024
-    info = tarfile.TarInfo("././@LongLink")
-    info.type = tarfile.GNUTYPE_LONGNAME
-    info.size = size
-    path = tmp_path / "bomb.tar.gz"
-    with gzip.open(path, "wb", compresslevel=1) as sink:
-        sink.write(info.tobuf(format=tarfile.GNU_FORMAT))
-        for _ in range(size >> 20):
-            sink.write(b"a" * (1 << 20))
-        sink.write(b"\0" * 1024)
-    before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    with pytest.raises(PackageError):
-        AttachmentStore(tmp_path / "data").unpack(path, max_files=20, max_bytes=10_000)
-    assert resource.getrusage(resource.RUSAGE_SELF).ru_maxrss - before < 32 * 1024
-
-
-def test_directories_and_refused_entries_count_toward_the_file_limit(tmp_path):
-    raw = io.BytesIO()
-    with tarfile.open(fileobj=raw, mode="w:gz") as archive:
-        for index in range(100):
-            info = tarfile.TarInfo(f"d{index}")
-            info.type = tarfile.DIRTYPE
-            archive.addfile(info)
-    with pytest.raises(PackageError, match="too many entries"):
-        AttachmentStore(tmp_path / "a").unpack(raw.getvalue(), max_files=20, max_bytes=10_000)
-
-    raw = io.BytesIO()
-    with zipfile.ZipFile(raw, "w") as archive:
-        for index in range(100):
-            archive.writestr(f"d{index}/", b"")
-    with pytest.raises(PackageError, match="too many entries"):
-        AttachmentStore(tmp_path / "b").unpack(raw.getvalue(), max_files=20, max_bytes=10_000)
-
-
 def test_odd_manifests_are_invalid_not_internal_errors(service):
     with running(service, run_worker=False) as client:
         admin = setup_admin(service, client)
         for data in (
-            _manifest_tar(effects=[{}]),
-            _manifest_tar(provides={"tools": [[1]]}),
-            tar_package({"manifest.json": b'{"x":' + b"[" * 30000 + b"]" * 30000 + b"}"}),
+            json.dumps({**manifest(), "effects": [{}]}).encode(),
+            json.dumps({**manifest(), "provides": {"tools": [[1]]}}).encode(),
+            b'{"x":' + b"[" * 30000 + b"]" * 30000 + b"}",
         ):
-            assert error(publish(admin, data)) == (422, "ATTACHMENT_INVALID")
+            assert error(publish(admin, {"manifest.json": data})) == (422, "ATTACHMENT_INVALID")
 
 
-def test_publishing_again_repairs_missing_files_and_refuses_a_recycled_version(service):
+def test_publishing_again_repairs_a_lost_file_list(service):
     with running(service, run_worker=False) as client:
         admin = setup_admin(service, client)
         created = publish(admin, package(), expect=201).json()["data"]
-        stored = service.settings.data_dir / "attachments" / created["content_digest"].split(":")[1]
-        shutil.rmtree(stored)
+        hex_digest = created["content_digest"].split(":")[1]
+        listed = service.settings.data_dir / "attachments" / "snapshots" / f"{hex_digest}.json"
+        listed.unlink()
+        assert service.attachments.store.verified(created["content_digest"]) is None
         publish(admin, package(), expect=200)
-        assert stored.is_dir()
-
-        admin.delete(f"/api/v1/attachments/{created['id']}", expect=200)
-        assert error(publish(admin, package())) == (409, "ATTACHMENT_DELETED")
+        assert listed.is_file()
 
 
 def test_low_disk_refuses_an_upload_before_it_is_stored(service):
     with running(service, run_worker=False) as client:
         admin = setup_admin(service, client)
         service.disk = _Low()
-        assert error(publish(admin, package())) == (503, "STORAGE_LOW")
+        assert error(upload(admin, b"data")) == (503, "STORAGE_LOW")
+    assert not (service.settings.data_dir / "attachments" / "blobs").exists()
 
 
 # --- author parameters never reach the Runner's own environment ----------------------------

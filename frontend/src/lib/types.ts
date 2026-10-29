@@ -85,8 +85,9 @@ export type HarnessAdapter = S["HarnessAdapter"];
 export type UpstreamVersions = S["UpstreamVersions"];
 
 export type AttachmentFile = S["AttachmentFile"];
-/** A published attachment package (03 section 6); its content never changes. */
+/** A published attachment snapshot (03 section 6); its content never changes. */
 export type Attachment = S["Attachment"];
+export type AttachmentDiff = S["AttachmentDiff"];
 
 export type PolicySetting = S["PolicySetting"];
 export type TeamPolicy = S["TeamPolicy"];

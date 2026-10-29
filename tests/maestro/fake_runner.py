@@ -192,7 +192,7 @@ elif mode == "attachments":
     (out.parent / "request.json").write_text(json.dumps(spec))
     record = {
         "name": spec["attachments"][0]["name"],
-        "version": spec["attachments"][0]["version"],
+        "label": spec["attachments"][0]["label"],
         "content_digest": spec["attachments"][0]["content_digest"],
         "target": "/opt/maestro/attachments/00-tools",
     }

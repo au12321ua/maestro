@@ -616,7 +616,7 @@ class RunConfigFields(Model):
     harness_version_id: str | None = None
     harness_params: dict[str, HarnessParamValue] = {}
     attachments: list[str] = Field(
-        [], description="Attachment version ids in load order (model runs only)"
+        [], description="Attachment snapshot ids in load order (model runs only)"
     )
     repetitions: int | None = None
     concurrency: int | None = None
@@ -889,9 +889,9 @@ class EffectiveHarness(Model):
 
 
 class EffectiveAttachment(Model):
-    version_id: str
+    version_id: str = Field(description="The snapshot's id")
     name: str
-    version: str
+    label: str | None
     content_digest: str
     effects: list[str]
     provides: AttachmentProvides
@@ -1105,14 +1105,41 @@ class AttachmentFile(Model):
     executable: bool
 
 
+class AttachmentFileEntry(Model):
+    path: str = Field(description="Relative, made of letters, digits and ._+@-")
+    sha256: str = Field(description="Lowercase hex")
+    executable: bool
+
+
+class AttachmentPublish(Model):
+    files: list[AttachmentFileEntry] = Field(
+        description="Every file of the snapshot; upload missing contents first"
+    )
+    label: str | None = Field(
+        None, description="Unique per attachment name; never moves to other content"
+    )
+    parent_id: str | None = Field(None, description="The snapshot this one was made from")
+
+
+class AttachmentContents(Model):
+    sha256: list[str]
+
+
+class AttachmentMissing(Model):
+    missing: list[str] = Field(description="Contents to upload before publishing")
+
+
 class Attachment(Model):
     id: str
     name: str
-    version: str
+    label: str | None
+    parent_id: str | None
     description: str
     owner_id: str
     owner_username: str | None
-    content_digest: str = Field(description="Covers every file's path, SHA-256 and mode")
+    content_digest: str = Field(
+        description="Identifies the snapshot: every file's path, SHA-256 and mode"
+    )
     effects: list[str]
     compatible_harnesses: list[str] = Field(description='Harness agents, or ["*"] for any')
     provides: AttachmentProvides
@@ -1123,6 +1150,20 @@ class Attachment(Model):
     created_at: str
     files: list[AttachmentFile] | None = None
     deletion: DeletionState | None = None
+
+
+class AttachmentFileChange(Model):
+    path: str
+    before: AttachmentFile
+    after: AttachmentFile
+
+
+class AttachmentDiff(Model):
+    attachment_id: str
+    base_id: str | None = Field(description="Compared with; unset when there is no parent")
+    added: list[AttachmentFile]
+    removed: list[AttachmentFile]
+    changed: list[AttachmentFileChange]
 
 
 class PolicySetting(Model):

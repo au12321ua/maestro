@@ -195,11 +195,12 @@ export const api = {
   put: call("put"),
   patch: call("patch"),
   del: call("delete"),
-  /** A binary request body (an attachment package), typed by the same path. */
-  upload: <P extends PathsFor<"post">>(path: P, file: Blob, contentType?: string) =>
-    send<DataOf<Operation<P, "post">>>("POST", path, {
+  /** A binary request body (an attachment file's content), typed by the same path. */
+  upload: <P extends PathsFor<"put">>(path: P, params: Record<string, string>, file: Blob) =>
+    send<DataOf<Operation<P, "put">>>("PUT", path, {
+      path: params,
       raw: file,
-      headers: contentType ? { "Content-Type": contentType } : {},
+      headers: { "Content-Type": "application/octet-stream" },
     }),
 };
 

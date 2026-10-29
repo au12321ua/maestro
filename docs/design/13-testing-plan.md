@@ -126,13 +126,21 @@ UI 文案与纯样式变更不写低价值单元测试；优先验证会导致�
 
 ### E2E-RUN-04 成员附件的运行内安装
 
-前提：成员或 experiment PAT 上传含 bootstrap.sh 的固定附件，数据集已准入，无管理员在线。
+前提：成员或 experiment PAT 发布含 bootstrap.sh 的附件快照，数据集已准入，无管理员在线。
 
 步骤：通过 SDK 发布附件 → 提交两个试次 → 在 setup 中安装本地测试依赖，分别注入成功、脚本错误和安装超时 → 检查网络切换、文件传输与清理。
 
 预期：上传不执行脚本；运行受理后每试次在自己的容器安装，除本试次输出目录外无宿主目录挂载，无管理员准备请求；记录摘要、身份、目录、时限和日志。安装可按准备策略联网，执行 / 验证切换到模型服务限制；失败仅影响对应试次，无伪造零分，不污染另一容器、共享缓存或数据集准入。安装与等待均受总时限约束。
 
 覆盖：`test_attachments.py`、`test_sdk.py`、`test_runner_attachments.py`、`test_harbor_executor.py`；`test_harbor_docker.py`（真实容器内安装、挂载与网络）。
+
+### E2E-RUN-05 附件快照的增量发布与取回
+
+步骤：发布一个目录 → 改一个文件，以它为父快照再发布 → 同一父快照再分出一份 → 查看差异、单个文件与整包 → 在另一目录 `fetch` 后再改 → 删除并物理删除其中一份。
+
+预期：第二次只上传改动的文件，相同内容返回原快照；两份子快照并存，标签重复被拒绝；差异列出新增、删除与改动；`fetch` 只下载不同的文件并恢复可执行位；他人未发布的上传不能被引用；物理删除后该快照不可读，其他快照仍持有的内容保留，无人持有的内容与过期上传被清除。
+
+覆盖：`test_attachments.py`、`test_sdk.py`、`test_migrations.py`（旧附件清空）；网页的文件夹发布、差异与下载由 `frontend/qa/smoke.spec.ts` 覆盖。
 
 ## 6. 故事三：查询与导出
 
@@ -195,7 +203,7 @@ UI 文案与纯样式变更不写低价值单元测试；优先验证会导致�
 
 - 槽位、CPU、内存与提供商并发限制生效；放不下的运行在受理时拒绝，容器启动前不超额。覆盖：`test_capacity.py`、`test_batches.py`。
 - 执行与验证阶段经 Harbor 阶段策略只访问批准范围，不能直连任意外网、宿主管理面或云元数据；主机没有收紧能力时拒绝模型运行。覆盖：`test_network_capability.py`、`test_harbor_docker.py`。
-- 容器没有宿主目录（本试次输出目录除外）、Docker socket、主密钥或宿主数据库挂载；附件解包与文件传输不越界。覆盖：`test_attachments.py`、`test_harbor_docker.py`。共享构建与试次容器按同一主机总账限制 CPU / 内存：未覆盖。
+- 容器没有宿主目录（本试次输出目录除外）、Docker socket、主密钥或宿主数据库挂载；附件路径与文件传输不越界。覆盖：`test_attachments.py`、`test_harbor_docker.py`。共享构建与试次容器按同一主机总账限制 CPU / 内存：未覆盖。
 - 网页、SDK、导出及日志中常见凭据的基本脱敏。覆盖：`test_fix_identity_redaction.py`、`test_security.py`、`test_sdk.py`、`test_credential_visibility.py`。脱敏测试不证明能隔离恶意代码，可信团队前提不变。
 - 契约：CI 导出 OpenAPI，核对 SDK 模型与网页类型没有漂移；SDK 在未安装服务端与 Harbor 的环境中独立导入（`test_sdk.py`）；服务进程不导入 Harbor（`test_harbor_boundary.py`）。
 - 最大任务规模、元数据查询目标与磁盘阈值的压测：未覆盖。

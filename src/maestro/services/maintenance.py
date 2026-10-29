@@ -1,12 +1,13 @@
 """Background upkeep that runs with or without an executor: export builds, artifact
-retention and export expiry (07 sections 6 and 7), plus start-up reconciliation."""
+retention and export expiry (07 sections 6 and 7), expired attachment uploads, plus
+start-up reconciliation."""
 
 import asyncio
 import logging
 import time
 
-from maestro.execution.attachments import AttachmentStore
 from maestro.services.artifacts import Artifacts
+from maestro.services.attachments import Attachments
 from maestro.services.exports import Exports
 
 log = logging.getLogger(__name__)
@@ -22,7 +23,7 @@ class Maintenance:
         self,
         artifacts: Artifacts,
         exports: Exports,
-        attachments: AttachmentStore | None = None,
+        attachments: Attachments | None = None,
         runs=None,
         *,
         poll_seconds: float = 1.0,
@@ -47,7 +48,7 @@ class Maintenance:
             "storage": self.artifacts.reconcile(),
             "exports_requeued": self.exports.recover(),
             "attachment_staging_removed": (
-                self.attachments.discard_partial() if self.attachments else 0
+                self.attachments.store.discard_partial() if self.attachments else 0
             ),
         }
         return report
@@ -58,6 +59,8 @@ class Maintenance:
         steps = [("artifacts", self.artifacts.sweep), ("exports_expired", self.exports.expire)]
         if self.runs is not None:
             steps.append(("resolutions_removed", self.runs.sweep_resolutions))
+        if self.attachments is not None:
+            steps.append(("attachment_uploads_removed", self.attachments.sweep_uploads))
         # Walking the whole store is the costly step, so it runs less often.
         if time.monotonic() - self._last_unindexed >= self.unindexed_seconds:
             self._last_unindexed = time.monotonic()

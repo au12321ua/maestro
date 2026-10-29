@@ -90,7 +90,7 @@ class Maestro:
         )
         disk = DiskWatch(settings.data_dir, settings)
         materials = TaskMaterials(settings.cache_dir)
-        attachment_store = AttachmentStore(settings.data_dir)
+        attachment_store = AttachmentStore(settings.data_dir, settings.cache_dir)
         preparer = (
             Preparer(
                 db,
@@ -125,6 +125,7 @@ class Maestro:
         exports = Exports(
             db, store, settings.exports_dir, runs, disk, max_bytes=settings.export_max_bytes
         )
+        attachments = Attachments(db, attachment_store, adapters)
         return cls(
             settings=settings,
             db=db,
@@ -146,7 +147,7 @@ class Maestro:
                 dict(getattr(executor, "harness_upstream", {}) or {}),
                 UpstreamVersions(setup_networks.current),
             ),
-            attachments=Attachments(db, attachment_store, adapters),
+            attachments=attachments,
             plans=Plans(db),
             comparisons=Comparisons(db),
             collections=runs.collections,
@@ -154,7 +155,7 @@ class Maestro:
             artifacts=artifacts,
             exports=exports,
             recycle=Recycle(db, store, materials, exports, environment, attachment_store),
-            maintenance=Maintenance(artifacts, exports, attachment_store, runs),
+            maintenance=Maintenance(artifacts, exports, attachments, runs),
             disk=disk,
             capacity=Capacity(db, host),
             store=store,

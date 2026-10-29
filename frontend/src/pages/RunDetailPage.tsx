@@ -60,6 +60,7 @@ import {
   label,
   shortId,
   type Tone,
+  snapshotName,
 } from "@/lib/format";
 import { useInterval, useSession } from "@/lib/hooks";
 import type {
@@ -546,7 +547,7 @@ const INSTALL_STATUS: Record<string, string> = {
 
 function isAttachmentFailure(
   detail: unknown,
-): detail is { attachment: string; version?: string; status?: string; exit_code?: number | null } {
+): detail is { attachment: string; label?: string; status?: string; exit_code?: number | null } {
   return typeof detail === "object" && detail !== null && "attachment" in detail;
 }
 
@@ -564,7 +565,7 @@ function AgentSummary({ snapshot }: { snapshot: RunDetail["snapshot"] }) {
           {attachments.map((a, i) => (
             <span key={a.version_id} title={a.content_digest}>
               {i > 0 && " → "}
-              {a.name} <code>{a.version}</code>
+              {a.name} <code>{snapshotName(a)}</code>
             </span>
           ))}
           {installSec != null && `（每试次安装时限 ${installSec} 秒）`}
@@ -875,7 +876,7 @@ function AttemptSteps({
                 {err.exception_type ? ` · ${String(err.exception_type)}` : ""}
                 {err.message ? `：${String(err.message)}` : ""}
                 {isAttachmentFailure(err.detail) &&
-                  `（附件 ${err.detail.attachment} ${err.detail.version ?? ""}：${
+                  `（附件 ${err.detail.attachment} ${err.detail.label ?? ""}：${
                     INSTALL_STATUS[err.detail.status ?? ""] ?? err.detail.status
                   }${err.detail.exit_code != null ? `，退出码 ${err.detail.exit_code}` : ""}）`}
               </div>

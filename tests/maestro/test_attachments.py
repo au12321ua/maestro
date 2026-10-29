@@ -1,11 +1,13 @@
-"""M5 attachments (03 sections 6-7): fixed packages members publish, checked on upload,
-resolved in load order into run configurations, and kept out of new runs once deleted."""
+"""Attachment snapshots (03 sections 6-7, N-06): published file by file with only the
+missing contents uploaded, identified by content, checked on commit, resolved in load
+order into run configurations, and kept out of new runs once deleted."""
 
+import hashlib
 import io
 import json
-import tarfile
 import uuid
 import zipfile
+from datetime import timedelta
 
 import pytest
 from support import (
@@ -20,163 +22,180 @@ from test_configuration import agent_body, codes, error, resolve
 from test_e2e_run import prepare_model
 from test_recycle import bin_entry, purge
 
+from maestro.core import clock
 from maestro.db import schema as t
-from maestro.execution.attachments import AttachmentStore, PackageError
+from maestro.execution.attachments import AttachmentStore, PackageError, check_manifest
 
 BOOTSTRAP = b"#!/bin/bash\nset -e\necho installed\n"
 
 
-def manifest(name="tools", version="1.0.0", **extra) -> dict:
+def manifest(name="tools", **extra) -> dict:
     return {
         "schema_version": 1,
         "name": name,
-        "version": version,
         "effects": ["agent_tools"],
         "compatible_harnesses": ["fake-agent"],
         **extra,
     }
 
 
-def tar_package(files: dict, wrapper: str | None = None, compress=True) -> bytes:
-    """``files``: name -> bytes, or (bytes, mode), or a TarInfo type for special entries."""
-    buffer = io.BytesIO()
-    with tarfile.open(fileobj=buffer, mode="w:gz" if compress else "w") as archive:
-        for name, content in files.items():
-            info = tarfile.TarInfo(f"{wrapper}/{name}" if wrapper else name)
-            if isinstance(content, bytes) and content in (tarfile.SYMTYPE, tarfile.LNKTYPE):
-                info.type = content
-                info.linkname = "/etc/passwd"
-                archive.addfile(info)
-                continue
-            data, mode = content if isinstance(content, tuple) else (content, 0o644)
-            info.size = len(data)
-            info.mode = mode
-            archive.addfile(info, io.BytesIO(data))
-    return buffer.getvalue()
-
-
-def zip_package(files: dict) -> bytes:
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w") as archive:
-        for name, content in files.items():
-            data, mode = content if isinstance(content, tuple) else (content, 0o644)
-            info = zipfile.ZipInfo(name)
-            info.external_attr = (0o100000 | mode) << 16
-            archive.writestr(info, data)
-    return buffer.getvalue()
-
-
-def package(name="tools", version="1.0.0", bootstrap=True, extra_files=None, **fields) -> bytes:
-    files = {"manifest.json": json.dumps(manifest(name, version, **fields)).encode()}
+def package(name="tools", bootstrap=True, extra_files=None, **fields) -> dict:
+    """path -> bytes, or (bytes, mode)."""
+    files = {"manifest.json": json.dumps(manifest(name, **fields)).encode()}
     if bootstrap:
         files["bootstrap.sh"] = (BOOTSTRAP, 0o755)
     files["tools/hello"] = (b"#!/bin/sh\necho hello\n", 0o755)
     files.update(extra_files or {})
-    return tar_package(files)
+    return files
 
 
-def publish(api, data: bytes, expect=None):
-    response = api.client.post(
-        "/api/v1/attachments",
+def entries(files: dict) -> list[dict]:
+    """The file list a client commits, and each content by its SHA-256."""
+    listed = []
+    for path, content in files.items():
+        data, mode = content if isinstance(content, tuple) else (content, 0o644)
+        listed.append(
+            {
+                "path": path,
+                "sha256": hashlib.sha256(data).hexdigest(),
+                "executable": bool(mode & 0o100),
+                "data": data,
+            }
+        )
+    return listed
+
+
+def upload(api, data: bytes, sha256: str | None = None):
+    return api.client.put(
+        f"/api/v1/attachment-contents/{sha256 or hashlib.sha256(data).hexdigest()}",
         content=data,
-        headers=api._headers({"Content-Type": "application/gzip"}),
+        headers=api._headers({"Content-Type": "application/octet-stream"}),
     )
-    if expect is not None:
-        assert response.status_code == expect, response.text
-    return response
+
+
+def publish(api, files: dict, expect=None, label=None, parent_id=None, uploaded=None):
+    """What a client does: ask what is missing, upload that, commit the list. Contents
+    uploaded are appended to ``uploaded``."""
+    listed = entries(files)
+    asked = api.post(
+        "/api/v1/attachment-contents/missing",
+        json={"sha256": sorted({f["sha256"] for f in listed})},
+    )
+    if asked.status_code != 200:
+        return asked
+    contents = {f["sha256"]: f["data"] for f in listed}
+    for sha in asked.json()["data"]["missing"]:
+        response = upload(api, contents[sha], sha)
+        assert response.status_code == 204, response.text
+        if uploaded is not None:
+            uploaded.append(sha)
+    body = {
+        "files": [{k: f[k] for k in ("path", "sha256", "executable")} for f in listed],
+        "label": label,
+        "parent_id": parent_id,
+    }
+    return api.post("/api/v1/attachments", json=body, expect=expect)
+
+
+def store_package(store: AttachmentStore, files: dict) -> str:
+    """Put a snapshot straight into a store, as a publish would; its digest."""
+    store.blobs.mkdir(parents=True, exist_ok=True)
+    for entry in entries(files):
+        (store.blobs / entry["sha256"]).write_bytes(entry["data"])
+    package = store.check(
+        [{k: f[k] for k in ("path", "sha256", "executable")} for f in entries(files)],
+        max_files=20,
+        max_bytes=100_000,
+    )
+    store.record(package)
+    return package.content_digest
 
 
 def problems(error: PackageError) -> set[tuple[str, str]]:
     return {(path, code) for path, code, _ in error.problems}
 
 
-# --- package checks -----------------------------------------------------------------
+# --- snapshot checks -----------------------------------------------------------------
 
 
 @pytest.fixture
-def packages(tmp_path):
-    return AttachmentStore(tmp_path)
+def contents(tmp_path):
+    return AttachmentStore(tmp_path / "data", tmp_path / "cache")
 
 
-def unpack(packages, data):
-    return packages.unpack(data, max_files=20, max_bytes=10_000)
+def check(store, files: dict, listed=None):
+    for entry in entries(files):
+        store.blobs.mkdir(parents=True, exist_ok=True)
+        (store.blobs / entry["sha256"]).write_bytes(entry["data"])
+    listed = listed or [{k: f[k] for k in ("path", "sha256", "executable")} for f in entries(files)]
+    return store.check(listed, max_files=20, max_bytes=10_000)
 
 
-def test_tar_and_zip_of_the_same_files_have_one_digest(packages):
+def test_the_digest_covers_paths_contents_and_modes_in_any_order(contents):
     files = {
         "manifest.json": json.dumps(manifest()).encode(),
         "bootstrap.sh": (BOOTSTRAP, 0o755),
         "tools/hello": (b"hello\n", 0o644),
     }
-    wrapped = unpack(packages, tar_package(files, wrapper="tools-1.0.0"))
-    zipped = unpack(packages, zip_package(files))
-    plain = unpack(packages, tar_package(files, compress=False))
-    assert wrapped.content_digest == zipped.content_digest == plain.content_digest
-    assert wrapped.has_bootstrap and wrapped.manifest["provides"] == {"tools": [], "env": []}
-    assert [f["path"] for f in wrapped.files] == ["bootstrap.sh", "manifest.json", "tools/hello"]
-    assert [f["executable"] for f in wrapped.files] == [True, False, False]
-    # The mode is content: the same bytes without the executable bit are another package.
+    first = check(contents, files)
+    reordered = check(contents, dict(reversed(list(files.items()))))
+    assert first.content_digest == reordered.content_digest
+    assert first.has_bootstrap and first.manifest["provides"] == {"tools": [], "env": []}
+    assert [f["path"] for f in first.files] == ["bootstrap.sh", "manifest.json", "tools/hello"]
+    assert [f["size"] for f in first.files][1] == len(files["manifest.json"])
+    # The mode is content: the same bytes without the executable bit are another snapshot.
     files["tools/hello"] = (b"hello\n", 0o755)
-    executable = unpack(packages, zip_package(files))
-    assert executable.content_digest != plain.content_digest
-    for staged in (wrapped, zipped, plain, executable):
-        packages.discard(staged)
-    assert [p.name for p in packages.root.iterdir()] == []
+    assert check(contents, files).content_digest != first.content_digest
 
 
 @pytest.mark.parametrize(
-    ("entry", "content", "code"),
+    ("path", "code"),
     [
-        ("/etc/cron.d/x", b"x", "PATH"),
-        ("../escape", b"x", "PATH"),
-        ("a/../../escape", b"x", "PATH"),
-        ("has space", b"x", "PATH"),
-        ("link", tarfile.SYMTYPE, "FILE_TYPE"),
-        ("hard", tarfile.LNKTYPE, "FILE_TYPE"),
+        ("/etc/cron.d/x", "PATH"),
+        ("../escape", "PATH"),
+        ("a/../../escape", "PATH"),
+        ("has space", "PATH"),
+        ("dir/", "PATH"),
     ],
 )
-def test_unsafe_entries_are_refused_before_anything_is_written(
-    packages, tmp_path, entry, content, code
-):
-    data = tar_package({"manifest.json": json.dumps(manifest()).encode(), entry: content})
+def test_unsafe_paths_are_refused(contents, path, code):
     with pytest.raises(PackageError) as raised:
-        unpack(packages, data)
+        check(contents, {"manifest.json": json.dumps(manifest()).encode(), path: b"x"})
     assert code in {c for _, c in problems(raised.value)}
-    assert not (tmp_path / "etc").exists() and not (tmp_path.parent / "escape").exists()
-    assert [p.name for p in packages.root.iterdir()] == []
 
 
-def test_duplicates_sizes_and_counts_are_limited(packages):
-    duplicate = io.BytesIO()
-    with tarfile.open(fileobj=duplicate, mode="w") as archive:
-        for data in (b"one", b"two"):
-            info = tarfile.TarInfo("same")
-            info.size = len(data)
-            archive.addfile(info, io.BytesIO(data))
+def test_duplicates_sizes_counts_and_missing_contents_are_refused(contents):
+    base = {"manifest.json": json.dumps(manifest()).encode()}
+    listed = [{k: f[k] for k in ("path", "sha256", "executable")} for f in entries(base)]
     with pytest.raises(PackageError) as raised:
-        unpack(packages, duplicate.getvalue())
-    assert ("/archive/same", "DUPLICATE") in problems(raised.value)
+        check(contents, base, listed + listed)
+    assert ("/files/manifest.json", "DUPLICATE") in problems(raised.value)
     with pytest.raises(PackageError) as raised:
-        unpack(packages, tar_package({"big": b"x" * 10_001}))
-    assert ("/archive/big", "TOO_LARGE") in problems(raised.value)
-    many = {f"f{i}": b"" for i in range(21)}
+        check(contents, {**base, "a": b"x", "a/b": b"y"})
+    assert ("/files/a/b", "DUPLICATE") in problems(raised.value)
     with pytest.raises(PackageError) as raised:
-        unpack(packages, tar_package(many))
-    assert "TOO_MANY_FILES" in {c for _, c in problems(raised.value)}
-    with pytest.raises(PackageError, match="Not a tar or zip"):
-        unpack(packages, b"not an archive at all")
-    assert [p.name for p in packages.root.iterdir()] == []
+        check(contents, {**base, "big": b"x" * 10_001})
+    assert ("/files/", "TOO_LARGE") in problems(raised.value)
+    with pytest.raises(PackageError, match="too many"):
+        check(contents, {**base, **{f"f{i}": b"" for i in range(21)}})
+    absent = listed + [{"path": "gone", "sha256": "0" * 64, "executable": False}]
+    with pytest.raises(PackageError) as raised:
+        check(contents, base, absent)
+    assert ("/files/gone", "MISSING") in problems(raised.value)
+    with pytest.raises(PackageError, match="no manifest"):
+        check(contents, {"bootstrap.sh": BOOTSTRAP})
+    with pytest.raises(PackageError, match="no files"):
+        contents.check([], max_files=20, max_bytes=10_000)
 
 
-def test_the_manifest_is_checked_strictly(packages):
+def test_the_manifest_is_checked_strictly():
     def fails(**fields):
         body = {k: v for k, v in {**manifest(), **fields}.items() if v is not None}
         with pytest.raises(PackageError) as raised:
-            unpack(packages, tar_package({"manifest.json": json.dumps(body).encode()}))
+            check_manifest(body)
         return problems(raised.value)
 
-    with pytest.raises(PackageError, match="no manifest"):
-        unpack(packages, tar_package({"bootstrap.sh": BOOTSTRAP}))
+    assert fails(version="1.0.0") == {("/manifest/version", "UNKNOWN_FIELD")}
     assert fails(effects=["verifier"]) == {("/manifest/effects", "UNSUPPORTED")}
     assert fails(effects=["telepathy"]) == {("/manifest/effects", "ENUM")}
     assert fails(parameter_schema={}) == {("/manifest/parameter_schema", "UNSUPPORTED")}
@@ -188,47 +207,171 @@ def test_the_manifest_is_checked_strictly(packages):
     assert fails(provides={"tools": ["a", "a"]}) == {("/manifest/provides/tools", "INVALID")}
 
 
+def test_a_snapshot_directory_is_rebuilt_and_checked(contents):
+    digest = store_package(contents, package())
+    built = contents.verified(digest)
+    assert built is not None and built.parent == contents.trees
+    assert (built / "bootstrap.sh").read_bytes() == BOOTSTRAP
+    assert (built / "tools" / "hello").stat().st_mode & 0o100
+    # A changed copy is rebuilt; a lost content means no directory at all.
+    (built / "bootstrap.sh").write_bytes(b"tampered")
+    assert (contents.verified(digest) / "bootstrap.sh").read_bytes() == BOOTSTRAP
+    sha = hashlib.sha256(BOOTSTRAP).hexdigest()
+    (contents.blobs / sha).unlink()
+    (built / "bootstrap.sh").write_bytes(b"tampered")
+    assert contents.verified(digest) is None
+
+
 # --- publishing ------------------------------------------------------------------------
 
 
-def test_members_publish_fixed_versions_and_everyone_reads_them(service):
+def test_members_publish_snapshots_uploading_only_what_is_missing(service):
     with running(service, run_worker=False) as client:
         admin = setup_admin(service, client)
         member = invite_member(service, admin, "member")
         pat = create_pat(member)
         reader = create_pat(member, scope="read")
         assert publish(reader, package()).status_code == 403
-        created = publish(pat, package(), expect=201).json()["data"]
+        assert upload(reader, b"x").status_code == 403
+        uploaded = []
+        created = publish(pat, package(), label="v1", uploaded=uploaded, expect=201)
+        created = created.json()["data"]
+        assert len(uploaded) == 3
         assert created["owner_username"] == "member" and created["has_bootstrap"]
+        assert created["label"] == "v1" and created["parent_id"] is None
         assert created["file_count"] == 3 and created["files"][0]["path"] == "bootstrap.sh"
-        # Same name, version and content: the same version back, nothing new stored.
-        again = publish(member, package(), expect=200).json()["data"]
-        assert again["id"] == created["id"]
-        changed = publish(member, package(extra_files={"README": b"new"}))
-        assert error(changed) == (409, "ATTACHMENT_VERSION_EXISTS")
-        assert changed.json()["error"]["suggested_actions"][0]["attachment_id"] == created["id"]
+        # The same content again: the same snapshot, nothing uploaded, the label kept.
+        uploaded.clear()
+        again = publish(member, package(), label="other", uploaded=uploaded, expect=200)
+        assert again.json()["data"]["id"] == created["id"] and uploaded == []
+        assert again.json()["data"]["label"] == "v1"
+        # One file changed: only it is uploaded, and the result is a new snapshot.
+        changed_files = package(extra_files={"README": b"new"})
+        child = publish(
+            member, changed_files, parent_id=created["id"], uploaded=uploaded, expect=201
+        ).json()["data"]
+        assert uploaded == [hashlib.sha256(b"new").hexdigest()]
+        assert child["parent_id"] == created["id"] and child["label"] is None
+        # Snapshots branch: another child of the same parent.
+        sibling = publish(
+            member, package(extra_files={"README": b"other"}), parent_id=created["id"], expect=201
+        ).json()["data"]
+        assert sibling["id"] != child["id"]
+        taken = publish(member, package(extra_files={"README": b"third"}), label="v1")
+        assert error(taken) == (409, "ATTACHMENT_LABEL_TAKEN")
+        orphan = publish(member, package(extra_files={"README": b"x"}), parent_id="att_none")
+        assert error(orphan) == (422, "VALIDATION_FAILED")
         unknown = publish(member, package("other", compatible_harnesses=["opencode"]))
         assert error(unknown) == (422, "ATTACHMENT_INVALID")
         bad = publish(member, package(effects=["scoring"]))
         assert bad.json()["error"]["field_errors"][0]["path"] == "/manifest/effects"
         listed = reader.get("/api/v1/attachments", expect=200).json()["data"]
-        assert [a["id"] for a in listed] == [created["id"]] and listed[0]["files"] is None
+        assert [a["id"] for a in listed] == [created["id"], child["id"], sibling["id"]]
+        assert listed[0]["files"] is None
         # The owner or an administrator disables; another member cannot.
         other = invite_member(service, admin, "other")
         path = f"/api/v1/attachments/{created['id']}/enabled"
         assert other.post(path, json={"enabled": False}).status_code == 403
         assert not pat.post(path, json={"enabled": False}, expect=200).json()["data"]["enabled"]
         assert admin.post(path, json={"enabled": True}, expect=200).json()["data"]["enabled"]
-    stored = list((service.settings.data_dir / "attachments").iterdir())
-    assert [p.name for p in stored] == [created["content_digest"].removeprefix("sha256:")]
-    assert (stored[0] / "bootstrap.sh").read_bytes() == BOOTSTRAP
+    blobs = service.settings.data_dir / "attachments" / "blobs"
+    assert (blobs / hashlib.sha256(BOOTSTRAP).hexdigest()).read_bytes() == BOOTSTRAP
+    for content in (b"new", b"other"):
+        assert (blobs / hashlib.sha256(content).hexdigest()).read_bytes() == content
+
+
+def test_only_the_uploader_may_name_an_unpublished_content(service):
+    with running(service, run_worker=False) as client:
+        admin = setup_admin(service, client)
+        member = invite_member(service, admin, "member")
+        listed = entries(package())
+        for entry in listed:
+            assert upload(member, entry["data"]).status_code == 204
+        body = {"files": [{k: f[k] for k in ("path", "sha256", "executable")} for f in listed]}
+        shas = sorted({f["sha256"] for f in listed})
+        missing = admin.post("/api/v1/attachment-contents/missing", json={"sha256": shas})
+        assert sorted(missing.json()["data"]["missing"]) == shas
+        refused = admin.post("/api/v1/attachments", json=body)
+        assert error(refused) == (409, "ATTACHMENT_CONTENT_MISSING")
+        assert member.post("/api/v1/attachments", json=body).status_code == 201
+        # Published, the contents are there for everyone.
+        missing = admin.post("/api/v1/attachment-contents/missing", json={"sha256": shas})
+        assert missing.json()["data"]["missing"] == []
+
+
+def test_uploads_are_checked_limited_and_expire(service, monkeypatch):
+    from maestro.domain import limits
+
+    with running(service, run_worker=False) as client:
+        admin = setup_admin(service, client)
+        assert error(upload(admin, b"one", "0" * 64)) == (422, "ATTACHMENT_DIGEST_MISMATCH")
+        assert error(upload(admin, b"one", "XYZ")) == (422, "VALIDATION_FAILED")
+        monkeypatch.setattr(limits, "ATTACHMENT_FILE_MAX_BYTES", 100)
+        assert error(upload(admin, b"x" * 101)) == (413, "ATTACHMENT_TOO_LARGE")
+        streamed = admin.client.put(
+            f"/api/v1/attachment-contents/{hashlib.sha256(b'x' * 120).hexdigest()}",
+            content=iter([b"x" * 60, b"x" * 60]),  # no Content-Length: counted while read
+            headers=admin._headers({"Content-Type": "application/octet-stream"}),
+        )
+        assert error(streamed) == (413, "ATTACHMENT_TOO_LARGE")
+        monkeypatch.setattr(limits, "ATTACHMENT_FILE_MAX_BYTES", 1 << 20)
+        monkeypatch.setattr(limits, "ATTACHMENT_STAGED_MAX_BYTES", 10)
+        assert upload(admin, b"12345678").status_code == 204
+        assert error(upload(admin, b"abcdefgh")) == (413, "ATTACHMENT_TOO_LARGE")
+        bad = admin.post("/api/v1/attachment-contents/missing", json={"sha256": ["nope"]})
+        assert error(bad) == (422, "VALIDATION_FAILED")
+    root = service.settings.data_dir / "attachments"
+    assert [p.name for p in root.iterdir()] == ["blobs"]
+    kept = hashlib.sha256(b"12345678").hexdigest()
+    assert [p.name for p in (root / "blobs").iterdir()] == [kept]
+    # Unpublished, the upload expires and its content goes.
+    later = clock.now() + timedelta(hours=25)
+    monkeypatch.setattr(clock, "now", lambda: later)
+    assert service.attachments.sweep_uploads() == 1
+    assert list((root / "blobs").iterdir()) == []
+
+
+def test_reading_files_archives_and_differences(service):
+    with running(service, run_worker=False) as client:
+        admin = setup_admin(service, client)
+        reader = create_pat(admin, scope="read")
+        first = attach(admin, label="v1")
+        second = publish(
+            admin,
+            package(extra_files={"README": b"new", "tools/hello": (b"changed\n", 0o755)}),
+            parent_id=first,
+            expect=201,
+        ).json()["data"]["id"]
+        hello = reader.get(f"/api/v1/attachments/{first}/files/tools/hello", expect=200)
+        assert hello.content == b"#!/bin/sh\necho hello\n"
+        assert hello.headers["X-Executable"] == "true"
+        assert hello.headers["X-Content-Digest"].startswith("sha256:")
+        assert reader.get(f"/api/v1/attachments/{first}/files/nope").status_code == 404
+        archive = reader.get(f"/api/v1/attachments/{first}/archive", expect=200)
+        with zipfile.ZipFile(io.BytesIO(archive.content)) as opened:
+            names = {i.filename: i.external_attr >> 16 for i in opened.infolist()}
+            assert opened.read("tools-v1/bootstrap.sh") == BOOTSTRAP
+        assert names["tools-v1/bootstrap.sh"] & 0o100
+        assert not names["tools-v1/manifest.json"] & 0o100
+        diff = reader.get(f"/api/v1/attachments/{second}/diff", expect=200).json()["data"]
+        assert diff["base_id"] == first
+        assert [f["path"] for f in diff["added"]] == ["README"]
+        assert [c["path"] for c in diff["changed"]] == ["tools/hello"] and diff["removed"] == []
+        back = reader.get(f"/api/v1/attachments/{first}/diff?base_id={second}").json()["data"]
+        assert [f["path"] for f in back["removed"]] == ["README"]
+        alone = reader.get(f"/api/v1/attachments/{first}/diff").json()["data"]
+        assert alone["base_id"] is None and len(alone["added"]) == 3
+    assert sorted(p.name for p in (service.settings.data_dir / "attachments").iterdir()) == [
+        "blobs",
+        "snapshots",
+    ]
 
 
 # --- resolution ------------------------------------------------------------------------
 
 
-def attach(api, **kw) -> str:
-    return publish(api, package(**kw), expect=201).json()["data"]["id"]
+def attach(api, label=None, **kw) -> str:
+    return publish(api, package(**kw), label=label, expect=201).json()["data"]["id"]
 
 
 def test_attachments_resolve_in_order_with_sources_and_limits(service, version_id):
@@ -276,7 +419,7 @@ def test_attachment_blockers(service, version_id):
         service.attachments.adapters = None  # publish for a harness this executor lacks
         tools = attach(admin, name="tools", provides={"tools": ["hello"]})
         clash = attach(admin, name="more-tools", provides={"tools": ["hello"]})
-        newer = attach(admin, name="tools", version="2.0.0")
+        newer = attach(admin, name="tools", label="v2", extra_files={"NEWS": b"two"})
         elsewhere = attach(admin, name="elsewhere", compatible_harnesses=["opencode"])
         anywhere = attach(admin, name="anywhere", compatible_harnesses=["*"])
         off = attach(admin, name="off")
@@ -367,58 +510,48 @@ def test_deleting_and_purging_an_attachment(service, version_id):
         member.delete(f"/api/v1/attachments/{tools}", expect=200)
         assert member.get("/api/v1/attachments").json()["data"] == []
         assert codes(resolve(member, version_id, **body)) == ["DELETED"]
+        # In the recycle bin, the same content cannot be published around it.
+        assert error(publish(member, package())) == (409, "ATTACHMENT_DELETED")
         assert purge(member, {"id": "x", "object_id": tools}).status_code == 403
         purge(admin, bin_entry(admin, tools)).raise_for_status()
         assert admin.get(f"/api/v1/attachments/{tools}").status_code == 410
-        # The run keeps what it used; the files are gone.
+        assert admin.get(f"/api/v1/attachments/{tools}/files/bootstrap.sh").status_code == 410
+        # The run keeps what it used; the contents are gone.
         run = admin.get(f"/api/v1/runs/{accepted['run_id']}").json()["data"]
         assert run["snapshot"]["effective"]["attachments"][0]["name"] == "tools"
-    assert list((service.settings.data_dir / "attachments").iterdir()) == []
+    root = service.settings.data_dir / "attachments"
+    assert list((root / "blobs").iterdir()) == [] and list((root / "snapshots").iterdir()) == []
 
 
-def test_a_purge_keeps_files_another_version_still_holds(service):
+def test_a_purge_keeps_contents_another_snapshot_still_holds(service):
     with running(service, run_worker=False) as client:
         admin = setup_admin(service, client)
         first = attach(admin)
+        second = attach(admin, extra_files={"README": b"more"})
         admin.delete(f"/api/v1/attachments/{first}", expect=200)
         purge(admin, bin_entry(admin, first)).raise_for_status()
-        # Republishing the purged name and version is allowed; the content is stored again.
-        again = attach(admin)
-        stored = service.settings.data_dir / "attachments"
-        assert again != first and len(list(stored.iterdir())) == 1
-        assert (
-            service.recycle.remove_attachment_files(
-                admin.get(f"/api/v1/attachments/{again}").json()["data"]["content_digest"]
-            )
-            is None
-        )
-        assert len(list(stored.iterdir())) == 1
+        blobs = service.settings.data_dir / "attachments" / "blobs"
+        assert len(list(blobs.iterdir())) == 4  # the second still holds the first's three
+        # A purged snapshot's files are gone for readers, though the contents remain.
+        assert admin.get(f"/api/v1/attachments/{first}/files/bootstrap.sh").status_code == 410
+        assert admin.get(f"/api/v1/attachments/{second}/files/bootstrap.sh").status_code == 200
+        # Republishing the purged content is allowed and needs no upload.
+        uploaded = []
+        again = publish(admin, package(), uploaded=uploaded, expect=201).json()["data"]
+        assert again["id"] != first and uploaded == []
+        assert service.attachments.store.verified(again["content_digest"]) is not None
 
 
-def test_uploads_are_size_limited_and_never_left_on_disk(service, monkeypatch):
-    from maestro.domain import limits
-
-    with running(service, run_worker=False) as client:
-        admin = setup_admin(service, client)
-        assert error(publish(admin, b"")) == (422, "ATTACHMENT_INVALID")
-        monkeypatch.setattr(limits, "ATTACHMENT_UPLOAD_MAX_BYTES", 100)
-        assert error(publish(admin, package())) == (413, "ATTACHMENT_TOO_LARGE")
-        streamed = admin.client.post(
-            "/api/v1/attachments",
-            content=iter([b"x" * 60, b"x" * 60]),  # no Content-Length: counted while read
-            headers=admin._headers({"Content-Type": "application/gzip"}),
-        )
-        assert error(streamed) == (413, "ATTACHMENT_TOO_LARGE")
-        monkeypatch.setattr(limits, "ATTACHMENT_UPLOAD_MAX_BYTES", 1 << 20)
-        assert error(publish(admin, b"garbage")) == (422, "ATTACHMENT_INVALID")
-    leftovers = list((service.settings.data_dir / "attachments").iterdir())
-    assert leftovers == []
-
-
-def test_staging_left_by_a_stopped_process_is_removed_at_start(service):
+def test_leftovers_of_a_stopped_process_are_removed_at_start(service):
     root = service.settings.data_dir / "attachments"
-    (root / ".upload-x" / "files").mkdir(parents=True)
+    (root / ".remove-x").mkdir(parents=True)
     (root / ".receive-y").write_bytes(b"half an upload")
-    (root / ("a" * 64)).mkdir()  # published content stays
-    assert service.maintenance.start()["attachment_staging_removed"] == 2
-    assert [p.name for p in root.iterdir()] == ["a" * 64]
+    (root / ".archive-z.zip").write_bytes(b"half an archive")
+    (root / ("a" * 64)).mkdir()  # a package directory from before snapshots
+    (root / "blobs").mkdir()
+    (root / "blobs" / ("b" * 64)).write_bytes(b"kept")
+    trees = service.attachments.store.trees
+    (trees / ".build-q").mkdir(parents=True)
+    assert service.maintenance.start()["attachment_staging_removed"] == 5
+    assert [p.name for p in root.iterdir()] == ["blobs"]
+    assert list(trees.iterdir()) == []

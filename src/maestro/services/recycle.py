@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import shutil
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -26,7 +25,9 @@ from maestro.core.ids import new_id
 from maestro.db import schema as t
 from maestro.db.engine import Database
 from maestro.domain.states import RUN_TERMINAL, Role, UserStatus
+from maestro.execution.attachments import display
 from maestro.services import audit, deleted, pagination
+from maestro.services.attachments import release_contents
 from maestro.services.collections import drop_purged_run
 from maestro.services.principal import (
     Principal,
@@ -540,14 +541,15 @@ class HarnessHandler(Handler):
 
 
 class AttachmentHandler(Handler):
-    """Accepted runs keep the version's digest; purging removes the files, so a rerun of
-    such a run is refused rather than loading other content."""
+    """Accepted runs keep the snapshot's digest; purging removes the contents no other
+    snapshot holds, so a rerun of such a run is refused rather than loading other
+    content."""
 
     object_type = "attachment_version"
     table = t.attachment_versions
 
     def label(self, conn, row):
-        return f"{row['name']} {row['version']}"
+        return f"{row['name']} {display(row['label'], row['content_digest'])}"
 
     def owner(self, row):
         return row["owner_id"]
@@ -576,10 +578,17 @@ class AttachmentHandler(Handler):
             .where(t.attachment_versions.c.id == row["id"])
             .values(description="", files_json=[], enabled=False)
         )
+        shas = list(
+            conn.execute(
+                delete(t.attachment_files)
+                .where(t.attachment_files.c.attachment_version_id == row["id"])
+                .returning(t.attachment_files.c.sha256)
+            ).scalars()
+        )
         digest = row["content_digest"]
         return Purged(
             {"files": row["file_count"]},
-            [lambda: service.remove_attachment_files(digest)],
+            [lambda: service.remove_attachment_files(digest, shas)],
         )
 
 
@@ -963,9 +972,10 @@ class Recycle:
                 failed += 1
         return {"materials_failed": failed} if failed else None
 
-    def remove_attachment_files(self, content_digest: str) -> dict | None:
-        """Unless another version still holds the same content. Checked and moved away
-        under the write lock, so a publish of this content in between keeps its files."""
+    def remove_attachment_files(self, content_digest: str, shas: list[str]) -> dict | None:
+        """The snapshot's file list unless another snapshot holds the same content, and
+        the contents no snapshot or upload holds any more. Checked under the write lock,
+        so a publish of this content in between keeps what it needs."""
         if self.attachments is None:
             return None
         try:
@@ -981,10 +991,9 @@ class Recycle:
                         ),
                     )
                 ).first()
-                # Only the rename happens under the lock; deleting can take a while.
-                retired = self.attachments.retire(content_digest) if used is None else None
-            if retired is not None:
-                shutil.rmtree(retired, ignore_errors=True)
+                if used is None:
+                    self.attachments.forget(content_digest)
+            release_contents(self.db, self.attachments, shas)
         except Exception:
             log.exception("attachment files %s could not be removed", content_digest)
             return {"attachment_files_failed": content_digest}

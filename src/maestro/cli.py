@@ -148,7 +148,7 @@ def _harbor_executor(settings):
         silence_limit=settings.runner_silence_sec,
         heartbeat_sec=settings.runner_heartbeat_sec,
         artifact_limits=settings.artifact_limits(),
-        attachments=AttachmentStore(settings.data_dir),
+        attachments=AttachmentStore(settings.data_dir, settings.cache_dir),
     )
 
 

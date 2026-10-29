@@ -18,7 +18,7 @@
 /etc/maestro/secrets/               按代次保存的主密钥文件，只有服务账号可读
 /var/lib/maestro/app.db             业务数据库，WAL / SHM 同目录
 /var/lib/maestro/artifacts/         原始产物
-/var/lib/maestro/attachments/       已发布附件的原件
+/var/lib/maestro/attachments/       附件的文件内容（blobs/）与快照清单（snapshots/）
 /var/lib/maestro/preparations/      准备原件（镜像归档，U-17；是数据，不是缓存）
 /var/lib/maestro/work/              Runner 工作目录，归档为产物前的暂存
 /var/lib/maestro/exports/           临时导出包

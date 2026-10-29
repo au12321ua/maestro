@@ -842,6 +842,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/attachment-contents/missing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Missing Contents
+         * @description Which of these contents a publish still needs uploaded; the rest are stored.
+         */
+        post: operations["missing_contents"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/attachment-contents/{sha256}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Upload Content
+         * @description One file's content, checked against its SHA-256; it waits for the uploader's
+         *     publish for 24 hours.
+         */
+        put: operations["upload_content"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/attachments": {
         parameters: {
             query?: never;
@@ -852,7 +893,10 @@ export interface paths {
         /** List Attachments */
         get: operations["list_attachments"];
         put?: never;
-        /** Publish Attachment */
+        /**
+         * Publish Attachment
+         * @description Every content must be stored: held by another snapshot or uploaded by you.
+         */
         post: operations["publish_attachment"];
         delete?: never;
         options?: never;
@@ -884,6 +928,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/attachments/{attachment_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Archive
+         * @description The whole snapshot as a zip, inside one folder named after it.
+         */
+        get: operations["download_archive"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/attachments/{attachment_id}/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Attachment Diff
+         * @description Files added, removed and changed since ``base_id`` (default: the parent).
+         */
+        get: operations["attachment_diff"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/attachments/{attachment_id}/enabled": {
         parameters: {
             query?: never;
@@ -895,9 +979,26 @@ export interface paths {
         put?: never;
         /**
          * Attachment Enabled
-         * @description The owner or an administrator; disabled versions cannot be chosen for new runs.
+         * @description The owner or an administrator; disabled snapshots cannot be chosen for new runs.
          */
         post: operations["attachment_enabled"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/attachments/{attachment_id}/files/{path}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download File */
+        get: operations["download_file"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2136,7 +2237,7 @@ export interface components {
             compatible_harnesses: string[];
             /**
              * Content Digest
-             * @description Covers every file's path, SHA-256 and mode
+             * @description Identifies the snapshot: every file's path, SHA-256 and mode
              */
             content_digest: string;
             /** Created At */
@@ -2159,17 +2260,40 @@ export interface components {
             has_bootstrap: boolean;
             /** Id */
             id: string;
+            /** Label */
+            label: string | null;
             /** Name */
             name: string;
             /** Owner Id */
             owner_id: string;
             /** Owner Username */
             owner_username: string | null;
+            /** Parent Id */
+            parent_id: string | null;
             provides: components["schemas"]["AttachmentProvides"];
             /** Size Bytes */
             size_bytes: number;
-            /** Version */
-            version: string;
+        };
+        /** AttachmentContents */
+        AttachmentContents: {
+            /** Sha256 */
+            sha256: string[];
+        };
+        /** AttachmentDiff */
+        AttachmentDiff: {
+            /** Added */
+            added: components["schemas"]["AttachmentFile"][];
+            /** Attachment Id */
+            attachment_id: string;
+            /**
+             * Base Id
+             * @description Compared with; unset when there is no parent
+             */
+            base_id: string | null;
+            /** Changed */
+            changed: components["schemas"]["AttachmentFileChange"][];
+            /** Removed */
+            removed: components["schemas"]["AttachmentFile"][];
         };
         /** AttachmentFile */
         AttachmentFile: {
@@ -2182,12 +2306,60 @@ export interface components {
             /** Size */
             size: number;
         };
+        /** AttachmentFileChange */
+        AttachmentFileChange: {
+            after: components["schemas"]["AttachmentFile"];
+            before: components["schemas"]["AttachmentFile"];
+            /** Path */
+            path: string;
+        };
+        /** AttachmentFileEntry */
+        AttachmentFileEntry: {
+            /** Executable */
+            executable: boolean;
+            /**
+             * Path
+             * @description Relative, made of letters, digits and ._+@-
+             */
+            path: string;
+            /**
+             * Sha256
+             * @description Lowercase hex
+             */
+            sha256: string;
+        };
+        /** AttachmentMissing */
+        AttachmentMissing: {
+            /**
+             * Missing
+             * @description Contents to upload before publishing
+             */
+            missing: string[];
+        };
         /** AttachmentProvides */
         AttachmentProvides: {
             /** Env */
             env: string[];
             /** Tools */
             tools: string[];
+        };
+        /** AttachmentPublish */
+        AttachmentPublish: {
+            /**
+             * Files
+             * @description Every file of the snapshot; upload missing contents first
+             */
+            files: components["schemas"]["AttachmentFileEntry"][];
+            /**
+             * Label
+             * @description Unique per attachment name; never moves to other content
+             */
+            label?: string | null;
+            /**
+             * Parent Id
+             * @description The snapshot this one was made from
+             */
+            parent_id?: string | null;
         };
         /** Attempt */
         Attempt: {
@@ -3121,7 +3293,7 @@ export interface components {
         "ConfigRequest-Input": {
             /**
              * Attachments
-             * @description Attachment version ids in load order (model runs only)
+             * @description Attachment snapshot ids in load order (model runs only)
              * @default []
              */
             attachments?: string[];
@@ -3195,7 +3367,7 @@ export interface components {
         "ConfigRequest-Output": {
             /**
              * Attachments
-             * @description Attachment version ids in load order (model runs only)
+             * @description Attachment snapshot ids in load order (model runs only)
              * @default []
              */
             attachments: string[];
@@ -3633,12 +3805,15 @@ export interface components {
             effects: string[];
             /** Has Bootstrap */
             has_bootstrap: boolean;
+            /** Label */
+            label: string | null;
             /** Name */
             name: string;
             provides: components["schemas"]["AttachmentProvides"];
-            /** Version */
-            version: string;
-            /** Version Id */
+            /**
+             * Version Id
+             * @description The snapshot's id
+             */
             version_id: string;
         };
         /**
@@ -3782,6 +3957,16 @@ export interface components {
         /** Envelope[AdmissionRevoked] */
         Envelope_AdmissionRevoked_: {
             data: components["schemas"]["AdmissionRevoked"];
+            meta: components["schemas"]["Meta"];
+        };
+        /** Envelope[AttachmentDiff] */
+        Envelope_AttachmentDiff_: {
+            data: components["schemas"]["AttachmentDiff"];
+            meta: components["schemas"]["Meta"];
+        };
+        /** Envelope[AttachmentMissing] */
+        Envelope_AttachmentMissing_: {
+            data: components["schemas"]["AttachmentMissing"];
             meta: components["schemas"]["Meta"];
         };
         /** Envelope[Attachment] */
@@ -5952,7 +6137,7 @@ export interface components {
         RunCreate: {
             /**
              * Attachments
-             * @description Attachment version ids in load order (model runs only)
+             * @description Attachment snapshot ids in load order (model runs only)
              * @default []
              */
             attachments?: string[];
@@ -8819,6 +9004,73 @@ export interface operations {
             };
         };
     };
+    missing_contents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttachmentContents"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_AttachmentMissing_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    upload_content: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sha256: string;
+            };
+            cookie?: never;
+        };
+        /** @description The file's bytes */
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     list_attachments: {
         parameters: {
             query?: {
@@ -8858,16 +9110,13 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description The package archive with manifest.json at its root */
         requestBody: {
             content: {
-                "application/gzip": string;
-                "application/x-tar": string;
-                "application/zip": string;
+                "application/json": components["schemas"]["AttachmentPublish"];
             };
         };
         responses: {
-            /** @description This name, version and content were already published */
+            /** @description A snapshot with this content was already published */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8956,6 +9205,71 @@ export interface operations {
             };
         };
     };
+    download_archive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attachment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                    "application/zip": unknown;
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    attachment_diff: {
+        parameters: {
+            query?: {
+                base_id?: string | null;
+            };
+            header?: never;
+            path: {
+                attachment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_AttachmentDiff_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     attachment_enabled: {
         parameters: {
             query?: never;
@@ -8978,6 +9292,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Envelope_Attachment_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    download_file: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attachment_id: string;
+                path: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                    "application/octet-stream": unknown;
                 };
             };
             /** @description Structured error */

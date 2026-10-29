@@ -44,10 +44,13 @@ PAGE_DEFAULT = 50
 PAGE_MAX = 200
 EXPORT_PIN_MINUTES = 60
 RESOLUTION_MINUTES = 10
-# Attachment packages (03 section 6): the uploaded archive, and what it unpacks to.
-ATTACHMENT_UPLOAD_MAX_BYTES = 256 * 1024 * 1024
-ATTACHMENT_UNPACKED_MAX_BYTES = 1024 * 1024 * 1024
+# Attachment snapshots (03 section 6): one uploaded file, a whole snapshot, the uploads one
+# user may hold before publishing, and how long an upload waits for its snapshot.
+ATTACHMENT_FILE_MAX_BYTES = 256 * 1024 * 1024
+ATTACHMENT_MAX_BYTES = 1024 * 1024 * 1024
 ATTACHMENT_MAX_FILES = 10000
+ATTACHMENT_STAGED_MAX_BYTES = 2 * 1024 * 1024 * 1024
+ATTACHMENT_UPLOAD_HOURS = 24
 # Runs compared at once, and runs one collection holds (06 section 8).
 COMPARISON_MAX_RUNS = 50
 # Recent runs a collection offers to add, each checked against its fixed values.
@@ -59,8 +62,8 @@ STRUCTURAL = (
     "PAGE_MAX",
     "EXPORT_PIN_MINUTES",
     "RESOLUTION_MINUTES",
-    "ATTACHMENT_UPLOAD_MAX_BYTES",
-    "ATTACHMENT_UNPACKED_MAX_BYTES",
+    "ATTACHMENT_FILE_MAX_BYTES",
+    "ATTACHMENT_MAX_BYTES",
     "ATTACHMENT_MAX_FILES",
     "COMPARISON_MAX_RUNS",
 )

@@ -30,7 +30,7 @@ from maestro.boundaries.executor import (
 )
 from maestro.execution import process
 from maestro.execution.agents import endpoint_host
-from maestro.execution.attachments import AttachmentStore
+from maestro.execution.attachments import AttachmentStore, display
 from maestro.execution.docker import DockerResources
 from maestro.execution.materials import TaskMaterials
 from maestro.execution.policy import HARBOR_VERSION, MAPPING_ID, harbor_outcome, harbor_retry_config
@@ -331,13 +331,13 @@ class HarborExecutor:
                 if self.attachments is not None
                 else None
             )
-            label = f"{entry['name']} {entry['version']}"
+            label = f"{entry['name']} {display(entry.get('label'), entry['content_digest'])}"
             if path is None:
                 return [], label
             found.append(
                 {
                     "name": entry["name"],
-                    "version": entry["version"],
+                    "label": display(entry.get("label"), entry["content_digest"]),
                     "content_digest": entry["content_digest"],
                     "path": str(path),
                     "bootstrap": entry["has_bootstrap"],
@@ -691,7 +691,7 @@ class HarborExecutor:
                     outcome,
                     detail={
                         "attachment": failed.get("name"),
-                        "version": failed.get("version"),
+                        "label": failed.get("label"),
                         "status": failed.get("status"),
                         "exit_code": failed.get("exit_code"),
                     },

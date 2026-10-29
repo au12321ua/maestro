@@ -386,16 +386,19 @@ harness_versions = Table(
     Index("ix_harness_versions_name_version", "name", "version"),
 )
 
-# A published attachment package (03 section 6); its files are stored by content digest
-# and never change. Name and version are unique among versions not purged (checked in
-# the publishing transaction, so a purged version's receipt keeps its name).
+# An attachment snapshot (03 section 6): a fixed list of files, identified by its content
+# digest. Publishing the same content again returns the snapshot not purged that holds
+# it; the label, when given, is unique per name among those not purged (both checked in
+# the publishing transaction, so a purged snapshot's receipt keeps its label). The
+# parent only records what a snapshot was made from.
 attachment_versions = Table(
     "attachment_versions",
     metadata,
     _id(),
     _ref("owner_id", "users"),
     Column("name", String(128), nullable=False),
-    Column("version", String(64), nullable=False),
+    Column("label", String(64)),
+    _ref("parent_id", "attachment_versions", nullable=True),
     Column("description", String(512), nullable=False),
     Column("content_digest", String(80), nullable=False),
     _json("manifest_json"),
@@ -406,7 +409,32 @@ attachment_versions = Table(
     Column("has_bootstrap", Boolean, nullable=False),
     Column("enabled", Boolean, nullable=False),
     _time("created_at"),
-    Index("ix_attachment_versions_name_version", "name", "version"),
+    Index("ix_attachment_versions_name_label", "name", "label"),
+    Index("ix_attachment_versions_content_digest", "content_digest"),
+)
+
+# The stored contents each snapshot not purged holds; a content no row names (and no
+# live upload holds) is removed.
+attachment_files = Table(
+    "attachment_files",
+    metadata,
+    _ref("attachment_version_id", "attachment_versions"),
+    Column("sha256", String(64), nullable=False),
+    PrimaryKeyConstraint("attachment_version_id", "sha256"),
+    Index("ix_attachment_files_sha256", "sha256"),
+)
+
+# Contents uploaded for a snapshot not yet published; only their uploader may name
+# them, and they are removed once expired unless a snapshot holds them by then.
+attachment_uploads = Table(
+    "attachment_uploads",
+    metadata,
+    Column("sha256", String(64), nullable=False),
+    _ref("user_id", "users"),
+    Column("size", Integer, nullable=False),
+    _time("expires_at"),
+    PrimaryKeyConstraint("sha256", "user_id"),
+    Index("ix_attachment_uploads_expires_at", "expires_at"),
 )
 
 # Which attachment versions a run loads, in load order; finds the runs using one.

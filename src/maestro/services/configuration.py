@@ -22,6 +22,7 @@ from maestro.core.digests import digest_json
 from maestro.core.errors import FieldError, MaestroError
 from maestro.db import schema as t
 from maestro.execution.agents import param_problem
+from maestro.execution.attachments import display
 from maestro.execution.materials import DEFAULT_CPUS, DEFAULT_MEMORY_MB, RESERVED_PARAMETER
 from maestro.services import deleted, policy
 from maestro.services.capacity import never_fits, reservation
@@ -166,7 +167,7 @@ def check_request(body: dict) -> dict:
         or not all(isinstance(x, str) for x in attachments)
         or len(set(attachments)) != len(attachments)
     ):
-        errors.append(FieldError("/attachments", "INVALID", "distinct attachment version ids"))
+        errors.append(FieldError("/attachments", "INVALID", "distinct attachment snapshot ids"))
         attachments = []
     elif attachments and execution_mode == "oracle":
         # Attachments are installed by the harness wrapper around a model agent (03 section 7).
@@ -330,8 +331,9 @@ def comparison_view(effective: dict) -> dict:
         }
     if effective.get("harness"):
         view["harness"] = {k: v for k, v in effective["harness"].items() if k != "version_id"}
+    # A snapshot is its content; the id and label only name it.
     view["attachments"] = [
-        {k: v for k, v in a.items() if k != "version_id"}
+        {k: v for k, v in a.items() if k not in {"version_id", "label"}}
         for a in effective.get("attachments") or []
     ]
     # Parameter values are compared; which credential holds a secret is not.
@@ -796,7 +798,7 @@ class Resolver:
             if row is None:
                 res.blockers.append(Blocker("NOT_FOUND", path, "Attachment not found"))
                 continue
-            label = f"{row['name']} {row['version']}"
+            label = f"{row['name']} {display(row['label'], row['content_digest'])}"
             if attachment_id in gone:
                 res.blockers.append(
                     Blocker("DELETED", path, f"{label} was deleted", error="CONFIG_UNAVAILABLE")
@@ -837,7 +839,7 @@ class Resolver:
                 {
                     "version_id": attachment_id,
                     "name": row["name"],
-                    "version": row["version"],
+                    "label": row["label"],
                     "content_digest": row["content_digest"],
                     "effects": manifest["effects"],
                     "provides": manifest["provides"],
@@ -847,7 +849,8 @@ class Resolver:
         res.field_sources["/attachments"] = {"layer": "override"}
         res.references["attachments"] = list(ids)
         res.labels["attachments"] = ", ".join(
-            f"{a['name']} {a['version']}" for a in effective["attachments"]
+            f"{a['name']} {display(a['label'], a['content_digest'])}"
+            for a in effective["attachments"]
         )
         if not any(a["has_bootstrap"] for a in effective["attachments"]):
             return

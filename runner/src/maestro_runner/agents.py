@@ -44,7 +44,7 @@ from pathlib import Path
 from typing import Any
 
 SECRETS: dict[str, str] = {}
-# Set by the job: packages in load order ({name, version, content_digest, path, bootstrap,
+# Set by the job: packages in load order ({name, label, content_digest, path, bootstrap,
 # files}), the install time limit of one trial, and the callback the job reports through.
 ATTACHMENTS: list[dict] = []
 INSTALL: dict[str, Any] = {"timeout_sec": None, "report": None, "env": {}}
@@ -253,7 +253,7 @@ async def install(agent, environment) -> None:
             target = f"{TARGET}/{index:02d}-{attachment['name']}"
             record = {
                 "name": attachment["name"],
-                "version": attachment["version"],
+                "label": attachment["label"],
                 "content_digest": attachment["content_digest"],
                 "target": target,
                 "user": None if user is None else str(user),

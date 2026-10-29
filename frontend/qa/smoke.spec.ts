@@ -3,6 +3,9 @@
 //   maestro --config <tmp>/config.toml serve --port 8431 --demo-executor
 //   MAESTRO_SETUP_TOKEN=<token> npm run test:ui
 // Never point this at a real team state: it creates an admin, runs, PATs and invitations.
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 
 const token = process.env.MAESTRO_SETUP_TOKEN;
@@ -426,4 +429,57 @@ test("rerun, plan and batch", async ({ page }) => {
   await expect(page.getByRole("link", { name: "batch one" })).toBeVisible();
   await expect(page.getByText("2 个运行：已结束 2")).toBeVisible({ timeout: 60_000 });
   await page.screenshot({ path: `${shots}/batch.png`, fullPage: true });
+});
+
+// N-06: publish a folder, then a changed copy based on it; only the changed file uploads.
+test("attachment snapshots", async ({ page }) => {
+  test.skip(!token, "MAESTRO_SETUP_TOKEN not set");
+  const folder = join(mkdtempSync(join(tmpdir(), "maestro-smoke-")), "smoke-tools");
+  mkdirSync(join(folder, "bin"), { recursive: true });
+  const manifest = {
+    schema_version: 1,
+    name: "smoke-tools",
+    effects: ["agent_tools"],
+    compatible_harnesses: ["*"],
+  };
+  writeFileSync(join(folder, "manifest.json"), JSON.stringify(manifest));
+  writeFileSync(join(folder, "bootstrap.sh"), "#!/bin/bash\necho installed\n");
+  writeFileSync(join(folder, "bin", "run.sh"), "#!/bin/sh\necho one\n");
+
+  await page.goto("/");
+  await page.getByLabel("用户名").fill("admin");
+  await page.getByLabel("密码").fill(password);
+  await page.getByRole("button", { name: "登录" }).click();
+  await nav(page, "附件").click();
+
+  const choose = page.locator('input[type="file"]');
+  await choose.setInputFiles(folder);
+  await expect(page.getByText("附件 smoke-tools · 3 个文件")).toBeVisible();
+  // A shebang makes a file executable by default.
+  await expect(page.getByRole("checkbox", { name: /bootstrap\.sh/ })).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: /manifest\.json/ })).not.toBeChecked();
+  await page.getByLabel("标签（可选）").fill("v1");
+  await page.getByRole("button", { name: "上传并发布" }).click();
+  await expect(page.getByText("已发布 smoke-tools v1（上传 3 个文件）")).toBeVisible();
+
+  writeFileSync(join(folder, "bin", "run.sh"), "#!/bin/sh\necho two\n");
+  await page.getByRole("button", { name: "基于此发布" }).click();
+  await expect(page.getByText("将基于 smoke-tools v1 发布")).toBeVisible();
+  await choose.setInputFiles(folder);
+  await expect(page.getByLabel("父快照")).not.toHaveValue("");
+  await page.getByLabel("标签（可选）").fill("v2");
+  await page.getByRole("button", { name: "上传并发布" }).click();
+  await expect(page.getByText("已发布 smoke-tools v2（上传 1 个文件）")).toBeVisible();
+  await expect(page.getByText("基于 v1")).toBeVisible();
+
+  // The new snapshot against its parent, and one file's content.
+  await page.getByRole("button", { name: /smoke-tools v2/ }).click();
+  await expect(page.getByText("~ bin/run.sh")).toBeVisible();
+  await page.getByRole("button", { name: "查看" }).first().click();
+  await expect(page.getByText("echo two")).toBeVisible();
+  const download = page.waitForEvent("download");
+  // The whole snapshot (the row's button), not one file.
+  await page.locator('a[href$="/archive"]').last().click();
+  expect((await download).suggestedFilename()).toBe("smoke-tools-v2.zip");
+  await page.screenshot({ path: `${shots}/attachments.png`, fullPage: true });
 });

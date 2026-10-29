@@ -102,3 +102,47 @@ def test_opencode_versions_move_into_the_harness_version(tmp_path):
         "opencode", "hrn_pinned", "1", ["anthropic"], {"parameters": {}}, "1.9.0"
     )
     assert terminus["upstream_version"] is None and terminus["content_digest"] == "sha256:old"
+
+
+def test_attachments_from_before_snapshots_are_removed(tmp_path):
+    """0005 (N-06, U-50): old attachment versions and their recycle bin entries go; the
+    rest of the recycle bin stays, and the new tables start empty."""
+    from sqlalchemy import func, select, text
+
+    from maestro.db import schema as t
+
+    db = Database.open(tmp_path / "app.db")
+    migrate.upgrade(db, "0004")
+    with db.write() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO users (id, username, display_name, role, status, password_hash, "
+                "revision, created_at, updated_at) "
+                "VALUES ('usr_1', 'a', 'a', 'admin', 'active', 'x', 1, 'x', 'x')"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO attachment_versions (id, owner_id, name, version, description, "
+                "content_digest, manifest_json, files_json, file_count, size_bytes, "
+                "has_bootstrap, enabled, created_at) VALUES ('att_1', 'usr_1', 'tools', "
+                "'1.0.0', '', 'sha256:old', '{}', '[]', 0, 0, 0, 1, 'x')"
+            )
+        )
+        for object_type, object_id in (
+            ("attachment_version", "att_1"),
+            ("experiment_plan", "pln_1"),
+        ):
+            conn.execute(
+                text(
+                    "INSERT INTO deletions (id, object_type, object_id, label, state, "
+                    "deleted_by, deleted_at, detail_json) VALUES (:id, :type, :object, '', "
+                    "'recycled', 'usr_1', 'x', '{}')"
+                ),
+                {"id": f"del_{object_id}", "type": object_type, "object": object_id},
+            )
+    migrate.upgrade(db)
+    with db.read() as conn:
+        assert conn.execute(select(func.count()).select_from(t.attachment_versions)).scalar() == 0
+        kinds = conn.execute(select(t.deletions.c.object_type)).scalars().all()
+    assert kinds == ["experiment_plan"]

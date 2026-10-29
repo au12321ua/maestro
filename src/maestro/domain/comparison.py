@@ -117,7 +117,10 @@ def label(dimension: str, value: dict) -> str:
         harness = value.get("harness") or {}
         return f"{harness.get('name', '-')} {harness.get('version', '')}".strip()
     if dimension == "attachments":
-        names = [f"{a.get('name')} {a.get('version')}" for a in value.get("attachments") or []]
+        names = [
+            f"{a.get('name')} {a.get('label') or str(a.get('content_digest', ''))[7:19]}"
+            for a in value.get("attachments") or []
+        ]
         return " + ".join(names) or "none"
     if dimension == "resources":
         overrides = value.get("overrides") or {}

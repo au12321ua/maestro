@@ -315,7 +315,7 @@
             "type": "array"
           },
           "content_digest": {
-            "description": "Covers every file's path, SHA-256 and mode",
+            "description": "Identifies the snapshot: every file's path, SHA-256 and mode",
             "title": "Content Digest",
             "type": "string"
           },
@@ -375,6 +375,17 @@
             "title": "Id",
             "type": "string"
           },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -394,22 +405,30 @@
             ],
             "title": "Owner Username"
           },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
           "provides": {
             "$ref": "#/components/schemas/AttachmentProvides"
           },
           "size_bytes": {
             "title": "Size Bytes",
             "type": "integer"
-          },
-          "version": {
-            "title": "Version",
-            "type": "string"
           }
         },
         "required": [
           "id",
           "name",
-          "version",
+          "label",
+          "parent_id",
           "description",
           "owner_id",
           "owner_username",
@@ -426,6 +445,74 @@
           "deletion"
         ],
         "title": "Attachment",
+        "type": "object"
+      },
+      "AttachmentContents": {
+        "additionalProperties": false,
+        "properties": {
+          "sha256": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sha256",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sha256"
+        ],
+        "title": "AttachmentContents",
+        "type": "object"
+      },
+      "AttachmentDiff": {
+        "additionalProperties": false,
+        "properties": {
+          "added": {
+            "items": {
+              "$ref": "#/components/schemas/AttachmentFile"
+            },
+            "title": "Added",
+            "type": "array"
+          },
+          "attachment_id": {
+            "title": "Attachment Id",
+            "type": "string"
+          },
+          "base_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Compared with; unset when there is no parent",
+            "title": "Base Id"
+          },
+          "changed": {
+            "items": {
+              "$ref": "#/components/schemas/AttachmentFileChange"
+            },
+            "title": "Changed",
+            "type": "array"
+          },
+          "removed": {
+            "items": {
+              "$ref": "#/components/schemas/AttachmentFile"
+            },
+            "title": "Removed",
+            "type": "array"
+          }
+        },
+        "required": [
+          "attachment_id",
+          "base_id",
+          "added",
+          "removed",
+          "changed"
+        ],
+        "title": "AttachmentDiff",
         "type": "object"
       },
       "AttachmentFile": {
@@ -457,6 +544,72 @@
         "title": "AttachmentFile",
         "type": "object"
       },
+      "AttachmentFileChange": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "$ref": "#/components/schemas/AttachmentFile"
+          },
+          "before": {
+            "$ref": "#/components/schemas/AttachmentFile"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "before",
+          "after"
+        ],
+        "title": "AttachmentFileChange",
+        "type": "object"
+      },
+      "AttachmentFileEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "executable": {
+            "title": "Executable",
+            "type": "boolean"
+          },
+          "path": {
+            "description": "Relative, made of letters, digits and ._+@-",
+            "title": "Path",
+            "type": "string"
+          },
+          "sha256": {
+            "description": "Lowercase hex",
+            "title": "Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "sha256",
+          "executable"
+        ],
+        "title": "AttachmentFileEntry",
+        "type": "object"
+      },
+      "AttachmentMissing": {
+        "additionalProperties": false,
+        "properties": {
+          "missing": {
+            "description": "Contents to upload before publishing",
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing",
+            "type": "array"
+          }
+        },
+        "required": [
+          "missing"
+        ],
+        "title": "AttachmentMissing",
+        "type": "object"
+      },
       "AttachmentProvides": {
         "additionalProperties": false,
         "properties": {
@@ -480,6 +633,48 @@
           "env"
         ],
         "title": "AttachmentProvides",
+        "type": "object"
+      },
+      "AttachmentPublish": {
+        "additionalProperties": false,
+        "properties": {
+          "files": {
+            "description": "Every file of the snapshot; upload missing contents first",
+            "items": {
+              "$ref": "#/components/schemas/AttachmentFileEntry"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Unique per attachment name; never moves to other content",
+            "title": "Label"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The snapshot this one was made from",
+            "title": "Parent Id"
+          }
+        },
+        "required": [
+          "files"
+        ],
+        "title": "AttachmentPublish",
         "type": "object"
       },
       "Attempt": {
@@ -3488,7 +3683,7 @@
         "properties": {
           "attachments": {
             "default": [],
-            "description": "Attachment version ids in load order (model runs only)",
+            "description": "Attachment snapshot ids in load order (model runs only)",
             "items": {
               "type": "string"
             },
@@ -3686,7 +3881,7 @@
         "properties": {
           "attachments": {
             "default": [],
-            "description": "Attachment version ids in load order (model runs only)",
+            "description": "Attachment snapshot ids in load order (model runs only)",
             "items": {
               "type": "string"
             },
@@ -4900,6 +5095,17 @@
             "title": "Has Bootstrap",
             "type": "boolean"
           },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -4907,11 +5113,8 @@
           "provides": {
             "$ref": "#/components/schemas/AttachmentProvides"
           },
-          "version": {
-            "title": "Version",
-            "type": "string"
-          },
           "version_id": {
+            "description": "The snapshot's id",
             "title": "Version Id",
             "type": "string"
           }
@@ -4919,7 +5122,7 @@
         "required": [
           "version_id",
           "name",
-          "version",
+          "label",
           "content_digest",
           "effects",
           "provides",
@@ -5363,6 +5566,40 @@
           "meta"
         ],
         "title": "Envelope[AdmissionRevoked]",
+        "type": "object"
+      },
+      "Envelope_AttachmentDiff_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AttachmentDiff"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[AttachmentDiff]",
+        "type": "object"
+      },
+      "Envelope_AttachmentMissing_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AttachmentMissing"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[AttachmentMissing]",
         "type": "object"
       },
       "Envelope_Attachment_": {
@@ -12390,7 +12627,7 @@
         "properties": {
           "attachments": {
             "default": [],
-            "description": "Attachment version ids in load order (model runs only)",
+            "description": "Attachment snapshot ids in load order (model runs only)",
             "items": {
               "type": "string"
             },
@@ -18498,6 +18735,96 @@
         ]
       }
     },
+    "/api/v1/attachment-contents/missing": {
+      "post": {
+        "description": "Which of these contents a publish still needs uploaded; the rest are stored.",
+        "operationId": "missing_contents",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttachmentContents"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_AttachmentMissing_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Missing Contents",
+        "tags": [
+          "attachments"
+        ]
+      }
+    },
+    "/api/v1/attachment-contents/{sha256}": {
+      "put": {
+        "description": "One file's content, checked against its SHA-256; it waits for the uploader's\npublish for 24 hours.",
+        "operationId": "upload_content",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sha256",
+            "required": true,
+            "schema": {
+              "title": "Sha256",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "description": "The file's bytes",
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Upload Content",
+        "tags": [
+          "attachments"
+        ]
+      }
+    },
     "/api/v1/attachments": {
       "get": {
         "operationId": "list_attachments",
@@ -18557,34 +18884,21 @@
         ]
       },
       "post": {
+        "description": "Every content must be stored: held by another snapshot or uploaded by you.",
         "operationId": "publish_attachment",
         "requestBody": {
           "content": {
-            "application/gzip": {
+            "application/json": {
               "schema": {
-                "format": "binary",
-                "type": "string"
-              }
-            },
-            "application/x-tar": {
-              "schema": {
-                "format": "binary",
-                "type": "string"
-              }
-            },
-            "application/zip": {
-              "schema": {
-                "format": "binary",
-                "type": "string"
+                "$ref": "#/components/schemas/AttachmentPublish"
               }
             }
           },
-          "description": "The package archive with manifest.json at its root",
           "required": true
         },
         "responses": {
           "200": {
-            "description": "This name, version and content were already published"
+            "description": "A snapshot with this content was already published"
           },
           "201": {
             "content": {
@@ -18697,9 +19011,110 @@
         ]
       }
     },
+    "/api/v1/attachments/{attachment_id}/archive": {
+      "get": {
+        "description": "The whole snapshot as a zip, inside one folder named after it.",
+        "operationId": "download_archive",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "attachment_id",
+            "required": true,
+            "schema": {
+              "title": "Attachment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "application/zip": {}
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Download Archive",
+        "tags": [
+          "attachments"
+        ]
+      }
+    },
+    "/api/v1/attachments/{attachment_id}/diff": {
+      "get": {
+        "description": "Files added, removed and changed since ``base_id`` (default: the parent).",
+        "operationId": "attachment_diff",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "attachment_id",
+            "required": true,
+            "schema": {
+              "title": "Attachment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "base_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_AttachmentDiff_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Attachment Diff",
+        "tags": [
+          "attachments"
+        ]
+      }
+    },
     "/api/v1/attachments/{attachment_id}/enabled": {
       "post": {
-        "description": "The owner or an administrator; disabled versions cannot be chosen for new runs.",
+        "description": "The owner or an administrator; disabled snapshots cannot be chosen for new runs.",
         "operationId": "attachment_enabled",
         "parameters": [
           {
@@ -18745,6 +19160,56 @@
           }
         },
         "summary": "Attachment Enabled",
+        "tags": [
+          "attachments"
+        ]
+      }
+    },
+    "/api/v1/attachments/{attachment_id}/files/{path}": {
+      "get": {
+        "operationId": "download_file",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "attachment_id",
+            "required": true,
+            "schema": {
+              "title": "Attachment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "title": "Path",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "application/octet-stream": {}
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Download File",
         "tags": [
           "attachments"
         ]

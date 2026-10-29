@@ -181,6 +181,11 @@ export const CONFIG_BLOCKER: Record<string, string> = {
   ATTACHMENT_CONFLICT: "两个附件提供了同名的工具、环境变量或包",
 };
 
+/** A snapshot's name in lists: its label, or the start of its content digest. */
+export function snapshotName(a: { label?: string | null; content_digest: string }): string {
+  return a.label || a.content_digest.replace(/^sha256:/, "").slice(0, 12);
+}
+
 export const ATTACHMENT_EFFECT: Record<string, string> = {
   model_call: "模型调用",
   agent_tools: "Agent 工具",

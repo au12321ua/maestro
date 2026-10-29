@@ -95,6 +95,13 @@ class ArtifactCounts(BaseModel):
     failed: Annotated[int, Field(description="Not saved, or found missing from storage")]
 
 
+class AttachmentContents(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    sha256: list[str]
+
+
 class AttachmentFile(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -105,12 +112,54 @@ class AttachmentFile(BaseModel):
     size: int
 
 
+class AttachmentFileChange(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    after: AttachmentFile
+    before: AttachmentFile
+    path: str
+
+
+class AttachmentFileEntry(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    executable: bool
+    path: Annotated[str, Field(description="Relative, made of letters, digits and ._+@-")]
+    sha256: Annotated[str, Field(description="Lowercase hex")]
+
+
+class AttachmentMissing(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    missing: Annotated[list[str], Field(description="Contents to upload before publishing")]
+
+
 class AttachmentProvides(BaseModel):
     model_config = ConfigDict(
         extra="allow",
     )
     env: list[str]
     tools: list[str]
+
+
+class AttachmentPublish(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    files: Annotated[
+        list[AttachmentFileEntry],
+        Field(description="Every file of the snapshot; upload missing contents first"),
+    ]
+    label: Annotated[
+        str | None,
+        Field(description="Unique per attachment name; never moves to other content"),
+    ] = None
+    parent_id: Annotated[str | None, Field(description="The snapshot this one was made from")] = (
+        None
+    )
 
 
 class AttemptStep(BaseModel):
@@ -477,10 +526,10 @@ class EffectiveAttachment(BaseModel):
     content_digest: str
     effects: list[str]
     has_bootstrap: bool
+    label: str | None
     name: str
     provides: AttachmentProvides
-    version: str
-    version_id: str
+    version_id: Annotated[str, Field(description="The snapshot's id")]
 
 
 class EffectiveDataset(BaseModel):
@@ -1829,7 +1878,10 @@ class Attachment(BaseModel):
     compatible_harnesses: Annotated[
         list[str], Field(description='Harness agents, or ["*"] for any')
     ]
-    content_digest: Annotated[str, Field(description="Covers every file's path, SHA-256 and mode")]
+    content_digest: Annotated[
+        str,
+        Field(description="Identifies the snapshot: every file's path, SHA-256 and mode"),
+    ]
     created_at: str
     deletion: DeletionState | None
     description: str
@@ -1839,12 +1891,26 @@ class Attachment(BaseModel):
     files: list[AttachmentFile] | None
     has_bootstrap: Annotated[bool, Field(description="Has bootstrap.sh, run in each trial's setup")]
     id: str
+    label: str | None
     name: str
     owner_id: str
     owner_username: str | None
+    parent_id: str | None
     provides: AttachmentProvides
     size_bytes: int
-    version: str
+
+
+class AttachmentDiff(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    added: list[AttachmentFile]
+    attachment_id: str
+    base_id: Annotated[
+        str | None, Field(description="Compared with; unset when there is no parent")
+    ]
+    changed: list[AttachmentFileChange]
+    removed: list[AttachmentFile]
 
 
 class AttemptError(BaseModel):
@@ -2012,7 +2078,7 @@ class ConfigRequestInput(BaseModel):
     )
     attachments: Annotated[
         list[str] | None,
-        Field(description="Attachment version ids in load order (model runs only)"),
+        Field(description="Attachment snapshot ids in load order (model runs only)"),
     ] = []
     collection_id: Annotated[
         str | None,
@@ -2067,7 +2133,7 @@ class ConfigRequestOutput(BaseModel):
     )
     attachments: Annotated[
         list[str],
-        Field(description="Attachment version ids in load order (model runs only)"),
+        Field(description="Attachment snapshot ids in load order (model runs only)"),
     ]
     collection_id: Annotated[
         str | None,
@@ -2201,6 +2267,22 @@ class EnvelopeAdmissionRevoked(BaseModel):
         extra="allow",
     )
     data: AdmissionRevoked
+    meta: Meta
+
+
+class EnvelopeAttachmentDiff(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: AttachmentDiff
+    meta: Meta
+
+
+class EnvelopeAttachmentMissing(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: AttachmentMissing
     meta: Meta
 
 
@@ -2886,7 +2968,7 @@ class RunCreate(BaseModel):
     )
     attachments: Annotated[
         list[str] | None,
-        Field(description="Attachment version ids in load order (model runs only)"),
+        Field(description="Attachment snapshot ids in load order (model runs only)"),
     ] = []
     client_request_id: str | None = None
     collection_id: Annotated[

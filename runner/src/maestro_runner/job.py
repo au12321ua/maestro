@@ -893,7 +893,7 @@ def check_spec(spec: dict) -> None:
     if reserved:
         raise Rejected("RUNNER_INPUT_INVALID", f"task_env holds reserved names: {reserved}")
     attachments = spec.get("attachments") or []
-    fields = {"name": str, "version": str, "content_digest": str, "path": str, "bootstrap": bool}
+    fields = {"name": str, "label": str, "content_digest": str, "path": str, "bootstrap": bool}
     if not isinstance(attachments, list) or not all(
         isinstance(a, dict)
         and set(a) == set(fields)

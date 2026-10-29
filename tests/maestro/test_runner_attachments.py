@@ -69,20 +69,16 @@ class Container:
 
 
 def stored(tmp_path, name: str, script: str | None) -> dict:
-    from test_attachments import package
+    from test_attachments import package, store_package
 
     store = AttachmentStore(tmp_path / "data")
     files = {"bootstrap.sh": (script.encode(), 0o755)} if script is not None else None
-    staged = store.unpack(
-        package(name, bootstrap=False, extra_files=files), max_files=20, max_bytes=100_000
-    )
-    digest = staged.content_digest
-    store.publish(staged)
+    digest = store_package(store, package(name, bootstrap=False, extra_files=files))
     return {
         "name": name,
-        "version": "1.0.0",
+        "label": "v1",
         "content_digest": digest,
-        "path": str(store.path_for(digest)),
+        "path": str(store.verified(digest)),
         "bootstrap": script is not None,
     }
 

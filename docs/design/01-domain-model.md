@@ -18,7 +18,7 @@
 | 恢复等待者 PreparationWaiter | 共享恢复操作与等待者的关联；等待者是运行或管理员的首次准备 Operation | 可独立取消或到期 |
 | 模型配置 ModelConfig | 提供商、模型、参数及凭据引用 | 修改产生新修订，不覆盖历史 |
 | Harness 版本 HarnessVersion | 执行器适配器、内容摘要、参数契约 | 发布后固定 |
-| 附件版本 AttachmentVersion | 能力包内容、作用范围及加载协议 | 发布后固定 |
+| 附件快照 AttachmentVersion | 能力包的一份文件清单、作用范围及加载协议；以内容摘要为身份，可带标签与父快照 | 发布后固定 |
 | 实验方案 ExperimentPlan | 可编辑的实验模板 | 带修订号 |
 | 运行 Run | 一次受理的实验；领取、租约与资源预留都在运行上 | 定义固定，状态演进 |
 | 运行快照 RunSnapshot | 生效配置、来源、内容标识和口径 | 固定 |
@@ -76,7 +76,7 @@ erDiagram
 
 **身份与凭据。** 邀请、会话、PAT 只存令牌摘要，可在服务端撤销；PAT 的已受理计数只能在受理事务内增加。账户删除时会话与 PAT 一并作废（U-19）。凭据只存密文与 key_version，对外仅返回引用与脱敏描述；主密钥本身不在数据库，库中只有代次与校验值（`master_key_state`）。
 
-**名称唯一靠写事务检查，不靠唯一索引。** 数据集（来源 + namespace + name）、数据集版本（同一数据集下的 resolved_digest）、模型配置名、Harness 名称 + 版本、附件名称 + 版本，都只在“未物理删除”的记录中唯一。物理删除只留一行回执，名称可以再用，所以这些列上是普通索引，唯一性在导入或发布的写事务中检查。
+**名称唯一靠写事务检查，不靠唯一索引。** 数据集（来源 + namespace + name）、数据集版本（同一数据集下的 resolved_digest）、模型配置名、Harness 名称 + 版本、附件的内容摘要与“名称 + 标签”，都只在“未物理删除”的记录中唯一。物理删除只留一行回执，名称可以再用，所以这些列上是普通索引，唯一性在导入或发布的写事务中检查。
 
 **目录与准备。**
 
@@ -95,7 +95,7 @@ erDiagram
 - 产物记录只存存储键与相对路径，不返回宿主机路径。
 - 幂等记录按 主体 + 动作 + key 唯一；审计事件不含令牌、密码、凭据明文。
 
-其余表的用途：team_policies 保存团队策略修订，setup_networks 保存安装网络的版本（执行尝试的 setup_network_revision 指向其中一版），config_resolutions 保存配置解析结果（有效期内凭 resolution_id 提交），run_attachments 记录运行按顺序加载的附件版本，artifact_pins 是导出等读取者的有期限 pin，exports 是导出任务，deletions 是回收站状态与删除回执，provider_limits 是提供商并发上限，instance 与 service_epochs 是实例标识与每次启动的代次（用于租约与对账）。
+其余表的用途：team_policies 保存团队策略修订，setup_networks 保存安装网络的版本（执行尝试的 setup_network_revision 指向其中一版），config_resolutions 保存配置解析结果（有效期内凭 resolution_id 提交），run_attachments 记录运行按顺序加载的附件快照，attachment_files 记录每份未物理删除的快照持有哪些文件内容（无人持有的内容才清除），attachment_uploads 是发布前上传、只供上传者使用且会过期的文件内容，artifact_pins 是导出等读取者的有期限 pin，exports 是导出任务，deletions 是回收站状态与删除回执，provider_limits 是提供商并发上限，instance 与 service_epochs 是实例标识与每次启动的代次（用于租约与对账）。
 
 ## 5. 状态与派生字段
 

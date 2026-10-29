@@ -1,29 +1,28 @@
-"""Attachment packages (03 section 6): unpacking, checks, digest and the content store.
+"""Attachment snapshots (03 section 6): file contents by SHA-256, snapshots as file lists.
 
-A package is a tar (optionally compressed) or zip archive holding ``manifest.json`` at
-its root, or inside one top-level directory, plus any files; ``bootstrap.sh`` at the
-root is the install script each trial runs in its own container (03 section 7).
+A snapshot is a list of files (path, SHA-256, executable bit) holding ``manifest.json`` at
+its root; ``bootstrap.sh`` at the root is the install script each trial runs in its own
+container (03 section 7). Clients upload only the contents the store lacks, then commit
+the list: an unchanged file is never sent twice.
 
-Unpacking never lets the archive choose what is written: only regular files and
-directories are accepted, names are checked part by part before anything is written,
-and sizes are counted while reading, so links, devices, absolute paths, ``..`` and
-archive bombs are refused rather than cleaned up afterwards. Uploading never runs the
-script.
+Each content lives once under ``blobs/<hex>``, whichever snapshots share it, and each
+snapshot's list under ``snapshots/<hex>.json``; both are original content (not a cache).
+The Runner copies a snapshot from a directory rebuilt from them on demand under the cache
+directory. Paths are checked part by part and only regular files exist, so links,
+devices, absolute paths and ``..`` cannot be expressed. Nothing here runs the script.
 
 The content digest covers each file's path, SHA-256 and executable bit, so the Runner can
 compare a container's copy file by file with ``sha256sum``.
 """
 
-import io
+import hashlib
 import json
 import os
 import re
 import shutil
 import stat
-import tarfile
 import tempfile
-import zipfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from maestro.core.digests import digest_json
@@ -38,16 +37,13 @@ SUPPORTED_EFFECTS = ("model_call", "agent_tools", "task_environment")
 # Manifest fields of the design that P0 does not implement; refused rather than ignored.
 UNSUPPORTED_FIELDS = ("parameter_schema", "entrypoints", "load_order_requirements")
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")
-VERSION = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}")
+LABEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}")
 PROVIDED = re.compile(r"[A-Za-z_][A-Za-z0-9_.-]{0,127}")
+SHA256 = re.compile(r"[0-9a-f]{64}")
 # Path parts the Runner can pass through ``sha256sum`` output and shell commands unquoted.
 PATH_PART = re.compile(r"[A-Za-z0-9._+@-]{1,255}")
 PATH_MAX = 1024
 DEPTH_MAX = 32
-# A long-name or pax header is read into memory whole; real ones are a few KiB.
-TAR_HEADER_MAX = 64 * 1024
-# Directories and refused entries count too: every entry costs memory while reading.
-ENTRIES_PER_FILE = 2
 
 
 class PackageError(Exception):
@@ -60,13 +56,16 @@ class PackageError(Exception):
 
 @dataclass
 class Package:
-    root: Path
     manifest: dict
     files: list[dict]
     content_digest: str
     size_bytes: int
     has_bootstrap: bool
-    components: list[str] = field(default_factory=list)
+
+
+def display(label: str | None, content_digest: str) -> str:
+    """How a snapshot is named in messages: its label, or the start of its digest."""
+    return label or content_digest.removeprefix("sha256:")[:12]
 
 
 def files_digest(files: list[dict]) -> str:
@@ -86,165 +85,7 @@ def _check_path(name: str) -> str | None:
     return name
 
 
-class _Writer:
-    """Writes accepted entries below ``root``, enforcing the limits as it goes."""
-
-    def __init__(self, root: Path, max_files: int, max_bytes: int):
-        self.root = root
-        self.max_files = max_files
-        self.max_bytes = max_bytes
-        self.files: dict[str, bool] = {}  # path -> executable
-        self.dirs: set[str] = set()
-        self.total = 0
-        self.entries = 0
-        self.problems: list[tuple[str, str, str]] = []
-
-    def count(self) -> None:
-        self.entries += 1
-        if self.entries > self.max_files * ENTRIES_PER_FILE:
-            self.problem("", "TOO_MANY_FILES", f"at most {self.max_files} files")
-            raise PackageError("Attachment has too many entries", self.problems)
-
-    def problem(self, path: str, code: str, message: str) -> None:
-        if len(self.problems) < 50:
-            self.problems.append((f"/archive/{path}", code, message))
-
-    def directory(self, raw: str) -> None:
-        self.count()
-        if raw in {".", "./"}:  # the root itself, as ``tar -C dir .`` writes it
-            return
-        path = _check_path(raw)
-        if path is None:
-            self.problem(raw, "PATH", "only relative names of letters, digits and ._+@-")
-        elif path in self.files:
-            self.problem(path, "DUPLICATE", "a file and a directory share this name")
-        else:
-            self.dirs.add(path)
-
-    def file(self, raw: str, size: int, executable: bool, stream) -> None:
-        self.count()
-        path = _check_path(raw)
-        if path is None:
-            self.problem(raw, "PATH", "only relative names of letters, digits and ._+@-")
-            return
-        if path in self.files or path in self.dirs:
-            self.problem(path, "DUPLICATE", "the archive holds this name twice")
-            return
-        if len(self.files) >= self.max_files:
-            self.problem(path, "TOO_MANY_FILES", f"at most {self.max_files} files")
-            raise PackageError("Attachment has too many files", self.problems)
-        if self.total + size > self.max_bytes:
-            self.problem(path, "TOO_LARGE", f"at most {self.max_bytes} bytes unpacked")
-            raise PackageError("Attachment is too large unpacked", self.problems)
-        target = self.root / path
-        if any(str(parent) in self.files for parent in Path(path).parents) or any(
-            other.startswith(path + "/") for other in self.files
-        ):
-            self.problem(path, "DUPLICATE", "a file and a directory share this name")
-            return
-        target.parent.mkdir(parents=True, exist_ok=True)
-        written = 0
-        with target.open("xb") as sink:
-            while chunk := stream.read(1 << 20):
-                written += len(chunk)
-                if written > size or self.total + written > self.max_bytes:
-                    self.problem(path, "TOO_LARGE", "longer than the archive says")
-                    raise PackageError("Attachment is too large unpacked", self.problems)
-                sink.write(chunk)
-        self.total += written
-        self.files[path] = executable
-        os.chmod(target, 0o755 if executable else 0o644)
-
-
-class _BoundedTarInfo(tarfile.TarInfo):
-    """Refuses, before reading them, the headers ``tarfile`` would load into memory whole:
-    oversized long-name and pax headers, and sparse files with their unbounded maps."""
-
-    def _proc_member(self, tarfile_):
-        if self.type in (tarfile.GNUTYPE_SPARSE,):
-            raise tarfile.HeaderError("sparse files are not allowed")
-        if self.type in _EXTENDED_HEADERS and self.size > TAR_HEADER_MAX:
-            raise tarfile.HeaderError(f"an extended header over {TAR_HEADER_MAX} bytes")
-        return super()._proc_member(tarfile_)
-
-    def _proc_gnusparse_10(self, next, pax_headers, tarfile_):
-        raise tarfile.HeaderError("sparse files are not allowed")
-
-
-_EXTENDED_HEADERS = (
-    tarfile.GNUTYPE_LONGNAME,
-    tarfile.GNUTYPE_LONGLINK,
-    tarfile.XHDTYPE,
-    tarfile.XGLTYPE,
-    tarfile.SOLARIS_XHDTYPE,
-)
-
-
-def _unpack_tar(source, writer: _Writer) -> None:
-    try:
-        archive = tarfile.open(  # noqa: SIM115 - closed below
-            fileobj=source, mode="r:*", tarinfo=_BoundedTarInfo
-        )
-    except (tarfile.TarError, OSError, EOFError) as error:
-        raise PackageError(f"Not a tar or zip archive: {error}", []) from None
-    with archive:
-        try:
-            for member in archive:
-                # Read as a stream: the archive keeps no list of what it has passed.
-                archive.members = []
-                if member.isdir():
-                    writer.directory(member.name)
-                elif member.isreg():
-                    stream = archive.extractfile(member)
-                    writer.file(member.name, member.size, bool(member.mode & 0o100), stream)
-                else:
-                    writer.count()
-                    writer.problem(
-                        member.name, "FILE_TYPE", "links and special files are not allowed"
-                    )
-        except (tarfile.TarError, OSError, EOFError) as error:
-            raise PackageError(f"Damaged archive: {error}", writer.problems) from None
-
-
-def _zip_entries(source) -> int | None:
-    """The entry count the end record declares, read before the central directory is."""
-    try:
-        record = zipfile._EndRecData(source)
-    except OSError:
-        return None
-    return None if record is None else record[zipfile._ECD_ENTRIES_TOTAL]
-
-
-def _unpack_zip(source, writer: _Writer) -> None:
-    declared = _zip_entries(source)
-    if declared is not None and declared > writer.max_files * ENTRIES_PER_FILE:
-        writer.problem("", "TOO_MANY_FILES", f"at most {writer.max_files} files")
-        raise PackageError("Attachment has too many entries", writer.problems)
-    try:
-        archive = zipfile.ZipFile(source)
-    except (zipfile.BadZipFile, OSError) as error:
-        raise PackageError(f"Damaged zip archive: {error}", []) from None
-    with archive:
-        try:
-            for info in archive.infolist():
-                mode = info.external_attr >> 16
-                if info.is_dir():
-                    writer.directory(info.filename)
-                elif stat.S_IFMT(mode) and not stat.S_ISREG(mode):  # no type bits: a file
-                    writer.count()
-                    writer.problem(
-                        info.filename, "FILE_TYPE", "links and special files are not allowed"
-                    )
-                else:
-                    with archive.open(info) as stream:
-                        writer.file(info.filename, info.file_size, bool(mode & 0o100), stream)
-        except (zipfile.BadZipFile, OSError, RuntimeError) as error:
-            raise PackageError(f"Damaged zip archive: {error}", writer.problems) from None
-
-
 def _sha256(path: Path) -> str:
-    import hashlib
-
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         while chunk := handle.read(1 << 20):
@@ -273,10 +114,7 @@ def describe(root: Path) -> list[dict]:
     return files
 
 
-def _manifest(root: Path) -> dict:
-    path = root / MANIFEST
-    if not path.is_file():
-        raise PackageError("The package has no manifest.json", [("/archive", "MANIFEST", "")])
+def _read_manifest(path: Path) -> dict:
     if path.stat().st_size > MANIFEST_MAX_BYTES:
         raise PackageError(
             "manifest.json is too large", [("/manifest", "TOO_LARGE", str(MANIFEST_MAX_BYTES))]
@@ -307,14 +145,15 @@ def check_manifest(manifest: dict) -> dict:
     known = {
         "schema_version",
         "name",
-        "version",
         "description",
         "effects",
         "compatible_harnesses",
         "provides",
     }
     for key in manifest:
-        if key in UNSUPPORTED_FIELDS:
+        if key == "version":
+            bad(key, "UNKNOWN_FIELD", "snapshots have no version; give a label when publishing")
+        elif key in UNSUPPORTED_FIELDS:
             bad(key, "UNSUPPORTED", "not supported by this version of the platform")
         elif key not in known:
             bad(key, "UNKNOWN_FIELD")
@@ -322,8 +161,6 @@ def check_manifest(manifest: dict) -> dict:
         bad("schema_version", "ENUM", "1")
     if not isinstance(manifest.get("name"), str) or not NAME.fullmatch(manifest["name"]):
         bad("name", "PATTERN", "letters, digits and ._- (at most 64)")
-    if not isinstance(manifest.get("version"), str) or not VERSION.fullmatch(manifest["version"]):
-        bad("version", "PATTERN", "letters, digits and ._+- (at most 64)")
     description = manifest.get("description", "")
     if not isinstance(description, str) or len(description) > 512:
         bad("description", "LENGTH", "at most 512 characters")
@@ -352,7 +189,6 @@ def check_manifest(manifest: dict) -> dict:
     return {
         "schema_version": 1,
         "name": manifest["name"],
-        "version": manifest["version"],
         "description": description,
         "effects": sorted(effects),
         "compatible_harnesses": sorted(harnesses),
@@ -360,129 +196,202 @@ def check_manifest(manifest: dict) -> dict:
     }
 
 
-def _strip_wrapper(root: Path) -> Path:
-    """Archives made from a folder hold one top-level directory; its contents are the
-    package."""
-    if (root / MANIFEST).exists():
-        return root
-    entries = list(root.iterdir())
-    if len(entries) == 1 and entries[0].is_dir() and (entries[0] / MANIFEST).is_file():
-        return entries[0]
-    return root
+def _hex(content_digest: str) -> str | None:
+    algorithm, _, value = content_digest.partition(":")
+    return value if algorithm == "sha256" and SHA256.fullmatch(value) else None
 
 
 class AttachmentStore:
-    """Published package files under ``<data_dir>/attachments/<hex digest>``. They are
-    original content (not a cache): a purge removes them, nothing else does."""
+    """``<data_dir>/attachments``: ``blobs/<hex>`` file contents, ``snapshots/<hex>.json``
+    file lists, and ``.receive-*`` uploads and ``.archive-*`` downloads in progress. Rebuilt snapshot directories live
+    under ``<cache_dir>/attachments``. A purge removes contents no snapshot still holds;
+    nothing else does."""
 
-    def __init__(self, data_dir: Path):
+    def __init__(self, data_dir: Path, cache_dir: Path | None = None):
         self.root = data_dir / "attachments"
+        self.blobs = self.root / "blobs"
+        self.snapshots = self.root / "snapshots"
+        self.trees = (cache_dir or data_dir / "cache") / "attachments"
+
+    # --- contents ----------------------------------------------------------------------
 
     def receive(self):
         """A temporary file on the store's file system for an upload in progress."""
         self.root.mkdir(parents=True, exist_ok=True)
-        return tempfile.NamedTemporaryFile(prefix=".receive-", dir=self.root)
+        return tempfile.NamedTemporaryFile(prefix=".receive-", dir=self.root, delete=False)
 
-    def unpack(self, source: bytes | Path, max_files: int, max_bytes: int) -> Package:
-        """Unpack an archive (its bytes, or a file) into a staging directory; the caller
-        publishes or discards it."""
-        self.root.mkdir(parents=True, exist_ok=True)
-        staging = Path(tempfile.mkdtemp(prefix=".upload-", dir=self.root))
-        try:
-            writer = _Writer(staging / "files", max_files, max_bytes)
-            writer.root.mkdir()
-            with io.BytesIO(source) if isinstance(source, bytes) else open(source, "rb") as handle:
-                magic = handle.read(4)
-                handle.seek(0)
-                if magic in (b"PK\x03\x04", b"PK\x05\x06"):
-                    _unpack_zip(handle, writer)
-                else:
-                    _unpack_tar(handle, writer)
-            if writer.problems:
-                raise PackageError(
-                    "The archive holds entries that are not allowed", writer.problems
-                )
-            root = _strip_wrapper(writer.root)
-            manifest = _manifest(root)
-            files = describe(root)
-            bootstrap = root / BOOTSTRAP
-            return Package(
-                root=root,
-                manifest=manifest,
-                files=files,
-                content_digest=files_digest(files),
-                size_bytes=sum(f["size"] for f in files),
-                has_bootstrap=bootstrap.is_file(),
-                components=sorted(p.name for p in root.iterdir() if p.is_dir()),
-            )
-        except BaseException:
-            shutil.rmtree(staging, ignore_errors=True)
-            raise
+    def blob(self, sha256: str) -> Path | None:
+        path = self.blobs / sha256 if SHA256.fullmatch(sha256) else None
+        return path if path is not None and path.is_file() else None
 
-    def discard(self, package: Package) -> None:
-        """Remove what is left of the upload's staging directory."""
-        staging = package.root
-        while staging.parent != self.root:
-            if staging.parent == staging:
-                return  # not a staging directory of this store
-            staging = staging.parent
-        shutil.rmtree(staging, ignore_errors=True)
+    def add_blob(self, source: Path, sha256: str) -> None:
+        """Move an uploaded file in under its SHA-256, which the caller has checked; an
+        existing copy is kept. The caller holds the database write lock."""
+        self.blobs.mkdir(parents=True, exist_ok=True)
+        if self.blob(sha256):
+            source.unlink(missing_ok=True)
+            return
+        os.chmod(source, 0o644)
+        os.rename(source, self.blobs / sha256)
 
-    def _hex(self, content_digest: str) -> str | None:
-        algorithm, _, value = content_digest.partition(":")
-        if algorithm != "sha256" or not re.fullmatch(r"[0-9a-f]{64}", value):
-            return None
-        return value
-
-    def path_for(self, content_digest: str) -> Path | None:
-        value = self._hex(content_digest)
-        path = self.root / value if value else None
-        return path if path is not None and path.is_dir() else None
-
-    def verified(self, content_digest: str) -> Path | None:
-        """The stored copy, only if its files still match the digest."""
-        path = self.path_for(content_digest)
-        if path is None:
-            return None
-        try:
-            return path if files_digest(describe(path)) == content_digest else None
-        except (OSError, ValueError):
-            return None
-
-    def publish(self, package: Package) -> None:
-        """Move the staged files in under their digest; an intact copy already there wins."""
-        try:
-            if self.verified(package.content_digest):
-                return
-            target = self.root / self._hex(package.content_digest)
-            if target.exists():
-                self.remove(package.content_digest)
-            os.rename(package.root, target)
-        finally:
-            self.discard(package)
-
-    def retire(self, content_digest: str) -> Path | None:
-        """Move the files out of reach in one rename; the caller deletes what it returns."""
-        path = self.path_for(content_digest)
+    def retire_blob(self, sha256: str) -> Path | None:
+        """Move a content out of reach in one rename; the caller deletes what it returns."""
+        path = self.blob(sha256)
         if path is None:
             return None
         retired = Path(tempfile.mkdtemp(prefix=".remove-", dir=self.root))
-        os.rename(path, retired / "files")
+        os.rename(path, retired / sha256)
         return retired
 
-    def remove(self, content_digest: str) -> None:
-        retired = self.retire(content_digest)
-        if retired is not None:
-            shutil.rmtree(retired, ignore_errors=True)
+    # --- snapshots ---------------------------------------------------------------------
+
+    def check(self, entries, max_files: int, max_bytes: int) -> Package:
+        """The snapshot a client's file list describes, with every content present.
+        ``entries`` are {path, sha256, executable}; sizes come from the stored contents."""
+        problems: list[tuple[str, str, str]] = []
+
+        def problem(path: str, code: str, message: str = "") -> None:
+            if len(problems) < 50:
+                problems.append((f"/files/{path}", code, message))
+
+        if not isinstance(entries, list) or not entries:
+            raise PackageError("The snapshot lists no files", [("/files", "EMPTY", "")])
+        if len(entries) > max_files:
+            raise PackageError(
+                "Attachment has too many files", [("/files", "TOO_MANY_FILES", str(max_files))]
+            )
+        files: dict[str, dict] = {}
+        total = 0
+        for index, entry in enumerate(entries):
+            raw = entry.get("path") if isinstance(entry, dict) else None
+            path = _check_path(raw) if isinstance(raw, str) and not raw.endswith("/") else None
+            if path is None:
+                problem(str(index), "PATH", "only relative names of letters, digits and ._+@-")
+                continue
+            sha = entry.get("sha256")
+            if not isinstance(sha, str) or not SHA256.fullmatch(sha):
+                problem(path, "SHA256", "64 lowercase hexadecimal digits")
+                continue
+            if not isinstance(entry.get("executable"), bool):
+                problem(path, "EXECUTABLE", "true or false")
+                continue
+            if path in files:
+                problem(path, "DUPLICATE", "the list holds this path twice")
+                continue
+            blob = self.blob(sha)
+            if blob is None:
+                problem(path, "MISSING", "upload this content first")
+                continue
+            size = blob.stat().st_size
+            total += size
+            files[path] = {
+                "path": path,
+                "size": size,
+                "sha256": sha,
+                "executable": entry["executable"],
+            }
+        names = set(files)
+        for path in names:
+            if any(str(parent) in names for parent in Path(path).parents):
+                problem(path, "DUPLICATE", "a file and a directory share this name")
+        if total > max_bytes:
+            problem("", "TOO_LARGE", f"at most {max_bytes} bytes")
+        if problems:
+            raise PackageError("The snapshot holds entries that are not allowed", problems)
+        if MANIFEST not in files:
+            raise PackageError("The snapshot has no manifest.json", [("/files", "MANIFEST", "")])
+        manifest = _read_manifest(self.blobs / files[MANIFEST]["sha256"])
+        ordered = [files[p] for p in sorted(files)]
+        return Package(
+            manifest=manifest,
+            files=ordered,
+            content_digest=files_digest(ordered),
+            size_bytes=total,
+            has_bootstrap=BOOTSTRAP in files,
+        )
+
+    def record(self, package: Package) -> None:
+        """Keep the snapshot's file list, so its directory can be rebuilt without the
+        database. Under the database write lock, with the contents in place."""
+        self.snapshots.mkdir(parents=True, exist_ok=True)
+        target = self.snapshots / f"{_hex(package.content_digest)}.json"
+        partial = target.with_name(f".{target.name}.partial")
+        partial.write_text(json.dumps(package.files, sort_keys=True))
+        os.rename(partial, target)
+
+    def forget(self, content_digest: str) -> None:
+        """Drop a snapshot's file list and its rebuilt directory."""
+        value = _hex(content_digest)
+        if value is None:
+            return
+        (self.snapshots / f"{value}.json").unlink(missing_ok=True)
+        shutil.rmtree(self.trees / value, ignore_errors=True)
+
+    def files(self, content_digest: str) -> list[dict] | None:
+        value = _hex(content_digest)
+        try:
+            return json.loads((self.snapshots / f"{value}.json").read_text()) if value else None
+        except (OSError, ValueError):
+            return None
+
+    def path_for(self, content_digest: str) -> Path | None:
+        """The rebuilt directory, if there is one; :meth:`verified` builds it."""
+        value = _hex(content_digest)
+        path = self.trees / value if value else None
+        return path if path is not None and path.is_dir() else None
+
+    def verified(self, content_digest: str) -> Path | None:
+        """The snapshot's directory, rebuilt from the stored contents when missing, and
+        only if its files match the digest."""
+        path = self.path_for(content_digest)
+        try:
+            if path is not None and files_digest(describe(path)) == content_digest:
+                return path
+        except (OSError, ValueError):
+            pass
+        files = self.files(content_digest)
+        if not files or files_digest(files) != content_digest:
+            return None
+        self.trees.mkdir(parents=True, exist_ok=True)
+        staging = Path(tempfile.mkdtemp(prefix=".build-", dir=self.trees))
+        try:
+            for entry in files:
+                blob = self.blob(entry["sha256"])
+                if blob is None:
+                    return None
+                target = staging / entry["path"]
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(blob, target)
+                os.chmod(target, 0o755 if entry["executable"] else 0o644)
+            if files_digest(describe(staging)) != content_digest:
+                return None
+            target = self.trees / _hex(content_digest)
+            shutil.rmtree(target, ignore_errors=True)
+            try:
+                os.rename(staging, target)
+            except OSError:
+                # Another caller rebuilt it at the same moment; theirs is as good.
+                pass
+            return self.path_for(content_digest)
+        finally:
+            shutil.rmtree(staging, ignore_errors=True)
 
     def discard_partial(self) -> int:
-        """At start, before any upload: staging left by a process that stopped mid-way."""
+        """At start, before any upload: uploads and removals left by a process that
+        stopped mid-way, half-built directories, and package directories from before
+        snapshots (N-06), whose rows the 0005 migration removed."""
         removed = 0
         for entry in self.root.iterdir() if self.root.is_dir() else []:
-            if entry.name.startswith((".upload-", ".receive-", ".remove-")):
+            stale = entry.name.startswith((".upload-", ".receive-", ".remove-", ".archive-"))
+            legacy = entry.is_dir() and SHA256.fullmatch(entry.name)
+            if stale or legacy:
                 if entry.is_dir():
                     shutil.rmtree(entry, ignore_errors=True)
                 else:
                     entry.unlink(missing_ok=True)
+                removed += 1
+        for entry in self.trees.iterdir() if self.trees.is_dir() else []:
+            if entry.name.startswith(".build-"):
+                shutil.rmtree(entry, ignore_errors=True)
                 removed += 1
         return removed

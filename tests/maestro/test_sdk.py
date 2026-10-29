@@ -11,7 +11,6 @@ import json
 import re
 import subprocess
 import sys
-import tarfile
 import zipfile
 from pathlib import Path
 
@@ -280,15 +279,16 @@ def test_errors_are_structured_and_never_carry_the_token(service):
         MaestroClient("http://user:secret@example.test", "t")
 
 
-def test_attachment_published_from_a_directory(service, tmp_path):
+def test_attachments_publish_fetch_and_compare_directories(service, tmp_path):
     package = tmp_path / "tools"
     (package / "bin").mkdir(parents=True)
+    (package / ".git").mkdir()
+    (package / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
     (package / "manifest.json").write_text(
         json.dumps(
             {
                 "schema_version": 1,
                 "name": "helper",
-                "version": "1.0.0",
                 "effects": ["agent_tools"],
                 "compatible_harnesses": ["*"],
             }
@@ -299,14 +299,32 @@ def test_attachment_published_from_a_directory(service, tmp_path):
     with running(service) as client:
         admin = setup_admin(service, client)
         agent = sdk(create_pat(admin, "experiment"))
-        published = agent.attachments.publish(package)
-        assert published.name == "helper" and published.version == "1.0.0"
-        archive = tmp_path / "helper.tar.gz"
-        with tarfile.open(archive, "w:gz") as tar:
-            for path in sorted(package.rglob("*")):
-                tar.add(path, arcname=str(path.relative_to(package)), recursive=False)
-        assert agent.attachments.publish(archive).id == published.id  # same content
-        assert [a.id for a in agent.attachments.list(name="helper")] == [published.id]
+        published = agent.attachments.publish(package, label="v1")
+        assert published.name == "helper" and published.label == "v1"
+        assert [f.path for f in published.files] == ["bin/run.sh", "manifest.json"]
+        assert agent.attachments.publish(package).id == published.id  # same content
+        (package / "bin" / "run.sh").write_text("#!/bin/sh\necho changed\n")
+        child = agent.attachments.publish(package, parent=published)
+        assert child.parent_id == published.id and child.id != published.id
+        diff = agent.attachments.diff(child)
+        assert [c.path for c in diff.changed] == ["bin/run.sh"] and not diff.added
+        assert [a.id for a in agent.attachments.list(name="helper")] == [published.id, child.id]
+
+        # Fetching rebuilds the snapshot: only what differs is written, modes included.
+        copy = tmp_path / "copy"
+        agent.attachments.fetch(published, copy)
+        assert (copy / "bin" / "run.sh").read_text() == "#!/bin/sh\necho hi\n"
+        assert (copy / "bin" / "run.sh").stat().st_mode & 0o100
+        (copy / "extra").write_text("mine")
+        agent.attachments.fetch(child, copy)
+        assert (copy / "bin" / "run.sh").read_text() == "#!/bin/sh\necho changed\n"
+        assert (copy / "extra").exists()
+        agent.attachments.fetch(child, copy, prune=True)
+        assert not (copy / "extra").exists()
+        archive = agent.attachments.download(child, tmp_path / "helper.zip")
+        with zipfile.ZipFile(archive) as opened:
+            assert min(opened.namelist()).endswith("bin/run.sh")
+
         (package / "link").symlink_to("manifest.json")
         with pytest.raises(ValueError):
             agent.attachments.publish(package)
@@ -346,7 +364,12 @@ SDK_METHODS = {
     "get_resolution": "configs.resolution",
     "list_attachments": "attachments.list",
     "get_attachment": "attachments.get",
+    "missing_contents": "attachments.publish",
+    "upload_content": "attachments.publish",
     "publish_attachment": "attachments.publish",
+    "download_file": "attachments.fetch",
+    "download_archive": "attachments.download",
+    "attachment_diff": "attachments.diff",
     "attachment_enabled": "attachments.set_enabled",
     "delete_attachment": "attachments.delete",
     "list_plans": "plans.list",

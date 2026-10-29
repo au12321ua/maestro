@@ -35,6 +35,7 @@ import {
   blockerText,
   commonPrefix,
   fmtTime,
+  snapshotName,
 } from "@/lib/format";
 import { limit, useLoad, useSession } from "@/lib/hooks";
 import { DIMENSION, SCENARIO } from "@/lib/comparison";
@@ -196,7 +197,7 @@ export function NewRunPage() {
     cpus: "",
     memory_mb: "",
   });
-  // Attachment version ids in load order.
+  // Attachment snapshot ids in load order.
   const [chosenAttachments, setChosenAttachments] = useState<string[]>([]);
   // An earlier model revision, pinned by an imported request until the model changes.
   const [modelRevision, setModelRevision] = useState<number | null>(null);
@@ -857,7 +858,7 @@ export function NewRunPage() {
                               {index + 1}.
                             </span>
                             <span className="font-medium">{a?.name ?? id}</span>
-                            <span className="font-mono text-xs">{a?.version}</span>
+                            <span className="font-mono text-xs">{a && snapshotName(a)}</span>
                             {a?.has_bootstrap && <Pill tone="info">安装脚本</Pill>}
                             <Button
                               type="button"
@@ -908,7 +909,7 @@ export function NewRunPage() {
                       <option value="">选择要加载的附件</option>
                       {addable.map((a) => (
                         <option key={a.id} value={a.id}>
-                          {a.name} {a.version}（{a.owner_username ?? "—"}）
+                          {a.name} {snapshotName(a)}（{a.owner_username ?? "—"}）
                         </option>
                       ))}
                     </SelectField>

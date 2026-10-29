@@ -95,7 +95,7 @@ except TransportError as lost:
 | 比较几个运行 | `client.comparisons.compare([run_a, run_b])`：条件核对、各运行汇总与逐任务对齐；外部原因的失败默认剔除，其余失败算 0 分，`exclude=[]` 不剔除 |
 | 集合 | `c = client.collections.create(name, "models", base_run_id=run_id, run_ids=[...])`；`client.runs.submit(cfg, name=..., collection_id=c.id)` 按集合填好固定字段并自动加入；`client.collections.compare(c.id)`、`client.collections.candidates(c.id)`（最近不在集合里的运行，`mismatches` 为空的可加入）、`client.collections.add_runs(c.id, [run_id])` |
 | 快照与结论 | `s = client.snapshots.create(name, collection_id=c.id)`（运行须已结束），`client.snapshots.add_note(s.id, "结论")` |
-| 附件 | `client.attachments.publish("path/to/dir")`（目录会打成 tar.gz；也接受 .zip / .tar / .tar.gz），配置里写 `attachments: [id]` |
+| 附件 | `a = client.attachments.publish("path/to/dir", label="v2", parent=old)`（只上传服务端缺少的文件，内容相同返回原快照；跳过 `.git`），配置里写 `attachments: [a.id]`；`client.attachments.fetch(a.id, "dir")` 只下载有差异的文件，`diff(a.id)` 与父快照比较，`download(a.id, "a.zip")` 整包下载 |
 | 导出 | `e = client.exports.create([run_id])`、`client.operations.wait(e.operation_id)`、`client.exports.download(e.id, "export.zip")` |
 
 ## 错误
