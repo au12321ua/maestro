@@ -1,6 +1,6 @@
 # N-01 独立验证环境、Compose 辅助服务与按内容寻址的镜像存储（吸纳 N-14）
 
-状态：设计中 · 优先级：一 · 2026-10-28 · 相关：[02](../design/02-datasets-preparation.md) 第 3、5～8 节、[05](../design/05-scheduling-execution.md)、[09](../design/09-identity-security.md) 第 5 节、[12](../design/12-operations.md)、[15](../design/15-stack-harbor.md)、[14](../design/14-decisions.md) U-30、U-32、U-53
+状态：已确认 · 优先级：一 · 2026-10-28 · 相关：[02](../design/02-datasets-preparation.md) 第 3、5～8 节、[05](../design/05-scheduling-execution.md)、[09](../design/09-identity-security.md) 第 5 节、[12](../design/12-operations.md)、[15](../design/15-stack-harbor.md)、[14](../design/14-decisions.md) U-30、U-32、U-53
 
 ## 问题
 
