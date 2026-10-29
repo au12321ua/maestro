@@ -19,7 +19,7 @@
 /var/lib/maestro/app.db             业务数据库，WAL / SHM 同目录
 /var/lib/maestro/artifacts/         原始产物
 /var/lib/maestro/attachments/       附件的文件内容（blobs/）与快照清单（snapshots/）
-/var/lib/maestro/preparations/      准备原件（镜像归档，U-17；是数据，不是缓存）
+/var/lib/maestro/registry/          本机镜像仓库的存储：准备好的镜像（U-17、U-54；是数据，不是缓存）
 /var/lib/maestro/work/              Runner 工作目录，归档为产物前的暂存
 /var/lib/maestro/exports/           临时导出包
 /var/lib/maestro/home/              服务账号的家目录（Docker 客户端与 buildx 的状态）
@@ -32,13 +32,17 @@ journald                            服务标准输出 / 错误
 
 安装器把 `maestro` 加入系统 Docker 套接字所属的组。这个组约等于 root，在可信团队前提下接受（U-29）；专用账户使用自己的 rootless Docker 是以后的备选。Docker 能力只由平台使用，不挂进任务容器。
 
-管理入口只有命令行 `maestroctl`：check、install、status、start / stop / restart、logs、backup、restore、update、uninstall、version。网页不发起维护动作（U-29）。
+管理入口只有命令行 `maestroctl`：check、install、status、start / stop / restart、logs、backup、restore、update、registry-gc、uninstall、version。网页不发起维护动作（U-29）。
+
+**本机镜像仓库**（N-01、U-55）：准备好的镜像存在 Docker 官方 `registry` 镜像（按 digest 固定版本）运行的容器 `maestro-registry` 里，只绑定 `127.0.0.1`（默认端口 8425，安装时 `--registry-port` 指定，写入配置 `image_registry`），重启策略 `unless-stopped`，以服务账户身份运行、数据挂在 `/var/lib/maestro/registry`。Docker 默认信任 `127.0.0.0/8` 上的 HTTP 仓库，不改守护进程配置。`install` 与 `update` 在启动服务前创建或重建这个容器；`status` 与 `check` 报告它是否应答；`uninstall` 删除容器、保留数据，`--purge` 连数据一起删。
+
+`maestroctl registry-gc` 释放不再被任何镜像清单引用的层（物理删除数据集版本后）：把仓库切到只读（拉取照常、推送被拒），执行官方的垃圾回收，再恢复可写。有导入、首次准备或恢复在进行时拒绝（它们可能要推送），`--force` 例外；运行可以照常进行。
 
 ## 2. 安装与首次启动
 
 | 编号 | 要求 |
 | --- | --- |
-| OPS-01 | `check` 与 `install` 第一步检查 Linux / systemd、uv 与 Python 3.12～3.13、Docker 守护进程及 compose / buildx、Docker 套接字、内核 nf_tables、数据盘余量与端口；失败项给出修复动作并中止 |
+| OPS-01 | `check` 与 `install` 第一步检查 Linux / systemd、uv 与 Python 3.12～3.13、Docker 守护进程及 compose（2.24 以上，覆盖文件要用 `!reset`）/ buildx、Docker 套接字、内核 nf_tables、数据盘余量、服务与镜像仓库的端口；已安装时另查镜像仓库是否应答；失败项给出修复动作并中止 |
 | OPS-02 | 程序、配置、数据、缓存、备份分目录安装，版本目录不混入业务数据 |
 | OPS-03 | 注册 systemd 单元，生成配置与主密钥；一次性初始化令牌只在安装输出中显示一次 |
 | OPS-04 | 每次启动先对账，完成前不受理（第 4 节） |
@@ -54,7 +58,7 @@ journald                            服务标准输出 / 错误
 
 部署配置是 `/etc/maestro/config.toml`；全部配置项、默认值与取值范围以 `src/maestro/config.py` 为准，生效值见 `/api/v1/capabilities` 的 `limits`（团队策略与结构性常量也在其中）。数值分三类（U-21）：
 
-- **与机器和磁盘有关的**（监听地址、目录、执行容量、证据与导出上限、构建 / 拉取 / 保存时限、同时恢复数、Hub 并发、Runner 心跳与静默时限、磁盘水位）放在 `config.toml`。
+- **与机器和磁盘有关的**（监听地址、目录、本机镜像仓库地址、执行容量、证据与导出上限、构建 / 拉取 / 推送时限、同时恢复数、Hub 并发、Runner 心跳与静默时限、磁盘水位）放在 `config.toml`。
 - **团队策略**（PAT、运行规模、保留期、登录限流等）在数据库中按修订保存，由管理页“团队策略”修改，未修改前是内置初值（修订 0，`src/maestro/domain/limits.py`）；提供商并发在“容量”页。新值对之后的提交生效，已受理运行不变。
 - **结构性常量**（协议、分页、批大小等）写死在代码里。
 
@@ -104,7 +108,7 @@ journald                            服务标准输出 / 错误
 2. 在当前版本旁边装好新版本，服务照常运行；Harbor 与 Runner 修订不变时复用已有环境。
 3. 用旧版本的 `maestro activity` 查询在途工作：有执行中的运行，或进行中的导入、首次准备等 Operation 时拒绝更新；加 `--interrupt-running` 则让它们按重启语义中断（已得评分保留）。排队中的运行与导出不算在途，留到新版本启动后继续。
 4. 停服务，用旧版本做数据库备份（`/var/backups/maestro/<时间>-before-<新版本>`，不含业务文件）。
-5. 用新版本迁移数据库，原子切换 `current`，重写单元文件，启动并等待 `/health/ready` 为 ready。
+5. 用新版本迁移数据库，原子切换 `current`，重写单元文件，重建镜像仓库容器（数据不动），启动并等待 `/health/ready` 为 ready。
 6. 迁移、启动或就绪任何一步失败：停服务，换回旧版本与旧单元文件，用第 4 步的备份恢复数据库，启动旧版本，以非零状态退出。新版本在失败前短暂写入的数据随之丢弃。
 7. 成功后更新安装记录，保留上一个版本供手动回退，删除更早的版本和不再被引用的 Runner 环境。
 
@@ -117,13 +121,13 @@ journald                            服务标准输出 / 错误
 `maestroctl backup [--include-files] [--label …]` 调用 `maestro backup`，写入 `/var/backups/maestro/<时间>[-label]/`，服务可以继续运行：
 
 - 数据库经 SQLite 备份接口取一致快照，转为单文件并做完整性检查；不直接复制活动主库（会漏掉 WAL）。
-- 复制部署配置；带 `--include-files` 时另复制附件、准备原件与产物。`work`、`exports` 与 `cache_dir` 不备份（暂存，或可按需重建）。
+- 复制部署配置；带 `--include-files` 时另复制附件、镜像仓库的存储与产物。`work`、`exports` 与 `cache_dir` 不备份（暂存，或可按需重建）。仓库在备份时照常运行；它的文件按内容寻址，正在推送的镜像可能不完整，恢复后由首次准备或恢复重新推送。
 - 最后原子写入 `manifest.json`：格式版本、实例、数据库结构版本、所需主密钥的代次与文件名、数据库摘要、各业务目录的文件数与字节数、未包含项。没有清单的目录就是不完整的备份。
 - 主密钥不进备份集。主密钥丢失意味着加密凭据不可恢复，只能重新填写；不能用新主密钥声称恢复了旧凭据。
 
 备份不加读 pin：快照之后被回收的文件不在备份里，恢复后由启动对账标为缺失；快照不认识的文件按未索引处理。
 
-`maestroctl restore <目录> [--include-files] [--allow-missing-key]` 先停服务，单实例锁保证服务确实已停。所有检查都在动现场之前：清单与数据库摘要一致；结构版本是本版本已知的（否则要求用做出备份的版本恢复）；所需主密钥在 `master_key_dir`（否则拒绝，除非显式接受凭据失效）。然后替换数据库（清除旧 WAL / SHM），按需替换业务文件（原目录改名为 `<名>.before-restore-<时间>` 保留），用当前版本迁移；服务原来在运行时再启动并等待就绪。备份时在执行的运行由启动对账标为中断。
+`maestroctl restore <目录> [--include-files] [--allow-missing-key]` 先停服务，单实例锁保证服务确实已停。所有检查都在动现场之前：清单与数据库摘要一致；结构版本是本版本已知的（否则要求用做出备份的版本恢复）；所需主密钥在 `master_key_dir`（否则拒绝，除非显式接受凭据失效）。然后替换数据库（清除旧 WAL / SHM），按需替换业务文件（原目录改名为 `<名>.before-restore-<时间>` 保留；替换了文件时镜像仓库容器在新文件上重建），用当前版本迁移；服务原来在运行时再启动并等待就绪。备份时在执行的运行由启动对账标为中断。
 
 已知限制：只支持恢复到同一台主机；恢复后排队工作不暂停，直接继续派发。换机恢复见 [N-21](../proposals/N-21-offhost-restore.md)。
 
@@ -131,7 +135,7 @@ journald                            服务标准输出 / 错误
 
 `maestroctl uninstall` 停止并删除服务单元、`/opt/maestro` 与命令链接，保留配置、主密钥、数据、缓存、备份与账户；`--remove-cache` 另删缓存。
 
-`--purge` 先列出各目录的大小与影响、本实例的 Docker 容器 / 网络 / 镜像数（按 `io.maestro.instance_id` 标签和 `maestro-prep/<实例>` 仓库名查找）与账户，不删除；只有带上 `--confirm <实例编号>` 才执行。删除只针对布局里固定的目录，拒绝符号链接和布局之外的路径；不清理全机 Docker 资源，不动 journald。
+`--purge` 先列出各目录的大小与影响、本实例的 Docker 容器 / 网络 / 卷 / 镜像数（按 `io.maestro.instance_id` 标签和 `<仓库地址>/maestro-prep/<实例>` 镜像名查找）与账户，不删除；只有带上 `--confirm <实例编号>` 才执行。删除只针对布局里固定的目录，拒绝符号链接和布局之外的路径；不清理全机 Docker 资源，不动 journald。
 
 ## 8. 可观测性
 

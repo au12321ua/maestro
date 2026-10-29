@@ -48,11 +48,14 @@ Harbor 装在单独的 Runner 环境里，服务本身不加载 Harbor。需要 
 ```bash
 (cd runner && uv sync --locked)                       # 锁定 Harbor 0.24.0
 echo "runner_python = \"$PWD/runner/.venv/bin/python\"" >> "$root/config.toml"
+# Prepared images are kept in a local image registry (maestroctl runs it on real hosts).
+docker run -d --name maestro-dev-registry -p 127.0.0.1:8425:5000 \
+  -v "$root/data/registry:/var/lib/registry" -e REGISTRY_STORAGE_DELETE_ENABLED=true registry:3.0.0
 uv run maestro --config "$root/config.toml" dev-local-dataset oracle tests/maestro/fixtures/harbor-tasks
 uv run maestro --config "$root/config.toml" serve --port 8420
 ```
 
-`dev-local-dataset` 是开发用的隐藏命令：在服务停止时把本地任务目录当作数据源，走一遍与 Hub 相同的导入和首次准备（真实 Docker 构建并保存原件）。正式使用时，管理员在“数据集”页从 Hub 搜索并添加版本；Hub 访问需要网络，私有数据集需要在管理页添加 `hub_token` 凭据并在添加时选择。这里用的是 Oracle 测试模式：执行任务自带的参考解法，不调用模型；模型运行需要管理员先在管理页添加模型凭据、模型配置与 Harness 版本。运行页能看到每个试次的步骤、耗时和实时日志。
+`dev-local-dataset` 是开发用的隐藏命令：在服务停止时把本地任务目录当作数据源，走一遍与 Hub 相同的导入和首次准备（真实 Docker 构建，推入本机镜像仓库；先按下文启动一个仓库容器）。正式使用时，管理员在“数据集”页从 Hub 搜索并添加版本；Hub 访问需要网络，私有数据集需要在管理页添加 `hub_token` 凭据并在添加时选择。这里用的是 Oracle 测试模式：执行任务自带的参考解法，不调用模型；模型运行需要管理员先在管理页添加模型凭据、模型配置与 Harness 版本。运行页能看到每个试次的步骤、耗时和实时日志。
 
 `cookie_secure = false` 只用于本机 HTTP；对外部署由反向代理提供 HTTPS，并保持默认的 `true`。
 
@@ -65,7 +68,7 @@ uv run maestro --config "$root/config.toml" serve --port 8420
 | `artifact_max_files` / `artifact_file_max_mb` / `artifact_attempt_max_mb` | 500 / 64 / 1024 | 每次执行尝试保留的证据：文件数、单个文件、总量；超出的文件在运行页标为跳过 |
 | `export_max_gb` | 10 | 单个批量导出包的上限；小磁盘上应同时调低 |
 | `build_timeout_default_sec` / `build_timeout_max_sec` | 600 / 3600 | 准备环境时 docker 构建的时限：任务没有声明时用默认，任务自己声明的不超过上限 |
-| `pull_timeout_sec` / `save_timeout_sec` | 1800 / 1800 | 拉取镜像、导出与载入准备原件的时限 |
+| `pull_timeout_sec` / `push_timeout_sec` | 1800 / 1800 | 拉取镜像、推入本机镜像仓库的时限 |
 | `restore_slots` / `hub_runner_slots` | 2 / 4 | 同时进行的准备或恢复数；同时运行的 Hub 检索与下载进程数 |
 | `runner_heartbeat_sec` / `runner_silence_sec` | 10 / 120 | Runner 的心跳间隔，以及多久没有任何动静就视为失联；归档很大的目录会阻塞心跳，在慢盘上调大归档上限时请同时调大静默时限 |
 

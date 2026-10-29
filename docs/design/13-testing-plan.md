@@ -16,7 +16,7 @@ UI 文案与纯样式变更不写低价值单元测试；优先验证会导致�
 | --- | --- | --- |
 | 单元与服务测试 | 领域规则（配置合并、摘要、状态迁移、计分与覆盖率）、仓储与并发（幂等、额度、准入竞争、共享恢复租约与等待者、pin 与回收、终态提交）、API 权限与契约、SDK | `tests/maestro/test_*.py`，默认运行。每个测试用全新的临时 data / cache / 主密钥目录（`conftest.py`），四个边界用 `src/maestro/testing/fakes.py` 的替身；Runner 协议用 `tests/maestro/fake_runner.py` 脚本化的假 Runner |
 | Runner 单元 | 网络收紧、附件安装、Harness 适配 | `test_runner_*.py`、`test_fix_m5_review.py` 等；需要 `runner/` 的 uv 环境，没装时跳过 |
-| 真实 Docker | Oracle 全链路、准备原件与恢复、取消与杀进程后的清理、网络收紧、附件在试次容器内安装 | `test_harbor_docker.py`，需 `MAESTRO_DOCKER_TESTS=1`；只用本地 fixture 任务与已有基础镜像，不调用模型和 Hub；每个测试用独立实例标签与 `maestro-prep/<实例>` 仓库名，结束时核对清空 |
+| 真实 Docker | Oracle 全链路、镜像在本机仓库中的保存与恢复、独立验证器与 Compose 辅助服务、取消与杀进程后的清理、网络收紧、附件在试次容器内安装 | `test_harbor_docker.py`，需 `MAESTRO_DOCKER_TESTS=1`；只用本地 fixture 任务与已有基础镜像，不调用模型和 Hub（辅助服务拉取 `ubuntu:22.04` 时会问 Docker Hub）；每个模块启动一个临时镜像仓库容器，每个测试用独立实例标签与 `<仓库>/maestro-prep/<实例>` 镜像名，结束时核对清空 |
 | 真实 Hub | 目录调用、失败分类、导入与首次准备 | `test_hub_live.py`，需 `MAESTRO_HUB_TESTS=1`；匿名读取公开数据集 |
 | 真实模型冒烟 | Terminus-2、OpenCode（1.x 与 2.x）、Codex、Claude Code 各一个试次 | `test_harbor_docker.py -k real_model`，需 `MAESTRO_MODEL_TESTS=1` 及模型地址、key 文件；Codex 与 Claude Code 另需各自的 Responses / Messages 地址，并在 setup 中真实安装（见交接）；会产生费用，须核对当前授权与预算 |
 | 安装运维 | 安装、更新、失败回退、备份恢复、卸载与清除 | `test_install.py`，需 `MAESTRO_INSTALL_TESTS=1`；用隐藏参数 `--test-root` 把布局放进临时目录，以 systemd 用户单元运行；规则部分在 `test_maestroctl.py`、`test_backup.py`，默认运行 |
@@ -82,7 +82,7 @@ UI 文案与纯样式变更不写低价值单元测试；优先验证会导致�
 
 预期：两条请求均可受理，无管理员操作；同键同轮仅一个拉取 / 构建，取消不影响另一个等待者；按同一 digest 恢复且不重复预留构建容量。准入和 config_digest 不变；重跑复用缓存，每个被受理运行只扣一次额度。
 
-覆盖：`test_preparation.py`、`test_sdk.py`（替身）；`test_harbor_docker.py`（真实镜像从准备原件恢复）。
+覆盖：`test_preparation.py`、`test_sdk.py`（替身）；`test_harbor_docker.py`（真实镜像从本机仓库拉回同一 digest，仓库丢失后可复现的构建得到同一 digest）。
 
 ### E2E-DS-05 暂态失败与确切内容不可得
 
@@ -91,6 +91,16 @@ UI 文案与纯样式变更不写低价值单元测试；优先验证会导致�
 预期：暂态错误按预算重试，失败记录归属试次且准入保持；鉴权错误给出凭据处理入口，不标永久缺失。确切内容不可得阻止新提交与原配置重跑，返回 expected_digest；受理前拒绝不扣额度，受理后发现则形成试次错误。不同摘要不被接受，本地确切副本仍在时可以执行。
 
 覆盖：`test_preparation.py`、`test_acceptance_p0.py`、`test_fix_prep_service.py`、`test_fix_prep_docker.py`（错误分类）。
+
+### E2E-DS-06 独立验证器与 Compose 辅助服务
+
+前提：本地 fixture 任务覆盖三种独立验证器镜像来源（作者给的镜像、`tests/` 下构建、照主环境再起一份），以及拉取与构建的辅助服务、验证器侧的服务、一个卷；两个任务的验证器定义相同。
+
+步骤：导入并首次准备 → 用 Oracle 运行全部任务 → 另起一次运行，在验证阶段强杀 Runner。
+
+预期：每项必要镜像都在首次准备中做好，相同定义只做一次；运行期间没有构建与拉取；每个容器（含独立验证器）都带平台标签，结束后容器、网络、卷清空；强杀后按标签清理也找到验证容器及其服务与卷，清理确认完成。无法准备的 Compose 写法（变量无默认值、像秘密的变量名、改变内容的构建选项、上下文越界、外部资源）首次准备失败并指出位置、不含值。
+
+覆盖：`test_preparation_images.py`（检查、资源之和、Runner 的 override 与 Harbor 接入点）；`test_harbor_docker.py`（真实 Docker）。
 
 ## 5. 故事二：运行提交与执行
 

@@ -72,12 +72,12 @@
 | verify | no-network |
 
 - 只收紧模型运行；Oracle 是测试模式，按作者设置执行（`execution/harbor.py` 的 `_network`）。
-- 每阶段取作者与平台中更严的一方，allowlist 取交集。Harbor 的 `extra_allowed_hosts` 只能放宽，所以 Runner 改写任务私有副本的 `task.toml`，缓存原件不变，生效计划记为 `network_plan` 事件。
+- 每阶段取作者与平台中更严的一方，allowlist 取交集。Harbor 的 `extra_allowed_hosts` 只能放宽，所以 Runner 改写任务私有副本的 `task.toml`，缓存的任务材料不变，生效计划记为 `network_plan` 事件。独立验证器的容器在验证阶段同样按收紧后的策略运行。
 - Runner 包装 Harbor 的策略切换：受限后不再回到 public（Harbor 会在阶段之间重新放开），并重置未经出口代理的 TCP 连接。
 - 容器内调模型的 Harness（OpenCode、Codex、Claude Code）只在 Agent 运行期间拿到密钥：Runner 用文件传输把它放进容器，权限 400、属主为任务的 Agent 用户，结束后、验证前删除；不经命令行或环境变量（`docker exec -e` 的值本机进程列表人人可见）。OpenCode 经配置读密钥文件，Claude Code 经 `apiKeyHelper` 读，Codex 拿到复制进去的 `auth.json`。
-- 不降级：作者 compose 中自带网络的服务会绕过 sidecar，运行以 NETWORK_POLICY_UNSUPPORTED 拒绝；主机不支持 nftables 时配置解析即给出同名 blocker，Runner 启动前再查一次。
+- 不降级：作者 compose（`environment/` 与独立验证器的 `tests/`）中自带网络的服务会绕过 sidecar，运行以 NETWORK_POLICY_UNSUPPORTED 拒绝；主机不支持 nftables 时配置解析即给出同名 blocker，Runner 启动前再查一次。
 
-容器不挂载 Docker socket、数据库、主密钥或宿主目录，唯一例外是本试次的 agent / verifier / artifacts 输出目录（U-16）；附件与任务材料复制进容器。附件 bootstrap 在所属试次容器内各自安装，失败不影响其他试次或准入。平台下发 CPU 与内存限制，不用 privileged。日志与产物经 `security/redaction.py` 基本脱敏（已知秘密值、Maestro 令牌、认证头与键值、提供商 key 形态、URL 密码）。
+容器不挂载 Docker socket、数据库、主密钥或宿主目录，唯一例外是本试次的 agent / verifier / artifacts 输出目录（U-16）；附件与任务材料复制进容器。附件 bootstrap 在所属试次容器内各自安装，失败不影响其他试次或准入。平台给每个容器下发 CPU 与内存限制（辅助服务没有声明时用团队默认），不用 privileged。容器、网络、作者声明的卷（含独立验证器与辅助服务的）都带平台标签，取消或崩溃后按标签清理（[15](15-stack-harbor.md) 第 7 节）。日志与产物经 `security/redaction.py` 基本脱敏（已知秘密值、Maestro 令牌、认证头与键值、提供商 key 形态、URL 密码）。
 
 已知限制：
 

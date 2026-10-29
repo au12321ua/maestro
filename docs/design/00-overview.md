@@ -37,7 +37,7 @@ Maestro 是自托管的 Agent 评测平台：在本机 Docker 中用 Harbor 执�
 
 | 模块 | 提供 | 不提供 |
 | --- | --- | --- |
-| 数据集（[02](02-datasets-preparation.md)） | Hub 搜索与导入、不可变版本、管理员首次准备与准入、局部可提交、运行内共享恢复 | Hub 之外的来源（N-19）；独立验证环境与辅助服务（N-01）；跨任务共享镜像（N-14） |
+| 数据集（[02](02-datasets-preparation.md)） | Hub 搜索与导入、不可变版本、管理员首次准备与准入、局部可提交、运行内共享恢复；独立验证环境与 Compose 辅助服务的镜像由平台准备，存进本机镜像仓库、任务间共享 | Hub 之外的来源（N-19）；多步骤任务的步骤环境 |
 | 配置（[03](03-configuration-attachments.md)） | 团队模型配置与凭据、Harness（Terminus-2、OpenCode 1.x 与 2.x、Codex、Claude Code）与 Oracle 测试模式、附件、分层解析与内容快照 | 通用容器内 Harness 如 Codex、Claude Code（N-09）；个人模型 key |
 | 提交（[04](04-plans-submission.md)） | 方案、单次与批次提交、幂等、PAT 额度、重跑与修改后运行、取消 | 实验矩阵生成；private 实验 |
 | 执行（[05](05-scheduling-execution.md)） | 按受理顺序领取（大运行不挡放得下的小运行）、资源准入、重启对账、环境清理 | 试次粒度调度（[N-13](../proposals/N-13-trial-granularity.md)）；公平调度；多机 Worker；GPU；金额或 token 预算 |
@@ -49,7 +49,7 @@ Maestro 是自托管的 Agent 评测平台：在本机 Docker 中用 Harbor 执�
 
 ## 4. 规模与容量
 
-按约 15 人、活跃 2～3 人的团队设计：同时执行约 10 个试次，单试次通常 1 核、2 GB、产物不超过 100 MB，不需要独立的队列集群。并发受运行并发、主机槽位与 CPU / 内存、提供商并发共同约束（[05](05-scheduling-execution.md) 第 3 节）；上限在团队策略（管理员网页）与 `src/maestro/config.py` 中。一周 1000 个试次的产物约 100 GB，镜像原件、准备缓存和导出包另计；主机还须为系统、数据库、出口控制 sidecar 和镜像构建留余量。
+按约 15 人、活跃 2～3 人的团队设计：同时执行约 10 个试次，单试次通常 1 核、2 GB、产物不超过 100 MB，不需要独立的队列集群。并发受运行并发、主机槽位与 CPU / 内存、提供商并发共同约束（[05](05-scheduling-execution.md) 第 3 节）；上限在团队策略（管理员网页）与 `src/maestro/config.py` 中。一周 1000 个试次的产物约 100 GB，本机镜像仓库、准备缓存和导出包另计；主机还须为系统、数据库、出口控制 sidecar 和镜像构建留余量。
 
 已知限制：10 试次并行压测未做，列表与详情请求 p95 小于 1 秒只是目标；镜像构建的 CPU / 内存不计入主机容量（[02](02-datasets-preparation.md)）。
 

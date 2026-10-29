@@ -21,7 +21,6 @@
 
 | 编号 | 提案 | 状态 | 要点 |
 | --- | --- | --- | --- |
-| N-01 | [独立验证环境、Compose 辅助服务与按内容寻址的镜像存储](N-01-verifier-compose-images.md)（吸纳 N-14） | 已确认 | 三种独立验证器镜像来源与辅助服务都由平台准备，运行时不构建不拉取；准备结果改为镜像清单，存进本机镜像仓库按层去重（U-54），相同定义只构建一次；Harbor 不把 override 传给独立验证容器（已实测），由 Runner 补回。已定：辅助服务缺资源上限给默认值、容量按总和、影响镜像的变量冻结、不兼容全部重新准备（U-53）。本机实测已做，剩现场主机核对。`fix/separate-verifier` 只作参考（U-32） |
 | N-05 | 产物按层级打包下载（已定） | 想法 | 运行页按 任务 → 试次 → 执行尝试 显示目录树，每层可下载 zip；只对已结束、已取消或已中断的运行提供，点击时生成并流式返回，不预先存放；复用导出的大小上限与脱敏 |
 | N-07 | 数据集版本操作（已定三处都补） | 想法 | (a) 已有数据集上直接“添加新版本 / 检查上游更新”；(b) 已选的运行配置或方案中切换同一数据集的另一个版本；(c) 新建运行页先选数据集再选版本 |
 | N-24 | [CI 稳定：剩下的主机一侧](N-24-ci-stability.md) | 实施中 | 本仓库的部分已合入（时限、重试、可选代理、去掉重复检查、并行 pytest、自动跳过只改文档的推送）。剩下的 CI 镜像与依赖缓存卷放 `maestro-site`、由用户在主机上实施（U-43） |
@@ -51,11 +50,12 @@
 - 公平调度：2～3 名活跃成员时意义不大。
 - [N-21 异机备份恢复](N-21-offhost-restore.md)：暂缓。
 - N-12 带排空的更新与维护模式：暂缓（U-48）。目前只有一名使用者，随时可以挑空闲时更新，不是卡点。成为卡点时先做最小版本：暂停派发（排队照常受理），`update` / `restart` 等在途运行结束后走现有流程再恢复派发；更新命令另需防 SSH 断线。
-- N-14 跨任务共享镜像：并入 N-01（U-53）。
+- N-14 跨任务共享镜像：并入 N-01（U-53），已完成。
 - CLI 与 MCP（U-11）、事件流与 webhook：暂不提供。
 
 ### 已完成
 
+- N-01 独立验证环境、Compose 辅助服务与本机镜像仓库（吸纳 N-14；U-53～U-55）：三种独立验证器镜像来源与 `environment/`、`tests/` 中 `main` 以外的 Compose 服务都由平台准备，执行时不构建不拉取；影响镜像的 Compose 变量按默认值冻结；准备结果是镜像清单，存进 `maestroctl` 以容器运行的本机镜像仓库，按 digest 拉回，相同定义在任务间只做一次，`registry-gc` 释放空间；Runner 按环境目录写 override 并在 Harbor 创建环境处补上（Harbor 有意不把 Job 的覆盖传给独立验证器，向上游提议留到开发稳定后）；试次资源为所有容器之和，未声明资源的辅助服务默认 1 CPU、1 GB；不兼容，迁移 0006 把所有任务重置为待准备。现场主机的存储驱动与镜像共用情况未核对。结论并入 [02](../design/02-datasets-preparation.md)，以及 [00](../design/00-overview.md)、[03](../design/03-configuration-attachments.md)、[05](../design/05-scheduling-execution.md)、[07](../design/07-artifacts-export.md)、[09](../design/09-identity-security.md)、[12](../design/12-operations.md)、[15](../design/15-stack-harbor.md) 与 [13](../design/13-testing-plan.md) 的 E2E-DS-06。
 - N-06 附件增量发布（0.4.0 核心功能；U-50、U-51，取代 U-49）：附件改为按内容寻址的快照，只上传服务端缺少的文件，版本号改为可选、不能改的标签，可指明父快照并分叉；SDK 按目录发布与取回（`fetch` 只下载差异），网页按文件夹发布、查看文件、文件级差异与整包下载；不再接受 tar / zip 包，不做服务端 Git 获取与 Git 来源记录；旧附件由迁移 0005 清空。结论并入 [03](../design/03-configuration-attachments.md) 第 6 节，以及 [01](../design/01-domain-model.md)、[07](../design/07-artifacts-export.md)、[08](../design/08-collections-comparison.md)、[10](../design/10-api-sdk-cli.md)、[11](../design/11-web-ui.md)、[12](../design/12-operations.md) 与 [13](../design/13-testing-plan.md) 的 E2E-RUN-05。
 - N-11 集合、比较与分析快照（0.4.0 主要功能；U-46、U-47）：临时比较自动核对哪些维度相同、哪些不同；按失败原因剔除外部失败，没剔除的算 0 分，剔除后没有有效试次的任务从所有运行一起去掉；集合建立时选场景，定下可变与固定的维度，只收符合的运行，规格不能改（复制成新集合），也能直接用来提交；排行榜与矩阵两种摆法；快照冻结整张表，结论由人或 Agent 另写；重跑不合并。结论并入 [08](../design/08-collections-comparison.md)，以及 [01](../design/01-domain-model.md)、[04](../design/04-plans-submission.md)、[09](../design/09-identity-security.md)、[10](../design/10-api-sdk-cli.md)、[11](../design/11-web-ui.md) 第 8 节与 [13](../design/13-testing-plan.md) 的 E2E-OUT-02、E2E-OUT-03。
 - N-03 网页布局（合并 N-04；U-45）：侧边栏导航（管理页分区并入，可收起，窄屏为抽屉）；长任务名有共同前缀时省略中间、悬停显示全名、可复制；网格格子可收窄，长日志与长路径不再撑宽页面；管理页与设置页表单统一为标签一列、输入框一列；执行页去掉产物列表，改为跳到按试次筛选的产物页。结论并入 [11](../design/11-web-ui.md) 第 1、3 节。
