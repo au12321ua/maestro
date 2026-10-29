@@ -181,6 +181,28 @@ def run_artifacts(
 
 
 @router.get(
+    "/runs/{run_id}/artifacts/archive",
+    tags=["artifacts"],
+    responses={200: {"content": {"application/zip": {}}}},
+)
+def download_run_archive(
+    run_id: str,
+    request: Request,
+    task_key: str | None = None,
+    trial_id: str | None = None,
+    attempt_id: str | None = None,
+    _: Principal = Depends(principal),
+):
+    """The run's artifacts as a zip built while it streams, or only one task's, trial's
+    or attempt's (the narrowest given). Ended runs only; at most ``export_max_gb``.
+    manifest.json, written last, lists every file and the ones left out with why."""
+    name, chunks = maestro(request).artifact_archives.open(run_id, task_key, trial_id, attempt_id)
+    return StreamingResponse(
+        chunks, media_type="application/zip", headers={"Content-Disposition": attachment(name)}
+    )
+
+
+@router.get(
     "/artifacts/{artifact_id}/download",
     tags=["artifacts"],
     responses={200: {"content": {"application/octet-stream": {}}}},

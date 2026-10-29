@@ -103,6 +103,21 @@ test("setup, run, PAT, admin and invitation flow", async ({ page, browser }) => 
   await expect(page.getByTestId("task-summary-row")).toHaveCount(2);
   await page.screenshot({ path: `${shots}/run-summary.png`, fullPage: true });
 
+  // N-05: artifacts as a tree; the run and each task, trial and attempt download as a zip.
+  await page.getByRole("tab", { name: /^产物/ }).click();
+  const wholeRun = page.getByRole("link", { name: "下载整个运行的产物（zip）" });
+  await expect(wholeRun).toBeVisible();
+  await page.getByRole("button", { name: /mul-01/ }).click();
+  await page.getByRole("button", { name: /试次 #1/ }).first().click();
+  await expect(page.getByRole("link", { name: /^下载尝试 1 的产物/ }).first()).toBeVisible();
+  for (const link of [wholeRun, page.getByRole("link", { name: /^下载试次 #1 的产物/ }).first()]) {
+    const zip = await page.request.get(new URL((await link.getAttribute("href"))!, page.url()).href);
+    expect(zip.status()).toBe(200);
+    expect(zip.headers()["content-type"]).toBe("application/zip");
+    expect((await zip.body()).subarray(0, 2).toString()).toBe("PK");
+  }
+  await page.screenshot({ path: `${shots}/run-artifacts.png`, fullPage: true });
+
   // The workbench: my recent runs with their score coverage, pending items, system status.
   await nav(page, "工作台").click();
   await expect(page.getByRole("heading", { name: "工作台" })).toBeVisible();

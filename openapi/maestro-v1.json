@@ -22309,6 +22309,96 @@
         ]
       }
     },
+    "/api/v1/runs/{run_id}/artifacts/archive": {
+      "get": {
+        "description": "The run's artifacts as a zip built while it streams, or only one task's, trial's\nor attempt's (the narrowest given). Ended runs only; at most ``export_max_gb``.\nmanifest.json, written last, lists every file and the ones left out with why.",
+        "operationId": "download_run_archive",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "task_key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Task Key"
+            }
+          },
+          {
+            "in": "query",
+            "name": "trial_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Trial Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "attempt_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Attempt Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "application/zip": {}
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Download Run Archive",
+        "tags": [
+          "artifacts"
+        ]
+      }
+    },
     "/api/v1/runs/{run_id}/cancel": {
       "post": {
         "operationId": "cancel_run",

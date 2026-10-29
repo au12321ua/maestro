@@ -154,6 +154,12 @@ def test_story_two_agent_runs_a_complete_experiment(service, version_id, executo
         output = next(d for d in saved if d.artifact.kind == "output")
         assert Path(output.path).is_file()
         assert Path(output.path).is_relative_to(tmp_path / "evidence" / "trials")
+        archive = agent.runs.download_archive(
+            run.id, tmp_path / "trial.zip", trial_id=output.artifact.trial_id
+        )
+        with zipfile.ZipFile(archive) as opened:
+            names = opened.namelist()
+        assert names[-1].endswith("/manifest.json") and len(names) > 1
 
         # After losing all local state the agent finds its run again.
         assert [r.id for r in agent.runs.find("agent-round-1")] == [run.id]
@@ -457,6 +463,7 @@ SDK_METHODS = {
     "cancel_run": "runs.cancel",
     "delete_run": "runs.delete",
     "run_artifacts": "runs.artifacts",
+    "download_run_archive": "runs.download_archive",
     "preview_batch": "batches.preview",
     "submit_batch": "batches.submit",
     "get_batch": "batches.get",

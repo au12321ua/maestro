@@ -40,9 +40,7 @@ import {
 } from "@/components/common";
 import { API, api, errorText } from "@/lib/api";
 import {
-  ARTIFACT_REASON,
   ARTIFACT_STATE,
-  ARTIFACT_STATUS,
   ATTEMPT_STATE,
   CLEANUP_STATE,
   QUEUE_REASON,
@@ -73,6 +71,7 @@ import type {
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { SetupNetworkRevision } from "@/pages/admin/SetupNetworkTab";
+import { ArtifactTree } from "@/components/ArtifactTree";
 import { AddToCollection } from "@/components/AddToCollection";
 
 const TABS = new Set(["execution", "results", "config", "artifacts"]);
@@ -466,7 +465,9 @@ function RunDetailView({ runId }: { runId: string }) {
           {!artifacts && <Loading />}
           {artifacts && artifacts.length === 0 && <EmptyNote>暂无产物。</EmptyNote>}
           {artifacts && artifacts.length > 0 && (
-            <ArtifactTable
+            <ArtifactTree
+              runId={run.id}
+              ended={!active}
               artifacts={artifacts}
               trials={trials ?? []}
               trialId={params.get("artifacts_of") ?? ""}
@@ -1018,144 +1019,6 @@ function LogView({ artifact, live }: { artifact: Artifact; live: boolean }) {
           {shown.join("\n") || "（空）"}
         </pre>
       )}
-    </div>
-  );
-}
-
-function artifactReason(artifact: Artifact): string | null {
-  if (!artifact.status_reason) return null;
-  return ARTIFACT_REASON[artifact.status_reason] ?? artifact.status_reason;
-}
-
-function ArtifactLink({ artifact }: { artifact: Artifact }) {
-  const name = artifact.relative_path.split("/").pop() || artifact.relative_path;
-  if (artifact.status !== "available") {
-    const reason = artifactReason(artifact);
-    return (
-      <span className="text-muted-foreground" title={`${artifact.relative_path}${reason ? `：${reason}` : ""}`}>
-        {name}（{label(ARTIFACT_STATUS, artifact.status)[0]}）
-      </span>
-    );
-  }
-  return (
-    <a
-      className="inline-flex items-center gap-1 text-primary hover:underline"
-      href={`${API}/artifacts/${artifact.id}/download`}
-      title={artifact.relative_path}
-    >
-      <Download className="size-3" />
-      {name}
-    </a>
-  );
-}
-
-/** All of a run's artifacts, or one trial's (``trialId``, kept in the URL). */
-function ArtifactTable({
-  artifacts,
-  trials,
-  trialId,
-  onTrialId,
-  onDelete,
-}: {
-  artifacts: Artifact[];
-  trials: Trial[];
-  trialId: string;
-  onTrialId: (trialId: string) => void;
-  onDelete?: (artifact: Artifact) => Promise<void>;
-}) {
-  const trialName = new Map(trials.map((t) => [t.id, `${t.task_key} #${t.repetition_index}`]));
-  const prefix = commonPrefix(trials.map((t) => t.task_key));
-  const shown = trialId ? artifacts.filter((a) => a.trial_id === trialId) : artifacts;
-  return (
-    <div className="grid gap-2">
-      <div className="flex min-w-0 items-center gap-2 text-sm">
-        <label htmlFor="artifacts-of" className="shrink-0 text-muted-foreground">
-          试次
-        </label>
-        <select
-          id="artifacts-of"
-          className="h-8 min-w-0 max-w-full rounded-md border border-input bg-background px-2 text-sm"
-          value={trialId}
-          onChange={(e) => onTrialId(e.target.value)}
-        >
-          <option value="">全部（{artifacts.length}）</option>
-          {trials.map((t) => (
-            <option key={t.id} value={t.id}>
-              {trialName.get(t.id)}（{artifacts.filter((a) => a.trial_id === t.id).length}）
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>文件</TableHead>
-              <TableHead>类型</TableHead>
-              <TableHead>试次</TableHead>
-              <TableHead>大小</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead>到期</TableHead>
-              {onDelete && <TableHead />}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {shown.map((a) => (
-              <TableRow key={a.id}>
-                <TableCell className="max-w-[28rem]">
-                  <ArtifactLink artifact={a} />
-                  <div className="break-all font-mono text-xs text-muted-foreground">
-                    {a.relative_path}
-                  </div>
-                </TableCell>
-                <TableCell className="text-xs">{a.kind}</TableCell>
-                <TableCell className="max-w-[16rem] text-xs">
-                  {a.trial_id ? (
-                    trialName.has(a.trial_id) ? (
-                      <LongName value={trialName.get(a.trial_id)!} prefix={prefix} copy={false} />
-                    ) : (
-                      shortId(a.trial_id)
-                    )
-                  ) : (
-                    "运行级"
-                  )}
-                </TableCell>
-                <TableCell className="text-xs tabular-nums">{fmtBytes(a.size_bytes)}</TableCell>
-                <TableCell>
-                  <StatusPill value={label(ARTIFACT_STATUS, a.status)} />
-                  {artifactReason(a) && (
-                    <div className="mt-1 text-xs text-muted-foreground">{artifactReason(a)}</div>
-                  )}
-                </TableCell>
-                <TableCell className="text-xs">
-                  {a.expires_at ? (
-                    <span className={cn(a.status === "expired" && "text-amber-800")}>
-                      {fmtTime(a.expires_at)}
-                      {a.status === "expired" && "（已过期）"}
-                    </span>
-                  ) : (
-                    <span className="text-muted-foreground">试次结束后起算</span>
-                  )}
-                </TableCell>
-                {onDelete && (
-                  <TableCell className="text-right">
-                    {a.status !== "deleted" && a.status !== "deleting" && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        aria-label={`删除产物 ${a.relative_path}`}
-                        onClick={() => void onDelete(a)}
-                      >
-                        删除
-                      </Button>
-                    )}
-                  </TableCell>
-                )}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
     </div>
   );
 }

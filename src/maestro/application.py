@@ -13,6 +13,7 @@ from maestro.execution.attachments import AttachmentStore
 from maestro.execution.materials import TaskMaterials
 from maestro.security.master_key import MasterKeys
 from maestro.services.accounts import Accounts
+from maestro.services.artifact_archive import ArtifactArchives
 from maestro.services.artifacts import Artifacts
 from maestro.services.attachments import Attachments
 from maestro.services.capacity import Capacity, HostCapacity
@@ -58,6 +59,7 @@ class Maestro:
     collections: Collections
     snapshots: Snapshots
     artifacts: Artifacts
+    artifact_archives: ArtifactArchives
     exports: Exports
     recycle: Recycle
     maintenance: Maintenance
@@ -153,6 +155,7 @@ class Maestro:
             collections=runs.collections,
             snapshots=Snapshots(db, runs.collections),
             artifacts=artifacts,
+            artifact_archives=ArtifactArchives(db, store, settings.export_max_bytes),
             exports=exports,
             recycle=Recycle(db, store, materials, exports, environment, attachment_store),
             maintenance=Maintenance(artifacts, exports, attachments, runs),

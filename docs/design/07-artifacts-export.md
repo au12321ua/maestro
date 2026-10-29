@@ -1,6 +1,6 @@
 # 07 产物存储与导出
 
-导航：[总览](00-overview.md) · 依赖：[评分](06-results-scoring.md)、[权限](09-identity-security.md)、[运维](12-operations.md) · 相关代码：`src/maestro/boundaries/storage.py`、`src/maestro/services/artifacts.py`、`src/maestro/services/exports.py`、`src/maestro/services/maintenance.py`、`src/maestro/services/recycle.py`
+导航：[总览](00-overview.md) · 依赖：[评分](06-results-scoring.md)、[权限](09-identity-security.md)、[运维](12-operations.md) · 相关代码：`src/maestro/boundaries/storage.py`、`src/maestro/services/artifacts.py`、`src/maestro/services/artifact_archive.py`、`src/maestro/services/exports.py`、`src/maestro/services/maintenance.py`、`src/maestro/services/recycle.py`
 
 ## 1. 职责与需求
 
@@ -59,6 +59,15 @@
 
 不可读时：pending 返回 409 ARTIFACT_NOT_READY；expired / deleting 返回 410 ARTIFACT_EXPIRED，索引仍可查；已删除返回 410 ARTIFACT_DELETED；failed / unavailable 返回 409 ARTIFACT_UNAVAILABLE 及原因。已打开的读取即使文件随后被回收也能完成。
 
+### 按层级打包下载
+
+已结束（finished / cancelled / interrupted）的运行可以把整个运行、一个任务、一个试次或一次执行尝试的产物打成 zip 下载（`GET /runs/{id}/artifacts/archive`，可带 `task_key`、`trial_id` 或 `attempt_id`，按给出的最窄一层），运行未结束时返回 409 RUN_ACTIVE。所有登录主体（含读 PAT）都可用。
+
+- 点击时边读边写、流式返回，不写临时文件、不建 Operation，也没有 `Content-Length`。可下载文件的总大小超过 `export_max_gb` 时在传输前返回 413 ARCHIVE_TOO_LARGE，改下更窄的一层或用批量导出。
+- 包内路径为 `<运行名>-<运行 ID 末 8 位>/tasks/<任务键>/trial-<重复序号>/attempt-<序号>/<相对路径>`，运行级文件在 `run/` 下；各段按导出的规则安全化，安全化后重名加稳定后缀，相对路径逐段安全化，不能逃出所在目录。
+- 末尾的 `manifest.json` 列出范围、每个文件的 artifact_id 与摘要，以及没打进包的文件（过期、删除、保存失败，或打包途中被回收的 STORAGE_CONTENT_MISSING）与原因。配置、结果与汇总不在包里，那些属于批量导出。
+- 文本在写入时已脱敏，打包只复制已存的文件。不加读 pin：已结束运行的文件只会因到期或管理员删除而消失，途中遇到时跳过并记入 manifest，不中断响应。
+
 证据不设审计门（U-10）：日志、阶段详情与产物经基本脱敏后即可查看，运行中也可查看，不因疑似残留而扣留。确认的泄露按凭据轮换处理，管理员可删除对应产物。
 
 ## 6. 批量导出
@@ -108,6 +117,7 @@ export-<id>/
 ## 9. 验收
 
 - 批量导出包含成功、未评分、已过期三种试次，manifest 准确标记，目录能映射回原运行。
+- 已结束运行的四层 zip 与单个下载内容一致，过期与被删的文件列入包内 manifest；未结束的运行拒绝打包，超过上限在传输前拒绝。
 - 文件保存失败但评分已确认，显示评分可用、产物部分失败，评分不回退。
 - 回收与下载、导出同时发生时，读 pin 有界保护且最后释放，无长期孤立文件。
 - 保留期满后清理产物，配置、评分、索引、来源与操作记录仍可查询。

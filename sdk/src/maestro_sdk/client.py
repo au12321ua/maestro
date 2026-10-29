@@ -856,6 +856,21 @@ class Runs(_Resource):
     def artifacts(self, run_id: str, *, trial_id: str | None = None) -> list[models.Artifact]:
         return self._c._get(f"runs/{run_id}/artifacts", list[models.Artifact], trial_id=trial_id)
 
+    def download_archive(
+        self,
+        run_id: str,
+        destination: str | os.PathLike[str],
+        *,
+        task_key: str | None = None,
+        trial_id: str | None = None,
+        attempt_id: str | None = None,
+    ) -> Path:
+        """Save the run's artifacts as one zip (``destination`` is the file path), or only
+        one task's, trial's or attempt's. Ended runs only; its manifest.json lists the
+        files left out and why."""
+        params = _query({"task_key": task_key, "trial_id": trial_id, "attempt_id": attempt_id})
+        return _save(self._c, f"runs/{run_id}/artifacts/archive", Path(destination), params)
+
     def download_artifacts(
         self, run_id: str, destination: str | os.PathLike[str], *, trial_id: str | None = None
     ) -> list[Download]:
@@ -1017,11 +1032,13 @@ class Exports(_Resource):
         return _save(self._c, f"exports/{export_id}/download", Path(destination))
 
 
-def _save(client: MaestroClient, path: str, target: Path) -> Path:
+def _save(
+    client: MaestroClient, path: str, target: Path, params: Mapping[str, Any] | None = None
+) -> Path:
     """Stream to a temporary file next to ``target``; keep it only if the digest matches."""
     target.parent.mkdir(parents=True, exist_ok=True)
     response = client._call(
-        "GET", path, headers={"Accept": "application/octet-stream"}, stream=True
+        "GET", path, params=params, headers={"Accept": "application/octet-stream"}, stream=True
     )
     expected = response.headers.get("X-Content-Digest") or None
     hasher = hashlib.sha256()

@@ -1886,6 +1886,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/runs/{run_id}/artifacts/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Run Archive
+         * @description The run's artifacts as a zip built while it streams, or only one task's, trial's
+         *     or attempt's (the narrowest given). Ended runs only; at most ``export_max_gb``.
+         *     manifest.json, written last, lists every file and the ones left out with why.
+         */
+        get: operations["download_run_archive"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/runs/{run_id}/cancel": {
         parameters: {
             query?: never;
@@ -11329,6 +11351,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Envelope_list_Artifact__"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    download_run_archive: {
+        parameters: {
+            query?: {
+                task_key?: string | null;
+                trial_id?: string | null;
+                attempt_id?: string | null;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                    "application/zip": unknown;
                 };
             };
             /** @description Structured error */
