@@ -56,6 +56,16 @@ SETTINGS: dict[str, Setting] = {
     "trial_memory_mb_max": _s(
         "trial_memory_mb_max", 128, 4 * 1024 * 1024, "runs", "Most memory (MB) of one trial"
     ),
+    "service_cpus_default": _s(
+        "service_cpus_default", 1, 1024, "runs", "CPUs of a Compose service without its own limit"
+    ),
+    "service_memory_mb_default": _s(
+        "service_memory_mb_default",
+        16,
+        4 * 1024 * 1024,
+        "runs",
+        "Memory (MB) of a Compose service without its own limit",
+    ),
     "agent_timeout_sec_max": _s(
         "agent_timeout_sec_max", 1, 7 * 24 * 3600, "runs", "Longest agent time of one trial"
     ),

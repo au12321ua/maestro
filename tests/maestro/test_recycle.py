@@ -325,8 +325,8 @@ def test_files_of_a_binned_run_stay_readable_until_purged(service, version_id):
 def test_purging_a_version_reclaims_caches_except_shared_content(
     service, source, environment, settings
 ):
-    """U-19: purge takes the version's preparation caches, images and originals, and
-    its task materials, but keeps what a remaining version still uses."""
+    """U-19: purge takes the version's preparation caches, local images and registry
+    copies, and its task materials, but keeps what a remaining version still uses."""
     from test_datasets import import_and_prepare, tasks_by_key
 
     shared = FakeDatasetSource.task_files("demo", "pair", "shared")
@@ -337,14 +337,14 @@ def test_purging_a_version_reclaims_caches_except_shared_content(
         v1, _ = import_and_prepare(admin, name="pair", ref="v1")
         v2, _ = import_and_prepare(admin, name="pair", ref="v2")
         old = tasks_by_key(admin, v1)
-        refs = {k: environment.ref(x["spec_digest"]) for k, x in old.items()}
-        assert set(refs.values()) <= set(environment.images)
+        specs = {k: x["spec_digest"] for k, x in old.items()}
+        assert all(environment.present(spec) for spec in specs.values())
+        only_v1 = {i.digest for i in environment.outputs[specs["only-v1"]].images}
         entry = admin.delete(f"/api/v1/admin/dataset-versions/{v1}", expect=200).json()["data"]
         purged = purge(admin, entry).json()["data"]
         assert purged["detail"]["purged"]["released_preparations"] == 1
-        assert refs["only-v1"] not in environment.images
-        assert refs["only-v1"] not in environment.archives
-        assert refs["shared"] in environment.images  # v2 still uses the same spec
+        assert not only_v1 & (environment.images | environment.registry)
+        assert environment.present(specs["shared"])  # v2 still uses the same spec
         only = old["only-v1"]["content"]["digest"][7:]
         assert not (settings.cache_dir / "tasks" / only).exists()
         assert (settings.cache_dir / "tasks" / old["shared"]["content"]["digest"][7:]).is_dir()

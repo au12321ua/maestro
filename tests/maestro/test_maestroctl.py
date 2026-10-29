@@ -5,6 +5,7 @@ import argparse
 import importlib.util
 import json
 import os
+import re
 import tomllib
 from pathlib import Path
 
@@ -34,6 +35,7 @@ def _args(**values):
         "proxy": None,
         "no_proxy": None,
         "docker_host": None,
+        "registry_port": 8425,
     }
     return argparse.Namespace(**(defaults | values))
 
@@ -79,7 +81,23 @@ def test_written_config_is_accepted_by_the_service(tmp_path, monkeypatch):
     assert settings.data_dir == layout.data and settings.master_key_dir == layout.secrets
     assert settings.runner_python == layout.current / "runner-env/venv/bin/python"
     assert settings.listen_port == 8431 and settings.cookie_secure is False
+    assert settings.image_registry == "127.0.0.1:8425"
     assert tomllib.loads(ctl.render_config(layout, _args()))["cookie_secure"] is True
+
+
+def test_compose_versions_are_read_for_the_override_files():
+    assert ctl.compose_version("Docker Compose version v2.29.1") == (2, 29)
+    assert ctl.compose_version("Docker Compose version 5.6.1") == (5, 6)
+    assert ctl.compose_version("Docker Compose version v2.23.3") < ctl.COMPOSE_MIN
+    assert ctl.compose_version("missing") == (0, 0)
+
+
+def test_the_registry_image_is_pinned_and_its_container_named_per_layout(tmp_path):
+    assert re.fullmatch(r"registry:[0-9.]+@sha256:[0-9a-f]{64}", ctl.REGISTRY_IMAGE)
+    assert ctl.Layout(Path("/")).registry_name == "maestro-registry"
+    assert ctl.Layout(Path("/")).registry_dir == Path("/var/lib/maestro/registry")
+    test = ctl.Layout(tmp_path, test=True).registry_name
+    assert test.startswith("maestro-registry-test-") and test != "maestro-registry"
 
 
 def test_check_reports_the_daemon_proxy_and_registry_mirrors():

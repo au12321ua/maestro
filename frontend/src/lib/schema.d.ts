@@ -2152,8 +2152,8 @@ export interface components {
             admission_id: string | null;
             /** Admission Revision */
             admission_revision: number | null;
-            /** Expected Image Id */
-            expected_image_id: string | null;
+            /** Expected Content Id */
+            expected_content_id: string | null;
             /** Preparation Method Digest */
             preparation_method_digest: string | null;
             /** Spec Digest */
@@ -3947,8 +3947,17 @@ export interface components {
             agent_timeout_sec: number | null;
             /** Content Digest */
             content_digest: string;
-            /** Cpus */
+            /**
+             * Cpus
+             * @description The trial's total over every container it starts
+             */
             cpus: number;
+            /**
+             * Environments
+             * @description Each container's share; an override's extra goes to environment/main
+             * @default []
+             */
+            environments: components["schemas"]["EnvironmentResources"][];
             /** Memory Mb */
             memory_mb: number;
             /** Spec Digest */
@@ -4357,6 +4366,26 @@ export interface components {
             data: components["schemas"]["User"][];
             meta: components["schemas"]["Meta"];
         };
+        /** EnvironmentResources */
+        EnvironmentResources: {
+            /**
+             * Cpus
+             * @description null: the team default for services applies
+             */
+            cpus: number | null;
+            /**
+             * Default
+             * @description In a run: a team default fills in a limit the author left out
+             */
+            default: boolean | null;
+            /** Memory Mb */
+            memory_mb: number | null;
+            /**
+             * Role
+             * @description environment/main, verifier, or <directory>/<service> of a Compose service
+             */
+            role: string;
+        };
         /** ErrorBody */
         ErrorBody: {
             /** Code */
@@ -4710,9 +4739,9 @@ export interface components {
         };
         /** FirstPreparationTask */
         FirstPreparationTask: {
+            /** Content Id */
+            content_id?: string | null;
             error?: components["schemas"]["Problem"] | null;
-            /** Image Id */
-            image_id?: string | null;
             /**
              * Skipped
              * @description Already decided by an earlier attempt
@@ -5737,18 +5766,22 @@ export interface components {
         };
         /** Preparation */
         Preparation: {
-            archive: components["schemas"]["PreparationArchive"] | null;
             /**
              * Cache State
              * @enum {string}
              */
             cache_state: "absent" | "restoring" | "ready" | "stale";
+            /**
+             * Content Id
+             * @description All images as one content identity
+             */
+            content_id: string | null;
             /** Generation */
             generation: number;
             /** Id */
             id: string | null;
-            /** Image Id */
-            image_id: string | null;
+            /** Images */
+            images: components["schemas"]["PreparationImage"][];
             last_restore_error: components["schemas"]["Problem"] | null;
             /** Last Used At */
             last_used_at: string | null;
@@ -5771,14 +5804,22 @@ export interface components {
             waiters: components["schemas"]["PreparationWaiter"][];
         };
         /**
-         * PreparationArchive
-         * @description The saved original the cache is restored from (U-17).
+         * PreparationImage
+         * @description One image of a preparation, kept in the local image registry (N-01).
          */
-        PreparationArchive: {
-            /** Digest */
-            digest: string | null;
-            /** Size Bytes */
-            size_bytes: number | null;
+        PreparationImage: {
+            /**
+             * Digest
+             * @description Manifest digest in the local image registry
+             */
+            digest: string;
+            /** Ref */
+            ref: string;
+            /**
+             * Role
+             * @description <directory>/<service>, e.g. environment/main, tests/main
+             */
+            role: string;
         };
         /** PreparationPin */
         PreparationPin: {
@@ -5798,15 +5839,8 @@ export interface components {
             /** State */
             state: string;
         };
-        /** PreparedOutputView */
-        PreparedOutputView: {
-            /**
-             * Archive
-             * @description The saved original (U-17)
-             */
-            archive: {
-                [key: string]: components["schemas"]["JsonValue"];
-            } | null;
+        /** PreparedImageView */
+        PreparedImageView: {
             /**
              * Detail
              * @description How it was prepared; depends on the environment
@@ -5814,10 +5848,28 @@ export interface components {
             detail: {
                 [key: string]: components["schemas"]["JsonValue"];
             };
-            /** Image Id */
-            image_id: string;
-            /** Image Ref */
-            image_ref: string;
+            /** Digest */
+            digest: string;
+            /**
+             * Key
+             * @description The definition: identical ones share the image
+             */
+            key: string;
+            /** Ref */
+            ref: string;
+            /** Role */
+            role: string;
+        };
+        /** PreparedOutputView */
+        PreparedOutputView: {
+            /** Content Id */
+            content_id: string;
+            /** Detail */
+            detail: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Images */
+            images: components["schemas"]["PreparedImageView"][];
         };
         /**
          * Problem
@@ -7080,12 +7132,19 @@ export interface components {
         /**
          * TaskResources
          * @description What the task's author asks for; a run may raise CPU and memory, never lower them.
+         *     ``cpus`` and ``memory_mb`` are the main environment's.
          */
         TaskResources: {
             /** Constraint Strength */
             constraint_strength: string | null;
             /** Cpus */
             cpus: number | null;
+            /**
+             * Environments
+             * @description Other containers a trial starts: a separate verifier, Compose services
+             * @default []
+             */
+            environments: components["schemas"]["EnvironmentResources"][];
             /** Memory Mb */
             memory_mb: number | null;
             /** Storage Mb */

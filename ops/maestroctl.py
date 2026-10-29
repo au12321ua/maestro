@@ -45,6 +45,15 @@ DEFAULT_PORT = 8420
 READY_TIMEOUT = 180
 KEEP_VERSIONS = 2
 LABEL_INSTANCE = "io.maestro.instance_id"
+# The local image registry prepared images are kept in (N-01, U-56): the official image,
+# pinned, run by Docker. Deleting manifests is allowed so purged versions free space.
+REGISTRY_IMAGE = (
+    "registry:3.0.0@sha256:6c5666b861f3505b116bb9aa9b25175e71210414bd010d92035ff64018f9457e"
+)
+REGISTRY_CONFIG = "/etc/distribution/config.yml"
+DEFAULT_REGISTRY = "127.0.0.1:8425"
+# Compose overrides use !reset to drop an author's build (02 section 6).
+COMPOSE_MIN = (2, 24)
 RELEASE_FILE = "RELEASE.json"
 COMPLETE = ".complete"
 
@@ -139,6 +148,17 @@ class Layout:
     @property
     def backups(self) -> Path:
         return self._at("/var/backups/maestro")
+
+    @property
+    def registry_dir(self) -> Path:
+        return self.data / "registry"
+
+    @property
+    def registry_name(self) -> str:
+        if not self.test:
+            return "maestro-registry"
+        tag = hashlib.sha256(str(self.root).encode()).hexdigest()[:10]
+        return f"maestro-registry-test-{tag}"
 
     @property
     def ctl_link(self) -> Path:
@@ -499,6 +519,7 @@ def render_config(layout: Layout, args) -> str:
         f"runner_python = {toml_string(str(layout.current / 'runner-env' / 'venv' / 'bin' / 'python'))}",
         f"listen_host = {toml_string(args.listen_host)}",
         f"listen_port = {args.port}",
+        f"image_registry = {toml_string(f'127.0.0.1:{args.registry_port}')}",
         # Without HTTPS in front, browsers drop a Secure cookie and logins never stick.
         f"cookie_secure = {'false' if args.insecure_cookie else 'true'}",
     ]
@@ -718,14 +739,12 @@ def run_checks(layout: Layout, args, *, installing: bool) -> list[Check]:
         for plugin in ("compose", "buildx"):
             found = _docker([plugin, "version"], env)
             ok = found is not None and found.returncode == 0
-            add(
-                Check(
-                    f"docker {plugin}",
-                    "ok" if ok else "fail",
-                    found.stdout.strip().splitlines()[0] if ok and found.stdout else "missing",
-                    "" if ok else f"install the docker-{plugin}-plugin package",
-                )
-            )
+            text = found.stdout.strip().splitlines()[0] if ok and found.stdout else "missing"
+            advice = "" if ok else f"install the docker-{plugin}-plugin package"
+            if ok and plugin == "compose" and compose_version(text) < COMPOSE_MIN:
+                ok = False
+                advice = "Docker Compose 2.24 or later is needed; update docker-compose-plugin"
+            add(Check(f"docker {plugin}", "ok" if ok else "fail", text, advice))
         info = _docker(["info", "--format", "{{json .}}"], env)
         if info is not None and info.returncode == 0:
             with contextlib.suppress(ValueError):
@@ -758,7 +777,28 @@ def run_checks(layout: Layout, args, *, installing: bool) -> list[Check]:
             else "new runs are refused below 20 GiB free (storage_accept_min_free_gb)",
         )
     )
+    if not installing and layout.config.exists():
+        address = registry_address(layout)
+        ready = registry_ready(address)
+        add(
+            Check(
+                "image registry",
+                "ok" if ready else "fail",
+                f"{layout.registry_name} at {address}",
+                "" if ready else "prepared images cannot be restored; run: maestroctl restart",
+            )
+        )
     if installing:
+        port = getattr(args, "registry_port", None) or int(DEFAULT_REGISTRY.rsplit(":", 1)[1])
+        free = port_free("127.0.0.1", port)
+        add(
+            Check(
+                "registry port",
+                "ok" if free else "fail",
+                f"127.0.0.1:{port}",
+                "" if free else "choose another --registry-port",
+            )
+        )
         host = getattr(args, "listen_host", "127.0.0.1")
         port = getattr(args, "port", DEFAULT_PORT)
         add(
@@ -921,6 +961,122 @@ def daemon_checks(info: dict, proxy_wanted: bool) -> list[Check]:
     return checks
 
 
+def compose_version(text: str) -> tuple[int, int]:
+    """``Docker Compose version v2.29.1`` -> (2, 29); (0, 0) when it cannot be read."""
+    found = re.search(r"v?(\d+)\.(\d+)", text)
+    return (int(found[1]), int(found[2])) if found else (0, 0)
+
+
+def docker_env(layout: Layout) -> dict:
+    """The service's Docker endpoint (DOCKER_HOST in its environment file), else ours."""
+    env = dict(os.environ)
+    with contextlib.suppress(OSError):
+        for line in layout.environment.read_text().splitlines():
+            if line.startswith("DOCKER_HOST="):
+                env["DOCKER_HOST"] = line.split("=", 1)[1]
+    return env
+
+
+def registry_address(layout: Layout) -> str:
+    return read_config(layout).get("image_registry", DEFAULT_REGISTRY)
+
+
+def registry_ready(address: str, timeout: float = 2) -> bool:
+    # Local: a proxy in root's environment must not be asked for it.
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(f"http://{address}/v2/", timeout=timeout) as response:
+            return response.status == 200
+    except (OSError, urllib.error.URLError):
+        return False
+
+
+def start_registry(host: Host, *, read_only: bool = False, timeout: float = 60) -> None:
+    """(Re)create the registry container: data under data_dir, the port on the address the
+    service is configured with, restarted by Docker with the daemon. Read-only for garbage
+    collection: pushes are refused, pulls go on."""
+    layout = host.layout
+    env = docker_env(layout)
+    address = registry_address(layout)
+    bind, port = address.rsplit(":", 1)
+    layout.registry_dir.mkdir(parents=True, exist_ok=True)
+    host.own(layout.registry_dir, 0o700)
+    run(["docker", "rm", "-f", layout.registry_name], env=env, check=False, capture=True)
+    cmd = ["docker", "run", "-d", "--name", layout.registry_name, "--restart", "unless-stopped"]
+    if not layout.test:
+        # Files belong to the service account, so backups and the service can read them.
+        uid, gid = host.service_ids()
+        cmd += ["--user", f"{uid}:{gid}"]
+    cmd += [
+        "-p",
+        f"{bind}:{port}:5000",
+        "-v",
+        f"{layout.registry_dir}:/var/lib/registry",
+        "-e",
+        "REGISTRY_STORAGE_DELETE_ENABLED=true",
+    ]
+    if read_only:
+        cmd += ["-e", 'REGISTRY_STORAGE_MAINTENANCE_READONLY={"enabled": true}']
+    run([*cmd, REGISTRY_IMAGE], env=env, capture=True, timeout=900)
+    deadline = time.monotonic() + timeout
+    while not registry_ready(address):
+        if time.monotonic() > deadline:
+            raise CtlError(f"the image registry did not answer at {address}")
+        time.sleep(0.5)
+
+
+def remove_registry(layout: Layout) -> None:
+    run(
+        ["docker", "rm", "-f", layout.registry_name],
+        env=docker_env(layout),
+        check=False,
+        capture=True,
+    )
+
+
+def cmd_registry_gc(layout: Layout, args) -> int:
+    """Free the layers no prepared image uses any more (after purging dataset versions)."""
+    require_root(layout)
+    version = require_installed(layout)
+    host = Host(layout)
+    activity = json.loads(host.maestro(version, "activity", timeout=60).stdout)
+    pushing = {"dataset_import", "preparation_first", "preparation_restore"}
+    busy = sorted(pushing & set(activity["active_operations"]))
+    if busy and not args.force:
+        raise CtlError(
+            f"preparations are in progress ({', '.join(busy)}); they would fail to push. "
+            "Wait for them, or pass --force"
+        )
+    before = directory_size(layout.registry_dir)
+    if not (layout.registry_dir / "docker" / "registry" / "v2" / "repositories").is_dir():
+        # The collector itself fails on a registry that never stored anything.
+        say("the registry holds no images yet: nothing to collect")
+        return 0
+    step("Registry read-only: pulls go on, pushes are refused")
+    start_registry(host, read_only=True)
+    try:
+        step("Collecting garbage")
+        run(
+            [
+                "docker",
+                "exec",
+                layout.registry_name,
+                "registry",
+                "garbage-collect",
+                REGISTRY_CONFIG,
+            ],
+            env=docker_env(layout),
+            capture=True,
+            timeout=3600,
+        )
+    finally:
+        step("Registry writable again")
+        start_registry(host)
+    after = directory_size(layout.registry_dir)
+    say(f"registry {before / 1024**2:,.0f} MiB -> {after / 1024**2:,.0f} MiB")
+    return 0
+
+
 def cmd_check(layout: Layout, args) -> int:
     installed = current_version(layout) is not None
     say("Maestro host check" + (" (already installed)" if installed else ""))
@@ -956,6 +1112,9 @@ def cmd_install(layout: Layout, args) -> int:
     if not layout.environment.exists() or args.proxy or args.docker_host:
         layout.environment.write_text(render_environment(args))
     host.root_owned(layout.environment, 0o640, group_service=True)
+    step("Image registry")
+    start_registry(host)
+    say(f"    {layout.registry_name} at {registry_address(layout)}")
     step("Initializing the instance")
     init = host.maestro(version, "init")
     token = None
@@ -1009,6 +1168,10 @@ def cmd_status(layout: Layout, args) -> int:
     with contextlib.suppress(CtlError):
         activity = json.loads(host.maestro(version, "activity", timeout=60).stdout)
         say(f"work:     {activity['active_runs']} running, {activity['queued_runs']} queued runs")
+    address = registry_address(layout)
+    say(
+        f"registry: {'up' if registry_ready(address) else 'DOWN'} at {address} ({layout.registry_name})"
+    )
     say(f"data:     {layout.data} ({free_bytes(layout.data) / 1024**3:.0f} GiB free)")
     kept = sorted(p.name for p in layout.versions.glob("*") if (p / COMPLETE).exists())
     say(f"versions: {', '.join(kept)}")
@@ -1102,6 +1265,9 @@ def cmd_restore(layout: Layout, args) -> int:
             include_files=args.include_files,
             allow_missing_key=args.allow_missing_key,
         )
+        if args.include_files:
+            step("Restarting the image registry on the restored files")
+            start_registry(host)
     finally:
         if was_active:
             step("Starting the service")
@@ -1165,6 +1331,8 @@ def cmd_update(layout: Layout, args) -> int:
         switched = True
         write_unit(host)
         link_ctl(layout)
+        step("Image registry")
+        start_registry(host)
         host.start()
         simulated("start")
         wait_ready(host, args.ready_timeout)
@@ -1223,19 +1391,30 @@ def instance_id(layout: Layout) -> str | None:
     return row[0] if row else None
 
 
-def docker_resources(instance: str) -> dict[str, list[str]]:
+def docker_resources(layout: Layout, instance: str) -> dict[str, list[str]]:
+    """The instance's labelled containers, networks, volumes and run images, and the names
+    of its prepared images (after the registry). Prepared images are untagged by name,
+    never removed by id: a pulled one shares its id with the name it was pulled by."""
+    env = docker_env(layout)
     found = {}
     for kind, cmd in (
         ("container", ["ps", "-aq", "--no-trunc"]),
         ("network", ["network", "ls", "-q", "--no-trunc"]),
+        ("volume", ["volume", "ls", "-q"]),
         ("image", ["images", "-q", "--no-trunc"]),
     ):
-        result = _docker([*cmd, "--filter", f"label={LABEL_INSTANCE}={instance}"])
+        result = _docker([*cmd, "--filter", f"label={LABEL_INSTANCE}={instance}"], env)
         found[kind] = sorted(set(result.stdout.split())) if result and not result.returncode else []
-    result = _docker(
-        ["images", "--format", "{{.Repository}}:{{.Tag}}", f"maestro-prep/{instance.lower()}"]
-    )
-    found["image"] += sorted(set(result.stdout.split())) if result and not result.returncode else []
+    repository = f"{registry_address(layout)}/maestro-prep/{instance.lower()}"
+    names = set()
+    for listing in (
+        ["images", "--format", "{{.Repository}}:{{.Tag}}", repository],
+        ["images", "--digests", "--format", "{{.Repository}}@{{.Digest}}", repository],
+    ):
+        result = _docker(listing, env)
+        if result and not result.returncode:
+            names |= {n for n in result.stdout.split() if not n.endswith(("<none>", "@"))}
+    found["prepared image"] = sorted(names)
     return found
 
 
@@ -1247,7 +1426,7 @@ def cmd_uninstall(layout: Layout, args) -> int:
         targets = [
             (layout.opt, "program, Python and Runner environments"),
             (layout.etc, "configuration and the MASTER KEY (credentials become unreadable)"),
-            (layout.data, "database, artifacts, attachments, prepared images"),
+            (layout.data, "database, artifacts, attachments, the prepared-image registry"),
             (layout.cache, "cache"),
             (layout.backups, "backups"),
         ]
@@ -1255,7 +1434,9 @@ def cmd_uninstall(layout: Layout, args) -> int:
         for path, what in targets:
             if path.exists():
                 say(f"  {path}  {directory_size(path) / 1024**2:,.0f} MiB  {what}")
-        resources = docker_resources(instance) if instance else {}
+        resources = (
+            docker_resources(layout, instance) if instance and layout.config.exists() else {}
+        )
         for kind, items in resources.items():
             if items:
                 say(f"  Docker {kind}s of instance {instance}: {len(items)}")
@@ -1273,18 +1454,22 @@ def cmd_uninstall(layout: Layout, args) -> int:
         host.systemctl("daemon-reload")
     if layout.ctl_link.is_symlink():
         layout.ctl_link.unlink()
+    remove_registry(layout)  # its data stays under data_dir unless purged
     safe_rmtree(layout, layout.opt)
     if args.purge:
-        if instance:
-            for kind, items in docker_resources(instance).items():
+        if instance and layout.config.exists():
+            for kind, items in docker_resources(layout, instance).items():
                 if items:
                     _docker(
                         {
                             "container": ["rm", "-f", "-v"],
                             "network": ["network", "rm"],
+                            "volume": ["volume", "rm"],
                             "image": ["image", "rm", "-f"],
+                            "prepared image": ["image", "rm"],
                         }[kind]
-                        + items
+                        + items,
+                        docker_env(layout),
                     )
         for path in (layout.etc, layout.data, layout.cache, layout.backups):
             safe_rmtree(layout, path)
@@ -1337,6 +1522,12 @@ def parser() -> argparse.ArgumentParser:
         p.add_argument("--proxy", help="HTTP(S) proxy the service uses (Docker client, Hub)")
         p.add_argument("--uv", help="path of the uv binary")
         p.add_argument("--docker-host", help="Docker endpoint if not the system daemon")
+        p.add_argument(
+            "--registry-port",
+            type=int,
+            default=int(DEFAULT_REGISTRY.rsplit(":", 1)[1]),
+            help="local port of the prepared-image registry (127.0.0.1 only)",
+        )
     install.add_argument("--no-proxy", help="hosts that bypass --proxy (comma separated)")
     with_download(install)
     install.add_argument(
@@ -1365,6 +1556,8 @@ def parser() -> argparse.ArgumentParser:
     uninstall.add_argument("--remove-cache", action="store_true")
     uninstall.add_argument("--purge", action="store_true", help="also delete data, keys, backups")
     uninstall.add_argument("--confirm", help="instance id, required with --purge")
+    gc = sub.add_parser("registry-gc", help="free registry space no prepared image uses")
+    gc.add_argument("--force", action="store_true", help="even while preparations run")
     sub.add_parser("version", help="version of this maestroctl")
     return main
 
@@ -1381,6 +1574,7 @@ COMMANDS = {
     "restore": cmd_restore,
     "update": cmd_update,
     "uninstall": cmd_uninstall,
+    "registry-gc": cmd_registry_gc,
     "version": cmd_version,
 }
 

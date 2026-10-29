@@ -1,6 +1,7 @@
 """Review fixes for the Docker preparation environment, against a fake docker client:
-failure classification, the author's build limit and the start-up sweeps. Nothing here
-starts Docker; real-Docker coverage stays in test_harbor_docker.py (opt-in)."""
+failure classification, the author's build limit, the start-up sweeps and the local image
+registry (N-01). Nothing here starts Docker or a registry; real-Docker coverage stays in
+test_harbor_docker.py (opt-in)."""
 
 import asyncio
 import json
@@ -13,13 +14,15 @@ import pytest
 from maestro.boundaries.environment import (
     AUTH,
     FAILED,
+    MISMATCH,
     TRANSIENT,
     UNAVAILABLE,
     PreparationError,
     PreparationSpec,
+    PreparedImage,
     PreparedOutput,
 )
-from maestro.execution.materials import MAX_BUILD_TIMEOUT
+from maestro.execution.materials import MAX_BUILD_TIMEOUT, image_key
 from maestro.execution.preparation import (
     DEFAULT_BUILD_TIMEOUT,
     DockerEnvironment,
@@ -28,7 +31,9 @@ from maestro.execution.preparation import (
 from maestro.services.preparation import PreparationFailure, failure
 
 SPEC_DIGEST = "sha256:" + "5c" * 32
-IMAGE_ID = "sha256:" + "17" * 32
+DIGEST = "sha256:" + "17" * 32
+OTHER = "sha256:" + "18" * 32
+REGISTRY = "127.0.0.1:1"
 
 
 def log(*lines: str) -> str:
@@ -214,17 +219,48 @@ def docker(tmp_path):
 
 @pytest.fixture
 def environment(tmp_path, docker):
-    env = DockerEnvironment(tmp_path / "archives", docker=str(docker.path))
+    env = DockerEnvironment(REGISTRY, docker=str(docker.path), legacy_dir=tmp_path / "preparations")
     env.bind("inst-1")
     return env
 
 
-def make_spec(tmp_path, kind="build", **environment) -> PreparationSpec:
+def build_entry(role="environment/main", context="environment") -> dict:
+    return {
+        "role": role,
+        "source": "build",
+        "context": context,
+        "dockerfile": "Dockerfile",
+        "args": {},
+        "target": None,
+        "definition_digest": "sha256:" + "de" * 32,
+    }
+
+
+def make_spec(tmp_path, kind="build", docker_image=None, known=None, **top) -> PreparationSpec:
     task = tmp_path / "task"
     (task / "environment").mkdir(parents=True, exist_ok=True)
     (task / "environment" / "Dockerfile").write_text("FROM scratch\n")
-    spec = {"environment": {"kind": kind, **environment}}
-    return PreparationSpec(SPEC_DIGEST, "demo", task, spec)
+    if kind == "build":
+        entry = build_entry()
+    else:
+        entry = {"role": "environment/main", "source": "pull", "reference": docker_image}
+    spec = {"images": [entry], **top}
+    return PreparationSpec(SPEC_DIGEST, "demo", task, spec, known=known or {})
+
+
+def registry_answers(environment, digest=DIGEST):
+    """The registry reports ``digest`` for any pushed tag and deletes what it is asked to."""
+    deleted = []
+
+    async def reported(key):
+        return digest
+
+    async def delete(value):
+        deleted.append(value)
+
+    environment._registry_digest = reported
+    environment._delete_manifest = delete
+    return deleted
 
 
 async def no_progress(phase: str) -> None:
@@ -256,7 +292,9 @@ def test_a_failed_build_is_classified_and_its_temporary_tag_removed(
     error = prepare_error(environment, make_spec(tmp_path))
     assert error.kind == kind
     assert error.evidence["stderr_tail"].endswith(stderr[-200:])
-    removed = [c for c in docker.calls() if c.startswith("image rm --no-prune maestro-prep/inst-1")]
+    removed = [
+        c for c in docker.calls() if c.startswith(f"image rm --no-prune {environment.repository}")
+    ]
     assert len(removed) == 1 and "-tmp-" in removed[0]
 
 
@@ -266,6 +304,15 @@ def test_a_failed_build_is_classified_and_its_temporary_tag_removed(
         (REGISTRY_REFUSALS[0], "acme/private:1", AUTH),
         (REGISTRY_REFUSALS[1], "acme/private@sha256:" + "ab" * 32, AUTH),
         ("Error response from daemon: manifest unknown", "acme/x@sha256:" + "ab" * 32, UNAVAILABLE),
+        (  # what the containerd image store says (Docker 29)
+            'Error response from daemon: failed to resolve reference "acme/x@sha256:'
+            + "ab" * 32
+            + '": acme/x@sha256:'
+            + "ab" * 32
+            + ": not found",
+            "acme/x@sha256:" + "ab" * 32,
+            UNAVAILABLE,
+        ),
         # a tag that is gone could also be a typo or a moved tag: not "exactly gone"
         ("Error response from daemon: manifest unknown", "acme/x:1", FAILED),
         (KNOWN_TRANSIENT[0], "acme/x:1", TRANSIENT),
@@ -302,7 +349,8 @@ def test_the_build_runs_under_a_finite_capped_limit(tmp_path, environment, reque
 
     environment._run = run
     spec = make_spec(tmp_path, build_timeout_sec=requested)
-    asyncio.run(environment._build(spec, "maestro-prep/inst-1:tmp", no_progress))
+    entry = spec.spec["images"][0]
+    asyncio.run(environment._build(spec, entry, "maestro-prep/inst-1:tmp", no_progress))
     assert timeouts == [("buildx", used)]
 
 
@@ -310,52 +358,109 @@ def test_the_build_runs_under_a_finite_capped_limit(tmp_path, environment, reque
 
 
 def test_sweep_temporary_removes_only_unpublished_tags(docker, environment):
+    repo = environment.repository
     docker.respond(
         "image ls",
-        out="maestro-prep/inst-1:aaaa\nmaestro-prep/inst-1:aaaa-tmp-1234abcd\n"
-        "maestro-prep/inst-1:bbbb-tmp-ffff0000\n<none>:<none>\n",
+        out=f"{repo}:aaaa\n{repo}:aaaa-tmp-1234abcd\n{repo}:bbbb-tmp-ffff0000\n<none>:<none>\n",
     )
     removed = asyncio.run(environment.sweep_temporary())
-    assert removed == [
-        "maestro-prep/inst-1:aaaa-tmp-1234abcd",
-        "maestro-prep/inst-1:bbbb-tmp-ffff0000",
-    ]
+    assert removed == [f"{repo}:aaaa-tmp-1234abcd", f"{repo}:bbbb-tmp-ffff0000"]
     assert [c for c in docker.calls() if c.startswith("image rm")] == [
-        "image rm --no-prune maestro-prep/inst-1:aaaa-tmp-1234abcd",
-        "image rm --no-prune maestro-prep/inst-1:bbbb-tmp-ffff0000",
+        f"image rm --no-prune {repo}:aaaa-tmp-1234abcd",
+        f"image rm --no-prune {repo}:bbbb-tmp-ffff0000",
     ]
 
 
 def test_sweep_temporary_does_nothing_unbound_or_when_docker_fails(tmp_path, docker):
-    unbound = DockerEnvironment(tmp_path / "archives", docker=str(docker.path))
+    unbound = DockerEnvironment(REGISTRY, docker=str(docker.path))
     assert asyncio.run(unbound.sweep_temporary()) == []
     assert docker.calls() == []
-    bound = DockerEnvironment(tmp_path / "archives", docker=str(docker.path))
+    bound = DockerEnvironment(REGISTRY, docker=str(docker.path))
     bound.bind("inst-1")
     docker.respond("image ls", code=1, err="Cannot connect to the Docker daemon")
     assert asyncio.run(bound.sweep_temporary()) == []
     assert not [c for c in docker.calls() if c.startswith("image rm")]
 
 
-def test_sweep_archives_removes_half_written_exports_only(tmp_path, environment):
-    archives = environment.archive_dir
-    assert asyncio.run(environment.sweep_archives()) == []  # no directory yet
-    archives.mkdir()
-    (archives / ("5c" * 32 + ".tar")).write_bytes(b"original")
-    (archives / (".{}.tar.1a2b3c4d.tmp".format("5c" * 32))).write_bytes(b"half")
-    (archives / ".other.tmp").write_bytes(b"half")
-    removed = asyncio.run(environment.sweep_archives())
-    assert sorted(removed) == sorted([f".{'5c' * 32}.tar.1a2b3c4d.tmp", ".other.tmp"])
-    assert [p.name for p in archives.iterdir()] == [f"{'5c' * 32}.tar"]
+def test_sweep_legacy_removes_the_old_originals(tmp_path, environment):
+    """Originals from before the registry are not used again (U-54)."""
+    assert environment.sweep_legacy() == []  # nothing there
+    legacy = environment.legacy_dir
+    legacy.mkdir()
+    (legacy / ("5c" * 32 + ".tar")).write_bytes(b"original")
+    assert environment.sweep_legacy() == ["5c" * 32 + ".tar"]
+    assert not legacy.exists()
 
 
-def test_eviction_untags_only_the_name_the_platform_made(docker, environment):
-    """What eviction does and does not remove: the platform's own tag and nothing else,
-    so a pulled image stays on disk under the name it was pulled by."""
-    ref = environment.ref(SPEC_DIGEST)
-    docker.respond("image inspect", out=IMAGE_ID + "\n")
-    asyncio.run(environment.evict(PreparedOutput(IMAGE_ID, ref)))
-    assert [c for c in docker.calls() if c.startswith("image rm")] == [f"image rm {ref}"]
+def image(role="environment/main", digest=DIGEST, entry=None) -> PreparedImage:
+    key = image_key(entry or build_entry(role))
+    return PreparedImage(role, digest, f"{REGISTRY}/maestro-prep/inst-1@{digest}", key)
+
+
+def test_a_prepared_image_is_pushed_and_known_by_the_registry_digest(tmp_path, docker, environment):
+    """Docker's own RepoDigests can name content the registry does not hold (an index of
+    which only one platform was pushed): the digest comes from the registry."""
+    registry_answers(environment)
+    docker.respond("image inspect", out=OTHER + "\n")
+    output = asyncio.run(environment.prepare(make_spec(tmp_path), no_progress))
+    (prepared,) = output.images
+    assert prepared.digest == DIGEST
+    assert prepared.ref == f"{environment.repository}@{DIGEST}"
+    assert prepared.key == image_key(build_entry())
+    calls = docker.calls()
+    assert any(c == f"push --quiet {environment.tag(prepared.key)}" for c in calls)
+
+
+def test_an_identical_definition_is_reused_not_built(tmp_path, docker, environment):
+    known = {image_key(build_entry()): image(digest=DIGEST)}
+    docker.respond("image inspect", out=DIGEST + "\n")
+    output = asyncio.run(environment.prepare(make_spec(tmp_path, known=known), no_progress))
+    assert [i.digest for i in output.images] == [DIGEST]
+    assert not [c for c in docker.calls() if c.startswith(("buildx", "push"))]
+
+
+def test_restore_pulls_from_the_registry_by_digest(tmp_path, docker, environment):
+    spec = make_spec(tmp_path)
+    expected = PreparedOutput((image(),))
+
+    async def present(ref):  # missing locally until it was pulled
+        return f"pull --quiet {ref}" in docker.calls()
+
+    environment._present = present
+    restored = asyncio.run(environment.restore(spec, expected, no_progress))
+    assert restored.content_id == expected.content_id
+    assert f"pull --quiet {environment.ref(DIGEST)}" in docker.calls()
+    assert not [c for c in docker.calls() if c.startswith("buildx")]
+
+
+def test_an_image_the_registry_lost_is_rebuilt_and_must_match(tmp_path, docker, environment):
+    spec = make_spec(tmp_path)
+    expected = PreparedOutput((image(),))
+    docker.respond(f"image inspect --format {{{{.Id}}}} {environment.ref(DIGEST)}", code=1)
+    docker.respond(f"pull --quiet {environment.ref(DIGEST)}", code=1, err="manifest unknown")
+    docker.respond("image inspect", out=OTHER + "\n")
+    registry_answers(environment, OTHER)
+    with pytest.raises(PreparationError) as caught:
+        asyncio.run(environment.restore(spec, expected, no_progress))
+    assert caught.value.kind == MISMATCH
+    assert caught.value.evidence == {"expected_digest": DIGEST, "actual_digest": OTHER}
+
+
+def test_eviction_keeps_what_another_task_uses(docker, environment):
+    """Only the platform's own names go, and not those of an image another cache holds."""
+    shared, own = image("environment/db", OTHER), image()
+    docker.respond("image inspect", out=DIGEST + "\n")
+    asyncio.run(environment.evict(PreparedOutput((own, shared)), frozenset({OTHER})))
+    removed = [c for c in docker.calls() if c.startswith("image rm")]
+    assert removed == [f"image rm {environment.ref(DIGEST)} {environment.tag(own.key)}"]
+
+
+def test_discard_deletes_registry_manifests_nobody_records(docker, environment):
+    deleted = registry_answers(environment)
+    shared, own = image("environment/db", OTHER), image()
+    docker.respond("image inspect", code=1)
+    asyncio.run(environment.discard(PreparedOutput((own, shared)), frozenset({OTHER})))
+    assert deleted == [DIGEST]
 
 
 # What BuildKit (Docker 29.9.1, buildx 0.38) really printed for a Dockerfile whose RUN step

@@ -1,6 +1,6 @@
 # 02 数据集与环境准备
 
-导航：[总览](00-overview.md) · [领域模型](01-domain-model.md) · [配置与附件](03-configuration-attachments.md) · [权限](09-identity-security.md) · 相关代码：`src/maestro/services/{datasets,catalog,preparation}.py`、`src/maestro/execution/{hub,materials,preparation}.py`、`runner/src/maestro_runner/hub.py`
+导航：[总览](00-overview.md) · [领域模型](01-domain-model.md) · [配置与附件](03-configuration-attachments.md) · [权限](09-identity-security.md) · 相关代码：`src/maestro/services/{datasets,catalog,preparation}.py`、`src/maestro/execution/{hub,materials,compose,preparation}.py`、`runner/src/maestro_runner/hub.py`
 
 ## 1. 职责与边界
 
@@ -27,9 +27,9 @@
 导入是 Worker 上执行的 Operation：Runner 把标签 / 修订解析为确切的上游 digest（保存原引用）→ 逐个下载任务，用 Harbor 的打包哈希核对上游 digest，另算本地材料摘要 → 读 `task.toml` 得到资源、时限、作者参数与准备规格 → 一个事务登记版本、任务与 `pending` 准入 → 默认接着创建首次准备 Operation。
 
 - 上游 digest 与材料摘要各自保存、互不替代；材料使用前按材料摘要校验，不符即重新下载。
-- 下载出现任何失败，整个导入失败，不留半个版本。不受支持的任务（GPU、独立验证环境、步骤环境、无环境定义）照常登记，首次准备时以 `PREPARATION_UNSUPPORTED` 失败；数据集级文件或指标导入即拒。
+- 下载出现任何失败，整个导入失败，不留半个版本。不受支持的任务（GPU、步骤环境、多步骤任务的独立验证器、无环境定义，以及第 6 节列出的无法准备的 Compose 写法）照常登记，首次准备时以 `PREPARATION_UNSUPPORTED` 失败并说明位置；数据集级文件或指标导入即拒。
 - 同一内容重复导入返回已有版本，并重新核对此前不可得的内容，这是管理员恢复可得性的途径。同一引用指向新内容返回 `CONTENT_REFERENCE_CHANGED`，确认后登记为新版本。回收站里有同一数据集或内容时拒绝导入。
-- 作者参数从 `task.toml` 模板与 compose 变量中发现。声明了平台保留名（`RESERVED_PARAMETER`）的任务永远不能运行：参数值会进入 Runner 进程环境，保留名可用来在宿主执行程序或改写模型请求。作者的 CPU 与内存是下限（U-22），见 [03](03-configuration-attachments.md) 第 3 节。
+- 作者参数从 `task.toml` 模板与 compose 变量中发现；只用在 `image:` 或 `build:` 里的 compose 变量按默认值冻结进镜像（第 6 节），不是参数。声明了平台保留名（`RESERVED_PARAMETER`）的任务永远不能运行：参数值会进入 Runner 进程环境，保留名可用来在宿主执行程序或改写模型请求。作者的 CPU 与内存是下限（U-22），见 [03](03-configuration-attachments.md) 第 3 节。
 
 ## 4. 数据源适配与 Harbor 边界
 
@@ -37,14 +37,14 @@
 
 失败分为鉴权、暂态、不存在、内容不符、不支持五类。超时、429、5xx、无权限（Hub 以隐藏行表现）都不构成“内容已消失”的证据。
 
-按 D-020，一个运行对应一个 Harbor Job。环境准备不经 Harbor：服务直接用 Docker 构建或拉取，把指向该镜像、`pull_policy: never` 的任务副本交给 Harbor。
+按 D-020，一个运行对应一个 Harbor Job。环境准备不经 Harbor：服务直接用 Docker 构建或拉取试次要启动的每个镜像，运行时 Runner 把任务副本与 Compose override 指向这些镜像，Harbor 与 Compose 不再构建或拉取（[15](15-stack-harbor.md) 第 4 节）。
 
 ## 5. 三类事实与准入规则
 
 | 事实 | 状态 | 含义 |
 | --- | --- | --- |
 | 准入（`task_admissions`） | pending / first_failed / admitted / revoked | 管理员确认任务内容与准备方式可用 |
-| 可得性（`content_availability`） | 按（摘要，资源种类）记录，种类为任务内容与环境镜像 | 能否取得同一内容；暂态与鉴权失败从不改它 |
+| 可得性（`content_availability`） | 按（摘要，资源种类）记录，种类为任务内容与环境镜像（一个任务的整组镜像算一个摘要） | 能否取得同一内容；暂态与鉴权失败从不改它 |
 | 缓存（`preparations`） | absent / restoring / ready / stale | 本机是否持有可复用成果；失败与回收不改准入 |
 
 准入按任务与准备方式摘要记录，与位置无关；首次成功的证据随准入长期保存。撤销是显式安全停用，不改已受理快照。成员填参数、上传附件都不触发新准入。
@@ -58,24 +58,36 @@
 
 只有“确实不存在或内容不符，且本机没有已校验副本”才记不可得；上游删除而本机仍有确切内容时照常运行。系统不用新标签的内容替换，也不自动撤销准入或改写快照。
 
-### 准备原件（U-17）
+### 准备结果与本机镜像仓库（U-17、U-55）
 
-联网安装软件的构建无法重建出相同镜像，因此首次准备成功后用 `docker save` 把镜像导出到 `data_dir/preparations/` 作为原件；回收只删本机镜像。恢复依次：本机镜像 ID 相符 → 直接用；原件摘要相符 → 载入；都不行才按固定来源重建或重新拉取，镜像 ID 不同即内容不符、不发布。原件是数据而非缓存，受磁盘水位约束；物理删除版本时一并删除不再被引用的原件。
+联网安装软件的构建无法重建出相同镜像，所以首次准备的结果要作为数据保存。每个镜像推入本机镜像仓库（Docker 官方 `registry`，由 `maestroctl` 以容器运行，数据在 `data_dir/registry`，见 [12](12-operations.md)），以仓库报告的清单 digest 识别；Docker 自己记下的 digest 可能指向仓库里没有的多架构索引，不采用。仓库按层存储，任务之间共用的基础层、相同的镜像只存一份。
+
+一个任务的准备结果是一张镜像清单，每项为角色（`environment/main`、`tests/main` 或 `<目录>/<服务>`）、digest、按 digest 的引用和定义键；整组的内容身份由各角色与 digest 算出，可得性与准入核对都用它。只有主环境的任务就是只有一项的清单。
+
+恢复时逐个按 digest 从仓库拉回；仓库也没有时才按固定来源重建或重新拉取，digest 不同即内容不符、不发布。回收只删本机镜像，仓库里的保留。物理删除版本时，删去其他任务都不再记录的镜像清单，仓库的垃圾回收（`maestroctl registry-gc`）再释放不再被引用的层。仓库不可用时首次准备与恢复以暂态失败结束，已在本机的镜像照常运行。
 
 ## 6. 准备规格与缓存有效性
 
-准备规格由 `inspect_task` 生成；不含数据集版本 digest，不同版本中相同内容的任务共用缓存。缓存键是（`spec_digest`，`location_id`）。
+准备规格由 `inspect_task` 生成，列出试次要启动的每个镜像；不含数据集版本 digest，不同版本中相同内容的任务共用缓存。缓存键是（`spec_digest`，`location_id`）。
 
-准备方式：有 Dockerfile 的用可复现设置 `buildx build`；作者给出镜像的在首次准备时按仓库 digest 固定后拉取。结果按镜像 ID 识别；镜像 label 不含实例标识，以免同一内容在不同实例得到不同 ID 或被按实例清扫误删。工作中用临时标签，迟到的构建不能顶替已发布的镜像。管理员在安装网络中设了代理时，构建以 Docker 预定义的代理构建参数使用它（不进镜像，不改准备方式摘要），安装变量不交给构建；准备结果记下构建时安装网络的版本（[12](12-operations.md) 第 3 节）。
+要准备的镜像（N-01）：
 
-`ready` 不保证镜像还在：每次使用都核对镜像 ID，不符即标 stale 并恢复。
+- **主环境**：有 `environment/Dockerfile` 的用可复现设置构建，作者给出 `docker_image` 的拉取。
+- **独立验证器**（`[verifier] environment_mode = "separate"` 或给了 `[verifier.environment]`），按 Harbor 的顺序：`[verifier.environment]` 给了镜像的拉取它；`tests/` 下有 `Dockerfile` 的从 `tests/` 构建；都没有的照主环境再起一份新容器，不需要另外的镜像。
+- **Compose 辅助服务**：`environment/docker-compose.yaml` 与验证器的 `tests/docker-compose.yaml` 中 `main` 以外的服务，`image:` 的拉取，`build:` 的构建。
+
+拉取的镜像在首次准备时按仓库 digest 固定。影响镜像内容的 Compose 变量（`image:` 与 `build:` 中的 `${X:-默认}`）按默认值冻结，成员不能改（U-54）。以下情况不能准备，报错指出文件位置与变量名、不含值：变量没有默认值或名字像秘密；`build:` 中除 `context`、`dockerfile`、`args`、`target` 与不改变内容的 `labels`、`cache_from`、`cache_to`、`tags` 以外的选项；构建上下文或 Dockerfile 不在对应环境目录内；`main` 自带 `image:` 或 `build:`；服务两者都没有；外部或指定名字的网络与卷。多步骤任务的独立验证器与步骤自带环境仍不支持。
+
+结果按镜像内容识别。镜像 label 不含实例标识，以免同一内容在不同实例得到不同 digest 或被按实例清扫误删。定义完全相同（构建上下文内容摘要、Dockerfile、冻结的构建参数、准备方式相同，或拉取同一引用）的镜像在任务之间只做一次：后来的任务直接用已记录的结果，同时进行的首次准备在同一定义上排队后复用。只按内容精确匹配，不做 Dockerfile 语义比对。工作中用临时标签，迟到的构建不能顶替已发布的镜像。管理员在安装网络中设了代理时，构建以 Docker 预定义的代理构建参数使用它（不进镜像，不改准备方式摘要），安装变量不交给构建；准备结果记下构建时安装网络的版本（[12](12-operations.md) 第 3 节）。
+
+`ready` 不保证镜像还在：每次使用都核对清单中每个镜像都在本机，缺任何一个即标 stale 并恢复。
 
 ~~~mermaid
 stateDiagram-v2
     [*] --> absent
     absent --> restoring: 首次准备或运行恢复
     stale --> restoring
-    restoring --> ready: 核对镜像 ID 并原子发布
+    restoring --> ready: 核对每个镜像并原子发布
     restoring --> absent: 失败或取消，保留错误
     ready --> stale: 回收或使用前核对失败
 ~~~
@@ -87,7 +99,7 @@ stateDiagram-v2
 运行在 Runner 启动前为每个任务取得使用 pin（`Worker._prepare` → `Preparer.acquire`），缓存冷时加入共享恢复，试次阶段显示 `restoring_cache`。
 
 1. 受理不要求本机已有缓存；快照保存准入依据，缓存观测单独返回。
-2. 取 pin 在短事务内确认缓存未被回收认领，再核对镜像 ID。
+2. 取 pin 在短事务内确认缓存未被回收认领，再核对清单中的镜像都在本机。
 3. 每个缓存键同时只有一个恢复 Operation，带租约与代次，不归属于首个运行；等待者是运行或管理员的首次准备。同时恢复数受部署配置 `restore_slots` 限制。
 4. 等待者离开只移除自己；最后一个离开时恢复结束。正在结束的代次不接受加入。
 5. 发布在同一事务里核对代次、活动 Operation 与租约，并把 pin 交给每个等待者，发布与使用之间不会被回收。被取代的恢复不能发布（`STALE_PREPARATION_LEASE`）。
@@ -99,16 +111,19 @@ stateDiagram-v2
 
 ## 8. 回收、重启与恢复
 
-回收由管理员手动发起：先在事务中认领（标 stale），此后不再发 pin，再删本机镜像；有 pin、正在恢复或未就绪时拒绝。原件、准入与证据保留。磁盘低水位仍阻止新受理。
+回收由管理员手动发起：先在事务中认领（标 stale），此后不再发 pin，再删本机镜像；有 pin、正在恢复或未就绪时拒绝。其他任务的缓存正持有或正在恢复的共用镜像不删。仓库里的镜像、准入与证据保留。磁盘低水位仍阻止新受理。
 
-服务启动时对账：上一进程的准备 Operation 标为中断，恢复中的缓存退回 stale / absent，等待者与 pin 作废，清掉临时标签与半写的原件；docker 客户端随服务退出，构建随之取消。准入不动；在途运行按 [05](05-scheduling-execution.md) 处理。
+服务启动时对账：上一进程的准备 Operation 标为中断，恢复中的缓存退回 stale / absent，等待者与 pin 作废，清掉临时标签，删除仓库之前的 `docker save` 原件目录（`data_dir/preparations`，U-54）；docker 客户端随服务退出，构建随之取消。准入不动；在途运行按 [05](05-scheduling-execution.md) 处理。
 
-已知限制：没有按配额或 LRU 的自动回收；只有一个位置（本机 Docker），异机恢复见提案 [N-21](../proposals/N-21-offhost-restore.md)；准备方式变更后没有重新准入的入口。
+准备方式改变时，数据库迁移把所有准入重置为待准备并删除旧缓存记录，不转换旧结果（U-54）；管理员重新首次准备，首次准备会先从本机材料重新检查尚未准入的任务，刷新任务定义与准备规格。
+
+已知限制：没有按配额或 LRU 的自动回收；仓库的垃圾回收要管理员执行；只有一个位置（本机 Docker 与本机仓库），异机恢复见提案 [N-21](../proposals/N-21-offhost-restore.md)。
 
 ## 9. 验收场景
 
 - 三任务首次准备成功两个：可提交 2/3；重试第三项成功后新解析为 3/3，旧快照不变。
-- 回收已准入任务的镜像后，成员和 experiment PAT 直接提交 / 重跑，按原件恢复为同一镜像 ID，准入不变。
+- 回收已准入任务的镜像后，成员和 experiment PAT 直接提交 / 重跑，从本机仓库拉回同一 digest，准入不变；仓库也丢失时可复现的构建得到同一 digest。
+- 三种独立验证器、拉取与构建的辅助服务、验证器侧的服务都由平台准备，执行期间不构建不拉取；定义相同的镜像在任务间只做一次。
 - 多个运行等待同一缓存只恢复一次；取消一个等待者不影响其他等待者。
 - 暂态失败后受限重试且不撤销准入；重建得到不同镜像或原内容不可得时，新提交和原配置重跑被阻塞、列出期望摘要、不扣额度。
 - 上游缺失但本机确切副本仍在时可执行；超时、限流、鉴权失败不被误判为内容消失。

@@ -808,6 +808,8 @@ const SETTING_LABEL: Record<string, string> = {
   run_max_trials: "单个运行的试次数上限",
   trial_cpus_max: "单个试次 CPU 上限",
   trial_memory_mb_max: "单个试次内存上限（MiB）",
+  service_cpus_default: "未声明资源的辅助服务 CPU（默认）",
+  service_memory_mb_default: "未声明资源的辅助服务内存，MiB（默认）",
   agent_timeout_sec_max: "单个试次 Agent 时限上限（秒）",
   batch_max_runs: "单个批次的运行数上限",
   batch_max_trials: "单个批次的试次数上限",

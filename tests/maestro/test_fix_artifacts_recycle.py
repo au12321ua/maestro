@@ -172,11 +172,11 @@ def test_discarding_preparations_goes_on_after_one_image_fails(service, version_
         real = environment.discard
         calls = []
 
-        async def flaky(expected):
-            calls.append(expected.image_ref)
+        async def flaky(expected, keep=frozenset()):
+            calls.append(expected.content_id)
             if len(calls) == 1:
                 raise RuntimeError("docker daemon went away")
-            await real(expected)
+            await real(expected, keep)
 
         environment.discard = flaky
         entry = admin.delete(f"/api/v1/admin/dataset-versions/{version_id}", expect=200)

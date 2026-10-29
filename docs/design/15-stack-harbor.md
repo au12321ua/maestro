@@ -51,7 +51,7 @@ Worker 在服务进程内，负责领取、租约、取消、资源和结果确�
 - **Runner 修订**是 Runner wheel 与其锁定依赖清单的摘要，Harbor 锁与 Runner 代码都不变的更新复用已装环境。版本目录的 `runner-env` 链接指向它，`runner_python` 配置为 `/opt/maestro/current/runner-env/venv/bin/python`，切换 `current` 即切换 Runner，不原地升级；不再被保留版本引用的 Runner 环境随旧版本回收。开发时 Runner 在仓库 `runner/` 下。
 - **发布清单** `RELEASE.json` 记录版本、提交、数据库迁移头、Harbor 版本、Runner 修订和每个文件的 SHA-256。执行器标识为 `harbor-0.24.0/<错误映射摘要>`（`src/maestro/execution/policy.py`），随运行记录。
 - **Hub 目录与下载**走 Runner 的 `hub` 命令（同时运行的数量受 `hub_runner_slots` 限制）；服务进程不为读 Hub 引入 Harbor 依赖。
-- **准备不经 Harbor**：服务进程直接调用 Docker CLI（`buildx build`、`pull`、`save`、`load`），按 U-17 另存镜像原件，把准备好的镜像通过任务副本的 `docker_image` 交给 Harbor。准入、缓存与共享恢复由平台管理（[02](02-datasets-preparation.md)）；准备进程是服务进程的子进程，随服务退出。
+- **准备不经 Harbor**：服务进程直接调用 Docker CLI（`buildx build`、`pull`、`push`），把试次要启动的每个镜像存进本机镜像仓库（U-17、U-55），运行时由 Runner 交给 Harbor（第 6 节）。准入、缓存与共享恢复由平台管理（[02](02-datasets-preparation.md)）；准备进程是服务进程的子进程，随服务退出。
 - **附件安装**在每个试次容器内由 Runner 的 Agent 包装层在 setup 阶段完成，不进入数据集的共享准备（[03](03-configuration-attachments.md)）。
 
 已知限制：没有 `compatibility.json` 兼容清单（协议、Harbor、schema 与异常映射的摘要），一个安装只有当前版本的 Runner 在用，不支持多个 Harbor 版本并存调度。
@@ -78,9 +78,11 @@ Worker 在服务进程内，负责领取、租约、取消、资源和结果确�
 
 一个运行生成一个 Harbor Job（D-020，`runner/src/maestro_runner/job.py`）：
 
-- 任务列表为该运行的全部任务（每个任务一份私有副本，写入准备好的镜像与收紧后的网络策略）；`n_attempts` 为每任务计划试次数，所以一个运行内各任务的试次数必须相同；`n_concurrent_trials` 为运行并发。
+- 任务列表为该运行的全部任务（每个任务一份私有副本，`task.toml` 写入主环境与独立验证器的准备好的镜像、各环境的 CPU 与内存、收紧后的网络策略）；`n_attempts` 为每任务计划试次数，所以一个运行内各任务的试次数必须相同；`n_concurrent_trials` 为运行并发。
+- 作者的 Compose 文件不改写（PyYAML 的 YAML 1.1 与 Compose 对 `yes`、`22:22` 等写法解读不同）。Runner 为每个环境目录（`environment/`，有独立验证器时还有 `tests/`）生成一份 override：把每个服务钉到本机仓库中的 digest、`pull_policy: never`、用 `!reset` 去掉作者的 `build:`（镜像缺失时 Compose 即使 `pull_policy: never` 也会构建；`!reset` 需要 Compose 2.24 以上）、给没有声明资源的辅助服务加团队默认上限（U-56），并给服务、网络、卷加平台标签。
+- Harbor 只把 Job 的 `extra_docker_compose` 交给 Agent 环境，创建独立验证环境时有意清空它（上游 PR #1676 的理由是判分不受运行时覆盖影响，#3193 只加了提示）。Runner 因此在 Harbor 创建环境的唯一入口 `EnvironmentFactory.create_environment_from_config` 处按 `environment_dir` 补上该目录的 override，独立验证环境另外补上平台标签；Harbor 自己的验证器挂载、网络策略与会话不变。没有这一步，验证容器既没有标签（被强杀后清理找不到它），也拿不到镜像钉定与资源上限。向上游提议一个只给验证环境的覆盖选项留到开发稳定后（私有仓库 `maestro-site` 的上游问题清单）。
 - `RetryConfig` 由平台错误策略推出并显式下发：最大重试次数、退避参数，以及不重试的异常名单（`exclude_exceptions`）；不使用 Harbor 默认名单，平台也不在外层再重试，避免两层相乘（U-15、D-006）。Harbor 内的每次重试在平台记为一次执行尝试。
-- 资源与时限覆盖（CPU、内存、Agent / 验证超时）、平台标签的 compose override 一并写入。
+- 时限覆盖（Agent / 验证超时）与平台标签的 compose override 一并写入。资源覆盖是试次内所有容器的新总量，多出的部分写进主环境；独立验证器照主环境起新容器时两者设置相同，各得一半（[03](03-configuration-attachments.md) 第 3 节）。
 
 Agent 必须显式指定：Harbor 的默认 Agent 是 oracle，不能因为漏填而执行参考答案。Oracle 只作为 `execution_mode = oracle` 的测试模式，不混入模型能力比较。
 
@@ -92,11 +94,11 @@ Agent 必须显式指定：Harbor 的默认 Agent 是 oracle，不能因为漏�
 
 Runner 在独立会话与进程组中启动。取消先发 SIGTERM，Runner 协作停止（Harbor 结束各试次并停止容器），宽限期（`runner_term_grace_sec`）后向进程组发 SIGKILL。服务进程退出时 Runner 通过 `PR_SET_PDEATHSIG` 收到 SIGTERM；协议管道断开时也按取消处理，不继续执行。
 
-结束进程组不能保证 Docker daemon 管理的容器、网络和出口控制 sidecar 都已消失。所以每次执行后都按标签清理：运行的容器、网络和构建出的镜像都带 `io.maestro.instance_id` 与 `io.maestro.run_id`，清理只删带这些标签的资源，再确认没有残留（`src/maestro/execution/docker.py`）；其他实例、无标签和手工创建的资源不碰。清理失败保留记录，运行的资源预留在确认释放前不归还。
+结束进程组不能保证 Docker daemon 管理的容器、网络和出口控制 sidecar 都已消失，Harbor 被强杀后也不清理任何容器。所以每次执行后都按标签清理：运行的容器（含独立验证器与辅助服务）、网络、卷和构建出的镜像都带 `io.maestro.instance_id` 与 `io.maestro.run_id`，清理只删带这些标签的资源，再确认没有残留（`src/maestro/execution/docker.py`）；其他实例、无标签和手工创建的资源不碰。清理失败保留记录，运行的资源预留在确认释放前不归还。
 
 服务意外退出可能留下 Runner 与容器。启动对账检查持久记录中的进程身份：PID 之外还比对内核启动时刻与 boot id，只向确属自己启动的进程组发信号，再按标签清理；保留已确认评分，未完成部分按 [05](05-scheduling-execution.md) 标记中断，不自动续跑。准备的租约与构建资源同样在启动时对账，不因能够重建缓存而续跑旧试次。
 
-一个等待运行取消不终止共享的准备进程，最后一个等待者退出才取消。准备构建带 `io.maestro.spec_digest` 标签，超时单独设置（`src/maestro/config.py`）。
+一个等待运行取消不终止共享的准备进程，最后一个等待者退出才取消。准备构建带 `io.maestro.image_key`（定义键）标签，超时单独设置（`src/maestro/config.py`）。
 
 已知限制：镜像构建只受同时恢复数 `restore_slots` 限制，CPU / 内存不计入主机容量。
 
@@ -111,6 +113,7 @@ Runner 在独立会话与进程组中启动。取消先发 SIGTERM，Runner 协�
 
 Runner 依赖 Harbor 的私有接口与内部行为，升级 Harbor 时须逐项复核：
 
+- 替换 `EnvironmentFactory.create_environment_from_config`，按 `environment_dir` 加上每个环境目录的 override（第 6 节）；依赖 Harbor 在 `trial.py` 中只经它创建环境、并为独立验证环境清空 `extra_docker_compose`。测试在这两点变化时失败（`test_preparation_images.py`）。
 - 包装 `DockerEnvironment._apply_network_policy`：受限后不再回到 public，并拒绝未经代理重定向的 TCP（M1 发现 Harbor 会在阶段之间恢复 public、旧连接不受新策略约束）。
 - 调用 `DockerEnvironment._egress_control_kernel_support` 做网络能力预检；它在没有 `/proc/config.gz` 时乐观放行，所以真实收紧另有测试覆盖。
 - Terminus-2 为在 Runner 内传入密钥覆盖了 `_init_llm`。
@@ -137,7 +140,7 @@ TECH-01～04 是重写前对 Harbor 集成风险的四项验证，已在 M1 用�
 | --- | --- | --- |
 | TECH-01 | 子进程能否实时、有序地报告阶段，协议不被终端输出污染，异常时有最终状态 | Job 生命周期钩子产生阶段事件；Runner 导入 Harbor 前独占 stdout（第 5 节） |
 | TECH-02 | 能否按阶段收紧任务网络，不放宽作者更严的约束，缺能力时拒绝 | 改写任务副本 + 包装 Harbor 策略切换（`runner/src/maestro_runner/network.py`） |
-| TECH-03 | 不运行 Agent 能否独立准备、按原 digest 恢复并共享等待 | 服务直接调用 Docker 做可复现构建与镜像原件（`src/maestro/execution/preparation.py`、`materials.py`） |
+| TECH-03 | 不运行 Agent 能否独立准备、按原 digest 恢复并共享等待 | 服务直接调用 Docker 做可复现构建，镜像存进本机仓库（`src/maestro/execution/preparation.py`、`materials.py`） |
 | TECH-04 | 成员上传的附件能否在每个试次容器内独立安装，失败只影响本试次 | Agent 包装层在 setup 中复制、校验并限时运行 `bootstrap.sh`（`runner/src/maestro_runner/agents.py`） |
 
 ## 11. 未满足的接入项

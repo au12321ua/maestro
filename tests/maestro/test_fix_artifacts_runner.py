@@ -252,7 +252,7 @@ GOOD = {"max_files": 500, "max_file_bytes": 64 << 20, "max_total_bytes": 1 << 30
 
 def test_the_runner_insists_on_sane_artifact_limits():
     base = {
-        "protocol_version": 1,
+        "protocol_version": 2,
         "command": "execute",
         "run_id": "run_x",
         "output_dir": "/tmp/x",

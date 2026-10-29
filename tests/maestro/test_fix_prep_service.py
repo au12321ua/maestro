@@ -171,11 +171,11 @@ def test_reimport_brings_an_unavailable_environment_image_back(service, source, 
         admin = setup_admin(service, client)
         version_id, _ = import_and_prepare(admin, name="solo")
         (task,) = tasks_by_key(admin, version_id).values()
-        ref = environment.ref(task["spec_digest"])
-        image = environment.images[ref]
+        spec = task["spec_digest"]
+        lost = {i.digest for i in environment.outputs[spec].images}
         evict(admin, task)
         environment.nondeterministic.add("solo")
-        environment.lose_archive(ref)
+        environment.lose(spec)
         run = submit(admin, version_id).json()["data"]
         wait_run(admin, run["run_id"])
         blocked = tasks_by_key(admin, version_id)["solo"]
@@ -186,10 +186,10 @@ def test_reimport_brings_an_unavailable_environment_image_back(service, source, 
         import_dataset(admin, name="solo")
         assert not tasks_by_key(admin, version_id)["solo"]["can_submit"]
 
-        # The original is back (restored from a backup): offering the same version again
-        # re-evaluates the image and clears the block.
+        # The registry has it again (restored from a backup): offering the same version
+        # again re-evaluates the image and clears the block.
         environment.nondeterministic.discard("solo")
-        environment.archives[ref] = image
+        environment.registry |= lost
         again = import_dataset(admin, name="solo")
         assert again["result"]["existing"] is True
         recovered = tasks_by_key(admin, version_id)["solo"]

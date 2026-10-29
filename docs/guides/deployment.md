@@ -13,7 +13,8 @@
 | `/opt/maestro/harbor/<Harbor 版本>/<Runner 修订>/` | 锁定版本的 Harbor 与 Runner 环境，多个版本可共用 | root，只读 |
 | `/etc/maestro/config.toml`、`environment` | 部署配置；服务进程的代理等环境变量 | root，`maestro` 组可读 |
 | `/etc/maestro/secrets/` | 主密钥，只有 `maestro` 能读 | `maestro`，0700 |
-| `/var/lib/maestro/` | 数据库、产物、附件、准备好的镜像原件；`home/` 是服务账户的家目录 | `maestro`，0700 |
+| `/var/lib/maestro/` | 数据库、产物、附件；`registry/` 是本机镜像仓库的存储（准备好的镜像），`home/` 是服务账户的家目录 | `maestro`，0700 |
+| `maestro-registry` 容器 | 本机镜像仓库，只监听 `127.0.0.1:8425`，由 Docker 随守护进程重启 | 以 `maestro` 身份运行 |
 | `/var/cache/maestro/` | 可重建的任务材料缓存 | `maestro`，0700 |
 | `/var/backups/maestro/` | `maestroctl backup` 与更新前的自动备份 | `maestro`，0700 |
 | `maestro.service` | systemd 系统服务；日志进 journald | — |
@@ -24,7 +25,7 @@
 ## 主机要求
 
 - 带 systemd 的 Linux（x86_64 或 aarch64）；以 root 运行 `maestroctl`。
-- Docker Engine 正在运行，带 compose 与 buildx 插件；内核有 nf_tables（Harbor 用它限制任务容器的网络；没有时模型运行在受理时就被拒绝，Oracle 运行不受影响）。
+- Docker Engine 正在运行，带 compose（2.24 以上）与 buildx 插件；内核有 nf_tables（Harbor 用它限制任务容器的网络；没有时模型运行在受理时就被拒绝，Oracle 运行不受影响）。
 - [uv](https://docs.astral.sh/uv/)。Python 3.12 或 3.13：主机没有时 uv 会下载到 `/opt/maestro/python`。安装需要访问 PyPI，可经 `--proxy`。
 - 数据目录所在磁盘至少 20 GiB 可用，否则新运行会被拒绝（可在配置中调整）。
 
@@ -58,6 +59,7 @@ sudo ./maestroctl install --port 8420 --proxy http://<代理地址>:<端口> --u
 | `--download-proxy [URL]` | 安装、更新时下载 Python 包用的代理；默认直连。只写选项不带地址，表示沿用服务的代理（`--proxy`，更新时读 `/etc/maestro/environment`）；带地址则用该地址 |
 | `--docker-host` | 不用系统 Docker 时指定 Docker 地址；此时安装器不改账户的组 |
 | `--uv` | uv 的路径（sudo 的 PATH 里常常没有）。安装器把它复制到 `/opt/maestro/bin/uv`，以后更新用这份 |
+| `--registry-port` | 本机镜像仓库的端口，默认 8425，只绑定 127.0.0.1 |
 
 镜像构建、Harness 安装和附件脚本经什么网络（代理、npm / pip 等包镜像源、Harness 安装时限）由管理员在网页的“管理 · 安装网络”设置，保存后立即生效，不用重启；代理必须是**容器能访问到**的地址（例如宿主机的局域网地址，不能是 127.0.0.1）。
 
@@ -72,7 +74,10 @@ sudo maestroctl status          # 版本、服务状态、是否就绪、运行�
 sudo maestroctl logs -f         # 服务日志（journald）；-n 200 看最近 200 行
 sudo maestroctl restart         # 只启动已安装的当前版本，从不自动升级
 sudo maestroctl stop | start
+sudo maestroctl registry-gc     # 删除数据集版本后释放镜像仓库里不再用到的层
 ```
+
+准备好的镜像存在本机镜像仓库里：同一镜像、共用的基础层只存一份，本机 Docker 里的镜像被删掉后下次用时从仓库拉回。物理删除数据集版本只删去不再被任何任务记录的镜像清单，层的空间要执行 `registry-gc` 才释放；它会让仓库暂时只读（运行照常，导入和首次准备在进行时会拒绝执行，除非加 `--force`）。
 
 服务异常退出后由 systemd 自动重启（短时间反复崩溃会停下，等人处理）。每次启动都会先对账：上次中断时在执行的运行标为中断（已得的评分保留），按标签清理本实例遗留的容器，然后才开始受理。
 
@@ -80,7 +85,7 @@ sudo maestroctl stop | start
 
 ```bash
 sudo maestroctl backup                    # 数据库一致快照 + 配置 + 清单
-sudo maestroctl backup --include-files    # 另外复制附件、准备原件和产物
+sudo maestroctl backup --include-files    # 另外复制附件、镜像仓库和产物
 sudo maestroctl restore /var/backups/maestro/<时间> [--include-files]
 ```
 
@@ -99,9 +104,11 @@ sudo maestroctl update maestro-<新版本>.tar.gz --download-proxy # 下载沿�
 1. 在当前版本旁边装好新版本，服务继续运行；Harbor 与 Runner 没有变化时直接复用。
 2. 有正在执行的运行或正在进行的导入、首次准备时拒绝更新。可以等它们结束，或加 `--interrupt-running`：这些运行会被标为中断，已得的评分保留。排队中的运行会留到新版本启动后再执行。
 3. 停止服务，自动备份数据库（`/var/backups/maestro/<时间>-before-<新版本>`）。
-4. 用新版本迁移数据库，切换 `current`，启动并等待就绪。
+4. 用新版本迁移数据库，切换 `current`，重建镜像仓库容器（数据不动），启动并等待就绪。
 5. 迁移、启动或就绪检查中任何一步失败，都会自动换回旧版本和更新前的数据库，再启动旧版本，并以非零状态退出。新版本在失败前短暂运行期间写入的数据随之丢弃。
 6. 成功后保留上一个版本供手动回退，更早的版本和不再使用的 Runner 环境会被删除。
+
+改变准备方式的版本会让所有任务回到“待准备”，更新后管理员要在数据集页重新做首次准备；发布说明会写明。
 
 ## 卸载
 
@@ -112,7 +119,7 @@ sudo maestroctl uninstall --purge        # 先列出将删除的全部内容，�
 sudo maestroctl uninstall --purge --confirm <实例编号>
 ```
 
-普通卸载之后再次 `install` 会沿用原来的配置、密钥和数据，不会发新的初始化令牌。`--purge` 会删除 `/opt`、`/etc`、`/var/lib`、`/var/cache`、`/var/backups` 下属于 Maestro 的目录、本实例的 Docker 容器、网络与镜像（只按本实例的标签和镜像仓库名查找），以及 `maestro` 账户。它不会清理全机的 Docker 资源，也不会动 journald。
+普通卸载之后再次 `install` 会沿用原来的配置、密钥和数据，不会发新的初始化令牌。卸载都会删除 `maestro-registry` 容器，仓库数据随 `/var/lib/maestro` 保留。`--purge` 会删除 `/opt`、`/etc`、`/var/lib`、`/var/cache`、`/var/backups` 下属于 Maestro 的目录、本实例的 Docker 容器、网络、卷与镜像（只按本实例的标签和镜像名查找），以及 `maestro` 账户。它不会清理全机的 Docker 资源，也不会动 journald。
 
 ## 从源码打包
 

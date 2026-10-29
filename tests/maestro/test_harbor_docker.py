@@ -41,6 +41,10 @@ from maestro.services.instance import instance_id as read_instance_id
 
 ROOT = Path(__file__).resolve().parents[2]
 TASKS = Path(__file__).with_name("fixtures") / "harbor-tasks"
+# Separate verifiers of all three kinds and Compose services (N-01); the verifier with its
+# own named image is made by the test, which pushes that image to the test registry first.
+# Services pull ubuntu:22.04 by digest, so the host's own ubuntu:22.04 tag never moves.
+N01_TASKS = Path(__file__).with_name("fixtures") / "n01-tasks"
 # Agent tasks need tmux in the image (Terminus-2): build ``maestro-test/ubuntu-tmux:22.04``
 # once, see the test docstring.
 AGENT_TASKS = Path(__file__).with_name("fixtures") / "agent-tasks"
@@ -68,7 +72,7 @@ pytestmark = pytest.mark.skipif(
 
 def labelled(instance_id: str) -> list[str]:
     found = []
-    for kind in (["ps", "-aq"], ["network", "ls", "-q"], ["images", "-q"]):
+    for kind in (["ps", "-aq"], ["network", "ls", "-q"], ["volume", "ls", "-q"], ["images", "-q"]):
         out = subprocess.run(
             ["docker", *kind, "--filter", f"label=io.maestro.instance_id={instance_id}"],
             capture_output=True,
@@ -79,27 +83,49 @@ def labelled(instance_id: str) -> list[str]:
     return found
 
 
+# The registry of the module's tests (``local_registry``), set by ``use_registry``.
+REGISTRY = ""
+
+
+@pytest.fixture(autouse=True, scope="module")
+def use_registry(local_registry):
+    global REGISTRY
+    REGISTRY = local_registry
+    yield
+
+
 def prepared_images(instance_id: str) -> list[str]:
+    """Local images of the instance's prepared-image repository, by digest."""
     out = subprocess.run(
         [
             "docker",
             "image",
             "ls",
-            f"maestro-prep/{instance_id}",
+            "--digests",
+            f"{REGISTRY}/maestro-prep/{instance_id.lower()}",
             "--format",
-            "{{.Repository}}:{{.Tag}}",
+            "{{.Repository}}@{{.Digest}}",
         ],
         capture_output=True,
         text=True,
         check=True,
     ).stdout.split()
-    return sorted(out)
+    return sorted({ref for ref in out if not ref.endswith("@<none>")})
 
 
 def remove_prepared(instance_id: str) -> None:
-    refs = prepared_images(instance_id)
-    if refs:
-        subprocess.run(["docker", "image", "rm", *refs], capture_output=True, check=False)
+    """Untag by name, never remove by id: a pulled image (``ubuntu:22.04`` for a service)
+    shares its id with the name it was pulled by, and that one is not ours."""
+    repository = f"{REGISTRY}/maestro-prep/{instance_id.lower()}"
+    tags = subprocess.run(
+        ["docker", "image", "ls", repository, "--format", "{{.Repository}}:{{.Tag}}"],
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout.split()
+    names = [n for n in tags if not n.endswith("<none>")] + prepared_images(instance_id)
+    if names:
+        subprocess.run(["docker", "image", "rm", *names], capture_output=True, check=False)
 
 
 def image_ids() -> set[str]:
@@ -120,7 +146,7 @@ def harbor(settings, tasks: Path, name: str):
         term_grace=30,
         attachments=AttachmentStore(settings.data_dir),
     )
-    environment = DockerEnvironment(settings.preparation_dir)
+    environment = DockerEnvironment(REGISTRY)
     network = mock.patch("maestro.services.setup_network.current", lambda conn: SETUP_NETWORK)
     network.start()
     built = Maestro.build(
@@ -228,10 +254,15 @@ def test_oracle_run_from_submission_to_artifacts(harbor_service):
         assert labelled(service.worker.instance_id) == []
 
 
-def test_prepared_image_is_used_then_restored_from_its_original(harbor_service, settings):
-    """M4 on the real host: first preparation is a reproducible build exported as an
-    archive (U-17); Harbor runs the prepared image without building or pulling; after
-    eviction a run restores exactly that image by loading the archive."""
+def preparation(api: Api, task: dict) -> dict:
+    return api.get(f"/api/v1/preparations/{task['local_preparation']['id']}").json()["data"]
+
+
+def test_prepared_image_is_kept_in_the_registry_and_restored_from_it(harbor_service):
+    """M4 and N-01 on the real host: the three Oracle tasks share one Dockerfile, so the
+    first preparation builds one image and keeps it in the registry; Harbor runs it
+    without building or pulling; after eviction a run pulls exactly that image back, and
+    when the registry lost it the reproducible build gives the same digest again."""
     service = harbor_service
     instance = service.worker.instance_id or read_instance_id(service.db)
     with running(service) as client:
@@ -241,55 +272,179 @@ def test_prepared_image_is_used_then_restored_from_its_original(harbor_service, 
             x["task_key"]: x
             for x in pat.get(f"/api/v1/dataset-versions/{service.version_id}/tasks").json()["data"]
         }
-        task = tasks["oracle-pass"]
-        image = next(
-            r["digest"]
-            for r in task["content"]["resources"]
-            if r["resource_kind"] == "environment_image"
-        )
-        assert len(prepared_images(instance)) == 3
-        archives = sorted(p.name for p in settings.preparation_dir.iterdir())
-        assert len(archives) == 3 and all(a.endswith(".tar") for a in archives)
+        images = {key: preparation(pat, task)["images"] for key, task in tasks.items()}
+        digests = {image["digest"] for found in images.values() for image in found}
+        (digest,) = digests  # one image for three tasks
+        ref = f"{REGISTRY}/maestro-prep/{instance.lower()}@{digest}"
+        assert prepared_images(instance) == [ref]
 
         before = image_ids()
         accepted = submit(pat, service.version_id, ["oracle-pass"])
         assert wait_operation(pat, accepted["operation_id"], timeout=300)["status"] == "succeeded"
         assert image_ids() == before  # Harbor neither built nor pulled anything
 
-        preparation = task["local_preparation"]["id"]
-        ref = f"maestro-prep/{instance}:{task['spec_digest'][7:]}"
+        task = tasks["oracle-pass"]
 
         def restore_and_run():
-            op = admin.post(f"/api/v1/admin/preparations/{preparation}/evict", expect=202)
+            op = admin.post(
+                f"/api/v1/admin/preparations/{task['local_preparation']['id']}/evict", expect=202
+            )
             assert wait_operation(admin, op.json()["data"]["id"])["status"] == "succeeded"
             assert ref not in prepared_images(instance)
             again = submit(pat, service.version_id, ["oracle-pass"])
-            assert wait_operation(pat, again["operation_id"], timeout=300)["status"] == "succeeded"
-            restored = pat.get(f"/api/v1/preparations/{preparation}").json()["data"]
-            assert restored["cache_state"] == "ready" and restored["image_id"] == image
+            done = wait_operation(pat, again["operation_id"], timeout=300)
+            trials = pat.get(f"/api/v1/runs/{again['run_id']}/trials").json()["data"]
+            assert done["status"] == "succeeded", json.dumps(
+                [done.get("error"), [(t["reason_code"], t.get("attempts")) for t in trials]]
+            )
+            restored = preparation(pat, task)
+            assert restored["cache_state"] == "ready"
+            assert [i["digest"] for i in restored["images"]] == [digest]
             assert ref in prepared_images(instance)
-            with service.db.read() as conn:
-                from maestro.db import schema as t
 
-                return (
-                    conn.execute(
-                        t.operations.select()
-                        .where(t.operations.c.kind == "preparation_restore")
-                        .order_by(t.operations.c.created_at.desc())
-                    )
-                    .mappings()
-                    .first()
-                )
-
-        # The original archive is loaded back (U-17).
-        assert restore_and_run()["status"] == "succeeded"
-        # Without the original, a deterministic Dockerfile rebuilds to the same image id
-        # under the reproducible settings, so the restore is accepted and re-exported.
-        archive = settings.preparation_dir / f"{task['spec_digest'][7:]}.tar"
-        archive.unlink()
-        assert restore_and_run()["status"] == "succeeded"
-        assert archive.is_file()
+        restore_and_run()  # pulled back from the registry
+        # The registry loses it: the reproducible build gives the same digest again.
+        gone = httpx.delete(
+            f"http://{REGISTRY}/v2/maestro-prep/{instance.lower()}/manifests/{digest}"
+        )
+        assert gone.status_code == 202
+        restore_and_run()
         assert labelled(instance) == []
+
+
+def push_grader(source: Path) -> str:
+    """The author's own verifier image (the first kind), published to the test registry."""
+    reference = f"{REGISTRY}/fixtures/grader:1"
+    subprocess.run(["docker", "build", "-q", "-t", reference, str(source)], check=True,
+                   capture_output=True, timeout=600)  # fmt: skip
+    subprocess.run(["docker", "push", "-q", reference], check=True, capture_output=True,
+                   timeout=600)  # fmt: skip
+    subprocess.run(["docker", "image", "rm", reference], check=False, capture_output=True)
+    return reference
+
+
+def n01_tasks(tmp_path: Path, request) -> Path:
+    tasks = tmp_path / "n01-tasks"
+    shutil.copytree(N01_TASKS, tasks)
+    named = tasks / "verifier-named"
+    shutil.copytree(tasks / "verifier-built", named)
+    grader = push_grader(named / "tests")
+    # Preparing pulls it under this name; the name is the test's, the content stays shared.
+    request.addfinalizer(
+        lambda: subprocess.run(["docker", "image", "rm", grader], capture_output=True, check=False)
+    )
+    for name in ("Dockerfile", "docker-compose.yaml"):
+        (named / "tests" / name).unlink()
+    toml = (named / "task.toml").read_text().replace('environment_mode = "separate"\n', "")
+    (named / "task.toml").write_text(
+        toml + f'\n[verifier.environment]\ndocker_image = "{grader}"\n'
+    )
+    return tasks
+
+
+def created_containers(since: float, until: float) -> list[dict]:
+    """Compose containers the daemon created in the window, with the labels they had."""
+    out = subprocess.run(
+        ["docker", "events", "--since", f"{since:.3f}", "--until", f"{until:.3f}",
+         "--filter", "type=container", "--filter", "event=create", "--format", "{{json .}}"],
+        capture_output=True, text=True, check=True, timeout=60,
+    ).stdout  # fmt: skip
+    found = [json.loads(line)["Actor"]["Attributes"] for line in out.splitlines() if line]
+    return [a for a in found if "com.docker.compose.project" in a]
+
+
+def test_separate_verifiers_and_compose_services_run_from_prepared_images(
+    settings, tmp_path, request
+):
+    """N-01 acceptance: the three kinds of separate verifier, Compose services pulled and
+    built, a verifier-side service and a volume. Everything is prepared up front, nothing
+    is built or pulled while the run executes, every container carries the platform
+    labels (the separate verifier's too) and nothing labelled is left afterwards."""
+    with harbor(settings, n01_tasks(tmp_path, request), "n01") as service:
+        instance = service.worker.instance_id or read_instance_id(service.db)
+        with running(service) as client:
+            pat = create_pat(setup_admin(service, client))
+            tasks = {
+                x["task_key"]: x
+                for x in pat.get(f"/api/v1/dataset-versions/{service.version_id}/tasks").json()[
+                    "data"
+                ]
+            }
+            images = {
+                key: {i["role"]: i["digest"] for i in preparation(pat, task)["images"]}
+                for key, task in tasks.items()
+            }
+            assert set(images["verifier-copy"]) == {
+                "environment/main",
+                "environment/db",
+                "environment/api",
+            }
+            assert set(images["verifier-built"]) == {
+                "environment/main",
+                "tests/main",
+                "tests/helper",
+            }
+            assert set(images["verifier-named"]) == {"environment/main", "tests/main"}
+            # Identical definitions are one image: the twin builds nothing of its own.
+            assert images["verifier-built-twin"] == images["verifier-built"]
+            api = next(
+                e for e in tasks["verifier-copy"]["resources"]["environments"]
+                if e["role"] == "environment/api"
+            )  # fmt: skip
+            assert (api["cpus"], api["memory_mb"]) == (0.5, 256)
+
+            before = image_ids()
+            started = time.time()
+            accepted = submit(pat, service.version_id, list(tasks))
+            done = wait_operation(pat, accepted["operation_id"], timeout=600)
+            assert done["status"] == "succeeded", done
+            trials = pat.get(f"/api/v1/runs/{accepted['run_id']}/trials").json()["data"]
+            assert {t["task_key"]: t["result"]["score"] for t in trials} == dict.fromkeys(
+                tasks, 1.0
+            )
+            assert image_ids() == before  # nothing was built or pulled at run time
+            created = created_containers(started, time.time() + 1)
+            verifiers = [c for c in created if "__verifier__" in c["com.docker.compose.project"]]
+            assert len(verifiers) >= 4  # each task's verifier, plus its services
+            for container in created:
+                assert container.get("io.maestro.instance_id") == instance, container
+                assert container.get("io.maestro.run_id") == accepted["run_id"], container
+            assert labelled(instance) == []
+
+
+def test_a_killed_runner_leaves_no_separate_verifier_behind(settings, tmp_path):
+    """Harbor removes nothing when its process is killed; the platform finds the separate
+    verifier, its services, network and volume by their labels (05 section 7)."""
+    tasks = tmp_path / "slow-verifier"
+    shutil.copytree(N01_TASKS / "verifier-copy", tasks / "verifier-copy")
+    test = tasks / "verifier-copy" / "tests" / "test.sh"
+    test.write_text(test.read_text().replace("#!/bin/bash\n", "#!/bin/bash\nsleep 120\n", 1))
+    with harbor(settings, tasks, "slow") as service:
+        instance = service.worker.instance_id or read_instance_id(service.db)
+        with running(service) as client:
+            pat = create_pat(setup_admin(service, client))
+            accepted = submit(pat, service.version_id, ["verifier-copy"])
+
+            def verifying() -> bool:
+                out = subprocess.run(
+                    ["docker", "ps", "--filter", f"label=io.maestro.instance_id={instance}",
+                     "--format", '{{.Label "com.docker.compose.project"}}'],
+                    capture_output=True, text=True, check=True,
+                ).stdout  # fmt: skip
+                return "__verifier__" in out
+
+            wait_for(verifying, timeout=300)
+            with service.db.read() as conn:
+                runner = (
+                    conn.execute(t.runs.select().where(t.runs.c.id == accepted["run_id"]))
+                    .mappings()
+                    .one()["runner_json"]
+                )
+            os.killpg(runner["pgid"], signal.SIGKILL)
+            wait_operation(pat, accepted["operation_id"], timeout=180)
+            run = pat.get(f"/api/v1/runs/{accepted['run_id']}").json()["data"]
+            assert run["cleanup_state"] == "complete"
+            assert labelled(instance) == []
 
 
 def test_live_steps_and_logs_then_cancel(harbor_service):
@@ -378,7 +533,7 @@ def test_service_killed_mid_run_is_reconciled_on_restart(tmp_path):
     config.write_text(
         f'data_dir = "{tmp_path}/data"\ncache_dir = "{tmp_path}/cache"\n'
         f'master_key_dir = "{tmp_path}/keys"\nlisten_port = {port}\ncookie_secure = false\n'
-        f'runner_python = "{RUNNER}"\n'
+        f'runner_python = "{RUNNER}"\nimage_registry = "{REGISTRY}"\n'
     )
     cli = [sys.executable, "-m", "maestro.cli", "--config", str(config)]
     env = {k: v for k, v in os.environ.items() if not k.endswith("_API_KEY")}
@@ -495,7 +650,7 @@ def prepare_only_service(settings, tmp_path, key: str):
         toml = (task / "task.toml").read_text()
         named = f'[environment]\ndocker_image = "{MISSING_IMAGE}"\n'
         (task / "task.toml").write_text(toml.replace("[environment]\n", named, 1))
-    environment = DockerEnvironment(settings.preparation_dir)
+    environment = DockerEnvironment(REGISTRY)
     built = Maestro.build(
         settings, environment=environment, sources={"local": LocalTaskSource(tasks)}
     )

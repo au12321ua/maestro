@@ -1,0 +1,17 @@
+services:
+  main:
+    depends_on: [db, api]
+  db:
+    image: "ubuntu@sha256:${UBUNTU_DIGEST:-0a9887931b0e38af2e3487ed39e29436b0535c4f3f52e57745baaf79d1898956}"
+    command: ["sleep", "infinity"]
+    init: true
+    volumes: ["data:/data"]
+  api:
+    build:
+      context: ./api
+    command: ["sleep", "infinity"]
+    init: true
+    cpus: 0.5
+    mem_limit: 256m
+volumes:
+  data: {}

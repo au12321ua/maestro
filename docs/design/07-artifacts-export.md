@@ -23,7 +23,8 @@
 | 原始产物：日志、会话、输出、验证报告、Runner 诊断 | 团队策略 `artifact_ttl_days`，默认 7 天 |
 | 导出包 | 团队策略 `export_ttl_hours`，默认 24 小时 |
 | 半写文件、附件上传与整包下载的临时文件、半建的附件目录 | 启动时清除 |
-| 准备原件与本机镜像（U-17） | 管理员手动回收（[02](02-datasets-preparation.md)） |
+| 本机镜像仓库中的准备好的镜像（U-17、U-55） | 随最后一个使用它的数据集版本物理删除，`maestroctl registry-gc` 释放空间（[02](02-datasets-preparation.md)、[12](12-operations.md)） |
+| 本机 Docker 中的准备好的镜像 | 管理员手动回收，用时从仓库拉回（[02](02-datasets-preparation.md)） |
 | 服务日志 | journald，由宿主决定 |
 
 原始产物到期时间取所属试次 execution_terminal_at（运行级产物取运行结束时间）加当时团队策略的保留天数；终结后才到达的文件不重新计时。到期时间在详情与 SDK 中可见，重要证据由用户在到期前导出。
@@ -34,11 +35,11 @@
 /var/lib/maestro/                 data_dir
   app.db
   artifacts/runs/<run_id>/<attempt_id 或 run>/<逻辑路径摘要>
-  attachments/  preparations/  work/  exports/<export_id>/
+  attachments/  registry/  work/  exports/<export_id>/
 /var/cache/maestro/               cache_dir：任务材料
 ~~~
 
-具体目录见 [12](12-operations.md)；准备原件可恢复，所以放在 data_dir。存储键由平台生成，不是宿主路径；同一尝试的同一逻辑路径对应固定键，实时日志与最终副本写同一个文件。索引（`src/maestro/db/schema.py` 的 artifacts 表）保存逻辑路径、kind、大小、摘要、到期时间、状态和原因，不保存宿主路径；API 只给 artifact_id 与下载入口。
+具体目录见 [12](12-operations.md)；准备好的镜像是数据，所以镜像仓库的存储放在 data_dir。存储键由平台生成，不是宿主路径；同一尝试的同一逻辑路径对应固定键，实时日志与最终副本写同一个文件。索引（`src/maestro/db/schema.py` 的 artifacts 表）保存逻辑路径、kind、大小、摘要、到期时间、状态和原因，不保存宿主路径；API 只给 artifact_id 与下载入口。
 
 产物来自容器可写的挂载目录（U-16），因此不可信：Runner 归档时不跟随符号链接、只读普通文件，按部署配置的每尝试文件数、单文件与总大小上限复制，超限项列为跳过；执行器拒绝逃出归档目录的路径，核对清单摘要，不一致的文件不保存。
 

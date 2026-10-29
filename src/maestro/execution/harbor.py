@@ -38,7 +38,7 @@ from maestro.security.redaction import redact
 
 log = logging.getLogger(__name__)
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
 EVENT_TYPES = {
     "started",
     "attempt_started",
@@ -377,7 +377,7 @@ class HarborExecutor:
                 {
                     "task_key": trial.task_key,
                     "path": str(path),
-                    "docker_image": trial.prepared_image,
+                    "images": trial.prepared_images,
                     "trial_ids": [],
                 },
             )
@@ -412,6 +412,11 @@ class HarborExecutor:
         if not tasks:
             shutil.rmtree(workdir, ignore_errors=True)
             return ExecutionReport(cleanup_complete=True)
+        settings = {x["task_key"]: x for x in spec.effective_config.get("tasks") or []}
+        for key, entry in tasks.items():
+            # Each container's share of the trial's resources (U-54); the Runner gives an
+            # override's extra to the main environment.
+            entry["environments"] = (settings.get(key) or {}).get("environments") or []
         harness = bool(spec.effective_config.get("harness"))
         request = {
             "protocol_version": PROTOCOL_VERSION,

@@ -1083,11 +1083,15 @@ export function NewRunPage() {
               )}
               {override("agent_sec", "Agent 时限（秒）", "留空用各任务作者的设定")}
               {override("verifier_sec", "验证时限（秒）", "留空用各任务作者的设定")}
-              {override("cpus", "每试次 CPU", "留空用作者设定；只能调高，不能低于作者设定")}
+              {override(
+                "cpus",
+                "每试次 CPU",
+                "试次内所有容器之和；留空用作者设定，只能调高，多出的给主环境",
+              )}
               {override(
                 "memory_mb",
                 "每试次内存（MiB）",
-                "留空用作者设定；只能调高，不能低于作者设定",
+                "试次内所有容器之和；留空用作者设定，只能调高，多出的给主环境",
               )}
             </CardContent>
           </Card>

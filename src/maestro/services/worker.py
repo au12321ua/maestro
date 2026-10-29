@@ -1010,7 +1010,7 @@ class Worker:
         with self.db.read() as conn:
             contexts = {task_id: load_context(conn, task_id) for task_id in by_task}
 
-        async def one(task_id: str) -> tuple[str, str | None]:
+        async def one(task_id: str) -> tuple[str, dict[str, str] | None]:
             trials = by_task[task_id]
             ids = [x.trial_id for x in trials]
             failures = 0
@@ -1025,7 +1025,7 @@ class Worker:
                         deadline_at=spec.deadline_at,
                     )
                     sink.mark_waiting(ids, None)
-                    return task_id, output.image_ref
+                    return task_id, output.refs()
                 except PreparationFailure as error:
                     if error.kind == "cancelled" or cancel.cancelled:
                         return task_id, None
@@ -1050,7 +1050,7 @@ class Worker:
         return replace(
             spec,
             trials=tuple(
-                replace(trial, prepared_image=images[trial.task_id])
+                replace(trial, prepared_images=images[trial.task_id])
                 for trial in spec.trials
                 if images.get(trial.task_id)
             ),

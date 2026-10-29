@@ -70,7 +70,7 @@
             ],
             "title": "Admission Revision"
           },
-          "expected_image_id": {
+          "expected_content_id": {
             "anyOf": [
               {
                 "type": "string"
@@ -79,7 +79,7 @@
                 "type": "null"
               }
             ],
-            "title": "Expected Image Id"
+            "title": "Expected Content Id"
           },
           "preparation_method_digest": {
             "anyOf": [
@@ -107,7 +107,7 @@
           "admission_revision",
           "preparation_method_digest",
           "spec_digest",
-          "expected_image_id"
+          "expected_content_id"
         ],
         "title": "AdmissionRecord",
         "type": "object"
@@ -5508,7 +5508,17 @@
                 "type": "number"
               }
             ],
+            "description": "The trial's total over every container it starts",
             "title": "Cpus"
+          },
+          "environments": {
+            "default": [],
+            "description": "Each container's share; an override's extra goes to environment/main",
+            "items": {
+              "$ref": "#/components/schemas/EnvironmentResources"
+            },
+            "title": "Environments",
+            "type": "array"
           },
           "memory_mb": {
             "title": "Memory Mb",
@@ -5543,6 +5553,7 @@
           "spec_digest",
           "cpus",
           "memory_mb",
+          "environments",
           "agent_timeout_sec",
           "verifier_timeout_sec"
         ],
@@ -6920,6 +6931,62 @@
         "title": "Envelope[list[User]]",
         "type": "object"
       },
+      "EnvironmentResources": {
+        "additionalProperties": false,
+        "properties": {
+          "cpus": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null: the team default for services applies",
+            "title": "Cpus"
+          },
+          "default": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "In a run: a team default fills in a limit the author left out",
+            "title": "Default"
+          },
+          "memory_mb": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Memory Mb"
+          },
+          "role": {
+            "description": "environment/main, verifier, or <directory>/<service> of a Compose service",
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "cpus",
+          "memory_mb",
+          "default"
+        ],
+        "title": "EnvironmentResources",
+        "type": "object"
+      },
       "ErrorBody": {
         "additionalProperties": false,
         "properties": {
@@ -8090,6 +8157,17 @@
       "FirstPreparationTask": {
         "additionalProperties": false,
         "properties": {
+          "content_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Id"
+          },
           "error": {
             "anyOf": [
               {
@@ -8099,17 +8177,6 @@
                 "type": "null"
               }
             ]
-          },
-          "image_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Image Id"
           },
           "skipped": {
             "anyOf": [
@@ -11306,16 +11373,6 @@
       "Preparation": {
         "additionalProperties": false,
         "properties": {
-          "archive": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PreparationArchive"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "cache_state": {
             "enum": [
               "absent",
@@ -11325,6 +11382,18 @@
             ],
             "title": "Cache State",
             "type": "string"
+          },
+          "content_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "All images as one content identity",
+            "title": "Content Id"
           },
           "generation": {
             "title": "Generation",
@@ -11341,16 +11410,12 @@
             ],
             "title": "Id"
           },
-          "image_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Image Id"
+          "images": {
+            "items": {
+              "$ref": "#/components/schemas/PreparationImage"
+            },
+            "title": "Images",
+            "type": "array"
           },
           "last_restore_error": {
             "anyOf": [
@@ -11441,46 +11506,39 @@
           "setup_network_revision",
           "spec_digest",
           "generation",
-          "image_id",
-          "archive",
+          "content_id",
+          "images",
           "waiters",
           "pins"
         ],
         "title": "Preparation",
         "type": "object"
       },
-      "PreparationArchive": {
+      "PreparationImage": {
         "additionalProperties": false,
-        "description": "The saved original the cache is restored from (U-17).",
+        "description": "One image of a preparation, kept in the local image registry (N-01).",
         "properties": {
           "digest": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Digest"
+            "description": "Manifest digest in the local image registry",
+            "title": "Digest",
+            "type": "string"
           },
-          "size_bytes": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Size Bytes"
+          "ref": {
+            "title": "Ref",
+            "type": "string"
+          },
+          "role": {
+            "description": "<directory>/<service>, e.g. environment/main, tests/main",
+            "title": "Role",
+            "type": "string"
           }
         },
         "required": [
+          "role",
           "digest",
-          "size_bytes"
+          "ref"
         ],
-        "title": "PreparationArchive",
+        "title": "PreparationImage",
         "type": "object"
       },
       "PreparationPin": {
@@ -11545,24 +11603,9 @@
         "title": "PreparationWaiter",
         "type": "object"
       },
-      "PreparedOutputView": {
+      "PreparedImageView": {
         "additionalProperties": false,
         "properties": {
-          "archive": {
-            "anyOf": [
-              {
-                "additionalProperties": {
-                  "$ref": "#/components/schemas/JsonValue"
-                },
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "The saved original (U-17)",
-            "title": "Archive"
-          },
           "detail": {
             "additionalProperties": {
               "$ref": "#/components/schemas/JsonValue"
@@ -11571,19 +11614,59 @@
             "title": "Detail",
             "type": "object"
           },
-          "image_id": {
-            "title": "Image Id",
+          "digest": {
+            "title": "Digest",
             "type": "string"
           },
-          "image_ref": {
-            "title": "Image Ref",
+          "key": {
+            "description": "The definition: identical ones share the image",
+            "title": "Key",
+            "type": "string"
+          },
+          "ref": {
+            "title": "Ref",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
             "type": "string"
           }
         },
         "required": [
-          "image_id",
-          "image_ref",
-          "archive",
+          "role",
+          "digest",
+          "ref",
+          "key",
+          "detail"
+        ],
+        "title": "PreparedImageView",
+        "type": "object"
+      },
+      "PreparedOutputView": {
+        "additionalProperties": false,
+        "properties": {
+          "content_id": {
+            "title": "Content Id",
+            "type": "string"
+          },
+          "detail": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Detail",
+            "type": "object"
+          },
+          "images": {
+            "items": {
+              "$ref": "#/components/schemas/PreparedImageView"
+            },
+            "title": "Images",
+            "type": "array"
+          }
+        },
+        "required": [
+          "content_id",
+          "images",
           "detail"
         ],
         "title": "PreparedOutputView",
@@ -15511,7 +15594,7 @@
       },
       "TaskResources": {
         "additionalProperties": false,
-        "description": "What the task's author asks for; a run may raise CPU and memory, never lower them.",
+        "description": "What the task's author asks for; a run may raise CPU and memory, never lower them.\n``cpus`` and ``memory_mb`` are the main environment's.",
         "properties": {
           "constraint_strength": {
             "anyOf": [
@@ -15537,6 +15620,15 @@
               }
             ],
             "title": "Cpus"
+          },
+          "environments": {
+            "default": [],
+            "description": "Other containers a trial starts: a separate verifier, Compose services",
+            "items": {
+              "$ref": "#/components/schemas/EnvironmentResources"
+            },
+            "title": "Environments",
+            "type": "array"
           },
           "memory_mb": {
             "anyOf": [
@@ -15565,7 +15657,8 @@
           "cpus",
           "memory_mb",
           "storage_mb",
-          "constraint_strength"
+          "constraint_strength",
+          "environments"
         ],
         "title": "TaskResources",
         "type": "object"

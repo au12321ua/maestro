@@ -37,8 +37,9 @@ class TrialSpec:
     content_digest: str = ""
     material_digest: str = ""
     task_id: str = ""
-    prepared_image: str | None = None
-    """Local image prepared by the platform (02); the executor must not build or pull."""
+    prepared_images: dict[str, str] | None = None
+    """Images prepared by the platform (02, N-01), ``<directory>/<service>`` -> local ref;
+    the executor must not build or pull any of them."""
 
 
 @dataclass(frozen=True)

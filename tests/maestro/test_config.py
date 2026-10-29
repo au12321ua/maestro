@@ -28,7 +28,7 @@ def test_the_defaults_are_the_documented_values_and_pass_the_checks(tmp_path):
         "build_timeout_default_sec": 600,
         "build_timeout_max_sec": 3600,
         "pull_timeout_sec": 1800,
-        "save_timeout_sec": 1800,
+        "push_timeout_sec": 1800,
         "restore_slots": 2,
         "hub_runner_slots": 4,
     }
