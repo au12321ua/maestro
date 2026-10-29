@@ -1,6 +1,6 @@
 # 开发、协作与发布
 
-项目采用轻量的 `feature → dev → master + tag` 流程。开发使用独立分支和工作树，正式服务运行固定发布版本。
+项目采用轻量的 `feature → dev → master + tag` 流程。开发使用独立分支和工作树（只改文档时只建分支），正式服务运行固定发布版本。
 
 ## 分支职责
 
@@ -8,7 +8,7 @@
 | --- | --- |
 | `master` | 已验收的发布主线；日常开发不直接在此提交，也不在部署目录编辑源码。 |
 | `dev` | 下一阶段的集成分支；功能、修复和文档修改从这里开始。它不等于生产部署版本。 |
-| `feature/<topic>`、`fix/<topic>`、`docs/<topic>` | 单项工作的短期分支；每个成员或bot使用自己的工作树。 |
+| `feature/<topic>`、`fix/<topic>`、`docs/<topic>` | 单项工作的短期分支；改代码时每个成员或bot使用自己的工作树。 |
 
 上表与“发布与运行版本”是当前的常规流程。
 
@@ -28,6 +28,8 @@ git worktree add -b feature/my-change ../harbor-helper-my-change origin/dev
 cd ../harbor-helper-my-change
 git status --short --branch
 ```
+
+只改文档时，除非用户明确要求，不建工作树（U-52）：在自己的检出上从 `origin/dev` 新建分支即可（`git switch -c docs/my-change origin/dev`），合入后切回并删除分支。当前检出有未提交修改时先保留，不为切换分支清理或覆盖。
 
 后续修改、构建和验证都在这项工作的工作树内。前端构建会更新包内 `static/`，应与对应前端源码一起交付。测试须沿交接的独立HOME/state/凭据隔离要求执行，不能使用正式团队state作随手测试。
 
@@ -73,7 +75,7 @@ Agent 交付原始报告或 capture 路径时，负责人保存本地出处、�
 
 ## 集成后的收尾
 
-完成集成后，负责人必须收尾自己的 worktree 和短期分支，记录移除数量与保留原因。先核实提交已合入、没有独有未提交内容，并实时检查进程 cwd/argv、运行服务、state 和凭据引用；运行中的代码与发布环境不能随 worktree 删除。正在执行任务的树从另一个安全 checkout 收尾，必要时由集成负责人完成。
+完成集成后，负责人必须收尾自己的 worktree（如有）和短期分支，记录移除数量与保留原因。先核实提交已合入、没有独有未提交内容，并实时检查进程 cwd/argv、运行服务、state 和凭据引用；运行中的代码与发布环境不能随 worktree 删除。正在执行任务的树从另一个安全 checkout 收尾，必要时由集成负责人完成。
 
 移除前运行 `git status --porcelain --ignored`；`git worktree remove` 即使没有 force 也可能删除 ignored 内容。除可重建依赖/cache外，所有未跟踪和 ignored 现场材料先逐字归档到主仓 `.local/` 或保留现场，记录原路径与摘要；不能在待删树中保存唯一原件。无法证明安全时保留并报告原因，不用 force、git clean 或全局 prune 制造干净状态。
 
