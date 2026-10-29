@@ -2713,7 +2713,7 @@
                 "type": "null"
               }
             ],
-            "description": "Macro mean of the compared tasks' means",
+            "description": "Macro mean of compared task means; original score mean when incomparable",
             "title": "Mean"
           },
           "name": {
@@ -2803,7 +2803,7 @@
                 "type": "null"
               }
             ],
-            "description": "Sample standard deviation of the task means",
+            "description": "Sample standard deviation of task means; original scores when incomparable",
             "title": "Stddev"
           },
           "task_count": {
@@ -3204,6 +3204,17 @@
             "title": "Paths",
             "type": "array"
           },
+          "values": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/JsonValue"
+              },
+              "type": "object"
+            },
+            "description": "Complete comparison values by run id; empty in version 1 snapshots",
+            "title": "Values",
+            "type": "object"
+          },
           "varies": {
             "title": "Varies",
             "type": "boolean"
@@ -3213,7 +3224,8 @@
           "key",
           "varies",
           "paths",
-          "labels"
+          "labels",
+          "values"
         ],
         "title": "ComparisonDimension",
         "type": "object"

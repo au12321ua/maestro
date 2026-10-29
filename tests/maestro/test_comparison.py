@@ -1,6 +1,8 @@
 """Comparing runs (06 section 8): dimensions, failure groups, alignment and statistics,
 as pure functions over snapshot views and trial records."""
 
+import pytest
+
 from maestro.domain.comparison import (
     DEFAULT_EXCLUDED,
     ComparedRun,
@@ -11,6 +13,7 @@ from maestro.domain.comparison import (
     nonconforming,
 )
 from maestro.domain.scoring import DEFAULT_CONTRACT
+from maestro.execution.policy import HARBOR_EXCEPTIONS, harbor_outcome
 
 DATASET = {"source_kind": "hub", "namespace": "demo", "name": "tb", "resolved_digest": "sha256:a"}
 
@@ -20,7 +23,9 @@ def view(model="gpt", harness="codex", **extra):
         "dataset": DATASET,
         "execution_mode": "agent",
         "repetitions": 1,
-        "model": {"provider": "p", "endpoint": "https://x", "model_id": model, "params": {}},
+        "model": model
+        if isinstance(model, dict)
+        else {"provider": "p", "endpoint": "https://x", "model_id": model, "params": {}},
         "harness": {"name": harness, "version": "1", "agent": harness, "params": {}},
         "attachments": [],
         "bootstrap_timeout_sec": None,
@@ -188,3 +193,67 @@ def test_a_run_conforms_to_fixed_dimensions_or_not():
     assert nonconforming(fixed, dimensions_of(view(model="haiku"), DEFAULT_CONTRACT)) == []
     found = nonconforming(fixed, dimensions_of(view(overrides={"cpus": 2}), DEFAULT_CONTRACT))
     assert found == [{"dimension": "resources", "path": "/overrides/cpus"}]
+
+
+@pytest.mark.parametrize(
+    ("exception", "expected"),
+    [
+        (name, "provider_unavailable" if rule == "provider_transient" else "provider_access")
+        for name, rule in HARBOR_EXCEPTIONS.items()
+        if rule in {"provider_transient", "provider_auth"}
+    ],
+)
+def test_real_provider_outcomes_keep_their_failure_group(exception, expected):
+    outcome = harbor_outcome(exception, "provider error", None, False)
+    assert outcome.failure_cause == "model_provider_failed"
+    assert failure_group(error("t", outcome.failure_cause, outcome.exception_type)) == expected
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "pointer"),
+    [
+        ({}, {"temperature": None}, "/model/params/temperature"),
+        ({"enabled": False}, {"enabled": 0}, "/model/params/enabled"),
+        ({"values": [True]}, {"values": [1]}, "/model/params/values/0"),
+        ({"a/b~c": None}, {}, "/model/params/a~1b~0c"),
+    ],
+)
+def test_fixed_conditions_distinguish_missing_null_and_json_types(before, after, pointer):
+    model = view()["model"]
+    original = dimensions_of(view(model={**model, "params": before}), DEFAULT_CONTRACT)
+    changed = dimensions_of(view(model={**model, "params": after}), DEFAULT_CONTRACT)
+    assert nonconforming(original, changed) == [{"dimension": "model", "path": pointer}]
+    table = compare(
+        [
+            run("a", [trial("t", 1)], model={**model, "params": before}),
+            run("b", [trial("t", 1)], model={**model, "params": after}),
+        ]
+    )
+    dimension = next(d for d in table["dimensions"] if d["key"] == "model")
+    assert dimension["varies"] and dimension["paths"] == [pointer]
+    assert dimension["values"]["a"] == original["model"]
+    assert dimension["values"]["b"] == changed["model"]
+
+
+@pytest.mark.parametrize("exclude", [[], list(DEFAULT_EXCLUDED)])
+def test_incomparable_runs_keep_raw_trial_statistics_and_never_count_failures_as_zero(exclude):
+    a = run(
+        "a",
+        [
+            trial("t1", 1, rep=1),
+            trial("t1", 1, rep=2),
+            trial("t2", 0),
+            error("t2", "sandbox_failed", "MemoryLimitExceededError", rep=2),
+            error("t3", "model_provider_failed", "ApiRateLimitError"),
+        ],
+    )
+    b = run("b", [trial("t1", 0)], dataset={**DATASET, "resolved_digest": "sha256:b"})
+    table = compare([a, b], exclude=exclude)
+    row = by_id(table)["a"]
+    assert not table["comparable"] and not table["tasks"]
+    assert row["mean"] == pytest.approx(2 / 3)  # raw trial mean, not task macro mean
+    assert row["stddev"] == pytest.approx(1 / 3**0.5)
+    assert row["pass_rate"] == pytest.approx(2 / 3)
+    assert row["task_count"] == 3 and row["compared_trials"] == 5
+    assert row["valid_trials"] == 3 and row["failed_trials"] == 0
+    assert row["excluded_trials"] == 2 and row["difference"] is None

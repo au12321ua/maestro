@@ -1691,6 +1691,10 @@ class ComparisonDimension(Model):
     varies: bool
     paths: list[str] = Field(description="JSON pointers where some run differs from the first")
     labels: dict[str, str] = Field(description="A short name of each run's value, by run id")
+    values: dict[str, JsonObject] = Field(
+        default_factory=dict,
+        description="Complete comparison values by run id; empty in version 1 snapshots",
+    )
 
 
 class ComparisonNotice(Sparse):
@@ -1756,8 +1760,12 @@ class ComparedRunRow(Model):
     task_count: int
     compared_trials: int = Field(description="Planned trials of the compared tasks")
     valid_trials: int = Field(description="Scored plus counted-as-failed, in compared tasks")
-    mean: Number | None = Field(description="Macro mean of the compared tasks' means")
-    stddev: Number | None = Field(description="Sample standard deviation of the task means")
+    mean: Number | None = Field(
+        description="Macro mean of compared task means; original score mean when incomparable"
+    )
+    stddev: Number | None = Field(
+        description="Sample standard deviation of task means; original scores when incomparable"
+    )
     passed_trials: int | None
     pass_rate: Number | None
     planned_trials: int

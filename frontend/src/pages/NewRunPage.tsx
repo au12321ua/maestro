@@ -27,6 +27,7 @@ import {
   Pill,
   SelectField,
   TextField,
+  TextAreaField,
 } from "@/components/common";
 import { ApiError, api } from "@/lib/api";
 import {
@@ -51,7 +52,10 @@ import type {
   EffectiveTask,
   Dimension,
   Scenario,
+  VariableDimension,
+  Collection,
 } from "@/lib/types";
+import { ScenarioPicker } from "@/pages/ComparePage";
 import { TaskStatusCells } from "@/components/TaskStatusCells";
 
 function newKey() {
@@ -110,6 +114,7 @@ interface DraftMember {
 const OVERRIDE_DIMENSION: Record<string, string> = {
   repetitions: "repetitions",
   agent_sec: "resources",
+  verifier_sec: "resources",
   cpus: "resources",
   memory_mb: "resources",
   bootstrap_sec: "attachments",
@@ -127,14 +132,16 @@ export function NewRunPage() {
   const sourceRunId = params.get("from");
   const plans = useLoad(async () => (await api.get("/plans")).data);
   // From a collection: its fixed fields are filled in and locked, and the run joins it.
-  const collectionId = params.get("collection");
+  const copyCollectionId = params.get("copy_collection");
+  const collectionId = copyCollectionId ? null : params.get("collection");
+  const loadedCollectionId = copyCollectionId ?? collectionId;
   const collection = useLoad(
     async () =>
-      collectionId
-        ? (await api.get("/collections/{collection_id}", { path: { collection_id: collectionId } }))
+      loadedCollectionId
+        ? (await api.get("/collections/{collection_id}", { path: { collection_id: loadedCollectionId } }))
             .data
         : undefined,
-    [collectionId],
+    [loadedCollectionId],
   );
   const fixedDimensions = new Set(Object.keys(collection.data?.fixed ?? {}));
   const locked = (dimension: string) => !!collectionId && fixedDimensions.has(dimension);
@@ -193,6 +200,7 @@ export function NewRunPage() {
     concurrency: "",
     run_deadline_hours: "",
     agent_sec: "",
+    verifier_sec: "",
     bootstrap_sec: "",
     cpus: "",
     memory_mb: "",
@@ -205,6 +213,10 @@ export function NewRunPage() {
   const [planName, setPlanName] = useState("");
   const [collectionName, setCollectionName] = useState("");
   const [collectionScenario, setCollectionScenario] = useState<Scenario>("models");
+  const [collectionDescription, setCollectionDescription] = useState("");
+  const [collectionVariable, setCollectionVariable] = useState<VariableDimension[]>([]);
+  const [copiedCollection, setCopiedCollection] = useState<Collection | null>(null);
+  const [copyBaseRun, setCopyBaseRun] = useState("");
   const [draft, setDraft] = useState<DraftMember[]>([]);
   const [batchName, setBatchName] = useState("");
   const [batchPreview, setBatchPreview] = useState<BatchPreview | null>(null);
@@ -321,6 +333,7 @@ export function NewRunPage() {
       },
       timeouts: {
         agent_sec: numberOrNull(overrides.agent_sec),
+        verifier_sec: numberOrNull(overrides.verifier_sec),
         bootstrap_sec:
           executionMode === "agent" ? numberOrNull(overrides.bootstrap_sec) : null,
       },
@@ -359,6 +372,7 @@ export function NewRunPage() {
       concurrency: text(req.concurrency),
       run_deadline_hours: text(req.run_deadline_hours),
       agent_sec: text(req.timeouts?.agent_sec),
+      verifier_sec: text(req.timeouts?.verifier_sec),
       bootstrap_sec: text(req.timeouts?.bootstrap_sec),
       cpus: text(req.resources?.cpus),
       memory_mb: text(req.resources?.memory_mb),
@@ -393,6 +407,12 @@ export function NewRunPage() {
     if (!collection.data || collectionApplied.current) return;
     collectionApplied.current = true;
     applyRequest(collection.data.template);
+    if (copyCollectionId) {
+      setCollectionName(`${collection.data.name}（副本）`);
+      setCollectionDescription(collection.data.description);
+      setCollectionScenario(collection.data.scenario);
+      setCollectionVariable(collection.data.variable_dimensions);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [collection.data]);
 
@@ -447,6 +467,31 @@ export function NewRunPage() {
       navigate(`/collections/${res.data.id}`);
     } catch (err) {
       setError(err);
+    }
+  };
+
+  const copyCollection = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!copyCollectionId || busy) return;
+    setBusy(true);
+    setError(undefined);
+    try {
+      const res = await api.post("/collections/{collection_id}/copy", {
+        path: { collection_id: copyCollectionId },
+        body: {
+          name: collectionName.trim(),
+          description: collectionDescription,
+          scenario: collectionScenario,
+          variable_dimensions: collectionScenario === "custom" ? collectionVariable : null,
+          base: { request: setFields(request()) },
+        },
+      });
+      if (res.data.not_carried?.length) setCopiedCollection(res.data);
+      else navigate(`/collections/${res.data.id}`);
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -562,8 +607,8 @@ export function NewRunPage() {
       id={`run-${field}`}
       label={label}
       type="number"
-      min={1}
-      step={1}
+      min={field.endsWith("_sec") ? 0 : 1}
+      step={field.endsWith("_sec") ? "any" : 1}
       placeholder="继承"
       value={overrides[field]}
       disabled={locked(OVERRIDE_DIMENSION[field] ?? "")}
@@ -575,20 +620,108 @@ export function NewRunPage() {
     />
   );
 
+  if (copiedCollection) {
+    return (
+      <div className="grid gap-4">
+        <PageTitle title="集合已复制" />
+        <p>
+          新集合“{copiedCollection.name}”已建立，带入了 {copiedCollection.run_count} 个运行。
+          以下运行不符合新规格，留在原集合：
+        </p>
+        <ul className="list-disc pl-5 text-sm">
+          {(copiedCollection.not_carried ?? []).map((r) => (
+            <li key={r.run_id}>
+              {r.name}：
+              {[...new Set(r.mismatches.map((m) => DIMENSION[m.dimension]))].join("、")}
+              不同
+            </li>
+          ))}
+        </ul>
+        <div>
+          <Button asChild>
+            <Link to={`/collections/${copiedCollection.id}`}>打开新集合</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
-      <PageTitle title="新建运行">
+      <PageTitle title={copyCollectionId ? "复制并修改集合规格" : "新建运行"}>
         <Button asChild variant="outline" size="sm">
-          <Link to="/runs">返回列表</Link>
+          <Link to={copyCollectionId ? `/collections/${copyCollectionId}` : "/runs"}>返回列表</Link>
         </Button>
       </PageTitle>
       {datasets.loading && !datasets.data && <Loading />}
       <ErrorAlert error={datasets.error} title="无法加载数据集" />
+      <ErrorAlert error={collection.error} title="无法加载集合" />
       {datasets.data && versions.length === 0 && (
         <EmptyNote>还没有可用的数据集版本，请管理员先在“数据集”页添加。</EmptyNote>
       )}
       {versions.length > 0 && (
-        <form className="grid gap-4" onSubmit={check}>
+        <form className="grid gap-4" onSubmit={copyCollectionId ? copyCollection : check}>
+          {copyCollectionId && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">新集合规格</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-3">
+                <p className="text-sm text-muted-foreground">
+                  固定配置已从原集合填入。用下面的表单修改固定值，并选择允许变化的维度；
+                  符合新规格的运行会带入副本。
+                </p>
+                <TextField
+                  id="copy-name"
+                  label="新集合名称"
+                  value={collectionName}
+                  onChange={(e) => setCollectionName(e.target.value)}
+                  required
+                />
+                <TextAreaField
+                  id="copy-description"
+                  label="用途"
+                  value={collectionDescription}
+                  onChange={(e) => setCollectionDescription(e.target.value)}
+                />
+                <ScenarioPicker
+                  scenario={collectionScenario}
+                  variable={collectionVariable}
+                  onChange={(s, v) => {
+                    setCollectionScenario(s);
+                    setCollectionVariable(v);
+                  }}
+                />
+                <SelectField
+                  id="copy-base-run"
+                  label="从已有运行填入配置（可选，填入后仍可修改）"
+                  value={copyBaseRun}
+                  disabled={busy}
+                  onChange={async (event) => {
+                    const runId = event.target.value;
+                    setCopyBaseRun(runId);
+                    setBusy(true);
+                    setError(undefined);
+                    try {
+                      if (runId) {
+                        const req = await api.get("/runs/{run_id}/request", { path: { run_id: runId } });
+                        applyRequest(req.data);
+                      } else if (collection.data) applyRequest(collection.data.template);
+                    } catch (err) {
+                      setError(err);
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  <option value="">原集合的固定配置</option>
+                  {(collection.data?.members ?? []).filter((m) => !m.deletion).map((m) => (
+                    <option key={m.run_id} value={m.run_id}>{m.label ?? m.run_name}</option>
+                  ))}
+                </SelectField>
+              </CardContent>
+            </Card>
+          )}
           {collectionId && (
             <div className="rounded-md border border-sky-300 bg-sky-50 p-3 text-sm text-sky-900">
               从集合{" "}
@@ -609,7 +742,7 @@ export function NewRunPage() {
               修改：表单按原运行实际用的值填好（团队默认与模型修订已固定）。提交后会记录与原运行的差异。
             </div>
           )}
-          <Card>
+          {!copyCollectionId && <Card>
             <CardHeader>
               <CardTitle className="text-base">实验方案</CardTitle>
               <CardDescription>
@@ -689,21 +822,21 @@ export function NewRunPage() {
                 </Button>
               </div>
             </CardContent>
-          </Card>
+          </Card>}
 
           <Card>
             <CardHeader>
               <CardTitle className="text-base">基本信息</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2">
-              <TextField
+              {!copyCollectionId && <TextField
                 id="run-name"
                 label="运行名称"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 error={fieldErr("name")}
                 required
-              />
+              />}
               <SelectField
                 id="run-version"
                 label="数据集版本"
@@ -728,7 +861,7 @@ export function NewRunPage() {
                   <input
                     type="radio"
                     name="execution-mode"
-                    disabled={!!collectionId}
+                    disabled={!!loadedCollectionId}
                     checked={executionMode === "agent"}
                     onChange={() => changed(setExecutionMode)("agent")}
                   />
@@ -738,21 +871,21 @@ export function NewRunPage() {
                   <input
                     type="radio"
                     name="execution-mode"
-                    disabled={!!collectionId}
+                    disabled={!!loadedCollectionId}
                     checked={executionMode === "oracle"}
                     onChange={() => changed(setExecutionMode)("oracle")}
                   />
                   Oracle 测试模式：执行任务自带的参考解法，不调用模型，不参与模型比较
                 </label>
               </fieldset>
-              <TextField
+              {!copyCollectionId && <TextField
                 id="run-client-request"
                 label="客户端请求标识（可选）"
                 value={clientRequestId}
                 onChange={(e) => setClientRequestId(e.target.value)}
                 error={fieldErr("client_request_id")}
                 hint="便于之后按此标识查找该运行"
-              />
+              />}
             </CardContent>
           </Card>
 
@@ -949,6 +1082,7 @@ export function NewRunPage() {
                 `团队默认 ${limit(capabilities, "run_deadline_hours", 72)}，上限 ${limit(capabilities, "run_deadline_hours_max", 72)}`,
               )}
               {override("agent_sec", "Agent 时限（秒）", "留空用各任务作者的设定")}
+              {override("verifier_sec", "验证时限（秒）", "留空用各任务作者的设定")}
               {override(
                 "cpus",
                 "每试次 CPU",
@@ -1095,8 +1229,12 @@ export function NewRunPage() {
             </CardContent>
           </Card>
 
-          <ErrorAlert error={error} title={resolution ? "提交失败" : "检查失败"} />
-          <div>
+          <ErrorAlert error={error} title={copyCollectionId ? "复制失败" : resolution ? "提交失败" : "检查失败"} />
+          {copyCollectionId ? <div>
+            <Button type="submit" disabled={busy || !collection.data || !collectionName.trim() || !versionId || executionMode !== "agent"}>
+              {busy ? "复制中…" : "建立副本"}
+            </Button>
+          </div> : <div>
             <Button
               type="submit"
               variant={resolution ? "outline" : "default"}
@@ -1113,7 +1251,7 @@ export function NewRunPage() {
             >
               加入批次草稿
             </Button>
-          </div>
+          </div>}
 
           {resolution && (
             <ResolutionReview

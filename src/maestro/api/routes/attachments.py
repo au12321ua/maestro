@@ -85,13 +85,14 @@ async def upload_content(sha256: str, request: Request, who: Principal = Depends
     if maestro(request).disk:
         maestro(request).disk.refuse_if_low("attachments")
     service = maestro(request).attachments
-    staged = await run_in_threadpool(service.staged_bytes, who)
-    if staged + int(declared or 0) > limits.ATTACHMENT_STAGED_MAX_BYTES:
-        raise MaestroError(
-            "ATTACHMENT_TOO_LARGE",
-            "Unpublished uploads are over the limit; publish or wait for them to expire",
-            413,
-        )
+    allowance = await run_in_threadpool(service.upload_allowance, who, sha256)
+    staging_full = MaestroError(
+        "ATTACHMENT_TOO_LARGE",
+        "Unpublished uploads are over the limit; publish or wait for them to expire",
+        413,
+    )
+    if declared and declared.isdigit() and int(declared) > allowance:
+        raise staging_full
     spool = service.store.receive()
     path = Path(spool.name)
     try:
@@ -102,6 +103,8 @@ async def upload_content(sha256: str, request: Request, who: Principal = Depends
                 size += len(chunk)
                 if size > limit:
                     raise too_large
+                if size > allowance:
+                    raise staging_full
                 digest.update(chunk)
                 spool.write(chunk)
         if digest.hexdigest() != sha256:

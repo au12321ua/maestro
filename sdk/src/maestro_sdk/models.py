@@ -315,31 +315,6 @@ class ComparisonDifference(BaseModel):
     pass_rate: int | float | None
 
 
-class ComparisonDimension(BaseModel):
-    model_config = ConfigDict(
-        extra="allow",
-    )
-    key: Literal[
-        "dataset",
-        "scoring",
-        "model",
-        "harness",
-        "attachments",
-        "resources",
-        "repetitions",
-        "parameters",
-        "other",
-    ]
-    labels: Annotated[
-        dict[str, str], Field(description="A short name of each run's value, by run id")
-    ]
-    paths: Annotated[
-        list[str],
-        Field(description="JSON pointers where some run differs from the first"),
-    ]
-    varies: bool
-
-
 class ComparisonNotice(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -2049,7 +2024,10 @@ class ComparedRunRow(BaseModel):
     finished_at: str | None
     label: str | None
     mean: Annotated[
-        int | float | None, Field(description="Macro mean of the compared tasks' means")
+        int | float | None,
+        Field(
+            description="Macro mean of compared task means; original score mean when incomparable"
+        ),
     ]
     name: str
     owner_username: str | None
@@ -2064,7 +2042,9 @@ class ComparedRunRow(BaseModel):
     state: str
     stddev: Annotated[
         int | float | None,
-        Field(description="Sample standard deviation of the task means"),
+        Field(
+            description="Sample standard deviation of task means; original scores when incomparable"
+        ),
     ]
     task_count: int
     terminal: bool
@@ -2082,6 +2062,35 @@ class ComparedTask(BaseModel):
     cells: dict[str, ComparisonCell | None]
     status: Literal["compared", "no_valid_trials", "not_common"]
     task_key: str
+
+
+class ComparisonDimension(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    key: Literal[
+        "dataset",
+        "scoring",
+        "model",
+        "harness",
+        "attachments",
+        "resources",
+        "repetitions",
+        "parameters",
+        "other",
+    ]
+    labels: Annotated[
+        dict[str, str], Field(description="A short name of each run's value, by run id")
+    ]
+    paths: Annotated[
+        list[str],
+        Field(description="JSON pointers where some run differs from the first"),
+    ]
+    values: Annotated[
+        dict[str, dict[str, JsonValue]],
+        Field(description="Complete comparison values by run id; empty in version 1 snapshots"),
+    ]
+    varies: bool
 
 
 class ConfigDifference(BaseModel):

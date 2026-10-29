@@ -5,8 +5,10 @@ order into run configurations, and kept out of new runs once deleted."""
 import hashlib
 import io
 import json
+import threading
 import uuid
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
 import pytest
@@ -317,6 +319,13 @@ def test_uploads_are_checked_limited_and_expire(service, monkeypatch):
         monkeypatch.setattr(limits, "ATTACHMENT_FILE_MAX_BYTES", 1 << 20)
         monkeypatch.setattr(limits, "ATTACHMENT_STAGED_MAX_BYTES", 10)
         assert upload(admin, b"12345678").status_code == 204
+        assert upload(admin, b"12345678").status_code == 204  # same SHA, no extra quota
+        streamed = admin.client.put(
+            f"/api/v1/attachment-contents/{hashlib.sha256(b'abcdefgh').hexdigest()}",
+            content=iter([b"abcd", b"efgh"]),
+            headers=admin._headers({"Content-Type": "application/octet-stream"}),
+        )
+        assert error(streamed) == (413, "ATTACHMENT_TOO_LARGE")
         assert error(upload(admin, b"abcdefgh")) == (413, "ATTACHMENT_TOO_LARGE")
         bad = admin.post("/api/v1/attachment-contents/missing", json={"sha256": ["nope"]})
         assert error(bad) == (422, "VALIDATION_FAILED")
@@ -555,3 +564,66 @@ def test_leftovers_of_a_stopped_process_are_removed_at_start(service):
     assert service.maintenance.start()["attachment_staging_removed"] == 5
     assert [p.name for p in root.iterdir()] == ["blobs"]
     assert list(trees.iterdir()) == []
+
+
+def test_simultaneous_uploads_recheck_remaining_quota_atomically(service, monkeypatch):
+    from maestro.domain import limits
+
+    monkeypatch.setattr(limits, "ATTACHMENT_STAGED_MAX_BYTES", 10)
+    # Both requests observe the same empty staging area before either finishes reading.
+    barrier = threading.Barrier(2)
+    allowance = service.attachments.upload_allowance
+
+    def together(*args):
+        allowed = allowance(*args)
+        barrier.wait(timeout=10)
+        return allowed
+
+    monkeypatch.setattr(service.attachments, "upload_allowance", together)
+    with running(service, run_worker=False) as client:
+        admin = setup_admin(service, client)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            responses = list(pool.map(lambda data: upload(admin, data), [b"12345678", b"abcdefgh"]))
+        assert sorted(r.status_code for r in responses) == [204, 413]
+        assert len(list(service.attachments.store.blobs.iterdir())) == 1
+
+
+def test_concurrent_cold_cache_readers_share_one_stable_directory(contents, monkeypatch):
+    import maestro.execution.attachments as module
+
+    digest = store_package(contents, package())
+    ready = threading.Event()
+    release = threading.Event()
+    second_entered = threading.Event()
+    builds = []
+    mkdtemp = module.tempfile.mkdtemp
+
+    def pause_first_build(*args, **kwargs):
+        staging = mkdtemp(*args, **kwargs)
+        builds.append(staging)
+        if len(builds) == 1:
+            ready.set()
+            assert release.wait(timeout=10)
+        return staging
+
+    def second_reader():
+        second_entered.set()
+        return contents.verified(digest)
+
+    monkeypatch.setattr(module.tempfile, "mkdtemp", pause_first_build)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(contents.verified, digest)
+        assert ready.wait(timeout=10)
+        second = pool.submit(second_reader)
+        assert second_entered.wait(timeout=10)
+        try:
+            with pytest.raises(TimeoutError):
+                second.result(timeout=0.1)
+        finally:
+            release.set()
+        first_path = first.result(timeout=10)
+        inode = first_path.stat().st_ino
+        second_path = second.result(timeout=10)
+    assert first_path == second_path and second_path.stat().st_ino == inode
+    assert len(builds) == 1
+    assert (first_path / "bootstrap.sh").read_bytes() == BOOTSTRAP

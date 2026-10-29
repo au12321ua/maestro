@@ -20,10 +20,8 @@ import {
   Loading,
   PageTitle,
   StatusPill,
-  TextAreaField,
-  TextField,
 } from "@/components/common";
-import { SaveSnapshot, ScenarioPicker } from "@/pages/ComparePage";
+import { SaveSnapshot } from "@/pages/ComparePage";
 import { SnapshotList } from "@/pages/CollectionsPage";
 import { api, errorText } from "@/lib/api";
 import { DIMENSION, SCENARIO, valueText } from "@/lib/comparison";
@@ -33,8 +31,6 @@ import type {
   Collection,
   ComparisonSettingsInput,
   Dimension,
-  Scenario,
-  VariableDimension,
 } from "@/lib/types";
 
 const ACTION: Record<string, string> = {
@@ -80,7 +76,7 @@ export function CollectionPage() {
       (await api.get("/collections/{collection_id}/events", { path })).data,
     [collectionId],
   );
-  const [panel, setPanel] = useState<"snapshot" | "copy" | "add" | null>(null);
+  const [panel, setPanel] = useState<"snapshot" | "add" | null>(null);
 
   const c = collection.data;
   if (!c)
@@ -184,13 +180,11 @@ export function CollectionPage() {
           </Button>
         )}
         {c.allowed_actions.includes("copy") && (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setPanel(panel === "copy" ? null : "copy")}
-          >
-            <CopyPlus />
-            复制并修改规格
+          <Button asChild size="sm" variant="outline">
+            <Link to={`/runs/new?copy_collection=${c.id}`}>
+              <CopyPlus />
+              复制并修改规格
+            </Link>
           </Button>
         )}
         {can("delete") && (
@@ -220,9 +214,6 @@ export function CollectionPage() {
           collectionId={c.id}
           onClose={() => setPanel(null)}
         />
-      )}
-      {panel === "copy" && (
-        <CopyCollection collection={c} onClose={() => setPanel(null)} />
       )}
       <ErrorAlert error={table.error} />
       {table.loading && !table.data && <Loading />}
@@ -569,134 +560,6 @@ function AddRuns({
             )}
           </>
         )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function CopyCollection({
-  collection,
-  onClose,
-}: {
-  collection: Collection;
-  onClose: () => void;
-}) {
-  const navigate = useNavigate();
-  const [name, setName] = useState(`${collection.name}（副本）`);
-  const [description, setDescription] = useState(collection.description);
-  const [scenario, setScenario] = useState<Scenario>(collection.scenario);
-  const [variable, setVariable] = useState<VariableDimension[]>(
-    collection.variable_dimensions,
-  );
-  const [baseRun, setBaseRun] = useState("");
-  const [error, setError] = useState<unknown>();
-  const [result, setResult] = useState<Collection | null>(null);
-  const copy = async () => {
-    setError(undefined);
-    try {
-      const res = await api.post("/collections/{collection_id}/copy", {
-        path: { collection_id: collection.id },
-        body: {
-          name: name.trim(),
-          description,
-          scenario,
-          variable_dimensions: scenario === "custom" ? variable : null,
-          base: baseRun ? { run_id: baseRun } : null,
-        },
-      });
-      if (res.data.not_carried?.length) setResult(res.data);
-      else navigate(`/collections/${res.data.id}`);
-    } catch (err) {
-      setError(err);
-    }
-  };
-  if (result) {
-    return (
-      <Card>
-        <CardContent className="grid gap-2 pt-6 text-sm">
-          <p>
-            新集合已建好，{result.run_count}{" "}
-            个运行带了过去；下面这些不符合新规格，留在原集合：
-          </p>
-          <ul className="list-disc pl-5 text-xs">
-            {(result.not_carried ?? []).map((x) => (
-              <li key={x.run_id}>
-                {x.name}：
-                {[
-                  ...new Set(
-                    x.mismatches.map(
-                      (m) => DIMENSION[m.dimension as Dimension],
-                    ),
-                  ),
-                ].join("、")}{" "}
-                不同
-              </li>
-            ))}
-          </ul>
-          <div>
-            <Button
-              size="sm"
-              onClick={() => navigate(`/collections/${result.id}`)}
-            >
-              打开新集合
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">复制并修改规格</CardTitle>
-      </CardHeader>
-      <CardContent className="grid gap-3">
-        <TextField
-          id="copy-name"
-          label="新集合名称"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <TextAreaField
-          id="copy-description"
-          label="用途"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-        />
-        <ScenarioPicker
-          scenario={scenario}
-          variable={variable}
-          onChange={(s, v) => {
-            setScenario(s);
-            setVariable(v);
-          }}
-        />
-        <label className="grid gap-1 text-sm">
-          固定值取自（原来可变、现在要固定的维度必须选）
-          <select
-            className="h-9 rounded-md border bg-background px-2"
-            value={baseRun}
-            onChange={(e) => setBaseRun(e.target.value)}
-          >
-            <option value="">沿用原集合的固定值</option>
-            {(collection.members ?? [])
-              .filter((m) => !m.deletion)
-              .map((m) => (
-                <option key={m.run_id} value={m.run_id}>
-                  {m.label ?? m.run_name}
-                </option>
-              ))}
-          </select>
-        </label>
-        <ErrorAlert error={error} />
-        <div className="flex gap-2">
-          <Button disabled={!name.trim()} onClick={() => void copy()}>
-            复制
-          </Button>
-          <Button variant="ghost" onClick={onClose}>
-            取消
-          </Button>
-        </div>
       </CardContent>
     </Card>
   );

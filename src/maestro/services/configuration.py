@@ -21,6 +21,7 @@ from sqlalchemy import Connection, select
 from maestro.core.digests import digest_json
 from maestro.core.errors import FieldError, MaestroError
 from maestro.db import schema as t
+from maestro.domain.comparison import pointers
 from maestro.execution.agents import param_problem
 from maestro.execution.attachments import display
 from maestro.execution.materials import DEFAULT_CPUS, DEFAULT_MEMORY_MB, RESERVED_PARAMETER
@@ -346,12 +347,14 @@ def comparison_view(effective: dict) -> dict:
 
 def differences(old: dict | None, new: dict | None, path: str = "") -> list[dict]:
     """JSON-pointer differences between two effective configurations."""
-    if old == new:
-        return []
     if isinstance(old, dict) and isinstance(new, dict):
         found = []
         for key in sorted(set(old) | set(new)):
-            found.extend(differences(old.get(key), new.get(key), f"{path}/{key}"))
+            pointer = f"{path}/{key.replace('~', '~0').replace('/', '~1')}"
+            if key not in old or key not in new:
+                found.append({"path": pointer, "before": old.get(key), "after": new.get(key)})
+            else:
+                found.extend(differences(old[key], new[key], pointer))
         return found
     if (
         isinstance(old, list)
@@ -361,8 +364,11 @@ def differences(old: dict | None, new: dict | None, path: str = "") -> list[dict
     ):
         found = []
         for a, b in zip(old, new, strict=True):
-            found.extend(differences(a, b, f"{path}/{a['task_key']}"))
+            key = a["task_key"].replace("~", "~0").replace("/", "~1")
+            found.extend(differences(a, b, f"{path}/{key}"))
         return found
+    if not pointers(old, new):
+        return []
     return [{"path": path or "/", "before": old, "after": new}]
 
 
@@ -400,6 +406,17 @@ def hide_model_credential(data):
 
     collect(data)
     return scrub(data)
+
+
+def request_input(request: dict) -> dict:
+    """A checked request in public input form: plain author values are strings."""
+    result = dict(request)
+    if "parameters" in result:
+        result["parameters"] = {
+            key: value.get("value", value) if isinstance(value, dict) else value
+            for key, value in result["parameters"].items()
+        }
+    return result
 
 
 def pinned_request(request: dict, effective: dict) -> dict:

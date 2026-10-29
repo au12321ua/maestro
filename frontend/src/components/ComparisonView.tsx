@@ -1,7 +1,7 @@
 // The comparison table shared by ad-hoc comparisons, collections and snapshots (06 section
 // 8): what is the same and what differs, which failures are left out, the runs as a
 // leaderboard or a matrix, and every task. Without ``onChange`` it is read-only (a snapshot).
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { ArrowDownUp, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -84,13 +84,15 @@ export function ComparisonView({
           <CardTitle className="flex flex-wrap items-center gap-2 text-base">
             结果
             <span className="text-sm font-normal text-muted-foreground">
-              {settings.scope === "common"
-                ? `共同任务 ${table.common_tasks} 个${
-                    table.dropped_tasks
-                      ? `，因剔除少比了 ${table.dropped_tasks} 个`
-                      : ""
-                  }`
-                : `全部任务 ${table.all_tasks} 个，不给差值`}
+              {!table.comparable
+                ? "条件不同，显示各运行的原始汇总"
+                : settings.scope === "common"
+                  ? `共同任务 ${table.common_tasks} 个${
+                      table.dropped_tasks
+                        ? `，因剔除少比了 ${table.dropped_tasks} 个`
+                        : ""
+                    }`
+                  : `全部任务 ${table.all_tasks} 个，不给差值`}
             </span>
             <span className="ml-auto flex flex-wrap gap-2">
               <Button
@@ -115,7 +117,7 @@ export function ComparisonView({
           {table.runs.length === 0 ? (
             <EmptyNote>没有可比较的运行。</EmptyNote>
           ) : mode === "matrix" && matrix ? (
-            <MatrixTable table={table} axes={matrix} />
+            <MatrixTable table={table} axes={matrix} evidenceOf={evidenceOf} />
           ) : (
             <Leaderboard
               table={table}
@@ -126,7 +128,9 @@ export function ComparisonView({
           )}
         </CardContent>
       </Card>
-      {table.tasks.length > 0 && <TaskTable table={table} />}
+      {table.tasks.length > 0 && (
+        <TaskTable table={table} evidenceOf={evidenceOf} />
+      )}
     </div>
   );
 }
@@ -186,6 +190,33 @@ function Conditions({ table }: { table: Comparison }) {
             已删除、不参与计算：{table.set_aside.map((x) => x.name).join("、")}
           </p>
         )}
+        {table.dimensions.some(
+          (d) => Object.keys(d.values ?? {}).length > 0,
+        ) && (
+          <details className="rounded-md border p-2">
+            <summary className="cursor-pointer">条件明细</summary>
+            <div className="mt-2 grid gap-3">
+              {table.dimensions.map((d) => (
+                <details key={d.key}>
+                  <summary className="cursor-pointer">
+                    {DIMENSION[d.key]}
+                  </summary>
+                  {table.runs.map(
+                    (r) =>
+                      d.values?.[r.run_id] && (
+                        <div key={r.run_id} className="mt-2">
+                          <p className="font-medium">{rowTitle(r)}</p>
+                          <pre className="overflow-auto whitespace-pre-wrap break-all text-xs">
+                            {JSON.stringify(d.values[r.run_id], null, 2)}
+                          </pre>
+                        </div>
+                      ),
+                  )}
+                </details>
+              ))}
+            </div>
+          </details>
+        )}
       </CardContent>
     </Card>
   );
@@ -230,66 +261,75 @@ function Controls({
   );
   return (
     <div className="grid gap-3 text-sm">
-      <details className="rounded-md border p-2" open={false}>
-        <summary className="cursor-pointer">
-          失败剔除：{summary}
-          <span className="ml-1 text-xs text-muted-foreground">
-            （没剔除的执行失败算 0 分、未通过；单个运行页的汇总不受影响）
-          </span>
-        </summary>
-        <div className="mt-2 grid gap-3 md:grid-cols-2">
-          {(["external", "subject"] as const).map((side) => (
-            <div key={side} className="grid gap-1">
-              <div className="text-xs font-medium text-muted-foreground">
-                {side === "external"
-                  ? "外部或平台原因（预设剔除）"
-                  : "可能与被测对象有关（预设算 0 分）"}
+      {table.comparable ? (
+        <details className="rounded-md border p-2" open={false}>
+          <summary className="cursor-pointer">
+            失败剔除：{summary}
+            <span className="ml-1 text-xs text-muted-foreground">
+              （没剔除的执行失败算 0 分、未通过；单个运行页的汇总不受影响）
+            </span>
+          </summary>
+          <div className="mt-2 grid gap-3 md:grid-cols-2">
+            {(["external", "subject"] as const).map((side) => (
+              <div key={side} className="grid gap-1">
+                <div className="text-xs font-medium text-muted-foreground">
+                  {side === "external"
+                    ? "外部或平台原因（预设剔除）"
+                    : "可能与被测对象有关（预设算 0 分）"}
+                </div>
+                {table.groups
+                  .filter((g) => g.side === side)
+                  .map((g) => (
+                    <label key={g.key} className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={excluded.has(g.key)}
+                        disabled={frozen}
+                        onChange={() => toggle(g.key)}
+                      />
+                      <span
+                        className={cn(
+                          g.trials === 0 && "text-muted-foreground",
+                        )}
+                      >
+                        {FAILURE_GROUP[g.key]}
+                      </span>
+                      <span className="tabular-nums text-xs text-muted-foreground">
+                        {g.trials}
+                      </span>
+                    </label>
+                  ))}
               </div>
-              {table.groups
-                .filter((g) => g.side === side)
-                .map((g) => (
-                  <label key={g.key} className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={excluded.has(g.key)}
-                      disabled={frozen}
-                      onChange={() => toggle(g.key)}
-                    />
-                    <span
-                      className={cn(g.trials === 0 && "text-muted-foreground")}
-                    >
-                      {FAILURE_GROUP[g.key]}
-                    </span>
-                    <span className="tabular-nums text-xs text-muted-foreground">
-                      {g.trials}
-                    </span>
-                  </label>
-                ))}
-            </div>
-          ))}
-        </div>
-        {!frozen && (
-          <div className="mt-2 flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => onChange({ exclude: external })}
-            >
-              剔除外部原因
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => onChange({ exclude: [] })}
-            >
-              不剔除
-            </Button>
+            ))}
           </div>
-        )}
-      </details>
+          {!frozen && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => onChange({ exclude: external })}
+              >
+                剔除外部原因
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => onChange({ exclude: [] })}
+              >
+                不剔除
+              </Button>
+            </div>
+          )}
+        </details>
+      ) : (
+        <p className="text-muted-foreground">
+          均分、标准差和通过率沿用各运行全部有效评分试次的原始统计；执行失败不计
+          0 分，不应用比较的失败剔除设置。
+        </p>
+      )}
       {(!frozen || matrixAvailable) && (
         <div className="flex flex-wrap items-center gap-3">
-          {!frozen && (
+          {!frozen && table.comparable && (
             <Toggle
               value={settings.scope}
               options={[
@@ -425,14 +465,14 @@ function Leaderboard({
     if (!key) return table.runs;
     const value = (r: ComparedRunRow) =>
       key === "title" ? rowTitle(r) : r[key];
-    const sorted = [...table.runs].sort((a, b) => {
+    return [...table.runs].sort((a, b) => {
       const x = value(a);
       const y = value(b);
-      if (x == null) return 1;
+      if (x == null) return y == null ? 0 : 1;
       if (y == null) return -1;
-      return x < y ? -1 : x > y ? 1 : 0;
+      const direction = sort?.descending ? -1 : 1;
+      return (x < y ? -1 : x > y ? 1 : 0) * direction;
     });
-    return sort?.descending ? sorted.reverse() : sorted;
   }, [table.runs, sort]);
   const sortBy = (key: SortKey) => {
     const next = {
@@ -462,7 +502,7 @@ function Leaderboard({
             {head("title", "运行", STICKY)}
             <TableHead className="text-right">任务</TableHead>
             {head("valid_trials", "有效 / 计划")}
-            {head("mean", "均分")}
+            {head("mean", table.comparable ? "均分" : "原始均分")}
             <TableHead>与基准差</TableHead>
             <TableHead>标准差</TableHead>
             {head("pass_rate", "通过率")}
@@ -475,13 +515,14 @@ function Leaderboard({
           {rows.map((row) => (
             <TableRow key={row.run_id}>
               <TableCell className={cn(STICKY, "min-w-[12rem] max-w-[20rem]")}>
-                <Link
+                <EvidenceLink
+                  evidence={evidenceOf(row)}
                   className="block truncate font-medium text-primary hover:underline"
                   to={`/runs/${row.run_id}`}
                   title={row.name}
                 >
                   {rowTitle(row)}
-                </Link>
+                </EvidenceLink>
                 {row.label && (
                   <div className="truncate text-xs">
                     {varying
@@ -580,9 +621,11 @@ function Usage({ row }: { row: ComparedRunRow }) {
 function MatrixTable({
   table,
   axes,
+  evidenceOf,
 }: {
   table: Comparison;
   axes: [Dimension, Dimension];
+  evidenceOf: (row: ComparedRunRow) => string;
 }) {
   const [rowAxis, columnAxis] = axes;
   const values = (axis: Dimension) => [
@@ -628,13 +671,19 @@ function MatrixTable({
                       runs.map((x, i) => (
                         <span key={x.run_id}>
                           {i > 0 && " / "}
-                          <Link
+                          <EvidenceLink
+                            evidence={evidenceOf(x)}
                             to={`/runs/${x.run_id}`}
                             className="font-semibold text-primary hover:underline"
                             title={`${x.name}：有效 ${x.valid_trials}/${x.planned_trials}，通过率 ${fmtPct(x.pass_rate)}`}
                           >
                             {fmtNum(x.mean)}
-                          </Link>
+                          </EvidenceLink>
+                          {evidenceOf(x) !== "available" && (
+                            <span className="ml-1 text-xs text-muted-foreground">
+                              {EVIDENCE[evidenceOf(x)] ?? evidenceOf(x)}
+                            </span>
+                          )}
                         </span>
                       ))
                     )}
@@ -655,7 +704,13 @@ function passedSome(cell: ComparisonCell | null | undefined) {
   return !!cell && (cell.passed_trials ?? 0) > 0;
 }
 
-function TaskTable({ table }: { table: Comparison }) {
+function TaskTable({
+  table,
+  evidenceOf,
+}: {
+  table: Comparison;
+  evidenceOf: (row: ComparedRunRow) => string;
+}) {
   const [filter, setFilter] = useState<TaskFilter>("all");
   const [only, setOnly] = useState(table.runs[0]?.run_id ?? "");
   const prefix = commonPrefix(table.tasks.map((t) => t.task_key));
@@ -717,6 +772,11 @@ function TaskTable({ table }: { table: Comparison }) {
                 {table.runs.map((r) => (
                   <option key={r.run_id} value={r.run_id}>
                     {rowTitle(r)}
+                    {evidenceOf(r) !== "available" && (
+                      <div className="text-xs font-normal text-muted-foreground">
+                        {EVIDENCE[evidenceOf(r)] ?? evidenceOf(r)}
+                      </div>
+                    )}
                   </option>
                 ))}
               </select>
@@ -760,7 +820,11 @@ function TaskTable({ table }: { table: Comparison }) {
                   </TableCell>
                   {table.runs.map((r) => (
                     <TableCell key={r.run_id} className="tabular-nums">
-                      <Cell runId={r.run_id} cell={task.cells[r.run_id]} />
+                      <Cell
+                        runId={r.run_id}
+                        cell={task.cells[r.run_id]}
+                        evidence={evidenceOf(r)}
+                      />
                     </TableCell>
                   ))}
                 </TableRow>
@@ -776,9 +840,11 @@ function TaskTable({ table }: { table: Comparison }) {
 function Cell({
   runId,
   cell,
+  evidence,
 }: {
   runId: string;
   cell: ComparisonCell | null | undefined;
+  evidence: string;
 }) {
   if (!cell)
     return <span className="text-xs text-muted-foreground">未包含</span>;
@@ -792,7 +858,8 @@ function Cell({
   ].filter(Boolean);
   const trial = cell.trial_ids[0];
   return (
-    <Link
+    <EvidenceLink
+      evidence={evidence}
       to={`/runs/${runId}${trial ? `?trial=${trial}` : ""}`}
       className="hover:underline"
       title={notes.join("\n") || undefined}
@@ -817,6 +884,30 @@ function Cell({
           −{cell.excluded_trials}
         </span>
       )}
+    </EvidenceLink>
+  );
+}
+
+function EvidenceLink({
+  evidence,
+  to,
+  children,
+  className,
+  title,
+}: {
+  evidence: string;
+  to: string;
+  children: ReactNode;
+  className?: string;
+  title?: string;
+}) {
+  return evidence === "available" ? (
+    <Link to={to} className={className} title={title}>
+      {children}
     </Link>
+  ) : (
+    <span className={cn(className, "text-foreground hover:no-underline")} title={title}>
+      {children}
+    </span>
   );
 }

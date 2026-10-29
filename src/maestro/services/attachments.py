@@ -192,14 +192,25 @@ class Attachments:
             known = _held(conn, wanted, principal.user_id)
         return [s for s in wanted if s not in known or self.store.blob(s) is None]
 
-    def staged_bytes(self, principal: Principal) -> int:
+    @staticmethod
+    def _upload_allowance(conn: Connection, user_id: str, sha256: str) -> int:
+        published = select(t.attachment_files.c.sha256)
+        if conn.execute(published.where(t.attachment_files.c.sha256 == sha256)).first():
+            return limits.ATTACHMENT_FILE_MAX_BYTES
+        staged = conn.execute(
+            select(func.coalesce(func.sum(t.attachment_uploads.c.size), 0)).where(
+                t.attachment_uploads.c.user_id == user_id,
+                t.attachment_uploads.c.expires_at > clock.to_text(clock.now()),
+                t.attachment_uploads.c.sha256 != sha256,
+                t.attachment_uploads.c.sha256.not_in(published),
+            )
+        ).scalar_one()
+        return max(0, limits.ATTACHMENT_STAGED_MAX_BYTES - staged)
+
+    def upload_allowance(self, principal: Principal, sha256: str) -> int:
+        """Bytes this upload may add; retrying the same SHA does not charge it twice."""
         with self.db.read() as conn:
-            return conn.execute(
-                select(func.coalesce(func.sum(t.attachment_uploads.c.size), 0)).where(
-                    t.attachment_uploads.c.user_id == principal.user_id,
-                    t.attachment_uploads.c.expires_at > clock.to_text(clock.now()),
-                )
-            ).scalar_one()
+            return self._upload_allowance(conn, principal.user_id, sha256)
 
     def add_upload(self, principal: Principal, sha256: str, source: Path, size: int) -> None:
         """Keep a received file whose SHA-256 the caller checked, for this user's next
@@ -212,6 +223,12 @@ class Attachments:
         )
         try:
             with self.db.write() as conn:
+                if size > self._upload_allowance(conn, principal.user_id, sha256):
+                    raise MaestroError(
+                        "ATTACHMENT_TOO_LARGE",
+                        "Unpublished uploads are over the limit; publish or wait for them to expire",
+                        413,
+                    )
                 self.store.add_blob(source, sha256)
                 if conn.execute(select(t.attachment_uploads.c.sha256).where(*key)).first():
                     conn.execute(

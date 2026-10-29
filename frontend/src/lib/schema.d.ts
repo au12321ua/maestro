@@ -2997,7 +2997,7 @@ export interface components {
             label: string | null;
             /**
              * Mean
-             * @description Macro mean of the compared tasks' means
+             * @description Macro mean of compared task means; original score mean when incomparable
              */
             mean: number | null;
             /** Name */
@@ -3024,7 +3024,7 @@ export interface components {
             state: string;
             /**
              * Stddev
-             * @description Sample standard deviation of the task means
+             * @description Sample standard deviation of task means; original scores when incomparable
              */
             stddev: number | null;
             /** Task Count */
@@ -3155,6 +3155,15 @@ export interface components {
              * @description JSON pointers where some run differs from the first
              */
             paths: string[];
+            /**
+             * Values
+             * @description Complete comparison values by run id; empty in version 1 snapshots
+             */
+            values: {
+                [key: string]: {
+                    [key: string]: components["schemas"]["JsonValue"];
+                };
+            };
             /** Varies */
             varies: boolean;
         };
