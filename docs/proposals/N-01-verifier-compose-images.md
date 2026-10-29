@@ -18,8 +18,8 @@
 
 - 第 1、2 种独立验证器在导入检查时标为不支持，首次准备以 `PREPARATION_UNSUPPORTED` 失败。
 - 辅助服务的镜像不经平台准备，运行时由 Compose 隐式构建或拉取：内容不固定、依赖外网、上游删除后无法运行，也不计入容量。这类任务目前可以准入。
-- 第 3 种目前不被拒绝，但验证容器拿不到平台的 override。Harbor 创建独立验证环境时有意清空 Job 的 `extra_docker_compose`（`trial.py` 的 `_separate_verifier_env`；`check_trial_config` 也提示这类覆盖不传给独立验证环境）。2026-10-28 在本机真实 Docker 上确认（Harbor 0.24.0，第 3 种 Oracle 任务）：Agent 容器带实例与运行标签和 `init`，验证容器两者都没有，其 Compose 配置列表中没有平台的 override。后果：
-  - Runner 被杀或崩溃后按标签清理找不到验证容器及其网络，平台却会判定资源已释放、放出容量，残留容器可能仍在占用 CPU 与内存；正常结束时由 Harbor 自己删除，不受影响。
+- 第 3 种目前不被拒绝，但验证容器拿不到平台的 override。Harbor 创建独立验证环境时有意清空 Job 的 `extra_docker_compose`（`trial.py` 的 `_separate_verifier_env`；`check_trial_config` 也提示这类覆盖不传给独立验证环境）。上游的理由是判分只由任务决定、不受运行时覆盖影响（PR #1676 说明“防止继承只属于 Agent 的覆盖”，#3193 评审认为继承会削弱隔离，提议继承的 #2528 未合并）；没有考虑调用方给每个容器加管理规则的用法。2026-10-28 在本机真实 Docker 上确认（Harbor 0.24.0，第 3 种 Oracle 任务）：Agent 容器带实例与运行标签和 `init`，验证容器两者都没有，其 Compose 配置列表中没有平台的 override。后果：
+  - Runner 被杀或崩溃后按标签清理找不到验证容器及其网络，平台却会判定资源已释放、放出容量，残留容器可能仍在占用 CPU 与内存。正常结束、取消时由 Harbor 在进程内删除，不受影响；原版 Harbor 被强杀后本来就不清理任何容器，按标签清理是平台自己加的一层（05 第 7 节）。
   - 没有 `init`：测试派生的子进程无人回收，停止时信号可能传不进去，要等超时强杀。
   - 没有 `pull_policy: never`：本地缺准备好的镜像时会向外部仓库拉取，而不是直接报镜像缺失。
   - 网络收紧写在 `task.toml` 的验证阶段策略中，Harbor 照常带入；CPU 与内存覆盖也保留，这两项不受影响。
@@ -44,7 +44,7 @@
 - **存储**：本机运行一个标准镜像仓库（Docker 官方 `registry`，数据在 data 目录下，只监听本机），由 `maestroctl` 安装、启动和检查。准备一个镜像 = 构建或拉取 → 推入本机仓库 → 记下 digest。仓库按层去重：任务之间共用的基础层、同一个 `postgres:16` 只存一份。
 - **任务的准备结果**：一张镜像清单，每项是“角色 + digest”，角色为主环境、验证器、各辅助服务（含验证器侧的服务）。第 3 种验证器复用主环境一项。只有主环境的任务就是只有一项的清单；所有任务走同一条路径。
 - **相同定义只构建一次**：作者定义完全相同（环境目录内容摘要、冻结的构建参数、准备方式相同）的构建在任务间复用同一结果，例如同一数据集共用的验证器镜像只构建一次。只按内容精确匹配，不做 Dockerfile 语义比对（沿用原 N-14）。拉取的镜像按上游 digest 天然共享。
-- **运行**：Runner 为每个环境目录生成 Compose override，把每个服务钉到 `本机仓库/…@sha256:…`、去掉 `build:`（实测 Compose 在镜像缺失时即使 `pull_policy: never` 也会构建）、加平台标签与资源限制；不改写作者文件（PyYAML 的 YAML 1.1 与 Compose 对 `yes`、`22:22` 等写法解读不同）。override 需要 `!reset`，即 Docker Compose 2.24 以上，`maestroctl check` 检查。在 Harbor 创建独立验证环境处（`_separate_verifier_env`）由 Runner 补回该环境目录的 override，Harbor 自身的验证器挂载与网络策略不变。
+- **运行**：Runner 为每个环境目录生成 Compose override，把每个服务钉到 `本机仓库/…@sha256:…`、去掉 `build:`（实测 Compose 在镜像缺失时即使 `pull_policy: never` 也会构建）、加平台标签与资源限制；不改写作者文件（PyYAML 的 YAML 1.1 与 Compose 对 `yes`、`22:22` 等写法解读不同）。override 需要 `!reset`，即 Docker Compose 2.24 以上，`maestroctl check` 检查。独立验证环境由 Runner 继承 Harbor 的 Trial、重写 `_separate_verifier_env` 补回：照原样创建环境，只把 `extra_docker_compose` 换成平台为该环境目录生成的 override，Harbor 自身的验证器挂载、网络策略与会话不变。Runner 锁定 Harbor 版本，另加测试在该方法签名变化时失败，升级时核对。向上游提议增加只给验证环境的显式覆盖选项，待开发稳定后再提，问题记在 `maestro-site` 的 Harbor 上游问题清单第 19 项。
 - **回收与恢复**：Docker 本地镜像随时可删，使用时按 digest 从本机仓库拉回；去掉 `docker save` 归档及其核对、加载、重建比对代码。本机仓库也缺失时，按固定的上游 digest 重拉或重建，内容不同仍拒绝（沿用 02 第 5 节）。
 - **清理**：数据库记录每个 digest 被哪些任务引用；不再被引用的由仓库垃圾回收删除。官方仓库的垃圾回收要求期间没有写入：切到只读模式（推送被拒、读取照常）后回收，因此只需暂停准备，运行可继续拉取镜像（本机已验证删除清单后空间释放）。
 - 异机备份恢复（N-21）以后只需同步仓库目录。
