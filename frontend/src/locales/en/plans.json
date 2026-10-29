@@ -1,0 +1,51 @@
+{
+  "fieldName": {
+    "dataset_version_id": "Dataset version",
+    "task_selection": "Task selection",
+    "execution_mode": "Execution mode",
+    "model_config_id": "Model",
+    "model_revision": "Model revision",
+    "harness_version_id": "Harness",
+    "harness_params": "Harness parameters",
+    "attachments": "Attachments",
+    "repetitions": "Repetitions",
+    "concurrency": "Concurrency",
+    "run_deadline_hours": "Total time limit",
+    "resources": "Resources",
+    "timeouts": "Timeouts",
+    "parameters": "Author parameters"
+  },
+  "fieldSeparator": ", ",
+  "title": "Experiment plans",
+  "showArchived": "Show archived",
+  "teamPlans": "Team plans",
+  "description": "A plan is a saved run configuration that you pick or save on the \"New run\" page. Every change makes a new revision; runs that used an old revision keep its values. Only the creator can edit; others can copy and then edit. Once archived, a plan can no longer be picked; existing runs are not affected.",
+  "empty": "No plans yet. Fill in a configuration on the \"New run\" page, then save it as a plan.",
+  "name": "Name",
+  "archived": "Archived",
+  "column": {
+    "owner": "Creator",
+    "fields": "Included settings",
+    "revision": "Revision"
+  },
+  "editor": {
+    "description": "Description",
+    "template": "Configuration (JSON, same fields as a new-run request, all optional)",
+    "invalidJson": "The configuration is not valid JSON",
+    "saved": "Saved as a new revision; runs that used older revisions are not affected",
+    "saveFailed": "Save failed",
+    "save": "Save",
+    "cancel": "Cancel"
+  },
+  "action": {
+    "use": "New run from this plan",
+    "edit": "Edit",
+    "copy": "Copy",
+    "copied": "Copied as your plan",
+    "archive": "Archive",
+    "unarchive": "Unarchive",
+    "unarchived": "Unarchived",
+    "delete": "Delete",
+    "deleted": "Moved to the recycle bin"
+  }
+}

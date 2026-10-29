@@ -13,6 +13,7 @@ import {
   PageTitle,
   TextAreaField,
 } from "@/components/common";
+import { Trans, t } from "@/i18n";
 import { api, errorText } from "@/lib/api";
 import { DIMENSION, SCENARIO } from "@/lib/comparison";
 import { fmtTime } from "@/lib/format";
@@ -33,58 +34,67 @@ export function SnapshotPage() {
     return snapshot.error ? <ErrorAlert error={snapshot.error} /> : <Loading />;
 
   const remove = async () => {
-    if (!window.confirm("删除这份快照？它会进回收站。")) return;
+    if (!window.confirm(t("comparison.snapshot.deleteConfirm"))) return;
     try {
       await api.del("/analysis-snapshots/{snapshot_id}", { path });
-      toast.success("已移入回收站");
+      toast.success(t("comparison.shared.movedToBin"));
       navigate(
         s.collection_id ? `/collections/${s.collection_id}` : "/collections",
       );
     } catch (err) {
-      toast.error(`删除失败：${errorText(err)}`);
+      toast.error(
+        t("comparison.shared.deleteFailed", { error: errorText(err) }),
+      );
     }
   };
 
   return (
     <div className="grid gap-4">
-      <PageTitle title={`快照：${s.name}`}>
+      <PageTitle title={t("comparison.snapshot.title", { name: s.name })}>
         {s.allowed_actions.includes("delete") && !s.deletion && (
           <Button size="sm" variant="outline" onClick={() => void remove()}>
             <Trash2 />
-            删除
+            {t("comparison.shared.delete")}
           </Button>
         )}
       </PageTitle>
       <Card>
         <CardContent className="grid gap-1 pt-6 text-sm">
           <p>
-            {s.owner_username}
-            {s.pat_id ? "（PAT）" : ""} 保存于 {fmtTime(s.created_at)}，
-            {s.run_count} 个运行。
+            {t("comparison.snapshot.meta", {
+              owner: s.owner_username,
+              pat: s.pat_id ? t("comparison.shared.pat") : "",
+              time: fmtTime(s.created_at),
+              count: s.run_count,
+            })}
             {s.collection_id && (
-              <>
-                {" "}
-                来自
-                <Link
-                  className="ml-1 underline"
-                  to={`/collections/${s.collection_id}`}
-                >
-                  集合
-                </Link>
-                。
-              </>
+              <Trans
+                i18nKey="comparison.snapshot.from"
+                components={{
+                  link: (
+                    <Link
+                      className="ml-1 underline"
+                      to={`/collections/${s.collection_id}`}
+                    />
+                  ),
+                }}
+              />
             )}
           </p>
           {s.spec && (
             <p className="text-muted-foreground">
-              当时的规格：{SCENARIO[s.spec.scenario].label}，可变：
-              {s.spec.variable_dimensions
-                .map((d) => DIMENSION[d as Dimension])
-                .join("、") || "无"}
+              {t("comparison.snapshot.spec", {
+                scenario: SCENARIO[s.spec.scenario].label,
+                dimensions:
+                  s.spec.variable_dimensions
+                    .map((d) => DIMENSION[d as Dimension])
+                    .join(t("comparison.shared.listJoin")) ||
+                  t("comparison.value.none"),
+              })}
             </p>
           )}
           <p className="text-xs text-muted-foreground">
-            数字在保存时已冻结，运行或日志之后被删除、过期都不改变它们；原始证据现在能否打开写在运行名下面。
+            {t("comparison.snapshot.frozenHint")}
           </p>
         </CardContent>
       </Card>
@@ -126,27 +136,30 @@ function Notes({
       setEditing(null);
       onChange();
     } catch (err) {
-      toast.error(`保存失败：${errorText(err)}`);
+      toast.error(t("comparison.shared.saveFailed", { error: errorText(err) }));
     }
   };
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">结论</CardTitle>
+        <CardTitle className="text-base">
+          {t("comparison.snapshot.notes.title")}
+        </CardTitle>
       </CardHeader>
       <CardContent className="grid gap-3">
         <p className="text-xs text-muted-foreground">
-          结论是人或 Agent
-          写的看法，和平台算出的数字分开存放；只有作者能改自己的结论。
+          {t("comparison.snapshot.notes.hint")}
         </p>
         {snapshot.notes.length === 0 && (
-          <p className="text-sm text-muted-foreground">还没有结论。</p>
+          <p className="text-sm text-muted-foreground">
+            {t("comparison.snapshot.notes.none")}
+          </p>
         )}
         {snapshot.notes.map((n) => (
           <div key={n.id} className="rounded-md border p-3 text-sm">
             <div className="mb-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               {n.author_username}
-              {n.pat_id ? "（PAT）" : ""} · {fmtTime(n.updated_at)}
+              {n.pat_id ? t("comparison.shared.pat") : ""} · {fmtTime(n.updated_at)}
               {n.editable && (
                 <button
                   type="button"
@@ -156,7 +169,7 @@ function Notes({
                     setText(n.body);
                   }}
                 >
-                  修改
+                  {t("comparison.snapshot.notes.edit")}
                 </button>
               )}
             </div>
@@ -167,7 +180,11 @@ function Notes({
           <div className="grid gap-2">
             <TextAreaField
               id="snapshot-note-body"
-              label={editing ? "修改结论" : "写结论"}
+              label={
+                editing
+                  ? t("comparison.snapshot.notes.editLabel")
+                  : t("comparison.snapshot.notes.writeLabel")
+              }
               value={text}
               onChange={(e) => setText(e.target.value)}
             />
@@ -177,7 +194,7 @@ function Notes({
                 disabled={!text.trim()}
                 onClick={() => void save()}
               >
-                保存
+                {t("comparison.shared.save")}
               </Button>
               {editing && (
                 <Button
@@ -188,7 +205,7 @@ function Notes({
                     setText("");
                   }}
                 >
-                  取消
+                  {t("comparison.shared.cancel")}
                 </Button>
               )}
             </div>

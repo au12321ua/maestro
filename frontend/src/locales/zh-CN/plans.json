@@ -1,0 +1,51 @@
+{
+  "fieldName": {
+    "dataset_version_id": "数据集版本",
+    "task_selection": "任务范围",
+    "execution_mode": "执行方式",
+    "model_config_id": "模型",
+    "model_revision": "模型修订",
+    "harness_version_id": "Harness",
+    "harness_params": "Harness 参数",
+    "attachments": "附件",
+    "repetitions": "重复次数",
+    "concurrency": "并发",
+    "run_deadline_hours": "总时限",
+    "resources": "资源",
+    "timeouts": "时限",
+    "parameters": "作者参数"
+  },
+  "fieldSeparator": "、",
+  "title": "实验方案",
+  "showArchived": "显示已归档",
+  "teamPlans": "团队的方案",
+  "description": "方案是一组保存下来的运行配置，在“新建运行”页选用或另存。每次修改都是新修订，用过旧修订的运行保持原值。只有创建者能修改，其他人可以复制后再改；归档后不能再选用，已有运行不受影响。",
+  "empty": "还没有方案。在“新建运行”页填好配置后可以另存为方案。",
+  "name": "名称",
+  "archived": "已归档",
+  "column": {
+    "owner": "创建者",
+    "fields": "包含的设置",
+    "revision": "修订"
+  },
+  "editor": {
+    "description": "说明",
+    "template": "配置（JSON，字段同新建运行的请求，都可省略）",
+    "invalidJson": "配置不是合法的 JSON",
+    "saved": "已保存为新修订；已经用过旧修订的运行不受影响",
+    "saveFailed": "保存失败",
+    "save": "保存",
+    "cancel": "取消"
+  },
+  "action": {
+    "use": "用它新建运行",
+    "edit": "修改",
+    "copy": "复制",
+    "copied": "已复制为你的方案",
+    "archive": "归档",
+    "unarchive": "取消归档",
+    "unarchived": "已取消归档",
+    "delete": "删除",
+    "deleted": "已移入回收站"
+  }
+}

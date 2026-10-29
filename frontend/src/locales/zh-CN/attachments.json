@@ -1,0 +1,72 @@
+{
+  "title": "附件",
+  "separator": "、",
+  "download": "下载",
+  "file": {
+    "binary": "二进制或较大的文件，请下载查看。",
+    "collapse": "收起",
+    "view": "查看"
+  },
+  "diff": {
+    "modeOnly": "{{path}}（仅可执行位）",
+    "none": "文件没有差异。"
+  },
+  "detail": {
+    "provides": "提供：",
+    "tool": "工具 {{name}}",
+    "env": "环境变量 {{name}}",
+    "compareWith": "与另一快照比较",
+    "noCompare": "不比较",
+    "parentMark": "（父快照）"
+  },
+  "progress": {
+    "reading": "读取文件…",
+    "checking": "核对已有内容…",
+    "uploading": "上传 {{index}}/{{total}}…",
+    "publishing": "发布…"
+  },
+  "list": {
+    "title": "已发布的快照",
+    "description": "附件是随模型运行加载的文件，例如工具、SDK 或安装脚本。每次发布得到一份内容固定的快照，内容相同就是同一份；可以基于任意一份快照再发布，分出多个方向。运行时，每个试次在自己的容器里复制附件到<dir>/opt/maestro/attachments/</dir>并运行其中的 <code>bootstrap.sh</code>，然后才开始 Agent；安装可以联网，Agent 和验证阶段仍按平台网络限制执行。",
+    "empty": "还没有发布附件。",
+    "columns": {
+      "snapshot": "附件与快照",
+      "owner": "发布者",
+      "effects": "影响范围",
+      "content": "内容",
+      "state": "状态"
+    },
+    "basedOn": "基于 {{name}}",
+    "deletedSnapshot": "已删除的快照",
+    "anyHarness": "任意",
+    "files": "{{count}} 个文件 · {{size}}",
+    "hasBootstrap": "含安装脚本",
+    "enabled": "可用",
+    "disabled": "停用",
+    "baseOn": "基于此发布",
+    "disable": "停用",
+    "enable": "启用",
+    "disabledDone": "已停用",
+    "enabledDone": "已启用",
+    "delete": "删除",
+    "deleted": "已移入回收站"
+  },
+  "publish": {
+    "title": "发布快照",
+    "description": "选择附件所在的文件夹，根目录里放 manifest.json；可选 bootstrap.sh 由 bash 运行，工作目录是附件目录，环境变量 MAESTRO_ATTACHMENT_DIR 指向它。只上传服务端还没有的文件，发布只检查不运行；文件名只能用字母、数字和 ._+@-，.git 目录不上传。标签可选，在同名附件内唯一，发布后不能改。",
+    "basedOn": "将基于 {{name}} {{snapshot}} 发布；请选择改好的文件夹。",
+    "picked": "{{name}} · {{count}} 个文件 · {{size}}",
+    "pickedName": "附件 {{name}}",
+    "noName": "没有在 manifest.json 中找到名称",
+    "label": "标签（可选）",
+    "labelPlaceholder": "例如 v2、try-cache",
+    "parent": "父快照",
+    "noParent": "无",
+    "modeHint": "浏览器读不到文件权限：勾选需要可执行的文件（默认沿用父快照，否则按是否以 #! 开头判断）。",
+    "submit": "上传并发布",
+    "done": "已发布 {{name}} {{snapshot}}（上传 {{count}} 个文件）",
+    "exampleSummary": "manifest.json 示例",
+    "exampleDescription": "说明（可选）",
+    "exampleNote": "effects 目前支持 model_call、agent_tools、task_environment；改变验证或评分的附件暂不支持。compatible_harnesses 填 Harness 适配器名，或 [\"*\"] 表示任意。provides 用于发现两个附件之间的冲突。快照没有版本号，用发布时的标签区分。"
+  }
+}

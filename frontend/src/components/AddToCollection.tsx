@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { Library } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Trans, t } from "@/i18n";
 import { api, errorText } from "@/lib/api";
 import type { Collection } from "@/lib/types";
 
@@ -22,7 +23,9 @@ export function AddToCollection({ runIds }: { runIds: string[] }) {
       setCollections(found);
       setChosen(found[0]?.id ?? "");
     } catch (err) {
-      toast.error(`无法加载集合：${errorText(err)}`);
+      toast.error(
+        t("comparison.addToCollection.loadFailed", { error: errorText(err) }),
+      );
     }
   };
   const add = async () => {
@@ -32,11 +35,16 @@ export function AddToCollection({ runIds }: { runIds: string[] }) {
         body: { runs: runIds.map((run_id) => ({ run_id })) },
       });
       toast.success(
-        runIds.length > 1 ? `已把 ${runIds.length} 个运行加入集合` : "已加入集合",
+        runIds.length > 1
+          ? t("comparison.addToCollection.addedMany", { count: runIds.length })
+          : t("comparison.addToCollection.added"),
       );
       setOpen(false);
     } catch (err) {
-      toast.error(`没有加入：${errorText(err)}`, { duration: 10000 });
+      toast.error(
+        t("comparison.addToCollection.notAdded", { error: errorText(err) }),
+        { duration: 10000 },
+      );
     }
   };
   return (
@@ -48,20 +56,20 @@ export function AddToCollection({ runIds }: { runIds: string[] }) {
         onClick={() => void show()}
       >
         <Library />
-        加入集合
+        {t("comparison.addToCollection.button")}
       </Button>
       {open && collections && collections.length === 0 && (
         <span className="text-xs text-muted-foreground">
-          还没有集合，
-          <Link className="underline" to="/collections">
-            去新建
-          </Link>
+          <Trans
+            i18nKey="comparison.addToCollection.noneYet"
+            components={{ link: <Link className="underline" to="/collections" /> }}
+          />
         </span>
       )}
       {open && collections && collections.length > 0 && (
         <>
           <select
-            aria-label="选择集合"
+            aria-label={t("comparison.addToCollection.select")}
             className="h-8 max-w-[14rem] rounded-md border bg-background px-2 text-sm"
             value={chosen}
             onChange={(e) => setChosen(e.target.value)}
@@ -73,7 +81,7 @@ export function AddToCollection({ runIds }: { runIds: string[] }) {
             ))}
           </select>
           <Button size="sm" disabled={!chosen} onClick={() => void add()}>
-            加入
+            {t("comparison.addToCollection.add")}
           </Button>
         </>
       )}

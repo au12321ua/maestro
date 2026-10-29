@@ -20,6 +20,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
+import { t } from "@/i18n";
 import { useSession } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import { ADMIN_SECTIONS } from "@/pages/admin/sections";
@@ -32,27 +33,27 @@ interface Link {
 }
 
 const GROUPS: { title?: string; links: Link[] }[] = [
-  { links: [{ to: "/", label: "工作台", icon: LayoutDashboard, end: true }] },
+  { links: [{ to: "/", label: t("common.nav.workbench"), icon: LayoutDashboard, end: true }] },
   {
-    title: "实验",
+    title: t("common.nav.experiments"),
     links: [
-      { to: "/runs", label: "运行", icon: Play },
-      { to: "/batches", label: "批次", icon: Layers },
-      { to: "/collections", label: "集合", icon: Library },
-      { to: "/plans", label: "方案", icon: ClipboardList },
+      { to: "/runs", label: t("common.nav.runs"), icon: Play },
+      { to: "/batches", label: t("common.nav.batches"), icon: Layers },
+      { to: "/collections", label: t("common.nav.collections"), icon: Library },
+      { to: "/plans", label: t("common.nav.plans"), icon: ClipboardList },
     ],
   },
   {
-    title: "资源",
+    title: t("common.nav.resources"),
     links: [
-      { to: "/datasets", label: "数据集", icon: Database },
-      { to: "/attachments", label: "附件", icon: Paperclip },
-      { to: "/exports", label: "导出", icon: PackageOpen },
+      { to: "/datasets", label: t("common.nav.datasets"), icon: Database },
+      { to: "/attachments", label: t("common.nav.attachments"), icon: Paperclip },
+      { to: "/exports", label: t("common.nav.exports"), icon: PackageOpen },
     ],
   },
-  { links: [{ to: "/settings", label: "设置", icon: Settings }] },
+  { links: [{ to: "/settings", label: t("common.nav.settings"), icon: Settings }] },
 ];
-const ADMIN: Link = { to: "/admin", label: "管理", icon: ShieldCheck };
+const ADMIN: Link = { to: "/admin", label: t("common.nav.admin"), icon: ShieldCheck };
 
 /** Folded or not is a per-browser preference; storage may be unavailable. */
 const FOLDED_KEY = "maestro.sidebar.folded";
@@ -94,7 +95,7 @@ export function Sidebar({
   const inAdmin = pathname === "/admin" || pathname.startsWith("/admin/");
 
   const links = (narrow: boolean) => (
-    <nav aria-label="主导航" className="grid gap-3">
+    <nav aria-label={t("common.nav.main")} className="grid gap-3">
       {groups.map((group, index) => (
         <div key={group.title ?? index} className="grid gap-0.5">
           {group.title && !narrow && (
@@ -114,7 +115,7 @@ export function Sidebar({
               </NavLink>
               {link === ADMIN && inAdmin && !narrow && (
                 <nav
-                  aria-label="管理"
+                  aria-label={t("common.nav.admin")}
                   className="ml-4 grid gap-0.5 border-l border-sidebar-border pl-2"
                 >
                   {ADMIN_SECTIONS.map((s) => (
@@ -145,7 +146,7 @@ export function Sidebar({
     <>
       {/* Narrow screens: a bar with the menu button; the sidebar opens as a drawer. */}
       <div className="fixed inset-x-0 top-0 z-30 flex h-12 items-center gap-3 border-b bg-sidebar px-4 text-sidebar-foreground md:hidden">
-        <button type="button" aria-label="打开导航" onClick={() => setDrawer(true)}>
+        <button type="button" aria-label={t("common.nav.openDrawer")} onClick={() => setDrawer(true)}>
           <Menu className="size-5" />
         </button>
         {brand}
@@ -157,7 +158,7 @@ export function Sidebar({
           <aside className="absolute inset-y-0 left-0 flex w-64 max-w-[85vw] flex-col gap-4 overflow-y-auto bg-sidebar p-3 text-sidebar-foreground">
             <div className="flex items-center justify-between px-1">
               {brand}
-              <button type="button" aria-label="关闭导航" onClick={() => setDrawer(false)}>
+              <button type="button" aria-label={t("common.nav.closeDrawer")} onClick={() => setDrawer(false)}>
                 <X className="size-5" />
               </button>
             </div>
@@ -179,8 +180,8 @@ export function Sidebar({
             {!folded && brand}
             <button
               type="button"
-              aria-label={folded ? "展开侧边栏" : "收起侧边栏"}
-              title={folded ? "展开侧边栏" : "收起侧边栏"}
+              aria-label={folded ? t("common.nav.expand") : t("common.nav.fold")}
+              title={folded ? t("common.nav.expand") : t("common.nav.fold")}
               className="rounded p-1 hover:bg-sidebar-accent/60"
               onClick={() => fold(!folded)}
             >

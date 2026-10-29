@@ -26,6 +26,8 @@ import { ComparePage } from "@/pages/ComparePage";
 import { CollectionsPage } from "@/pages/CollectionsPage";
 import { CollectionPage } from "@/pages/CollectionPage";
 import { SnapshotPage } from "@/pages/SnapshotPage";
+import { LanguageSwitch } from "@/components/LanguageSwitch";
+import { t } from "@/i18n";
 
 type Boot =
   | { phase: "loading" }
@@ -62,7 +64,7 @@ function useBoot() {
     setUnauthorizedHandler(() => {
       setCsrfToken(null);
       setBoot((current) => {
-        if (current.phase === "signed-in") toast.error("登录已失效，请重新登录");
+        if (current.phase === "signed-in") toast.error(t("common.app.sessionExpired"));
         return current.phase === "signed-in" ? { phase: "signed-out" } : current;
       });
     });
@@ -90,28 +92,28 @@ function Root() {
   const { boot, setBoot, signedIn, reload } = useBoot();
   const location = useLocation();
 
-  if (location.pathname === "/invite") return <InvitePage onSignedIn={signedIn} />;
+  if (location.pathname === "/invite") return outside(<InvitePage onSignedIn={signedIn} />);
 
   switch (boot.phase) {
     case "loading":
-      return (
+      return outside(
         <div className="p-8">
           <Loading />
-        </div>
+        </div>,
       );
     case "error":
-      return (
+      return outside(
         <div className="mx-auto max-w-xl p-8">
-          <ErrorAlert error={boot.error} title="无法连接 Maestro 服务" />
+          <ErrorAlert error={boot.error} title={t("common.app.cannotConnect")} />
           <Button className="mt-4" variant="outline" onClick={() => void reload()}>
-            重试
+            {t("common.app.retry")}
           </Button>
-        </div>
+        </div>,
       );
     case "setup":
-      return <SetupPage onSignedIn={signedIn} />;
+      return outside(<SetupPage onSignedIn={signedIn} />);
     case "signed-out":
-      return <LoginPage onSignedIn={signedIn} />;
+      return outside(<LoginPage onSignedIn={signedIn} />);
     case "signed-in":
       return (
         <SignedIn
@@ -121,6 +123,16 @@ function Root() {
         />
       );
   }
+}
+
+/** A page shown before signing in, with the language choice in a corner. */
+function outside(page: React.ReactNode) {
+  return (
+    <>
+      {page}
+      <LanguageSwitch className="fixed right-4 bottom-4 max-w-64 rounded-md border bg-background p-2 text-muted-foreground shadow-sm" />
+    </>
+  );
 }
 
 function SignedIn({
@@ -151,7 +163,7 @@ function SignedIn({
           await api.del("/session");
         } catch (err) {
           if (!(err instanceof ApiError && err.status === 401)) {
-            toast.error(`退出失败：${errorText(err)}`);
+            toast.error(t("common.app.logoutFailed", { error: errorText(err) }));
             return;
           }
         }
@@ -205,7 +217,7 @@ function SignedIn({
 }
 
 function NotFound() {
-  return <ErrorAlert error={new Error("页面不存在")} title="404" />;
+  return <ErrorAlert error={new Error(t("common.app.notFound"))} title="404" />;
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -232,10 +244,11 @@ function Shell({ children }: { children: React.ReactNode }) {
           <div>
             <SystemIndicator health={health} error={healthError} />
           </div>
+          <LanguageSwitch />
           <div className="flex min-w-0 items-center gap-2 text-sm">
             <span className="min-w-0 truncate" title={me.id}>
               {me.display_name || me.username}
-              <span className="ml-1 opacity-70">({me.role === "admin" ? "管理员" : "成员"})</span>
+              <span className="ml-1 opacity-70">({me.role === "admin" ? t("common.app.admin") : t("common.app.member")})</span>
             </span>
             <Button
               size="sm"
@@ -244,7 +257,7 @@ function Shell({ children }: { children: React.ReactNode }) {
               onClick={() => void signOut()}
             >
               <LogOut />
-              退出
+              {t("common.app.logout")}
             </Button>
           </div>
         </>
@@ -273,14 +286,14 @@ function SystemIndicator({
   compact?: boolean;
 }) {
   const [tone, text]: [Tone, string] | [null, null] = error
-    ? ["bad", "状态未知"]
+    ? ["bad", t("common.app.state.unknown")]
     : !health
       ? [null, null]
       : health.status !== "ready"
-        ? ["bad", "维护中"]
+        ? ["bad", t("common.app.state.maintenance")]
         : health.accepting_runs
-          ? ["good", "可受理运行"]
-          : ["warn", "暂不受理运行"];
+          ? ["good", t("common.app.state.accepting")]
+          : ["warn", t("common.app.state.notAccepting")];
   if (!tone) return null;
   const title = error ? errorText(error) : text;
   if (compact) {
@@ -300,19 +313,21 @@ function SystemNotice({ health }: { health: SystemStatus | null }) {
   if (!health || (health.accepting_runs && health.status === "ready")) return null;
   const detail = health.detail;
   const reasons: string[] = [];
-  if (health.status !== "ready") reasons.push(`服务状态：${health.status}`);
-  if (detail.master_key_available === false) reasons.push("主密钥不可用");
-  if (!detail.executor) reasons.push("未配置执行器");
-  if (detail.worker_running === false) reasons.push("执行进程未运行");
-  if (detail.storage.level !== "ok") reasons.push("存储空间不足");
+  if (health.status !== "ready") reasons.push(t("common.app.reason.health", { status: health.status }));
+  if (detail.master_key_available === false) reasons.push(t("common.app.reason.masterKey"));
+  if (!detail.executor) reasons.push(t("common.app.reason.executor"));
+  if (detail.worker_running === false) reasons.push(t("common.app.reason.worker"));
+  if (detail.storage.level !== "ok") reasons.push(t("common.app.reason.storage"));
   return (
     <div className="border-b border-amber-300 bg-amber-50 text-amber-900">
       <div className="flex items-start gap-2 px-4 py-2 text-sm md:px-6">
         <AlertTriangle className="mt-0.5 size-4 shrink-0" />
         <div className="min-w-0">
-          <b>当前无法受理新运行。</b> {reasons.join("；") || "原因未知"}。已有记录仍可查看。
+          <b>{t("common.app.banner.title")}</b>{" "}
+          {reasons.join(t("common.format.listSeparator")) || t("common.app.reason.unknown")}
+          {t("common.app.banner.tail")}
           <details className="mt-1">
-            <summary className="cursor-pointer text-xs">详情</summary>
+            <summary className="cursor-pointer text-xs">{t("common.app.banner.details")}</summary>
             <pre className="overflow-x-auto text-xs">{JSON.stringify(detail, null, 2)}</pre>
           </details>
         </div>

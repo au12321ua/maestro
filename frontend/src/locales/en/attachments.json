@@ -1,0 +1,75 @@
+{
+  "title": "Attachments",
+  "separator": ", ",
+  "download": "Download",
+  "file": {
+    "binary": "Binary or large file; download it to view.",
+    "collapse": "Hide",
+    "view": "View"
+  },
+  "diff": {
+    "modeOnly": "{{path}} (executable bit only)",
+    "none": "No file differences."
+  },
+  "detail": {
+    "provides": "Provides: ",
+    "tool": "tool {{name}}",
+    "env": "environment variable {{name}}",
+    "compareWith": "Compare with another snapshot",
+    "noCompare": "Don't compare",
+    "parentMark": " (parent snapshot)"
+  },
+  "progress": {
+    "reading": "Reading files…",
+    "checking": "Checking existing content…",
+    "uploading": "Uploading {{index}}/{{total}}…",
+    "publishing": "Publishing…"
+  },
+  "list": {
+    "title": "Published snapshots",
+    "description": "Attachments are files loaded with a model run, such as tools, SDKs or setup scripts. Each publish produces a snapshot with fixed content; identical content is the same snapshot. You can publish again based on any snapshot to branch in several directions. At run time, each trial copies the attachments into<dir>/opt/maestro/attachments/</dir>in its own container and runs their <code>bootstrap.sh</code> before the Agent starts; setup may use the network, while the Agent and verification still follow the platform's network limits.",
+    "empty": "No attachments published yet.",
+    "columns": {
+      "snapshot": "Attachment and snapshot",
+      "owner": "Published by",
+      "effects": "Affects",
+      "content": "Content",
+      "state": "State"
+    },
+    "basedOn": "Based on {{name}}",
+    "deletedSnapshot": "a deleted snapshot",
+    "anyHarness": "Any",
+    "files_one": "{{count}} file · {{size}}",
+    "files_other": "{{count}} files · {{size}}",
+    "hasBootstrap": "Has setup script",
+    "enabled": "Available",
+    "disabled": "Disabled",
+    "baseOn": "Publish based on this",
+    "disable": "Disable",
+    "enable": "Enable",
+    "disabledDone": "Disabled",
+    "enabledDone": "Enabled",
+    "delete": "Delete",
+    "deleted": "Moved to the recycle bin"
+  },
+  "publish": {
+    "title": "Publish a snapshot",
+    "description": "Choose the attachment's folder, with manifest.json at its root; an optional bootstrap.sh runs with bash, in the attachment directory, with the environment variable MAESTRO_ATTACHMENT_DIR pointing to it. Only files the server lacks are uploaded; publishing checks but does not run anything. File names may use only letters, digits and ._+@-; the .git directory is not uploaded. The label is optional, unique among attachments of the same name, and cannot be changed after publishing.",
+    "basedOn": "Will publish based on {{name}} {{snapshot}}; choose the edited folder.",
+    "picked_one": "{{name}} · {{count}} file · {{size}}",
+    "picked_other": "{{name}} · {{count}} files · {{size}}",
+    "pickedName": "Attachment {{name}}",
+    "noName": "No name found in manifest.json",
+    "label": "Label (optional)",
+    "labelPlaceholder": "e.g. v2, try-cache",
+    "parent": "Parent snapshot",
+    "noParent": "None",
+    "modeHint": "Browsers cannot read file permissions: check the files that must be executable (by default kept from the parent snapshot, otherwise guessed from a leading #!).",
+    "submit": "Upload and publish",
+    "done_one": "Published {{name}} {{snapshot}} ({{count}} file uploaded)",
+    "done_other": "Published {{name}} {{snapshot}} ({{count}} files uploaded)",
+    "exampleSummary": "manifest.json example",
+    "exampleDescription": "Description (optional)",
+    "exampleNote": "effects currently supports model_call, agent_tools and task_environment; attachments that change verification or scoring are not supported yet. compatible_harnesses lists Harness adapter names, or [\"*\"] for any. provides is used to detect conflicts between two attachments. Snapshots have no version number; tell them apart by the label given at publishing."
+  }
+}

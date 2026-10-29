@@ -1,0 +1,261 @@
+{
+  "runState": {
+    "queued": "Queued",
+    "preparing": "Preparing",
+    "running": "Running",
+    "finalizing": "Finalizing",
+    "finished": "Finished",
+    "cancelled": "Cancelled",
+    "interrupted": "Interrupted"
+  },
+  "resultCompleteness": {
+    "none": "No scores",
+    "partial": "Partly scored",
+    "complete": "Fully scored"
+  },
+  "artifactState": {
+    "pending": "Not saved yet",
+    "saving": "Saving",
+    "complete": "Saved",
+    "partial": "Partly saved",
+    "failed": "Save failed",
+    "expired": "Expired"
+  },
+  "cleanupState": {
+    "pending": "Not cleaned up",
+    "running": "Cleaning up",
+    "complete": "Cleaned up",
+    "failed": "Cleanup failed",
+    "not_required": "No cleanup needed"
+  },
+  "trialState": {
+    "queued": "Queued",
+    "preparing": "Preparing",
+    "executing": "Executing",
+    "verifying": "Verifying",
+    "scored": "Scored",
+    "execution_error": "Execution error",
+    "not_started": "Not started",
+    "cancelled": "Cancelled",
+    "interrupted": "Interrupted"
+  },
+  "attemptState": {
+    "starting": "Starting",
+    "preparing": "Preparing",
+    "executing": "Executing",
+    "verifying": "Verifying",
+    "completed": "Completed",
+    "failed": "Failed",
+    "cancelled": "Cancelled",
+    "interrupted": "Interrupted"
+  },
+  "stepLabel": {
+    "starting": "Starting",
+    "environment": "Preparing environment",
+    "installing": "Installing attachments",
+    "agent": "Agent running",
+    "collecting": "Collecting artifacts",
+    "verifying": "Verifying"
+  },
+  "queueReason": {
+    "CAPACITY_SLOTS": "Waiting for a free trial slot",
+    "CAPACITY_CPU": "Waiting for free CPU",
+    "CAPACITY_MEMORY": "Waiting for free memory",
+    "PROVIDER_LIMIT": "Waiting for model provider concurrency",
+    "STORAGE_LOW": "Storage low, starts paused"
+  },
+  "invitationState": {
+    "pending": "Unused",
+    "used": "Used",
+    "revoked": "Revoked",
+    "expired": "Expired"
+  },
+  "patState": {
+    "active": "Active",
+    "revoked": "Revoked",
+    "expired": "Expired"
+  },
+  "blocker": {
+    "TASK_NOT_ADMITTED": "First preparation did not succeed; selectable once an admin resolves it",
+    "TASK_ADMISSION_REVOKED": "Admission revoked by an admin",
+    "RESOURCE_CONTENT_UNAVAILABLE": "Pinned content is no longer available",
+    "CONFIG_REQUIRED_MISSING": "A required author parameter is missing",
+    "AUTHOR_PARAMETERS_UNRESOLVED": "Author parameters cannot be resolved",
+    "TEAM_LIMIT_EXCEEDED": "The author's requirements exceed the team limits"
+  },
+  "configBlocker": {
+    "LIMIT_EXCEEDED": "Exceeds the team limit",
+    "BELOW_AUTHOR_RESOURCES": "Cannot be below the task author's resources",
+    "HARNESS_PROTOCOL_UNSUPPORTED": "The harness does not support this model's API protocol",
+    "HARNESS_MODEL_PARAMS_UNSUPPORTED": "The harness cannot pass some parameters of this model configuration",
+    "EXECUTOR_UNSUPPORTED": "The executor does not support this harness and protocol combination",
+    "CREDENTIAL_UNAVAILABLE": "Credential unavailable; an admin needs to fix it",
+    "DISABLED": "Disabled",
+    "DELETED": "Deleted",
+    "NOT_FOUND": "Does not exist",
+    "UNKNOWN_PARAMETER": "No such parameter",
+    "SENSITIVE_PARAMETER_LITERAL": "Secret parameters can only reference a credential, not a literal value",
+    "RESERVED_NAME": "Name reserved by the platform",
+    "TASKS_NOT_SUBMITTABLE": "Some selected tasks do not exist or are blocked",
+    "NO_SUBMITTABLE_TASKS": "This version has no submittable tasks",
+    "RUN_TOO_LARGE": "Too many tasks or trials",
+    "CAPACITY_SLOTS": "Concurrency exceeds the host's trial slots; can never start",
+    "CAPACITY_CPU": "CPU needs exceed the host total; can never start",
+    "CAPACITY_MEMORY": "Memory needs exceed the host total; can never start",
+    "PROVIDER_LIMIT": "Concurrency exceeds this provider's limit; can never start",
+    "ATTACHMENT_INCOMPATIBLE": "The attachment does not support the selected harness",
+    "ATTACHMENT_CONFLICT": "Two attachments provide a tool, environment variable or package with the same name"
+  },
+  "attachmentEffect": {
+    "model_call": "Model calls",
+    "agent_tools": "Agent tools",
+    "task_environment": "Task environment",
+    "verifier": "Verifier",
+    "scoring": "Scoring"
+  },
+  "sourceLayer": {
+    "author": "Author",
+    "team": "Team default",
+    "plan": "Experiment plan",
+    "override": "Set here",
+    "harness": "Harness default"
+  },
+  "cacheState": {
+    "ready": "Cache ready",
+    "restoring": "Restoring",
+    "stale": "Restored at run time",
+    "absent": "Not cached"
+  },
+  "operationStatus": {
+    "accepted": "Accepted",
+    "running": "In progress",
+    "succeeded": "Succeeded",
+    "failed": "Failed",
+    "cancelled": "Cancelled",
+    "interrupted": "Interrupted"
+  },
+  "artifactStatus": {
+    "pending": "Not saved yet",
+    "available": "Available",
+    "failed": "Save failed",
+    "deleting": "Reclaiming",
+    "expired": "Expired",
+    "unavailable": "Unavailable",
+    "deleted": "Deleted"
+  },
+  "artifactReason": {
+    "RETENTION_EXPIRED": "Past retention; content reclaimed",
+    "STORAGE_CONTENT_MISSING": "Content not found in storage",
+    "DELETED": "Deleted by an admin"
+  },
+  "exportState": {
+    "queued": "Queued",
+    "building": "Packaging",
+    "ready": "Available",
+    "failed": "Failed",
+    "expired": "Expired"
+  },
+  "recycleType": {
+    "run": "Run",
+    "artifact": "Artifact",
+    "dataset": "Dataset",
+    "dataset_version": "Dataset version",
+    "credential": "Credential",
+    "user": "Member",
+    "pat": "Access token",
+    "model_config": "Model configuration",
+    "harness_version": "Harness version",
+    "attachment_version": "Attachment",
+    "experiment_plan": "Experiment plan",
+    "collection": "Collection",
+    "analysis_snapshot": "Analysis snapshot"
+  },
+  "storageLevel": {
+    "ok": "Storage OK",
+    "accept_paused": "Storage low: new runs not accepted",
+    "dispatch_paused": "Storage short: queued runs not started"
+  },
+  "duration": {
+    "minutesSeconds": "{{minutes}} min {{seconds}} s"
+  },
+  "format": {
+    "withDetails": "{{base}} ({{details}})",
+    "detailSeparator": "; ",
+    "limit": " (limit {{limit}})",
+    "fieldError": ": ",
+    "listSeparator": "; "
+  },
+  "copy": {
+    "done": "Copied",
+    "failed": "Copy failed; select the text and copy it by hand",
+    "label": "Copy {{value}}",
+    "button": "Copy"
+  },
+  "errorAlert": {
+    "title": "Request failed"
+  },
+  "loading": "Loading…",
+  "secret": {
+    "showOnce": "{{title}} · shown only once",
+    "warning": "It cannot be shown again after you leave or close this. Copy it now and keep it safe.",
+    "copy": "Copy",
+    "saved": "I have saved it, close"
+  },
+  "score": {
+    "coverage": "· scored {{scored}}/{{planned}}"
+  },
+  "nav": {
+    "main": "Main navigation",
+    "workbench": "Workbench",
+    "experiments": "Experiments",
+    "runs": "Runs",
+    "batches": "Batches",
+    "collections": "Collections",
+    "plans": "Plans",
+    "resources": "Resources",
+    "datasets": "Datasets",
+    "attachments": "Attachments",
+    "exports": "Exports",
+    "settings": "Settings",
+    "admin": "Administration",
+    "openDrawer": "Open navigation",
+    "closeDrawer": "Close navigation",
+    "expand": "Expand sidebar",
+    "fold": "Collapse sidebar"
+  },
+  "app": {
+    "sessionExpired": "Your session has expired; please sign in again",
+    "cannotConnect": "Cannot reach the Maestro service",
+    "retry": "Retry",
+    "logoutFailed": "Sign-out failed: {{error}}",
+    "notFound": "Page not found",
+    "admin": "admin",
+    "member": "member",
+    "logout": "Sign out",
+    "state": {
+      "unknown": "Status unknown",
+      "maintenance": "Under maintenance",
+      "accepting": "Accepting runs",
+      "notAccepting": "Not accepting runs"
+    },
+    "reason": {
+      "health": "Service status: {{status}}",
+      "masterKey": "Master key unavailable",
+      "executor": "No executor configured",
+      "worker": "Worker process not running",
+      "storage": "Storage low",
+      "unknown": "Reason unknown"
+    },
+    "banner": {
+      "title": "New runs cannot be accepted right now.",
+      "tail": ". Existing records can still be viewed.",
+      "details": "Details"
+    }
+  },
+  "language": {
+    "label": "Language",
+    "zh-CN": "中文",
+    "en": "English",
+    "aiNotice": "AI-translated, not reviewed by a human. Please contact the developers about any problems."
+  }
+}

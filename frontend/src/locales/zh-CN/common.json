@@ -1,0 +1,261 @@
+{
+  "runState": {
+    "queued": "排队中",
+    "preparing": "准备中",
+    "running": "运行中",
+    "finalizing": "收尾中",
+    "finished": "已结束",
+    "cancelled": "已取消",
+    "interrupted": "已中断"
+  },
+  "resultCompleteness": {
+    "none": "无评分结果",
+    "partial": "部分评分",
+    "complete": "全部评分"
+  },
+  "artifactState": {
+    "pending": "待保存",
+    "saving": "保存中",
+    "complete": "已保存",
+    "partial": "部分保存",
+    "failed": "保存失败",
+    "expired": "已过期"
+  },
+  "cleanupState": {
+    "pending": "待清理",
+    "running": "清理中",
+    "complete": "已清理",
+    "failed": "清理失败",
+    "not_required": "无需清理"
+  },
+  "trialState": {
+    "queued": "排队",
+    "preparing": "准备",
+    "executing": "执行",
+    "verifying": "验证",
+    "scored": "已评分",
+    "execution_error": "执行错误",
+    "not_started": "未开始",
+    "cancelled": "已取消",
+    "interrupted": "已中断"
+  },
+  "attemptState": {
+    "starting": "启动",
+    "preparing": "准备",
+    "executing": "执行",
+    "verifying": "验证",
+    "completed": "完成",
+    "failed": "失败",
+    "cancelled": "已取消",
+    "interrupted": "已中断"
+  },
+  "stepLabel": {
+    "starting": "启动",
+    "environment": "准备环境",
+    "installing": "安装附件",
+    "agent": "Agent 执行",
+    "collecting": "收集产物",
+    "verifying": "验证"
+  },
+  "queueReason": {
+    "CAPACITY_SLOTS": "等待空闲试次槽位",
+    "CAPACITY_CPU": "等待空闲 CPU",
+    "CAPACITY_MEMORY": "等待空闲内存",
+    "PROVIDER_LIMIT": "等待模型提供商并发额度",
+    "STORAGE_LOW": "存储空间不足，暂停启动"
+  },
+  "invitationState": {
+    "pending": "待使用",
+    "used": "已使用",
+    "revoked": "已撤销",
+    "expired": "已过期"
+  },
+  "patState": {
+    "active": "有效",
+    "revoked": "已撤销",
+    "expired": "已过期"
+  },
+  "blocker": {
+    "TASK_NOT_ADMITTED": "首次准备未成功，管理员处理后才能选择",
+    "TASK_ADMISSION_REVOKED": "准入已被管理员撤销",
+    "RESOURCE_CONTENT_UNAVAILABLE": "固定内容已不可得",
+    "CONFIG_REQUIRED_MISSING": "缺少必填作者参数",
+    "AUTHOR_PARAMETERS_UNRESOLVED": "作者参数无法确定",
+    "TEAM_LIMIT_EXCEEDED": "作者要求超过团队上限"
+  },
+  "configBlocker": {
+    "LIMIT_EXCEEDED": "超过团队上限",
+    "BELOW_AUTHOR_RESOURCES": "不能低于任务作者给的资源",
+    "HARNESS_PROTOCOL_UNSUPPORTED": "Harness 不支持该模型的调用协议",
+    "HARNESS_MODEL_PARAMS_UNSUPPORTED": "Harness 不能传递这个模型配置里的部分参数",
+    "EXECUTOR_UNSUPPORTED": "执行器不支持该 Harness 与协议的组合",
+    "CREDENTIAL_UNAVAILABLE": "凭据不可用，需要管理员处理",
+    "DISABLED": "已停用",
+    "DELETED": "已删除",
+    "NOT_FOUND": "不存在",
+    "UNKNOWN_PARAMETER": "没有这个参数",
+    "SENSITIVE_PARAMETER_LITERAL": "秘密参数只能引用凭据，不能直接填值",
+    "RESERVED_NAME": "平台保留的名字",
+    "TASKS_NOT_SUBMITTABLE": "所选任务中有不存在或被阻止的",
+    "NO_SUBMITTABLE_TASKS": "这个版本没有可以提交的任务",
+    "RUN_TOO_LARGE": "任务数或试次数超过上限",
+    "CAPACITY_SLOTS": "并发超过主机试次槽位，永远无法开始",
+    "CAPACITY_CPU": "CPU 需求超过主机总量，永远无法开始",
+    "CAPACITY_MEMORY": "内存需求超过主机总量，永远无法开始",
+    "PROVIDER_LIMIT": "并发超过该提供商的上限，永远无法开始",
+    "ATTACHMENT_INCOMPATIBLE": "附件不支持所选 Harness",
+    "ATTACHMENT_CONFLICT": "两个附件提供了同名的工具、环境变量或包"
+  },
+  "attachmentEffect": {
+    "model_call": "模型调用",
+    "agent_tools": "Agent 工具",
+    "task_environment": "任务环境",
+    "verifier": "验证器",
+    "scoring": "评分"
+  },
+  "sourceLayer": {
+    "author": "作者",
+    "team": "团队默认",
+    "plan": "实验方案",
+    "override": "本次填写",
+    "harness": "Harness 默认"
+  },
+  "cacheState": {
+    "ready": "缓存就绪",
+    "restoring": "恢复中",
+    "stale": "运行时恢复",
+    "absent": "未缓存"
+  },
+  "operationStatus": {
+    "accepted": "已受理",
+    "running": "进行中",
+    "succeeded": "成功",
+    "failed": "失败",
+    "cancelled": "已取消",
+    "interrupted": "已中断"
+  },
+  "artifactStatus": {
+    "pending": "待保存",
+    "available": "可下载",
+    "failed": "保存失败",
+    "deleting": "回收中",
+    "expired": "已过期",
+    "unavailable": "不可用",
+    "deleted": "已删除"
+  },
+  "artifactReason": {
+    "RETENTION_EXPIRED": "超过保留期，内容已回收",
+    "STORAGE_CONTENT_MISSING": "存储中找不到内容",
+    "DELETED": "管理员已删除"
+  },
+  "exportState": {
+    "queued": "排队中",
+    "building": "打包中",
+    "ready": "可下载",
+    "failed": "失败",
+    "expired": "已过期"
+  },
+  "recycleType": {
+    "run": "运行",
+    "artifact": "产物",
+    "dataset": "数据集",
+    "dataset_version": "数据集版本",
+    "credential": "凭据",
+    "user": "成员",
+    "pat": "访问令牌",
+    "model_config": "模型配置",
+    "harness_version": "Harness 版本",
+    "attachment_version": "附件",
+    "experiment_plan": "实验方案",
+    "collection": "集合",
+    "analysis_snapshot": "分析快照"
+  },
+  "storageLevel": {
+    "ok": "存储充足",
+    "accept_paused": "存储偏低：暂停受理新运行",
+    "dispatch_paused": "存储不足：暂停启动排队运行"
+  },
+  "duration": {
+    "minutesSeconds": "{{minutes}} 分 {{seconds}} 秒"
+  },
+  "format": {
+    "withDetails": "{{base}}（{{details}}）",
+    "detailSeparator": "；",
+    "limit": "（限制 {{limit}}）",
+    "fieldError": "：",
+    "listSeparator": "；"
+  },
+  "copy": {
+    "done": "已复制",
+    "failed": "复制失败，请手动选择文本复制",
+    "label": "复制 {{value}}",
+    "button": "复制"
+  },
+  "errorAlert": {
+    "title": "请求失败"
+  },
+  "loading": "加载中…",
+  "secret": {
+    "showOnce": "{{title}} · 只显示一次",
+    "warning": "离开或关闭后无法再次查看，请立即复制并妥善保存。",
+    "copy": "复制",
+    "saved": "我已保存，关闭"
+  },
+  "score": {
+    "coverage": "· 已评分 {{scored}}/{{planned}}"
+  },
+  "nav": {
+    "main": "主导航",
+    "workbench": "工作台",
+    "experiments": "实验",
+    "runs": "运行",
+    "batches": "批次",
+    "collections": "集合",
+    "plans": "方案",
+    "resources": "资源",
+    "datasets": "数据集",
+    "attachments": "附件",
+    "exports": "导出",
+    "settings": "设置",
+    "admin": "管理",
+    "openDrawer": "打开导航",
+    "closeDrawer": "关闭导航",
+    "expand": "展开侧边栏",
+    "fold": "收起侧边栏"
+  },
+  "app": {
+    "sessionExpired": "登录已失效，请重新登录",
+    "cannotConnect": "无法连接 Maestro 服务",
+    "retry": "重试",
+    "logoutFailed": "退出失败：{{error}}",
+    "notFound": "页面不存在",
+    "admin": "管理员",
+    "member": "成员",
+    "logout": "退出",
+    "state": {
+      "unknown": "状态未知",
+      "maintenance": "维护中",
+      "accepting": "可受理运行",
+      "notAccepting": "暂不受理运行"
+    },
+    "reason": {
+      "health": "服务状态：{{status}}",
+      "masterKey": "主密钥不可用",
+      "executor": "未配置执行器",
+      "worker": "执行进程未运行",
+      "storage": "存储空间不足",
+      "unknown": "原因未知"
+    },
+    "banner": {
+      "title": "当前无法受理新运行。",
+      "tail": "。已有记录仍可查看。",
+      "details": "详情"
+    }
+  },
+  "language": {
+    "label": "语言",
+    "zh-CN": "中文",
+    "en": "English",
+    "aiNotice": ""
+  }
+}

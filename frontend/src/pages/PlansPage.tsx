@@ -18,23 +18,9 @@ import { ApiError, api } from "@/lib/api";
 import { fmtTime } from "@/lib/format";
 import { useLoad } from "@/lib/hooks";
 import type { Plan, PlanTemplate } from "@/lib/types";
+import { t } from "@/i18n";
 
-const FIELD_NAME: Record<string, string> = {
-  dataset_version_id: "数据集版本",
-  task_selection: "任务范围",
-  execution_mode: "执行方式",
-  model_config_id: "模型",
-  model_revision: "模型修订",
-  harness_version_id: "Harness",
-  harness_params: "Harness 参数",
-  attachments: "附件",
-  repetitions: "重复次数",
-  concurrency: "并发",
-  run_deadline_hours: "总时限",
-  resources: "资源",
-  timeouts: "时限",
-  parameters: "作者参数",
-};
+const FIELD_NAME: Record<string, string> = t("plans.fieldName", { returnObjects: true });
 
 function Editor({ plan, onDone }: { plan: Plan; onDone: () => void }) {
   const [name, setName] = useState(plan.name);
@@ -48,7 +34,7 @@ function Editor({ plan, onDone }: { plan: Plan; onDone: () => void }) {
       try {
         parsed = JSON.parse(template);
       } catch {
-        throw new Error("配置不是合法的 JSON");
+        throw new Error(t("plans.editor.invalidJson"));
       }
       await api.put("/plans/{plan_id}", {
         path: { plan_id: plan.id },
@@ -59,7 +45,7 @@ function Editor({ plan, onDone }: { plan: Plan; onDone: () => void }) {
           template: parsed as PlanTemplate,
         },
       });
-      toast.success("已保存为新修订；已经用过旧修订的运行不受影响");
+      toast.success(t("plans.editor.saved"));
       onDone();
     } catch (err) {
       setError(err);
@@ -68,22 +54,22 @@ function Editor({ plan, onDone }: { plan: Plan; onDone: () => void }) {
   const fieldErrors = error instanceof ApiError ? error.body.field_errors : [];
   return (
     <div className="grid gap-2">
-      <TextField id={`plan-${plan.id}-name`} label="名称" value={name} onChange={(e) => setName(e.target.value)} />
+      <TextField id={`plan-${plan.id}-name`} label={t("plans.name")} value={name} onChange={(e) => setName(e.target.value)} />
       <TextField
         id={`plan-${plan.id}-description`}
-        label="说明"
+        label={t("plans.editor.description")}
         value={description}
         onChange={(e) => setDescription(e.target.value)}
       />
       <label className="grid gap-1 text-sm">
-        配置（JSON，字段同新建运行的请求，都可省略）
+        {t("plans.editor.template")}
         <textarea
           className="min-h-48 rounded-md border bg-background p-2 font-mono text-xs"
           value={template}
           onChange={(e) => setTemplate(e.target.value)}
         />
       </label>
-      <ErrorAlert error={error} title="保存失败" />
+      <ErrorAlert error={error} title={t("plans.editor.saveFailed")} />
       {fieldErrors.length > 0 && (
         <ul className="font-mono text-xs text-destructive">
           {fieldErrors.map((e, i) => (
@@ -96,10 +82,10 @@ function Editor({ plan, onDone }: { plan: Plan; onDone: () => void }) {
       )}
       <div className="flex gap-2">
         <Button size="sm" onClick={() => void save()}>
-          保存
+          {t("plans.editor.save")}
         </Button>
         <Button size="sm" variant="outline" onClick={onDone}>
-          取消
+          {t("plans.editor.cancel")}
         </Button>
       </div>
     </div>
@@ -127,38 +113,38 @@ export function PlansPage() {
 
   return (
     <div className="grid gap-4">
-      <PageTitle title="实验方案">
+      <PageTitle title={t("plans.title")}>
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
             checked={archived}
             onChange={(e) => setArchived(e.target.checked)}
           />
-          显示已归档
+          {t("plans.showArchived")}
         </label>
       </PageTitle>
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">团队的方案</CardTitle>
+          <CardTitle className="text-base">{t("plans.teamPlans")}</CardTitle>
           <CardDescription>
-            方案是一组保存下来的运行配置，在“新建运行”页选用或另存。每次修改都是新修订，用过旧修订的运行保持原值。只有创建者能修改，其他人可以复制后再改；归档后不能再选用，已有运行不受影响。
+            {t("plans.description")}
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 text-sm">
           {list.loading && !list.data && <Loading />}
           <ErrorAlert error={list.error ?? error} />
           {list.data && list.data.length === 0 && (
-            <EmptyNote>还没有方案。在“新建运行”页填好配置后可以另存为方案。</EmptyNote>
+            <EmptyNote>{t("plans.empty")}</EmptyNote>
           )}
           {list.data && list.data.length > 0 && (
             <div className="overflow-auto rounded-md border">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>名称</TableHead>
-                    <TableHead>创建者</TableHead>
-                    <TableHead>包含的设置</TableHead>
-                    <TableHead>修订</TableHead>
+                    <TableHead>{t("plans.name")}</TableHead>
+                    <TableHead>{t("plans.column.owner")}</TableHead>
+                    <TableHead>{t("plans.column.fields")}</TableHead>
+                    <TableHead>{t("plans.column.revision")}</TableHead>
                     <TableHead />
                   </TableRow>
                 </TableHeader>
@@ -169,7 +155,7 @@ export function PlansPage() {
                         <span className="font-medium">{plan.name}</span>
                         {plan.archived_at && (
                           <span className="ml-2">
-                            <Pill tone="muted">已归档</Pill>
+                            <Pill tone="muted">{t("plans.archived")}</Pill>
                           </span>
                         )}
                         {plan.description && (
@@ -191,7 +177,7 @@ export function PlansPage() {
                       <TableCell className="text-xs">
                         {Object.keys(plan.template)
                           .map((k) => FIELD_NAME[k] ?? k)
-                          .join("、") || "—"}
+                          .join(t("plans.fieldSeparator")) || "—"}
                       </TableCell>
                       <TableCell className="text-xs">
                         {plan.revision}
@@ -200,12 +186,12 @@ export function PlansPage() {
                       <TableCell className="whitespace-nowrap text-right">
                         {plan.allowed_actions.includes("use") && (
                           <Button asChild size="sm" variant="outline">
-                            <Link to={`/runs/new?plan=${plan.id}`}>用它新建运行</Link>
+                            <Link to={`/runs/new?plan=${plan.id}`}>{t("plans.action.use")}</Link>
                           </Button>
                         )}{" "}
                         {plan.allowed_actions.includes("edit") && (
                           <Button size="sm" variant="outline" onClick={() => setEditing(plan.id)}>
-                            修改
+                            {t("plans.action.edit")}
                           </Button>
                         )}{" "}
                         <Button
@@ -218,11 +204,11 @@ export function PlansPage() {
                                   path: { plan_id: plan.id },
                                   body: {},
                                 }),
-                              "已复制为你的方案",
+                              t("plans.action.copied"),
                             )
                           }
                         >
-                          复制
+                          {t("plans.action.copy")}
                         </Button>{" "}
                         {plan.allowed_actions.includes("archive") && (
                           <Button
@@ -237,11 +223,11 @@ export function PlansPage() {
                                       archived: plan.archived_at == null,
                                     },
                                   }),
-                                plan.archived_at == null ? "已归档" : "已取消归档",
+                                plan.archived_at == null ? t("plans.archived") : t("plans.action.unarchived"),
                               )
                             }
                           >
-                            {plan.archived_at == null ? "归档" : "取消归档"}
+                            {plan.archived_at == null ? t("plans.action.archive") : t("plans.action.unarchive")}
                           </Button>
                         )}{" "}
                         {plan.allowed_actions.includes("delete") && (
@@ -251,11 +237,11 @@ export function PlansPage() {
                             onClick={() =>
                               void act(
                                 () => api.del("/plans/{plan_id}", { path: { plan_id: plan.id } }),
-                                "已移入回收站",
+                                t("plans.action.deleted"),
                               )
                             }
                           >
-                            删除
+                            {t("plans.action.delete")}
                           </Button>
                         )}
                       </TableCell>

@@ -6,6 +6,7 @@ import { ErrorAlert, Loading, TextField } from "@/components/common";
 import { ApiError, api } from "@/lib/api";
 import { fmtTime } from "@/lib/format";
 import type { InvitationInfo, SessionInfo } from "@/lib/types";
+import { Trans, t } from "@/i18n";
 
 type SignedIn = (session: SessionInfo) => void;
 
@@ -71,18 +72,19 @@ export function SetupPage({ onSignedIn }: { onSignedIn: SignedIn }) {
 
   return (
     <AuthCard
-      title="初始化管理员"
+      title={t("auth.setup.title")}
       description={
-        <>
-          首次使用需创建第一个管理员。一次性初始化令牌由服务器上的 <code>maestro init</code>{" "}
-          打印。
-        </>
+        <Trans
+          i18nKey="auth.setup.description"
+          values={{ command: "maestro init" }}
+          components={{ code: <code /> }}
+        />
       }
     >
       <form className="grid gap-4" onSubmit={submit}>
         <TextField
           id="setup-token"
-          label="初始化令牌"
+          label={t("auth.setup.token")}
           autoComplete="off"
           value={form.setup_token}
           onChange={set("setup_token")}
@@ -91,7 +93,7 @@ export function SetupPage({ onSignedIn }: { onSignedIn: SignedIn }) {
         />
         <TextField
           id="setup-username"
-          label="管理员用户名"
+          label={t("auth.setup.username")}
           autoComplete="username"
           value={form.username}
           onChange={set("username")}
@@ -100,14 +102,14 @@ export function SetupPage({ onSignedIn }: { onSignedIn: SignedIn }) {
         />
         <TextField
           id="setup-display"
-          label="显示名称（可选）"
+          label={t("auth.displayName")}
           value={form.display_name}
           onChange={set("display_name")}
           error={fieldOf(error, "display_name")}
         />
         <TextField
           id="setup-password"
-          label="密码"
+          label={t("auth.password")}
           type="password"
           autoComplete="new-password"
           value={form.password}
@@ -115,9 +117,9 @@ export function SetupPage({ onSignedIn }: { onSignedIn: SignedIn }) {
           error={fieldOf(error, "password")}
           required
         />
-        <ErrorAlert error={error} title="初始化失败" />
+        <ErrorAlert error={error} title={t("auth.setup.failed")} />
         <Button type="submit" disabled={busy}>
-          {busy ? "提交中…" : "创建管理员并登录"}
+          {busy ? t("auth.submitting") : t("auth.setup.submit")}
         </Button>
       </form>
     </AuthCard>
@@ -145,11 +147,11 @@ export function LoginPage({ onSignedIn }: { onSignedIn: SignedIn }) {
   };
 
   return (
-    <AuthCard title="登录" description="账户由管理员邀请创建；忘记密码请联系管理员生成重置链接。">
+    <AuthCard title={t("auth.login.title")} description={t("auth.login.description")}>
       <form className="grid gap-4" onSubmit={submit}>
         <TextField
           id="login-username"
-          label="用户名"
+          label={t("auth.username")}
           autoComplete="username"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
@@ -158,7 +160,7 @@ export function LoginPage({ onSignedIn }: { onSignedIn: SignedIn }) {
         />
         <TextField
           id="login-password"
-          label="密码"
+          label={t("auth.password")}
           type="password"
           autoComplete="current-password"
           value={password}
@@ -166,9 +168,9 @@ export function LoginPage({ onSignedIn }: { onSignedIn: SignedIn }) {
           error={fieldOf(error, "password")}
           required
         />
-        <ErrorAlert error={error} title="登录失败" />
+        <ErrorAlert error={error} title={t("auth.login.failed")} />
         <Button type="submit" disabled={busy}>
-          {busy ? "登录中…" : "登录"}
+          {busy ? t("auth.login.submitting") : t("auth.login.title")}
         </Button>
       </form>
     </AuthCard>
@@ -231,48 +233,50 @@ export function InvitePage({ onSignedIn }: { onSignedIn: SignedIn }) {
 
   if (!token) {
     return (
-      <AuthCard title="邀请链接无效" description="链接中没有令牌。请向管理员索取完整链接。">
+      <AuthCard title={t("auth.invite.invalid")} description={t("auth.invite.noToken")}>
         <Link className="text-sm text-primary underline" to="/">
-          返回登录
+          {t("auth.invite.backToLogin")}
         </Link>
       </AuthCard>
     );
   }
   if (lookupError) {
     return (
-      <AuthCard title="无法使用此链接">
+      <AuthCard title={t("auth.invite.unusable")}>
         <div className="grid gap-3">
-          <ErrorAlert error={lookupError} title="链接不可用" />
+          <ErrorAlert error={lookupError} title={t("auth.invite.unavailable")} />
           <Link className="text-sm text-primary underline" to="/">
-            返回登录
+            {t("auth.invite.backToLogin")}
           </Link>
         </div>
       </AuthCard>
     );
   }
-  if (!info) return <AuthCard title="检查链接">{<Loading />}</AuthCard>;
+  if (!info) return <AuthCard title={t("auth.invite.checking")}>{<Loading />}</AuthCard>;
 
   const reset = info.kind === "password_reset";
   return (
     <AuthCard
-      title={reset ? "重置密码" : "接受邀请"}
+      title={reset ? t("auth.invite.resetTitle") : t("auth.invite.acceptTitle")}
       description={
         reset ? (
-          <>为账户 <b>{info.username ?? "—"}</b> 设置新密码。</>
+          <Trans
+            i18nKey="auth.invite.resetDescription"
+            values={{ username: info.username ?? "—" }}
+            components={{ b: <b /> }}
+          />
         ) : (
-          <>
-            你被邀请为{info.role === "admin" ? "管理员" : "成员"}。设置用户名和密码后直接登录。
-          </>
+          t(info.role === "admin" ? "auth.invite.invitedAdmin" : "auth.invite.invitedMember")
         )
       }
     >
       <form className="grid gap-4" onSubmit={submit}>
-        <p className="text-xs text-muted-foreground">链接有效期至 {fmtTime(info.expires_at)}</p>
+        <p className="text-xs text-muted-foreground">{t("auth.invite.expires", { time: fmtTime(info.expires_at) })}</p>
         {!reset && (
           <>
             <TextField
               id="invite-username"
-              label="用户名"
+              label={t("auth.username")}
               autoComplete="username"
               value={form.username}
               onChange={(e) => setForm({ ...form, username: e.target.value })}
@@ -281,7 +285,7 @@ export function InvitePage({ onSignedIn }: { onSignedIn: SignedIn }) {
             />
             <TextField
               id="invite-display"
-              label="显示名称（可选）"
+              label={t("auth.displayName")}
               value={form.display_name}
               onChange={(e) => setForm({ ...form, display_name: e.target.value })}
               error={fieldOf(error, "display_name")}
@@ -290,7 +294,7 @@ export function InvitePage({ onSignedIn }: { onSignedIn: SignedIn }) {
         )}
         <TextField
           id="invite-password"
-          label={reset ? "新密码" : "密码"}
+          label={reset ? t("auth.newPassword") : t("auth.password")}
           type="password"
           autoComplete="new-password"
           value={form.password}
@@ -298,9 +302,9 @@ export function InvitePage({ onSignedIn }: { onSignedIn: SignedIn }) {
           error={fieldOf(error, "password")}
           required
         />
-        <ErrorAlert error={error} title="提交失败" />
+        <ErrorAlert error={error} title={t("auth.invite.failed")} />
         <Button type="submit" disabled={busy}>
-          {busy ? "提交中…" : reset ? "设置新密码并登录" : "创建账户并登录"}
+          {busy ? t("auth.submitting") : reset ? t("auth.invite.resetSubmit") : t("auth.invite.acceptSubmit")}
         </Button>
       </form>
     </AuthCard>

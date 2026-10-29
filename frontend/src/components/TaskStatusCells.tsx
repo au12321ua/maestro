@@ -1,18 +1,21 @@
 import { TableCell } from "@/components/ui/table";
 import { Pill } from "@/components/common";
+import { t } from "@/i18n";
 import { blockerText, CACHE_STATE, fmtTime, type Tone } from "@/lib/format";
 import type { Task } from "@/lib/types";
 
+const ADMISSION_TEXT = t("runs.taskStatus.admission", { returnObjects: true });
 const ADMISSION: Record<string, [string, Tone]> = {
-  admitted: ["已准入", "good"],
-  pending: ["待首次准备", "warn"],
-  first_failed: ["首次准备失败", "bad"],
-  revoked: ["已撤销", "bad"],
+  admitted: [ADMISSION_TEXT.admitted, "good"],
+  pending: [ADMISSION_TEXT.pending, "warn"],
+  first_failed: [ADMISSION_TEXT.first_failed, "bad"],
+  revoked: [ADMISSION_TEXT.revoked, "bad"],
 };
+const AVAILABILITY_TEXT = t("runs.taskStatus.availability", { returnObjects: true });
 const AVAILABILITY: Record<string, [string, Tone]> = {
-  available: ["可得", "good"],
-  unavailable: ["不可得", "bad"],
-  unknown: ["未检查", "muted"],
+  available: [AVAILABILITY_TEXT.available, "good"],
+  unavailable: [AVAILABILITY_TEXT.unavailable, "bad"],
+  unknown: [AVAILABILITY_TEXT.unknown, "muted"],
 };
 
 /** Admission, content availability, local cache, can_submit and reasons for one task row.
@@ -30,10 +33,10 @@ export function TaskStatusCells({ task }: { task: Task }) {
   const notes = [
     ...task.blockers.map(blockerText),
     ...task.warnings.map((w) =>
-      w.code === "PREPARATION_CACHE_MISS" ? "本机缓存已回收，运行时自动按原摘要恢复" : w.code,
+      w.code === "PREPARATION_CACHE_MISS" ? t("runs.taskStatus.cacheMiss") : w.code,
     ),
   ];
-  if (restoreError?.message) notes.push(`上次恢复失败：${String(restoreError.message)}`);
+  if (restoreError?.message) notes.push(t("runs.taskStatus.restoreFailed", { error: String(restoreError.message) }));
   return (
     <>
       <TableCell>
@@ -42,30 +45,40 @@ export function TaskStatusCells({ task }: { task: Task }) {
             {ADMISSION[task.admission.state]?.[0] ?? task.admission.state}
           </Pill>
         ) : (
-          <Pill tone="muted">未准入</Pill>
+          <Pill tone="muted">{t("runs.taskStatus.notAdmitted")}</Pill>
         )}
       </TableCell>
       <TableCell>
         <Pill
           tone={tone}
           title={task.content.resources
-            .map((r) => `${r.resource_kind} ${r.digest}：${r.availability}`)
-            .concat(`检查于 ${fmtTime(task.content.checked_at)}`)
+            .map((r) =>
+              t("runs.taskStatus.resource", {
+                kind: r.resource_kind,
+                digest: r.digest,
+                availability: r.availability,
+              }),
+            )
+            .concat(t("runs.taskStatus.checkedAt", { time: fmtTime(task.content.checked_at) }))
             .join("\n")}
         >
           {availability}
         </Pill>
       </TableCell>
       <TableCell>
-        <Pill tone={cache[1]} title={`位置 ${task.local_preparation.location_id}`}>
+        <Pill tone={cache[1]} title={t("runs.taskStatus.location", { id: task.local_preparation.location_id })}>
           {cache[0]}
         </Pill>
       </TableCell>
       <TableCell>
-        {task.can_submit ? <Pill tone="good">可提交</Pill> : <Pill tone="bad">不可提交</Pill>}
+        {task.can_submit ? (
+          <Pill tone="good">{t("runs.taskStatus.submittable")}</Pill>
+        ) : (
+          <Pill tone="bad">{t("runs.taskStatus.notSubmittable")}</Pill>
+        )}
       </TableCell>
       <TableCell className="max-w-md text-xs text-muted-foreground">
-        {notes.length === 0 ? "—" : notes.join("；")}
+        {notes.length === 0 ? "—" : notes.join(t("common.format.listSeparator"))}
       </TableCell>
     </>
   );

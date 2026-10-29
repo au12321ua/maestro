@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { ChevronDown, ChevronRight, Download, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LongName, StatusPill } from "@/components/common";
+import { t } from "@/i18n";
 import { API } from "@/lib/api";
 import {
   ARTIFACT_REASON,
@@ -29,9 +30,16 @@ function ArtifactLink({ artifact }: { artifact: Artifact }) {
     return (
       <span
         className="text-muted-foreground"
-        title={`${artifact.relative_path}${reason ? `：${reason}` : ""}`}
+        title={
+          reason
+            ? t("runs.artifacts.pathReason", { path: artifact.relative_path, reason })
+            : artifact.relative_path
+        }
       >
-        {name}（{label(ARTIFACT_STATUS, artifact.status)[0]}）
+        {t("runs.artifacts.nameStatus", {
+          name,
+          status: label(ARTIFACT_STATUS, artifact.status)[0],
+        })}
       </span>
     );
   }
@@ -108,14 +116,14 @@ function build(
   trials: Trial[],
   focus: string,
 ): Folder[] {
-  const prefix = commonPrefix(trials.map((t) => t.task_key));
+  const prefix = commonPrefix(trials.map((trial) => trial.task_key));
   const tasks = new Map<string, Folder>();
   const roots: Folder[] = [];
   const runLevel = artifacts.filter((a) => !a.trial_id);
   if (runLevel.length > 0) {
     const run: Folder = {
       key: "run",
-      title: "运行级文件",
+      title: t("runs.artifacts.runLevel"),
       open: true,
       folders: [],
       files: [],
@@ -146,7 +154,7 @@ function build(
         ),
         archive: {
           query: `task_key=${encodeURIComponent(trial.task_key)}`,
-          what: `任务 ${trial.task_key} 的产物`,
+          what: t("runs.artifacts.ofTask", { task: trial.task_key }),
         },
         open: !!focus,
         folders: [],
@@ -157,10 +165,10 @@ function build(
     }
     const node: Folder = {
       key: `trial:${trial.id}`,
-      title: `试次 #${trial.repetition_index}`,
+      title: t("runs.artifacts.trial", { index: trial.repetition_index }),
       archive: {
         query: `trial_id=${trial.id}`,
-        what: `试次 #${trial.repetition_index} 的产物`,
+        what: t("runs.artifacts.ofTrial", { index: trial.repetition_index }),
       },
       open: !!focus,
       folders: [],
@@ -179,7 +187,7 @@ function build(
         key: `attempt:${attempt.id}`,
         title: (
           <span>
-            尝试 {attempt.attempt_index}
+            {t("runs.artifacts.attempt", { index: attempt.attempt_index })}
             <span className="ml-1 text-xs text-muted-foreground">
               {label(ATTEMPT_STATE, attempt.state)[0]}
             </span>
@@ -187,7 +195,7 @@ function build(
         ),
         archive: {
           query: `attempt_id=${attempt.id}`,
-          what: `尝试 ${attempt.attempt_index} 的产物`,
+          what: t("runs.artifacts.ofAttempt", { index: attempt.attempt_index }),
         },
         open: true,
         folders: [],
@@ -253,19 +261,19 @@ export function ArtifactTree({
           variant="ghost"
           className="h-7 px-2"
           disabled
-          title={`超过 ${fmtBytes(maxBytes)} 的打包上限，请下载更小的一层或使用导出`}
+          title={t("runs.artifacts.tooLarge", { limit: fmtBytes(maxBytes) })}
         >
-          <Package /> {query ? "zip" : "整个运行 zip"}
+          <Package /> {query ? "zip" : t("runs.artifacts.runZip")}
         </Button>
       );
     return (
       <Button asChild size="sm" variant="ghost" className="h-7 px-2">
         <a
           href={query ? `${archiveBase}?${query}` : archiveBase}
-          title={`下载${what}（zip）`}
-          aria-label={`下载${what}（zip）`}
+          title={t("runs.artifacts.downloadZip", { what })}
+          aria-label={t("runs.artifacts.downloadZip", { what })}
         >
-          <Package /> {query ? "zip" : "整个运行 zip"}
+          <Package /> {query ? "zip" : t("runs.artifacts.runZip")}
         </a>
       </Button>
     );
@@ -303,7 +311,7 @@ export function ArtifactTree({
               </span>
             </button>
             <span className="shrink-0 text-xs text-muted-foreground">
-              {files.length} 个 · {fmtBytes(bytes)}
+              {t("runs.artifacts.folderSize", { count: files.length, size: fmtBytes(bytes) })}
             </span>
           </div>
         </td>
@@ -341,10 +349,10 @@ export function ArtifactTree({
             {a.expires_at ? (
               <span className={cn(a.status === "expired" && "text-amber-800")}>
                 {fmtTime(a.expires_at)}
-                {a.status === "expired" && "（已过期）"}
+                {a.status === "expired" && t("runs.artifacts.expired")}
               </span>
             ) : (
-              <span className="text-muted-foreground">试次结束后起算</span>
+              <span className="text-muted-foreground">{t("runs.artifacts.expiresAfterTrial")}</span>
             )}
           </td>
           <td />
@@ -354,10 +362,10 @@ export function ArtifactTree({
                 <Button
                   size="sm"
                   variant="outline"
-                  aria-label={`删除产物 ${a.relative_path}`}
+                  aria-label={t("runs.artifacts.deleteLabel", { path: a.relative_path })}
                   onClick={() => void onDelete(a)}
                 >
-                  删除
+                  {t("runs.artifacts.delete")}
                 </Button>
               )}
             </td>
@@ -368,7 +376,7 @@ export function ArtifactTree({
   };
   for (const root of roots) walk(root, 0);
 
-  const trialName = (t: Trial) => `${t.task_key} #${t.repetition_index}`;
+  const trialName = (trial: Trial) => `${trial.task_key} #${trial.repetition_index}`;
   return (
     <div className="grid gap-2">
       <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
@@ -376,7 +384,7 @@ export function ArtifactTree({
           htmlFor="artifacts-of"
           className="shrink-0 text-muted-foreground"
         >
-          试次
+          {t("runs.artifacts.trialFilter")}
         </label>
         <select
           id="artifacts-of"
@@ -384,20 +392,22 @@ export function ArtifactTree({
           value={trialId}
           onChange={(e) => onTrialId(e.target.value)}
         >
-          <option value="">全部（{artifacts.length}）</option>
-          {trials.map((t) => (
-            <option key={t.id} value={t.id}>
-              {trialName(t)}（
-              {artifacts.filter((a) => a.trial_id === t.id).length}）
+          <option value="">{t("runs.artifacts.all", { n: artifacts.length })}</option>
+          {trials.map((trial) => (
+            <option key={trial.id} value={trial.id}>
+              {t("runs.artifacts.trialOption", {
+                name: trialName(trial),
+                n: artifacts.filter((a) => a.trial_id === trial.id).length,
+              })}
             </option>
           ))}
         </select>
         <span className="ml-auto">
           {ended ? (
-            zip(null, artifacts, "整个运行的产物")
+            zip(null, artifacts, t("runs.artifacts.ofRun"))
           ) : (
             <span className="text-xs text-muted-foreground">
-              运行结束后可按任务、试次、尝试打包下载
+              {t("runs.artifacts.zipAfterEnd")}
             </span>
           )}
         </span>
@@ -406,10 +416,10 @@ export function ArtifactTree({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b text-left text-xs text-muted-foreground">
-              <th className="py-2 pl-2 pr-2 font-medium">文件</th>
-              <th className="py-2 pr-2 font-medium">大小</th>
-              <th className="py-2 pr-2 font-medium">状态</th>
-              <th className="py-2 pr-2 font-medium">到期</th>
+              <th className="py-2 pl-2 pr-2 font-medium">{t("runs.artifacts.file")}</th>
+              <th className="py-2 pr-2 font-medium">{t("runs.artifacts.size")}</th>
+              <th className="py-2 pr-2 font-medium">{t("runs.column.status")}</th>
+              <th className="py-2 pr-2 font-medium">{t("runs.artifacts.expires")}</th>
               <th />
               {onDelete && <th />}
             </tr>

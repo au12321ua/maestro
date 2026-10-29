@@ -4,6 +4,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { t } from "@/i18n";
 import { ApiError, errorText } from "@/lib/api";
 import { elideMiddle, fmtNum, type Tone } from "@/lib/format";
 import type { RunScoring } from "@/lib/types";
@@ -44,7 +45,7 @@ export function StatusPill({ value }: { value: [string, Tone] }) {
   return <Pill tone={value[1]}>{value[0]}</Pill>;
 }
 
-export function ErrorAlert({ error, title = "请求失败" }: { error: unknown; title?: string }) {
+export function ErrorAlert({ error, title = t("common.errorAlert.title") }: { error: unknown; title?: string }) {
   if (!error) return null;
   const api = error instanceof ApiError ? error : null;
   return (
@@ -57,8 +58,10 @@ export function ErrorAlert({ error, title = "请求失败" }: { error: unknown; 
           <ul className="mt-1 list-disc pl-4 text-xs">
             {api.body.field_errors.map((f) => (
               <li key={`${f.path}-${f.code}`}>
-                <code>{f.path}</code>：{f.message ?? f.code}
-                {f.limit != null && `（限制 ${f.limit}）`}
+                <code>{f.path}</code>
+                {t("common.format.fieldError")}
+                {f.message ?? f.code}
+                {f.limit != null && t("common.format.limit", { limit: f.limit })}
               </li>
             ))}
           </ul>
@@ -71,7 +74,7 @@ export function ErrorAlert({ error, title = "请求失败" }: { error: unknown; 
   );
 }
 
-export function Loading({ text = "加载中…" }: { text?: string }) {
+export function Loading({ text = t("common.loading") }: { text?: string }) {
   return (
     <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
       <Loader2 className="size-4 animate-spin" />
@@ -269,8 +272,8 @@ export function LongName({
       {copy && (
         <button
           type="button"
-          aria-label={`复制 ${value}`}
-          title="复制"
+          aria-label={t("common.copy.label", { value })}
+          title={t("common.copy.button")}
           className="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 group-hover/name:opacity-100 hover:bg-muted focus-visible:opacity-100"
           onClick={(e) => {
             e.stopPropagation();
@@ -300,10 +303,10 @@ export function OneTimeSecret({
   return (
     <Alert className="border-amber-400 bg-amber-50">
       <AlertTriangle className="size-4 text-amber-700" />
-      <AlertTitle className="text-amber-900">{title} · 只显示一次</AlertTitle>
+      <AlertTitle className="text-amber-900">{t("common.secret.showOnce", { title })}</AlertTitle>
       <AlertDescription className="grid gap-2">
         <p className="text-sm text-amber-900">
-          离开或关闭后无法再次查看，请立即复制并妥善保存。
+          {t("common.secret.warning")}
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <code
@@ -314,10 +317,10 @@ export function OneTimeSecret({
           </code>
           <Button size="sm" variant="outline" onClick={copy}>
             {copied ? <Check /> : <Copy />}
-            复制
+            {t("common.secret.copy")}
           </Button>
           <Button size="sm" variant="ghost" onClick={onDismiss}>
-            我已保存，关闭
+            {t("common.secret.saved")}
           </Button>
         </div>
       </AlertDescription>
@@ -343,7 +346,7 @@ export function ScoreCoverage({ scoring }: { scoring: RunScoring | null }) {
       </span>
       <span className="text-xs text-muted-foreground">
         {" "}
-        · 已评分 {scoring.scored_trials}/{scoring.planned_trials}
+        {t("common.score.coverage", { scored: scoring.scored_trials, planned: scoring.planned_trials })}
       </span>
     </span>
   );

@@ -1,0 +1,44 @@
+{
+  "operationKind": {
+    "dataset_import": "Dataset import",
+    "preparation_first": "First preparation",
+    "preparation_restore": "Cache restore",
+    "preparation_eviction": "Cache eviction"
+  },
+  "loadFailed": "Could not load the workbench",
+  "refresh": "Refresh",
+  "newRun": "New run",
+  "refreshFailed": "Refresh failed (showing the last data)",
+  "myRecent": "My recent runs",
+  "myRecentEmpty": "You have not submitted any runs yet.",
+  "teamResults": "Recent team results",
+  "teamResultsEmpty": "The team has no finished runs yet.",
+  "all": "All",
+  "pending": {
+    "title": "Needs attention ({{count}})",
+    "hint": "Derived live from runs, datasets and operation records (latest {{count}}); items disappear once the source is back to normal.",
+    "none": "Nothing needs attention.",
+    "byAdmin": "Admin action",
+    "bySubmitter": "Submitter can act",
+    "interrupted_one": "Run \"{{name}}\" has {{count}} interrupted trial",
+    "interrupted_other": "Run \"{{name}}\" has {{count}} interrupted trials",
+    "errors_one": "Run \"{{name}}\" has {{count}} trial with an execution error (including attachment install failures)",
+    "errors_other": "Run \"{{name}}\" has {{count}} trials with execution errors (including attachment install failures)",
+    "cleanupFailed": "Cleanup of the execution environment failed for run \"{{name}}\"",
+    "artifactFailed": "Some artifacts of run \"{{name}}\" failed to save",
+    "notAdmitted_one": "{{dataset}} {{version}}: {{count}} task not admitted",
+    "notAdmitted_other": "{{dataset}} {{version}}: {{count}} tasks not admitted",
+    "operationFailed": "{{kind}} failed",
+    "operationInterrupted": "{{kind}} interrupted",
+    "rerunUnscored": "Rerun unscored tasks",
+    "checkErrorsRerun": "Check the errors, then rerun",
+    "checkContainers": "Check for leftover containers",
+    "viewArtifacts": "View artifacts",
+    "retryPreparation": "Retry first preparation on the Datasets page",
+    "handleOnDatasets": "Handle on the Datasets page"
+  },
+  "system": {
+    "label": "System",
+    "hint": "Service status {{status}}; being healthy, accepting runs and whether a given run can execute are three separate checks."
+  }
+}

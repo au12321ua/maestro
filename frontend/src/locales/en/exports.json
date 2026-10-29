@@ -1,0 +1,21 @@
+{
+  "building_one": "Packing, refreshing every {{count}} second",
+  "building_other": "Packing, refreshing every {{count}} seconds",
+  "refresh": "Refresh",
+  "intro": "Only exports you created are listed here. To create one, select runs in the run list, or click \"Export\" on a run's detail page. The archive holds the result summary, trial records and artifacts still within retention, and can be downloaded for a limited time once built.",
+  "empty": "No exports yet.",
+  "column": {
+    "export": "Export",
+    "state": "State",
+    "runs": "Runs",
+    "size": "Size",
+    "files": "Files / missing / warnings",
+    "created": "Created",
+    "expires": "Expires"
+  },
+  "moreRuns_one": "{{count}} in total",
+  "moreRuns_other": "{{count}} in total",
+  "noArtifacts": "Without artifacts",
+  "download": "Download",
+  "loadMore": "Load more"
+}

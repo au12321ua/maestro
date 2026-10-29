@@ -12,6 +12,7 @@ import {
   SettingsForm,
   TextField,
 } from "@/components/common";
+import { t } from "@/i18n";
 import { ApiError, api } from "@/lib/api";
 import { fmtTime } from "@/lib/format";
 import { useLoad } from "@/lib/hooks";
@@ -72,7 +73,7 @@ export function SetupNetworkTab() {
           expected_revision: data.revision,
         },
       });
-      toast.success(`已保存为第 ${saved.data.revision} 版；之后开始的准备与执行使用它`);
+      toast.success(t("adminConfig.setupNetwork.saved", { revision: saved.data.revision }));
       setDraft(null);
       await network.reload();
     } catch (err) {
@@ -86,12 +87,8 @@ export function SetupNetworkTab() {
     <div className="grid gap-4">
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">安装网络</CardTitle>
-          <CardDescription>
-            本机安装软件时经什么网络：镜像构建、Harness 自身安装和附件脚本用到的代理与包镜像源。
-            每次保存生成一个新版本，之后开始的准备与执行立即使用，排队中的运行也一样；Agent
-            与验证阶段从不使用。它不属于实验配置，团队成员都能看到内容，所以不能填写任何凭据。
-          </CardDescription>
+          <CardTitle className="text-base">{t("adminConfig.setupNetwork.title")}</CardTitle>
+          <CardDescription>{t("adminConfig.setupNetwork.description")}</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 text-sm">
           {network.loading && !data && <Loading />}
@@ -99,10 +96,13 @@ export function SetupNetworkTab() {
           {data && form && (
             <SettingsForm onSubmit={save}>
               <p className="text-muted-foreground">
-                当前第 {data.revision} 版
+                {t("adminConfig.setupNetwork.currentRevision", { revision: data.revision })}
                 {data.revision === 0
-                  ? "（什么都没设置）"
-                  : ` · ${data.created_by_username} · ${fmtTime(data.created_at)}`}
+                  ? t("adminConfig.setupNetwork.nothingSet")
+                  : t("adminConfig.setupNetwork.byline", {
+                      user: data.created_by_username,
+                      time: fmtTime(data.created_at),
+                    })}
               </p>
               {data.warnings.map((w) => (
                 <p key={w} className="text-amber-700 dark:text-amber-400">
@@ -111,44 +111,38 @@ export function SetupNetworkTab() {
               ))}
               <TextField
                 id="setup-proxy"
-                label="代理"
+                label={t("adminConfig.setupNetwork.proxy")}
                 placeholder="http://10.0.0.5:3128"
                 value={form.proxy}
                 onChange={(e) => change({ proxy: e.target.value })}
-                hint="容器要能访问到的地址，不能是 127.0.0.1；留空表示不用代理。用于镜像构建、Harness 安装和附件脚本"
+                hint={t("adminConfig.setupNetwork.proxyHint")}
                 error={fieldError("proxy")}
               />
               <TextField
                 id="setup-no-proxy"
-                label="不走代理"
+                label={t("adminConfig.setupNetwork.noProxy")}
                 placeholder="localhost,10.0.0.0/8"
                 value={form.no_proxy}
                 onChange={(e) => change({ no_proxy: e.target.value })}
-                hint="逗号分隔，不含空格"
+                hint={t("adminConfig.setupNetwork.noProxyHint")}
                 error={fieldError("no_proxy")}
               />
               <FormRow
-                label="安装变量"
+                label={t("adminConfig.setupNetwork.env")}
                 error={fieldError("env")}
-                hint={
-                  <>
-                    交给 Harness 安装和附件脚本的环境变量，常用来指定包镜像源，例如
-                    npm_config_registry、NVM_NODEJS_ORG_MIRROR、PIP_INDEX_URL。不用于镜像构建。代理只能在上面一栏设置，
-                    MAESTRO_ 开头的名字留给平台，像凭据的名字（含 token、key、auth 等）会被拒绝。
-                  </>
-                }
+                hint={t("adminConfig.setupNetwork.envHint")}
               >
                 {form.env.map((row, index) => (
                   <div key={index} className="grid gap-1">
                     <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_auto] gap-2">
                       <Input
-                        aria-label="变量名"
+                        aria-label={t("adminConfig.setupNetwork.envName")}
                         placeholder="npm_config_registry"
                         value={row.name}
                         onChange={(e) => setEnv(index, { name: e.target.value })}
                       />
                       <Input
-                        aria-label="变量值"
+                        aria-label={t("adminConfig.setupNetwork.envValue")}
                         placeholder="https://registry.npmmirror.com"
                         value={row.value}
                         onChange={(e) => setEnv(index, { value: e.target.value })}
@@ -162,7 +156,7 @@ export function SetupNetworkTab() {
                           })
                         }
                       >
-                        删除
+                        {t("adminConfig.shared.delete")}
                       </Button>
                     </div>
                     {row.name && fieldError(`env/${row.name.trim()}`) && (
@@ -178,36 +172,36 @@ export function SetupNetworkTab() {
                     variant="outline"
                     onClick={() => change({ env: [...form.env, { name: "", value: "" }] })}
                   >
-                    添加变量
+                    {t("adminConfig.setupNetwork.addEnv")}
                   </Button>
                 </div>
               </FormRow>
               <TextField
                 id="setup-timeout"
-                label="Harness 安装时限（秒）"
+                label={t("adminConfig.setupNetwork.timeout")}
                 type="number"
                 min={30}
                 max={86400}
                 value={form.timeout}
                 onChange={(e) => change({ timeout: e.target.value })}
-                hint="留空用 Harness 自己的默认值（多数为 360 秒）；带附件时另加附件的安装时间"
+                hint={t("adminConfig.setupNetwork.timeoutHint")}
                 error={fieldError("harness_setup_timeout_sec")}
               />
               <TextField
                 id="setup-note"
-                label="说明（写入这一版）"
+                label={t("adminConfig.setupNetwork.note")}
                 value={form.note}
                 onChange={(e) => change({ note: e.target.value })}
-                placeholder="例如：换 npmmirror，nodejs.org 经代理常断"
+                placeholder={t("adminConfig.setupNetwork.notePlaceholder")}
                 error={fieldError("note")}
               />
               <FormActions>
                 <Button type="submit" disabled={busy || draft === null}>
-                  保存为第 {data.revision + 1} 版
+                  {t("adminConfig.setupNetwork.saveAs", { revision: data.revision + 1 })}
                 </Button>
                 {draft !== null && (
                   <Button type="button" variant="outline" onClick={() => setDraft(null)}>
-                    放弃改动
+                    {t("adminConfig.shared.discardChanges")}
                   </Button>
                 )}
               </FormActions>
@@ -227,27 +221,29 @@ export function SetupNetworkContent({ network }: { network: SetupNetwork }) {
   const env = Object.entries(network.env);
   return (
     <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
-      <dt className="text-muted-foreground">代理</dt>
-      <dd className="break-all">{network.proxy || "不用"}</dd>
+      <dt className="text-muted-foreground">{t("adminConfig.setupNetwork.proxy")}</dt>
+      <dd className="break-all">{network.proxy || t("adminConfig.setupNetwork.noProxyUsed")}</dd>
       {network.no_proxy && (
         <>
-          <dt className="text-muted-foreground">不走代理</dt>
+          <dt className="text-muted-foreground">{t("adminConfig.setupNetwork.noProxy")}</dt>
           <dd className="break-all">{network.no_proxy}</dd>
         </>
       )}
-      <dt className="text-muted-foreground">安装变量</dt>
+      <dt className="text-muted-foreground">{t("adminConfig.setupNetwork.env")}</dt>
       <dd className="grid gap-0.5 break-all">
-        {env.length === 0 ? "无" : env.map(([k, v]) => <span key={k}>{`${k}=${v}`}</span>)}
+        {env.length === 0
+          ? t("adminConfig.shared.none")
+          : env.map(([k, v]) => <span key={k}>{`${k}=${v}`}</span>)}
       </dd>
-      <dt className="text-muted-foreground">Harness 安装时限</dt>
+      <dt className="text-muted-foreground">{t("adminConfig.setupNetwork.timeoutShort")}</dt>
       <dd>
         {network.harness_setup_timeout_sec == null
-          ? "Harness 默认"
-          : `${network.harness_setup_timeout_sec} 秒`}
+          ? t("adminConfig.setupNetwork.harnessDefault")
+          : t("adminConfig.setupNetwork.seconds", { n: network.harness_setup_timeout_sec })}
       </dd>
       {network.note && (
         <>
-          <dt className="text-muted-foreground">说明</dt>
+          <dt className="text-muted-foreground">{t("adminConfig.setupNetwork.noteShort")}</dt>
           <dd className="break-all">{network.note}</dd>
         </>
       )}
@@ -258,7 +254,7 @@ export function SetupNetworkContent({ network }: { network: SetupNetwork }) {
 /** "安装网络第 N 版", expandable to that revision's content (loaded when opened). */
 export function SetupNetworkRevision({
   revision,
-  prefix = "安装网络",
+  prefix = t("adminConfig.setupNetwork.title"),
 }: {
   revision: number;
   prefix?: string;
@@ -267,7 +263,7 @@ export function SetupNetworkRevision({
   return (
     <details className="text-xs" onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary className="cursor-pointer text-muted-foreground">
-        {prefix}第 {revision} 版
+        {t("adminConfig.setupNetwork.revision", { prefix, revision })}
       </summary>
       {open && <RevisionContent revision={revision} />}
     </details>
@@ -291,15 +287,20 @@ function SetupNetworkHistory({ revision }: { revision?: number }) {
   if (!history.data || history.data.length <= 1) return null;
   return (
     <details>
-      <summary className="cursor-pointer font-medium">版本历史（{history.data.length}）</summary>
+      <summary className="cursor-pointer font-medium">
+        {t("adminConfig.setupNetwork.history", { n: history.data.length })}
+      </summary>
       <ul className="mt-2 grid gap-3">
         {history.data.map((h) => (
           <li key={h.revision} className="grid gap-1">
             <span className="text-xs font-medium">
-              第 {h.revision} 版
+              {t("adminConfig.setupNetwork.historyRevision", { revision: h.revision })}
               {h.revision === 0
-                ? "（什么都没设置）"
-                : ` · ${h.created_by_username} · ${fmtTime(h.created_at)}`}
+                ? t("adminConfig.setupNetwork.nothingSet")
+                : t("adminConfig.setupNetwork.byline", {
+                    user: h.created_by_username,
+                    time: fmtTime(h.created_at),
+                  })}
             </span>
             <SetupNetworkContent network={h} />
           </li>
@@ -315,11 +316,8 @@ function DeploymentCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">部署配置（只读）</CardTitle>
-        <CardDescription>
-          来自主机上的 /etc/maestro/config.toml 与服务环境，在主机上修改后重启服务生效。拉取镜像走
-          Docker 守护进程自己的代理与镜像源，maestroctl check 会报告它们。
-        </CardDescription>
+        <CardTitle className="text-base">{t("adminConfig.deployment.title")}</CardTitle>
+        <CardDescription>{t("adminConfig.deployment.description")}</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-3 text-sm">
         {deployment.loading && !data && <Loading />}
@@ -327,15 +325,20 @@ function DeploymentCard() {
         {data && (
           <>
             <p>
-              服务进程代理：{data.service_proxy ? "已设置" : "未设置"}
+              {t("adminConfig.deployment.serviceProxy", {
+                state: data.service_proxy
+                  ? t("adminConfig.deployment.set")
+                  : t("adminConfig.deployment.unset"),
+              })}
               <span className="text-xs text-muted-foreground">
-                （Hub 下载、镜像仓库令牌与 Terminus 的模型请求经它）
+                {t("adminConfig.deployment.serviceProxyNote")}
               </span>
             </p>
             {data.retired.length > 0 && (
               <p className="text-amber-700 dark:text-amber-400">
-                config.toml 中的 {data.retired.join("、")}{" "}
-                已不再使用，会被忽略；请在上面的“安装网络”中重新填写，并从文件中删去。
+                {t("adminConfig.deployment.retired", {
+                  keys: data.retired.join(t("adminConfig.shared.listSeparator")),
+                })}
               </p>
             )}
             <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 font-mono text-xs">

@@ -1,4 +1,5 @@
 // Words and helpers for comparisons, collections and snapshots (06 section 8).
+import { t } from "@/i18n";
 import type {
   ComparedRunRow,
   Comparison,
@@ -11,17 +12,9 @@ import type {
   VariableDimension,
 } from "./types";
 
-export const DIMENSION: Record<Dimension, string> = {
-  dataset: "数据集",
-  scoring: "计分规则",
-  model: "模型",
-  harness: "Harness",
-  attachments: "附件",
-  resources: "资源与时限",
-  repetitions: "重复次数",
-  parameters: "作者参数",
-  other: "其他运行设置",
-};
+export const DIMENSION: Record<Dimension, string> = t("comparison.dimension", {
+  returnObjects: true,
+});
 
 export const VARIABLE_DIMENSIONS: VariableDimension[] = [
   "model",
@@ -32,44 +25,39 @@ export const VARIABLE_DIMENSIONS: VariableDimension[] = [
   "parameters",
 ];
 
+const SCENARIO_LABEL: Record<Scenario, string> = t("comparison.scenario", {
+  returnObjects: true,
+});
+
 export const SCENARIO: Record<
   Scenario,
   { label: string; variable: VariableDimension[] | null }
 > = {
-  models: { label: "比较模型", variable: ["model"] },
-  harnesses: { label: "比较 Harness", variable: ["harness"] },
-  model_harness: { label: "模型 × Harness", variable: ["model", "harness"] },
-  attachments: { label: "附件 A/B", variable: ["attachments"] },
-  repeats: { label: "重复稳定性", variable: [] },
-  custom: { label: "自定义", variable: null },
+  models: { label: SCENARIO_LABEL.models, variable: ["model"] },
+  harnesses: { label: SCENARIO_LABEL.harnesses, variable: ["harness"] },
+  model_harness: {
+    label: SCENARIO_LABEL.model_harness,
+    variable: ["model", "harness"],
+  },
+  attachments: { label: SCENARIO_LABEL.attachments, variable: ["attachments"] },
+  repeats: { label: SCENARIO_LABEL.repeats, variable: [] },
+  custom: { label: SCENARIO_LABEL.custom, variable: null },
 };
 
-export const FAILURE_GROUP: Record<FailureGroup, string> = {
-  provider_unavailable: "模型接口暂时故障（限流、断连、过载）",
-  provider_access: "认证失败、模型不存在、额度耗尽",
-  environment_setup: "镜像构建、环境启动、Harness 安装超时",
-  preparation: "准备缓存恢复失败、附件原件缺失",
-  executor_unsupported: "执行框架不支持",
-  platform_stop: "未开始、取消、中断、服务重启、运行总时限",
-  out_of_memory: "运行中内存超限",
-  verifier: "验证器没有产出分数",
-  attachment: "附件安装失败或超时",
-  provider_request: "模型接口的其他永久错误",
-  unclassified: "未归类的错误",
-};
+export const FAILURE_GROUP: Record<FailureGroup, string> = t(
+  "comparison.failureGroup",
+  { returnObjects: true },
+);
 
-export const EVIDENCE: Record<string, string> = {
-  available: "原始证据可查看",
-  none: "原始证据已不可用",
-  deleted: "运行已删除",
-  purged: "运行已彻底删除",
-};
+export const EVIDENCE: Record<string, string> = t("comparison.evidence", {
+  returnObjects: true,
+});
 
-/** A dimension value as the service names it, with its placeholder words in Chinese. */
+/** A dimension value as the service names it, with its placeholder words translated. */
 export function valueText(text: string | undefined): string {
-  if (text === "none") return "无";
-  if (text === "author") return "按作者设定";
-  if (text === "execution_mode=agent") return "模型实验";
+  if (text === "none") return t("comparison.value.none");
+  if (text === "author") return t("comparison.value.author");
+  if (text === "execution_mode=agent") return t("comparison.value.agentMode");
   return text ?? "—";
 }
 
@@ -77,19 +65,24 @@ export function noticeText(notice: Comparison["warnings"][number]): string {
   const dim = notice.dimension ? DIMENSION[notice.dimension] : "";
   switch (notice.code) {
     case "DATASET_DIFFERS":
-      return "数据集内容不同：只并排列出各运行自己的汇总，不对齐任务、不给差值。";
+      return t("comparison.notice.datasetDiffers");
     case "SCORING_DIFFERS":
-      return "计分规则不同：只并排列出各运行自己的汇总，不对齐任务、不给差值。";
+      return t("comparison.notice.scoringDiffers");
     case "UNEXPECTED_DIFFERENCE":
-      return `${dim}也不同：照常比较，但结果可能受它影响。`;
+      return t("comparison.notice.unexpectedDifference", { dimension: dim });
     case "ACTUAL_MODEL_DIFFERS":
-      return "配置相同的模型实际报告的版本不同。";
+      return t("comparison.notice.actualModelDiffers");
     case "RUN_IN_PROGRESS":
-      return `${notice.run_ids?.length ?? 0} 个运行还没结束，数字会变。`;
+      return t("comparison.notice.runInProgress", {
+        count: notice.run_ids?.length ?? 0,
+      });
     case "TASK_SETS_DIFFER":
-      return `任务范围不同：共同任务 ${notice.common} 个，全部 ${notice.all} 个。`;
+      return t("comparison.notice.taskSetsDiffer", {
+        common: notice.common,
+        all: notice.all,
+      });
     case "FAILURES_NOT_IN_MEAN":
-      return "该指标越低越好：计为失败的试次只算未通过，不计入均分。";
+      return t("comparison.notice.failuresNotInMean");
     default:
       return notice.code;
   }
@@ -114,12 +107,15 @@ export function dimensionValue(
 export function sumGroups(groups: Record<string, number>): string {
   return Object.entries(groups)
     .map(([key, n]) => `${FAILURE_GROUP[key as FailureGroup] ?? key} ${n}`)
-    .join("；");
+    .join(t("common.format.listSeparator"));
 }
 
 export function cellText(cell: ComparisonCell | null | undefined): string {
-  if (!cell) return "未包含";
-  if (!cell.valid_trials) return cell.pending_trials ? "进行中" : "无有效试次";
+  if (!cell) return t("comparison.cell.notIncluded");
+  if (!cell.valid_trials)
+    return cell.pending_trials
+      ? t("comparison.cell.pending")
+      : t("comparison.cell.noValidTrials");
   return cell.mean == null ? "—" : String(Number(cell.mean.toFixed(3)));
 }
 

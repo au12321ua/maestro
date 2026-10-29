@@ -1,5 +1,7 @@
 # Maestro
 
+[English](README.en.md)
+
 > harbor-helper 已整体重写为 Maestro，替换了原来的实现；旧实例的数据不迁移。
 
 Maestro 让受邀的可信团队通过网页和 SDK 提交、观察、比较和重跑基于 Harbor 的实验：数据集可选择，实验配置固定，结果全团队共享，提交身份保留。

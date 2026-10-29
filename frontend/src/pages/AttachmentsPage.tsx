@@ -22,6 +22,7 @@ import {
   SelectField,
   TextField,
 } from "@/components/common";
+import { t, Trans } from "@/i18n";
 import { API, ApiError, api } from "@/lib/api";
 import { ATTACHMENT_EFFECT, fmtBytes, fmtTime, snapshotName } from "@/lib/format";
 import { useLoad, useSession } from "@/lib/hooks";
@@ -31,7 +32,7 @@ import type { Attachment, AttachmentDiff, AttachmentFile } from "@/lib/types";
 const EXAMPLE = `{
   "schema_version": 1,
   "name": "my-tools",
-  "description": "说明（可选）",
+  "description": "${t("attachments.publish.exampleDescription")}",
   "effects": ["agent_tools"],
   "compatible_harnesses": ["terminus-2"],
   "provides": { "tools": ["mytool"], "env": [] }
@@ -92,7 +93,7 @@ function FileView({ id, file }: { id: string; file: AttachmentFile }) {
   if (view.loading && view.data === undefined) return <Loading />;
   if (view.error) return <ErrorAlert error={view.error} />;
   if (view.data === null)
-    return <p className="text-muted-foreground">二进制或较大的文件，请下载查看。</p>;
+    return <p className="text-muted-foreground">{t("attachments.file.binary")}</p>;
   return (
     <pre className="max-h-96 overflow-auto rounded-md bg-background p-2 text-[11px]">
       {view.data}
@@ -106,11 +107,11 @@ function DiffView({ diff }: { diff: AttachmentDiff }) {
     ...diff.removed.map((f): [string, string, string] => ["−", f.path, "text-red-700"]),
     ...diff.changed.map((c): [string, string, string] => [
       "~",
-      c.before.sha256 === c.after.sha256 ? `${c.path}（仅可执行位）` : c.path,
+      c.before.sha256 === c.after.sha256 ? t("attachments.diff.modeOnly", { path: c.path }) : c.path,
       "text-amber-700",
     ]),
   ];
-  if (rows.length === 0) return <p className="text-muted-foreground">文件没有差异。</p>;
+  if (rows.length === 0) return <p className="text-muted-foreground">{t("attachments.diff.none")}</p>;
   return (
     <ul className="grid gap-0.5 font-mono">
       {rows.map(([mark, path, tone]) => (
@@ -143,11 +144,11 @@ function Detail({ detail, siblings }: { detail: Attachment; siblings: Attachment
       {detail.description && <p>{detail.description}</p>}
       {(detail.provides.tools.length > 0 || detail.provides.env.length > 0) && (
         <p>
-          提供：
+          {t("attachments.detail.provides")}
           {[
-            ...detail.provides.tools.map((x) => `工具 ${x}`),
-            ...detail.provides.env.map((x) => `环境变量 ${x}`),
-          ].join("、")}
+            ...detail.provides.tools.map((x) => t("attachments.detail.tool", { name: x })),
+            ...detail.provides.env.map((x) => t("attachments.detail.env", { name: x })),
+          ].join(t("attachments.separator"))}
         </p>
       )}
       <ul className="grid gap-0.5 font-mono">
@@ -163,10 +164,10 @@ function Detail({ detail, siblings }: { detail: Attachment; siblings: Attachment
                 className="underline-offset-2 hover:underline"
                 onClick={() => setViewing(viewing === f.path ? null : f.path)}
               >
-                {viewing === f.path ? "收起" : "查看"}
+                {viewing === f.path ? t("attachments.file.collapse") : t("attachments.file.view")}
               </button>
               <a className="underline-offset-2 hover:underline" href={fileUrl(detail.id, f.path)}>
-                下载
+                {t("attachments.download")}
               </a>
             </div>
             {viewing === f.path && <FileView id={detail.id} file={f} />}
@@ -177,15 +178,15 @@ function Detail({ detail, siblings }: { detail: Attachment; siblings: Attachment
         <div className="grid gap-2">
           <SelectField
             id={`diff-base-${detail.id}`}
-            label="与另一快照比较"
+            label={t("attachments.detail.compareWith")}
             value={base}
             onChange={(e) => setBase(e.target.value)}
           >
-            <option value="">不比较</option>
+            <option value="">{t("attachments.detail.noCompare")}</option>
             {others.map((s) => (
               <option key={s.id} value={s.id}>
                 {snapshotName(s)}
-                {s.id === detail.parent_id ? "（父快照）" : ""} · {fmtTime(s.created_at)}
+                {s.id === detail.parent_id ? t("attachments.detail.parentMark") : ""} · {fmtTime(s.created_at)}
               </option>
             ))}
           </SelectField>
@@ -220,7 +221,7 @@ export function AttachmentsPage() {
     setError(undefined);
     if (!chosen || chosen.length === 0) return;
     const files = Array.from(chosen);
-    setBusy("读取文件…");
+    setBusy(t("attachments.progress.reading"));
     try {
       const found = await manifestName(files);
       // The newest snapshot of the same name is the default parent; one chosen with
@@ -245,17 +246,17 @@ export function AttachmentsPage() {
   const publish = async () => {
     setError(undefined);
     try {
-      setBusy("核对已有内容…");
+      setBusy(t("attachments.progress.checking"));
       const shas = [...new Set(picked.map((p) => p.sha256))];
       const { missing } = (
         await api.post("/attachment-contents/missing", { body: { sha256: shas } })
       ).data;
       const contents = new Map(picked.map((p) => [p.sha256, p.file]));
       for (const [index, sha] of missing.entries()) {
-        setBusy(`上传 ${index + 1}/${missing.length}…`);
+        setBusy(t("attachments.progress.uploading", { index: index + 1, total: missing.length }));
         await api.upload("/attachment-contents/{sha256}", { sha256: sha }, contents.get(sha)!);
       }
-      setBusy("发布…");
+      setBusy(t("attachments.progress.publishing"));
       const res = await api.post("/attachments", {
         body: {
           files: picked.map(({ path, sha256, executable }) => ({ path, sha256, executable })),
@@ -264,7 +265,11 @@ export function AttachmentsPage() {
         },
       });
       toast.success(
-        `已发布 ${res.data.name} ${snapshotName(res.data)}（上传 ${missing.length} 个文件）`,
+        t("attachments.publish.done", {
+          name: res.data.name,
+          snapshot: snapshotName(res.data),
+          count: missing.length,
+        }),
       );
       setPicked([]);
       setLabel("");
@@ -317,33 +322,32 @@ export function AttachmentsPage() {
 
   return (
     <div className="grid gap-4">
-      <PageTitle title="附件" />
+      <PageTitle title={t("attachments.title")} />
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">已发布的快照</CardTitle>
+          <CardTitle className="text-base">{t("attachments.list.title")}</CardTitle>
           <CardDescription>
-            附件是随模型运行加载的文件，例如工具、SDK
-            或安装脚本。每次发布得到一份内容固定的快照，内容相同就是同一份；可以基于任意一份快照再发布，分出多个方向。运行时，每个试次在自己的容器里复制附件到
-            <code className="mx-1">/opt/maestro/attachments/</code>
-            并运行其中的 <code>bootstrap.sh</code>，然后才开始 Agent；安装可以联网，Agent
-            和验证阶段仍按平台网络限制执行。
+            <Trans
+              i18nKey="attachments.list.description"
+              components={{ dir: <code className="mx-1" />, code: <code /> }}
+            />
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 text-sm">
           {list.loading && !list.data && <Loading />}
           <ErrorAlert error={list.error} />
-          {list.data && list.data.length === 0 && <EmptyNote>还没有发布附件。</EmptyNote>}
+          {list.data && list.data.length === 0 && <EmptyNote>{t("attachments.list.empty")}</EmptyNote>}
           {all.length > 0 && (
             <div className="overflow-auto rounded-md border">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>附件与快照</TableHead>
-                    <TableHead>发布者</TableHead>
-                    <TableHead>影响范围</TableHead>
+                    <TableHead>{t("attachments.list.columns.snapshot")}</TableHead>
+                    <TableHead>{t("attachments.list.columns.owner")}</TableHead>
+                    <TableHead>{t("attachments.list.columns.effects")}</TableHead>
                     <TableHead>Harness</TableHead>
-                    <TableHead>内容</TableHead>
-                    <TableHead>状态</TableHead>
+                    <TableHead>{t("attachments.list.columns.content")}</TableHead>
+                    <TableHead>{t("attachments.list.columns.state")}</TableHead>
                     <TableHead />
                   </TableRow>
                 </TableHeader>
@@ -372,7 +376,9 @@ export function AttachmentsPage() {
                             </div>
                             {a.parent_id && (
                               <div className="text-[11px] text-muted-foreground">
-                                基于 {from ? snapshotName(from) : "已删除的快照"}
+                                {t("attachments.list.basedOn", {
+                                  name: from ? snapshotName(from) : t("attachments.list.deletedSnapshot"),
+                                })}
                               </div>
                             )}
                           </TableCell>
@@ -381,34 +387,34 @@ export function AttachmentsPage() {
                             <div className="text-muted-foreground">{fmtTime(a.created_at)}</div>
                           </TableCell>
                           <TableCell className="text-xs">
-                            {a.effects.map((e) => ATTACHMENT_EFFECT[e] ?? e).join("、")}
+                            {a.effects.map((e) => ATTACHMENT_EFFECT[e] ?? e).join(t("attachments.separator"))}
                           </TableCell>
                           <TableCell className="font-mono text-xs">
                             {a.compatible_harnesses.includes("*")
-                              ? "任意"
+                              ? t("attachments.list.anyHarness")
                               : a.compatible_harnesses.join(", ")}
                           </TableCell>
                           <TableCell className="text-xs">
-                            {a.file_count} 个文件 · {fmtBytes(a.size_bytes)}
+                            {t("attachments.list.files", { count: a.file_count, size: fmtBytes(a.size_bytes) })}
                             {a.has_bootstrap && (
                               <div>
-                                <Pill tone="info">含安装脚本</Pill>
+                                <Pill tone="info">{t("attachments.list.hasBootstrap")}</Pill>
                               </div>
                             )}
                           </TableCell>
                           <TableCell>
                             <Pill tone={a.enabled ? "good" : "muted"}>
-                              {a.enabled ? "可用" : "停用"}
+                              {a.enabled ? t("attachments.list.enabled") : t("attachments.list.disabled")}
                             </Pill>
                           </TableCell>
                           <TableCell className="whitespace-nowrap text-right">
                             <Button size="sm" variant="outline" asChild>
                               <a href={`${API}/attachments/${encodeURIComponent(a.id)}/archive`}>
-                                下载
+                                {t("attachments.download")}
                               </a>
                             </Button>{" "}
                             <Button size="sm" variant="outline" onClick={() => baseOn(a)}>
-                              基于此发布
+                              {t("attachments.list.baseOn")}
                             </Button>
                             {mayManage(a) && (
                               <>
@@ -423,11 +429,11 @@ export function AttachmentsPage() {
                                           path: { attachment_id: a.id },
                                           body: { enabled: !a.enabled },
                                         }),
-                                      a.enabled ? "已停用" : "已启用",
+                                      a.enabled ? t("attachments.list.disabledDone") : t("attachments.list.enabledDone"),
                                     )
                                   }
                                 >
-                                  {a.enabled ? "停用" : "启用"}
+                                  {a.enabled ? t("attachments.list.disable") : t("attachments.list.enable")}
                                 </Button>{" "}
                                 <Button
                                   size="sm"
@@ -438,11 +444,11 @@ export function AttachmentsPage() {
                                         api.del("/attachments/{attachment_id}", {
                                           path: { attachment_id: a.id },
                                         }),
-                                      "已移入回收站",
+                                      t("attachments.list.deleted"),
                                     )
                                   }
                                 >
-                                  删除
+                                  {t("attachments.list.delete")}
                                 </Button>
                               </>
                             )}
@@ -468,18 +474,15 @@ export function AttachmentsPage() {
 
       <Card ref={publishCard}>
         <CardHeader>
-          <CardTitle className="text-base">发布快照</CardTitle>
+          <CardTitle className="text-base">{t("attachments.publish.title")}</CardTitle>
           <CardDescription>
-            选择附件所在的文件夹，根目录里放 manifest.json；可选 bootstrap.sh 由 bash
-            运行，工作目录是附件目录，环境变量 MAESTRO_ATTACHMENT_DIR
-            指向它。只上传服务端还没有的文件，发布只检查不运行；文件名只能用字母、数字和
-            ._+@-，.git 目录不上传。标签可选，在同名附件内唯一，发布后不能改。
+            {t("attachments.publish.description")}
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 text-sm">
           {parent && !picked.length && (
             <p className="text-xs">
-              将基于 {parent.name} {snapshotName(parent)} 发布；请选择改好的文件夹。
+              {t("attachments.publish.basedOn", { name: parent.name, snapshot: snapshotName(parent) })}
             </p>
           )}
           <input
@@ -493,24 +496,29 @@ export function AttachmentsPage() {
           {picked.length > 0 && (
             <div className="grid gap-3">
               <p className="text-xs">
-                {name ? `附件 ${name}` : "没有在 manifest.json 中找到名称"} · {picked.length}{" "}
-                个文件 · {fmtBytes(picked.reduce((n, p) => n + p.file.size, 0))}
+                {t("attachments.publish.picked", {
+                  name: name
+                    ? t("attachments.publish.pickedName", { name })
+                    : t("attachments.publish.noName"),
+                  count: picked.length,
+                  size: fmtBytes(picked.reduce((n, p) => n + p.file.size, 0)),
+                })}
               </p>
               <div className="grid gap-3 md:grid-cols-2">
                 <TextField
                   id="attachment-label"
-                  label="标签（可选）"
+                  label={t("attachments.publish.label")}
                   value={label}
-                  placeholder="例如 v2、try-cache"
+                  placeholder={t("attachments.publish.labelPlaceholder")}
                   onChange={(e) => setLabel(e.target.value)}
                 />
                 <SelectField
                   id="attachment-parent"
-                  label="父快照"
+                  label={t("attachments.publish.parent")}
                   value={parentId}
                   onChange={(e) => setParentId(e.target.value)}
                 >
-                  <option value="">无</option>
+                  <option value="">{t("attachments.publish.noParent")}</option>
                   {sameName(name).map((s) => (
                     <option key={s.id} value={s.id}>
                       {snapshotName(s)} · {fmtTime(s.created_at)}
@@ -520,8 +528,7 @@ export function AttachmentsPage() {
               </div>
               <div className="max-h-72 overflow-auto rounded-md border p-2">
                 <p className="mb-1 text-xs text-muted-foreground">
-                  浏览器读不到文件权限：勾选需要可执行的文件（默认沿用父快照，否则按是否以 #!
-                  开头判断）。
+                  {t("attachments.publish.modeHint")}
                 </p>
                 <ul className="grid gap-0.5 font-mono text-xs">
                   {picked.map((p, i) => (
@@ -547,7 +554,7 @@ export function AttachmentsPage() {
               </div>
               <div>
                 <Button disabled={busy !== null} onClick={() => void publish()}>
-                  {busy ?? "上传并发布"}
+                  {busy ?? t("attachments.publish.submit")}
                 </Button>
               </div>
             </div>
@@ -566,14 +573,11 @@ export function AttachmentsPage() {
           )}
           <details>
             <summary className="cursor-pointer text-xs text-muted-foreground">
-              manifest.json 示例
+              {t("attachments.publish.exampleSummary")}
             </summary>
             <pre className="mt-2 overflow-auto rounded-md bg-muted p-3 text-xs">{EXAMPLE}</pre>
             <p className="mt-1 text-xs text-muted-foreground">
-              effects 目前支持
-              model_call、agent_tools、task_environment；改变验证或评分的附件暂不支持。compatible_harnesses
-              填 Harness 适配器名，或 ["*"] 表示任意。provides
-              用于发现两个附件之间的冲突。快照没有版本号，用发布时的标签区分。
+              {t("attachments.publish.exampleNote")}
             </p>
           </details>
         </CardContent>

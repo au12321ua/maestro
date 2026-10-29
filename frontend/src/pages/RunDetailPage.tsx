@@ -38,6 +38,7 @@ import {
   Pill,
   StatusPill,
 } from "@/components/common";
+import { t, Trans } from "@/i18n";
 import { API, api, errorText } from "@/lib/api";
 import {
   ARTIFACT_STATE,
@@ -105,7 +106,7 @@ function RunDetailView({ runId }: { runId: string }) {
 
   const load = useCallback(async () => {
     try {
-      const [r, t, a] = await Promise.all([
+      const [r, tr, a] = await Promise.all([
         api.get("/runs/{run_id}", { path: { run_id: runId } }),
         api.get("/runs/{run_id}/trials", { path: { run_id: runId } }),
         api.get("/runs/{run_id}/artifacts", { path: { run_id: runId } }),
@@ -118,7 +119,7 @@ function RunDetailView({ runId }: { runId: string }) {
         ),
       ]);
       setRun(r.data);
-      setTrials(t.data);
+      setTrials(tr.data);
       setArtifacts(a.data);
       setError(undefined);
     } catch (err) {
@@ -134,14 +135,16 @@ function RunDetailView({ runId }: { runId: string }) {
   useInterval(() => void load(), 2000, active);
 
   const cancel = async () => {
-    if (!window.confirm("确定取消该运行？已获得的评分结果会保留，未完成的试次将停止。")) return;
+    if (!window.confirm(t("runs.detail.cancelConfirm"))) return;
     setCancelling(true);
     try {
       const res = await api.post("/runs/{run_id}/cancel", { path: { run_id: runId } });
-      toast.success(res.data.stop_requested ? "已请求取消" : "已提交取消");
+      toast.success(
+        res.data.stop_requested ? t("runs.detail.cancelRequested") : t("runs.detail.cancelSubmitted"),
+      );
       await load();
     } catch (err) {
-      toast.error(`取消失败：${errorText(err)}`);
+      toast.error(t("runs.cancelFailed", { error: errorText(err) }));
     } finally {
       setCancelling(false);
     }
@@ -150,8 +153,8 @@ function RunDetailView({ runId }: { runId: string }) {
   const rerun = async (mode: "all" | "unfinished") => {
     const text =
       mode === "all"
-        ? "按原配置重跑全部任务？会创建一个新运行，原运行不受影响。"
-        : "只重跑有试次未得分的任务（这些任务的全部重复次数都会重跑）？会创建一个新运行。";
+        ? t("runs.detail.rerunAllConfirm")
+        : t("runs.detail.rerunUnfinishedConfirm");
     if (!window.confirm(text)) return;
     setBusy(true);
     try {
@@ -160,10 +163,10 @@ function RunDetailView({ runId }: { runId: string }) {
         body: { task_selection: { mode } },
         headers: { "Idempotency-Key": crypto.randomUUID() },
       });
-      toast.success(`已受理重跑：计划 ${res.data.planned_trials} 个试次`);
+      toast.success(t("runs.detail.rerunAccepted", { count: res.data.planned_trials }));
       navigate(`/runs/${res.data.run_id}`);
     } catch (err) {
-      toast.error(`重跑失败：${errorText(err)}`);
+      toast.error(t("runs.detail.rerunFailed", { error: errorText(err) }));
     } finally {
       setBusy(false);
     }
@@ -173,10 +176,10 @@ function RunDetailView({ runId }: { runId: string }) {
     setBusy(true);
     try {
       await api.post("/exports", { body: { run_ids: [runId] } });
-      toast.success("已创建导出，正在打包");
+      toast.success(t("runs.detail.exportCreated"));
       navigate("/exports");
     } catch (err) {
-      toast.error(`导出失败：${errorText(err)}`);
+      toast.error(t("runs.list.exportFailed", { error: errorText(err) }));
       setBusy(false);
     }
   };
@@ -184,17 +187,17 @@ function RunDetailView({ runId }: { runId: string }) {
   const remove = async () => {
     if (
       !window.confirm(
-        "删除该运行？它会移入回收站，从运行列表中隐藏；只有管理员可以从回收站恢复或彻底删除。",
+        t("runs.detail.deleteConfirm"),
       )
     )
       return;
     setBusy(true);
     try {
       await api.del("/runs/{run_id}", { path: { run_id: runId } });
-      toast.success("已移入回收站");
+      toast.success(t("runs.detail.deleted"));
       await load();
     } catch (err) {
-      toast.error(`删除失败：${errorText(err)}`);
+      toast.error(t("runs.detail.deleteFailed", { error: errorText(err) }));
     } finally {
       setBusy(false);
     }
@@ -203,21 +206,21 @@ function RunDetailView({ runId }: { runId: string }) {
   const removeArtifact = async (artifact: Artifact) => {
     if (
       !window.confirm(
-        `删除产物「${artifact.relative_path}」？文件内容将移入回收站，之后无法下载；索引记录保留。`,
+        t("runs.detail.deleteArtifactConfirm", { path: artifact.relative_path }),
       )
     )
       return;
     try {
       await api.del("/artifacts/{artifact_id}", { path: { artifact_id: artifact.id } });
-      toast.success("产物已删除");
+      toast.success(t("runs.detail.artifactDeleted"));
       await load();
     } catch (err) {
-      toast.error(`删除失败：${errorText(err)}`);
+      toast.error(t("runs.detail.deleteFailed", { error: errorText(err) }));
     }
   };
 
   if (!run) {
-    return error ? <ErrorAlert error={error} title="无法加载运行" /> : <Loading />;
+    return error ? <ErrorAlert error={error} title={t("runs.detail.loadFailed")} /> : <Loading />;
   }
 
   return (
@@ -226,22 +229,22 @@ function RunDetailView({ runId }: { runId: string }) {
         {active && (
           <span className="flex items-center gap-1 text-xs text-muted-foreground">
             <Loader2 className="size-3 animate-spin" />
-            每 2 秒自动刷新
+            {t("runs.detail.autoRefresh")}
           </span>
         )}
         <Button size="sm" variant="outline" onClick={() => void load()}>
           <RefreshCw />
-          刷新
+          {t("runs.list.refresh")}
         </Button>
         <Button size="sm" variant="outline" disabled={busy} onClick={() => void exportRun()}>
           <Package />
-          导出
+          {t("runs.detail.export")}
         </Button>
         {run.allowed_actions.includes("rerun") && (
           <>
             <Button size="sm" variant="outline" disabled={busy} onClick={() => void rerun("all")}>
               <RotateCcw />
-              重跑
+              {t("runs.detail.rerun")}
             </Button>
             {!active && run.counts.scored < run.counts.planned && (
               <Button
@@ -250,7 +253,7 @@ function RunDetailView({ runId }: { runId: string }) {
                 disabled={busy}
                 onClick={() => void rerun("unfinished")}
               >
-                重跑未得分的任务
+                {t("runs.detail.rerunUnfinished")}
               </Button>
             )}
           </>
@@ -259,7 +262,7 @@ function RunDetailView({ runId }: { runId: string }) {
           <Button asChild size="sm" variant="outline">
             <Link to={`/runs/new?from=${run.id}`}>
               <PencilLine />
-              修改后运行
+              {t("runs.detail.modify")}
             </Link>
           </Button>
         )}
@@ -267,7 +270,7 @@ function RunDetailView({ runId }: { runId: string }) {
         {run.allowed_actions.includes("delete") && (
           <Button size="sm" variant="outline" disabled={busy} onClick={() => void remove()}>
             <Trash2 />
-            删除
+            {t("runs.artifacts.delete")}
           </Button>
         )}
         {run.allowed_actions.includes("cancel") && (
@@ -277,16 +280,20 @@ function RunDetailView({ runId }: { runId: string }) {
             disabled={cancelling || run.stop_requested}
             onClick={cancel}
           >
-            {run.stop_requested ? "取消中…" : "取消运行"}
+            {run.stop_requested ? t("runs.detail.cancelling") : t("runs.detail.cancel")}
           </Button>
         )}
       </PageTitle>
-      {error !== undefined && <ErrorAlert error={error} title="刷新失败（显示的是上次数据）" />}
+      {error !== undefined && <ErrorAlert error={error} title={t("runs.refreshFailed")} />}
       {run.deletion && (
         <DeletionBanner
           deletion={run.deletion}
-          title={run.deletion.state === "purged" ? "该运行已彻底删除" : "该运行已删除，在回收站中"}
-          text="它不再出现在运行列表中；只有管理员可以在回收站中恢复。"
+          title={
+            run.deletion.state === "purged"
+              ? t("runs.deletion.runPurged")
+              : t("runs.deletion.runDeleted")
+          }
+          text={t("runs.deletion.runText")}
         />
       )}
       {run.dataset_version_deletion && (
@@ -294,36 +301,42 @@ function RunDetailView({ runId }: { runId: string }) {
           deletion={run.dataset_version_deletion}
           title={
             run.dataset_version_deletion.state === "purged"
-              ? "所用数据集版本已彻底删除"
-              : "所用数据集版本已删除，在回收站中"
+              ? t("runs.deletion.versionPurged")
+              : t("runs.deletion.versionDeleted")
           }
-          text="本运行的记录与结果保留，但不能再用该版本重跑。"
+          text={t("runs.deletion.versionText")}
         />
       )}
 
       <Card>
         <CardContent className="grid gap-x-6 gap-y-2 pt-6 text-sm sm:grid-cols-2 lg:grid-cols-3">
-          <Info label="运行 ID" value={<code>{run.id}</code>} />
+          <Info label={t("runs.detail.runId")} value={<code>{run.id}</code>} />
           <Info
-            label="提交者"
+            label={t("runs.column.owner")}
             value={
               <>
                 {run.owner_id === me.id
-                  ? `我（${me.username}）`
-                  : `${run.owner.display_name}（${run.owner.username}）`}
-                {run.owner.deleted && <span className="text-muted-foreground">（已删除）</span>}
+                  ? t("runs.detail.ownerMe", { username: me.username })
+                  : t("runs.detail.ownerOther", {
+                      name: run.owner.display_name,
+                      username: run.owner.username,
+                    })}
+                {run.owner.deleted && <span className="text-muted-foreground">{t("runs.ownerDeleted")}</span>}
               </>
             }
           />
-          <Info label="提交方式" value={run.pat_id ? <>PAT <code>{run.pat_id}</code></> : "网页会话"} />
           <Info
-            label="来源"
+            label={t("runs.detail.channel")}
+            value={run.pat_id ? <>PAT <code>{run.pat_id}</code></> : t("runs.detail.webSession")}
+          />
+          <Info
+            label={t("runs.detail.source")}
             value={
               run.relation === "initial" ? (
-                "首次运行"
+                t("runs.detail.initialRun")
               ) : (
                 <>
-                  {run.relation === "rerun" ? "重跑" : "修改后运行"}
+                  {run.relation === "rerun" ? t("runs.detail.rerun") : t("runs.detail.modify")}
                   {run.source_run_id && (
                     <Link className="ml-1 text-primary underline" to={`/runs/${run.source_run_id}`}>
                       {shortId(run.source_run_id)}
@@ -335,17 +348,18 @@ function RunDetailView({ runId }: { runId: string }) {
           />
           {run.plan_id && (
             <Info
-              label="实验方案"
+              label={t("runs.detail.plan")}
               value={
                 <>
-                  <code>{shortId(run.plan_id)}</code> · 修订 {run.plan_revision}
+                  <code>{shortId(run.plan_id)}</code>{" "}
+                  {t("runs.detail.planRevision", { revision: run.plan_revision })}
                 </>
               }
             />
           )}
           {run.batch_id && (
             <Info
-              label="批次"
+              label={t("runs.batch.title")}
               value={
                 <Link className="text-primary underline" to={`/batches/${run.batch_id}`}>
                   {shortId(run.batch_id)}
@@ -355,7 +369,7 @@ function RunDetailView({ runId }: { runId: string }) {
           )}
           <SourceDifferences snapshot={run.snapshot} />
           <Info
-            label="数据集版本"
+            label={t("runs.detail.datasetVersion")}
             value={
               <Link
                 className="text-primary underline"
@@ -366,30 +380,30 @@ function RunDetailView({ runId }: { runId: string }) {
             }
           />
           <Info label="Operation" value={<code>{run.operation_id}</code>} />
-          <Info label="客户端请求标识" value={run.client_request_id ?? "—"} />
-          <Info label="受理时间" value={fmtTime(run.accepted_at)} />
-          <Info label="开始时间" value={fmtTime(run.started_at)} />
-          <Info label="结束时间" value={fmtTime(run.finished_at)} />
-          <Info label="总时限" value={fmtTime(run.deadline_at)} />
-          <Info label="执行方式" value={<ExecutionMode mode={run.snapshot.effective.execution_mode} />} />
+          <Info label={t("runs.detail.clientRequestId")} value={run.client_request_id ?? "—"} />
+          <Info label={t("runs.column.acceptedAt")} value={fmtTime(run.accepted_at)} />
+          <Info label={t("runs.detail.startedAt")} value={fmtTime(run.started_at)} />
+          <Info label={t("runs.detail.finishedAt")} value={fmtTime(run.finished_at)} />
+          <Info label={t("runs.detail.deadline")} value={fmtTime(run.deadline_at)} />
+          <Info label={t("runs.detail.executionMode")} value={<ExecutionMode mode={run.snapshot.effective.execution_mode} />} />
           {run.snapshot.effective.model != null && (
-            <Info label="模型与 Harness" value={<AgentSummary snapshot={run.snapshot} />} />
+            <Info label={t("runs.detail.modelHarness")} value={<AgentSummary snapshot={run.snapshot} />} />
           )}
           {run.state === "queued" && run.queue_reason && (
             <Info
-              label="等待原因"
+              label={t("runs.detail.queueReason")}
               value={<span className="text-amber-800">{QUEUE_REASON[run.queue_reason] ?? run.queue_reason}</span>}
             />
           )}
           {active && run.heartbeat_at && (
-            <Info label="执行进程心跳" value={fmtTime(run.heartbeat_at)} />
+            <Info label={t("runs.detail.heartbeat")} value={fmtTime(run.heartbeat_at)} />
           )}
           {(run.stop_requested || run.stop_reason) && (
             <Info
-              label="停止"
+              label={t("runs.detail.stop")}
               value={
                 <span className="text-amber-800">
-                  {run.stop_requested ? "已请求停止" : ""} {run.stop_reason ?? ""}
+                  {run.stop_requested ? t("runs.stopRequested") : ""} {run.stop_reason ?? ""}
                 </span>
               }
             />
@@ -398,42 +412,43 @@ function RunDetailView({ runId }: { runId: string }) {
       </Card>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Dimension title="生命周期" value={label(RUN_STATE, run.state)} raw={run.state} />
+        <Dimension title={t("runs.column.lifecycle")} value={label(RUN_STATE, run.state)} raw={run.state} />
         <Dimension
-          title="评分覆盖"
+          title={t("runs.column.resultCompleteness")}
           value={label(RESULT_COMPLETENESS, run.result_completeness)}
           raw={run.result_completeness}
         />
-        <Dimension title="产物保存" value={label(ARTIFACT_STATE, run.artifact_state)} raw={run.artifact_state} />
-        <Dimension title="环境清理" value={label(CLEANUP_STATE, run.cleanup_state)} raw={run.cleanup_state} />
+        <Dimension title={t("runs.detail.artifactState")} value={label(ARTIFACT_STATE, run.artifact_state)} raw={run.artifact_state} />
+        <Dimension title={t("runs.column.cleanup")} value={label(CLEANUP_STATE, run.cleanup_state)} raw={run.cleanup_state} />
       </div>
 
       <Card>
         <CardContent className="flex flex-wrap gap-x-6 gap-y-2 pt-6 text-sm">
-          <Count label="计划" value={run.counts.planned} />
-          <Count label="排队" value={run.counts.queued} />
-          <Count label="进行中" value={run.counts.active} />
-          <Count label="已终结" value={run.counts.terminal} />
-          <Count label="已评分" value={run.counts.scored} tone="good" />
-          <Count label="执行错误" value={run.counts.errors} tone={run.counts.errors ? "bad" : undefined} />
-          <Count label="未开始" value={run.counts.not_started} />
-          <Count label="已取消" value={run.counts.cancelled} />
-          <Count label="已中断" value={run.counts.interrupted} tone={run.counts.interrupted ? "bad" : undefined} />
+          <Count label={t("runs.count.planned")} value={run.counts.planned} />
+          <Count label={t("runs.count.queued")} value={run.counts.queued} />
+          <Count label={t("runs.inProgress")} value={run.counts.active} />
+          <Count label={t("runs.count.terminal")} value={run.counts.terminal} />
+          <Count label={t("runs.count.scored")} value={run.counts.scored} tone="good" />
+          <Count label={t("runs.count.errors")} value={run.counts.errors} tone={run.counts.errors ? "bad" : undefined} />
+          <Count label={t("runs.count.notStarted")} value={run.counts.not_started} />
+          <Count label={t("runs.count.cancelled")} value={run.counts.cancelled} />
+          <Count label={t("runs.count.interrupted")} value={run.counts.interrupted} tone={run.counts.interrupted ? "bad" : undefined} />
         </CardContent>
       </Card>
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
-          <TabsTrigger value="execution">执行</TabsTrigger>
-          <TabsTrigger value="results">结果汇总</TabsTrigger>
-          <TabsTrigger value="config">配置快照</TabsTrigger>
+          <TabsTrigger value="execution">{t("runs.detail.tab.execution")}</TabsTrigger>
+          <TabsTrigger value="results">{t("runs.summary.title")}</TabsTrigger>
+          <TabsTrigger value="config">{t("runs.detail.tab.config")}</TabsTrigger>
           <TabsTrigger value="artifacts">
-            产物{artifacts ? `（${artifacts.length}）` : ""}
+            {t("runs.column.artifacts")}
+            {artifacts ? t("runs.detail.tab.count", { n: artifacts.length }) : ""}
           </TabsTrigger>
         </TabsList>
         <TabsContent value="execution" className="mt-3">
           {!trials && <Loading />}
-          {trials && trials.length === 0 && <EmptyNote>没有试次。</EmptyNote>}
+          {trials && trials.length === 0 && <EmptyNote>{t("runs.detail.noTrials")}</EmptyNote>}
           {trials && trials.length > 0 && (
             <ExecutionView
               trials={trials}
@@ -454,7 +469,7 @@ function RunDetailView({ runId }: { runId: string }) {
         <TabsContent value="config" className="mt-3">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">配置快照</CardTitle>
+              <CardTitle className="text-base">{t("runs.detail.tab.config")}</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-2 text-sm">
               <div className="grid gap-1 sm:grid-cols-3">
@@ -465,15 +480,15 @@ function RunDetailView({ runId }: { runId: string }) {
                   value={<Digest value={run.snapshot.comparison_digest} />}
                 />
               </div>
-              <JsonBlock summary="生效配置（effective）" value={run.snapshot.effective} />
-              <JsonBlock summary="来源（provenance）" value={run.snapshot.provenance} />
-              <JsonBlock summary="策略（policy）" value={run.snapshot.policy} />
+              <JsonBlock summary={t("runs.detail.effective")} value={run.snapshot.effective} />
+              <JsonBlock summary={t("runs.detail.provenance")} value={run.snapshot.provenance} />
+              <JsonBlock summary={t("runs.detail.policy")} value={run.snapshot.policy} />
             </CardContent>
           </Card>
         </TabsContent>
         <TabsContent value="artifacts" className="mt-3">
           {!artifacts && <Loading />}
-          {artifacts && artifacts.length === 0 && <EmptyNote>暂无产物。</EmptyNote>}
+          {artifacts && artifacts.length === 0 && <EmptyNote>{t("runs.detail.noArtifacts")}</EmptyNote>}
           {artifacts && artifacts.length > 0 && (
             <ArtifactTree
               runId={run.id}
@@ -499,12 +514,12 @@ function RunDetailView({ runId }: { runId: string }) {
 function ExecutionMode({ mode }: { mode: unknown }) {
   if (mode === "oracle") {
     return (
-      <span title="执行任务自带的参考解法，不调用模型；结果不进入模型能力比较">
-        <Pill tone="warn">测试模式（Oracle）</Pill>
+      <span title={t("runs.detail.oracleTitle")}>
+        <Pill tone="warn">{t("runs.detail.oracle")}</Pill>
       </span>
     );
   }
-  if (mode === "agent") return <span>模型实验</span>;
+  if (mode === "agent") return <span>{t("runs.detail.agentMode")}</span>;
   return <span>{mode ? String(mode) : "—"}</span>;
 }
 
@@ -522,18 +537,24 @@ function SourceDifferences({ snapshot }: { snapshot: RunDetail["snapshot"] }) {
   if (source.differences) {
     return (
       <Info
-        label="与原运行的差异"
+        label={t("runs.detail.differences")}
         value={
           source.differences.length === 0 ? (
-            "无"
+            t("runs.none")
           ) : (
             <ul className="text-xs">
               {source.differences.slice(0, 12).map((d) => (
                 <li key={d.path}>
-                  <code>{d.path}</code>：{JSON.stringify(d.before)} → {JSON.stringify(d.after)}
+                  <code>{d.path}</code>
+                  {t("runs.detail.difference", {
+                    before: JSON.stringify(d.before),
+                    after: JSON.stringify(d.after),
+                  })}
                 </li>
               ))}
-              {source.differences.length > 12 && <li>…共 {source.differences.length} 处</li>}
+              {source.differences.length > 12 && (
+                <li>{t("runs.detail.moreDifferences", { count: source.differences.length })}</li>
+              )}
             </ul>
           )
         }
@@ -543,18 +564,16 @@ function SourceDifferences({ snapshot }: { snapshot: RunDetail["snapshot"] }) {
   const causes = Object.values(source.task_causes ?? {});
   return (
     <Info
-      label="重跑范围"
-      value={`${causes.length} 个任务；原结果：${[...new Set(causes.flat())].join("、") || "—"}`}
+      label={t("runs.detail.rerunScope")}
+      value={t("runs.detail.rerunScopeValue", {
+        count: causes.length,
+        causes: [...new Set(causes.flat())].join(t("runs.enumSeparator")) || "—",
+      })}
     />
   );
 }
 
-const INSTALL_STATUS: Record<string, string> = {
-  failed: "安装脚本失败",
-  timeout: "安装超时",
-  transfer_mismatch: "复制后内容不符",
-  transfer_failed: "复制失败",
-};
+const INSTALL_STATUS: Record<string, string> = t("runs.installStatus", { returnObjects: true });
 
 function isAttachmentFailure(
   detail: unknown,
@@ -568,18 +587,27 @@ function AgentSummary({ snapshot }: { snapshot: RunDetail["snapshot"] }) {
   if (!model) return <span>—</span>;
   return (
     <span>
-      {labels.model ?? model.model_id}（<code>{model.model_id}</code>，{model.provider}，修订{" "}
-      {model.revision}）· {harness ? `${harness.name} ${harness.version}` : "—"}
+      <Trans
+        i18nKey="runs.detail.agentSummary"
+        values={{
+          label: labels.model ?? model.model_id,
+          modelId: model.model_id,
+          provider: model.provider,
+          revision: model.revision,
+          harness: harness ? `${harness.name} ${harness.version}` : "—",
+        }}
+        components={{ code: <code /> }}
+      />
       {attachments.length > 0 && (
         <span className="block text-xs">
-          附件：
+          {t("runs.detail.attachments")}
           {attachments.map((a, i) => (
             <span key={a.version_id} title={a.content_digest}>
               {i > 0 && " → "}
               {a.name} <code>{snapshotName(a)}</code>
             </span>
           ))}
-          {installSec != null && `（每试次安装时限 ${installSec} 秒）`}
+          {installSec != null && t("runs.detail.installTimeout", { count: installSec })}
         </span>
       )}
     </span>
@@ -645,28 +673,28 @@ function ScoreCell({ trial }: { trial: Trial }) {
     return (
       <span className="tabular-nums">
         <span className="font-semibold">{String(score)}</span>
-        {score === 0 && <span className="ml-1 text-xs text-muted-foreground">有效零分</span>}
+        {score === 0 && <span className="ml-1 text-xs text-muted-foreground">{t("runs.score.validZero")}</span>}
       </span>
     );
   }
   if (!TRIAL_TERMINAL.has(trial.state)) {
-    return <span className="text-muted-foreground">进行中</span>;
+    return <span className="text-muted-foreground">{t("runs.inProgress")}</span>;
   }
   const reason = trial.reason_code ?? result?.failure_cause ?? result?.exception_type;
   const invalidRaw =
     result && !result.reward_valid && result.raw_score !== null
-      ? `原始值 ${String(result.raw_score)} 无效`
+      ? t("runs.score.invalidRaw", { raw: String(result.raw_score) })
       : null;
   let verdict: [string, Tone];
   if (trial.state !== "execution_error" && trial.state !== "scored") {
-    verdict = ["未完成", "muted"];
+    verdict = [t("runs.score.unfinished"), "muted"];
   } else if (
     result?.failure_cause === "verifier_failed" ||
     (result != null && result.verifier_status !== "not_run" && result.failure_cause == null)
   ) {
-    verdict = ["缺评分", "warn"];
+    verdict = [t("runs.score.missing"), "warn"];
   } else {
-    verdict = ["执行失败", "bad"];
+    verdict = [t("runs.score.failed"), "bad"];
   }
   return (
     <span className="flex flex-wrap items-center gap-1">
@@ -701,7 +729,7 @@ function trialDuration(trial: Trial): string {
   const first = trial.attempts[0];
   if (!first) return "";
   const last = trial.attempts[trial.attempts.length - 1];
-  if (!last.ended_at) return "进行中";
+  if (!last.ended_at) return t("runs.inProgress");
   return fmtDuration(new Date(last.ended_at).getTime() - new Date(first.started_at).getTime());
 }
 
@@ -733,7 +761,7 @@ function ExecutionView({
   const prefix = commonPrefix(trials.map((t) => t.task_key));
   return (
     <div className="grid items-start gap-4 md:grid-cols-[minmax(14rem,20rem)_minmax(0,1fr)]">
-      <nav aria-label="试次" className="grid gap-0.5 rounded-md border p-1">
+      <nav aria-label={t("runs.artifacts.trialFilter")} className="grid gap-0.5 rounded-md border p-1">
         {trials.map((trial) => (
           <button
             key={trial.id}
@@ -771,7 +799,7 @@ function ExecutionView({
             {trialIcon(selected.state)}
             <LongName value={selected.task_key} wrap className="font-mono" />
             <span className="text-sm font-normal text-muted-foreground">
-              第 {selected.repetition_index} 次重复
+              {t("runs.execution.repetition", { index: selected.repetition_index })}
             </span>
             <StatusPill value={label(TRIAL_STATE, selected.state)} />
             {selected.phase && !TRIAL_TERMINAL.has(selected.state) && (
@@ -782,18 +810,26 @@ function ExecutionView({
           </CardTitle>
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
             <span>
-              得分：<ScoreCell trial={selected} />
+              {t("runs.execution.score")}
+              <ScoreCell trial={selected} />
             </span>
             <span>
-              产物：
+              {t("runs.execution.artifacts")}
               <ArtifactCounts counts={selected.artifact_counts} state={selected.artifact_state} />
             </span>
-            <span>清理：{label(CLEANUP_STATE, selected.cleanup_state)[0]}</span>
+            <span>
+              {t("runs.execution.cleanup", {
+                state: label(CLEANUP_STATE, selected.cleanup_state)[0],
+              })}
+            </span>
             {selected.result && (
               <span>
-                验证 {selected.result.verifier_status ?? "—"} · 原始分{" "}
-                {selected.result.raw_score ?? "无"} · reward_valid{" "}
-                {String(selected.result.reward_valid)} · 策略 {selected.result.policy_version}
+                {t("runs.execution.result", {
+                  verifier: selected.result.verifier_status ?? "—",
+                  raw: selected.result.raw_score ?? t("runs.none"),
+                  valid: String(selected.result.reward_valid),
+                  policy: selected.result.policy_version,
+                })}
               </span>
             )}
           </div>
@@ -803,7 +839,7 @@ function ExecutionView({
           {own.length > 0 && (
             <div>
               <Button size="sm" variant="ghost" onClick={() => onShowArtifacts(selected.id)}>
-                产物 {own.length} 个
+                {t("runs.execution.artifactCount", { count: own.length })}
                 <ChevronRight />
               </Button>
             </div>
@@ -834,7 +870,7 @@ function stepIcon(state: string) {
 }
 
 function duration(attempt: Attempt): string {
-  if (!attempt.ended_at) return "进行中";
+  if (!attempt.ended_at) return t("runs.inProgress");
   return fmtDuration(new Date(attempt.ended_at).getTime() - new Date(attempt.started_at).getTime());
 }
 
@@ -857,7 +893,7 @@ function AttemptSteps({
   live: boolean;
 }) {
   if (trial.attempts.length === 0) {
-    return <div className="text-xs text-muted-foreground">尚无执行尝试。</div>;
+    return <div className="text-xs text-muted-foreground">{t("runs.execution.noAttempts")}</div>;
   }
   return (
     <ol className="grid gap-2">
@@ -867,7 +903,9 @@ function AttemptSteps({
           <li key={attempt.id} className="rounded-md border bg-background px-3 py-2">
             <div className="flex flex-wrap items-center gap-2 text-sm">
               {stepIcon(attempt.state)}
-              <span className="font-medium">第 {attempt.attempt_index} 次尝试</span>
+              <span className="font-medium">
+                {t("runs.execution.attempt", { index: attempt.attempt_index })}
+              </span>
               <StatusPill value={label(ATTEMPT_STATE, attempt.state)} />
               <span className="ml-auto text-xs text-muted-foreground">
                 {fmtTime(attempt.started_at)} · {duration(attempt)}
@@ -885,11 +923,17 @@ function AttemptSteps({
               <div className="mt-1 rounded bg-red-50 px-2 py-1 font-mono text-xs text-red-800">
                 {String(err.code ?? "ERROR")}
                 {err.exception_type ? ` · ${String(err.exception_type)}` : ""}
-                {err.message ? `：${String(err.message)}` : ""}
+                {err.message ? t("runs.execution.errorMessage", { message: String(err.message) }) : ""}
                 {isAttachmentFailure(err.detail) &&
-                  `（附件 ${err.detail.attachment} ${err.detail.label ?? ""}：${
-                    INSTALL_STATUS[err.detail.status ?? ""] ?? err.detail.status
-                  }${err.detail.exit_code != null ? `，退出码 ${err.detail.exit_code}` : ""}）`}
+                  t("runs.execution.attachmentError", {
+                    attachment: err.detail.attachment,
+                    label: err.detail.label ?? "",
+                    status: INSTALL_STATUS[err.detail.status ?? ""] ?? err.detail.status,
+                    exit:
+                      err.detail.exit_code != null
+                        ? t("runs.execution.exitCode", { code: err.detail.exit_code })
+                        : "",
+                  })}
               </div>
             )}
           </li>
@@ -958,7 +1002,7 @@ function StepList({
                 (expanded ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />)}
               <span className="ml-auto tabular-nums text-muted-foreground">
                 {running
-                  ? "进行中"
+                  ? t("runs.inProgress")
                   : fmtDuration(new Date(next).getTime() - new Date(step.at).getTime())}
               </span>
             </button>
@@ -1014,19 +1058,21 @@ function LogView({ artifact, live }: { artifact: Artifact; live: boolean }) {
           href={`${API}/artifacts/${artifact.id}/download`}
         >
           <Download className="size-3" />
-          下载
+          {t("runs.execution.download")}
         </a>
         {live && <Loader2 className="size-3 animate-spin" />}
-        {lines.length > LOG_TAIL_LINES && <span>仅显示最后 {LOG_TAIL_LINES} 行</span>}
+        {lines.length > LOG_TAIL_LINES && (
+          <span>{t("runs.execution.logTail", { count: LOG_TAIL_LINES })}</span>
+        )}
       </div>
-      {failed && <div className="text-xs text-red-700">日志读取失败</div>}
+      {failed && <div className="text-xs text-red-700">{t("runs.execution.logFailed")}</div>}
       {text !== undefined && (
         <pre
           ref={pre}
           data-testid="step-log"
           className="max-h-96 overflow-auto rounded bg-zinc-950 p-2 font-mono text-xs leading-relaxed text-zinc-100"
         >
-          {shown.join("\n") || "（空）"}
+          {shown.join("\n") || t("runs.execution.logEmpty")}
         </pre>
       )}
     </div>
@@ -1047,8 +1093,10 @@ function DeletionBanner({
       <Trash2 className="size-4 text-amber-700" />
       <AlertTitle className="text-amber-900">{title}</AlertTitle>
       <AlertDescription className="text-amber-900">
-        删除于 {fmtTime(deletion.deleted_at)}
-        {deletion.purged_at && `，彻底删除于 ${fmtTime(deletion.purged_at)}`}。{text}
+        {t("runs.deletion.deletedAt", { time: fmtTime(deletion.deleted_at) })}
+        {deletion.purged_at && t("runs.deletion.purgedAt", { time: fmtTime(deletion.purged_at) })}
+        {t("runs.deletion.end")}
+        {text}
       </AlertDescription>
     </Alert>
   );
@@ -1062,9 +1110,13 @@ function ArtifactCounts({
   state: string;
 }) {
   const parts: ReactNode[] = [];
-  if (counts.available) parts.push(<span key="a">可用 {counts.available}</span>);
-  if (counts.expired) parts.push(<span key="e" className="text-amber-700">过期 {counts.expired}</span>);
-  if (counts.failed) parts.push(<span key="f" className="text-red-700">失败 {counts.failed}</span>);
+  if (counts.available) parts.push(<span key="a">{t("runs.execution.available", { n: counts.available })}</span>);
+  if (counts.expired) parts.push(<span key="e" className="text-amber-700">
+          {t("runs.execution.expired", { n: counts.expired })}
+        </span>);
+  if (counts.failed) parts.push(<span key="f" className="text-red-700">
+          {t("runs.execution.failed", { n: counts.failed })}
+        </span>);
   if (parts.length === 0) return <>{label(ARTIFACT_STATE, state)[0]}</>;
   return (
     <span className="inline-flex gap-1" title={label(ARTIFACT_STATE, state)[0]}>
@@ -1073,17 +1125,14 @@ function ArtifactCounts({
   );
 }
 
-const DIRECTION: Record<string, string> = {
-  higher_is_better: "越高越好",
-  lower_is_better: "越低越好",
-};
+const DIRECTION: Record<string, string> = t("runs.summary.direction", { returnObjects: true });
 
 function passRule(summary: RunSummary): string {
   const rule = summary.contract.passed;
-  if (!rule) return "未定义（不计算通过率）";
+  if (!rule) return t("runs.summary.noPassRule");
   if (rule.rule === "threshold" && typeof rule.threshold === "number") {
     const op = summary.contract.direction === "lower_is_better" ? "≤" : "≥";
-    return `得分 ${op} ${rule.threshold} 记为通过`;
+    return t("runs.summary.passRule", { op, threshold: rule.threshold });
   }
   return JSON.stringify(rule);
 }
@@ -1091,7 +1140,7 @@ function passRule(summary: RunSummary): string {
 /** 06 §5 result summary: counts, statistics with their coverage, and per-task rows. */
 function ResultSummary({ summary, error }: { summary?: RunSummary; error: unknown }) {
   if (!summary) {
-    return error ? <ErrorAlert error={error} title="无法加载结果汇总" /> : null;
+    return error ? <ErrorAlert error={error} title={t("runs.summary.loadFailed")} /> : null;
   }
   const c = summary.contract;
   const causes = Object.entries(summary.excluded_by_cause);
@@ -1099,45 +1148,60 @@ function ResultSummary({ summary, error }: { summary?: RunSummary; error: unknow
   return (
     <Card data-testid="result-summary">
       <CardHeader>
-        <CardTitle className="text-base">结果汇总</CardTitle>
+        <CardTitle className="text-base">{t("runs.summary.title")}</CardTitle>
         <div className="text-xs text-muted-foreground">
-          指标 {c.name}（<code>{c.metric_id}</code>
-          {c.unit ? `，单位 ${c.unit}` : ""}，{DIRECTION[c.direction] ?? c.direction}）· 评分规则来源：
-          {c.source === "dataset_version" ? "数据集版本声明" : "平台默认"} · {passRule(summary)}
+          <Trans
+            i18nKey="runs.summary.contract"
+            values={{
+              name: c.name,
+              metricId: c.metric_id,
+              unit: c.unit ? t("runs.summary.unit", { unit: c.unit }) : "",
+              direction: DIRECTION[c.direction] ?? c.direction,
+              source:
+                c.source === "dataset_version"
+                  ? t("runs.summary.sourceDataset")
+                  : t("runs.summary.sourceDefault"),
+              rule: passRule(summary),
+            }}
+            components={{ code: <code /> }}
+          />
         </div>
       </CardHeader>
       <CardContent className="grid gap-4 text-sm">
         <div className="flex flex-wrap gap-x-6 gap-y-2">
-          <Count label="计划" value={summary.planned_trials} />
-          <Count label="已评分" value={summary.scored_trials} tone="good" />
+          <Count label={t("runs.count.planned")} value={summary.planned_trials} />
+          <Count label={t("runs.count.scored")} value={summary.scored_trials} tone="good" />
           <Count
-            label="执行失败（不计入统计）"
+            label={t("runs.summary.excludedErrors")}
             value={summary.excluded_error_trials}
             tone={summary.excluded_error_trials ? "bad" : undefined}
           />
           {summary.count_as_failure_trials > 0 && (
-            <Count label="按失败计分" value={summary.count_as_failure_trials} tone="bad" />
+            <Count label={t("runs.summary.countAsFailure")} value={summary.count_as_failure_trials} tone="bad" />
           )}
-          <Count label="未完成" value={summary.unfinished_trials} />
-          {summary.active_trials > 0 && <Count label="进行中" value={summary.active_trials} />}
-          {summary.queued_trials > 0 && <Count label="排队" value={summary.queued_trials} />}
-          {summary.passed_trials !== null && <Count label="通过" value={summary.passed_trials} />}
+          <Count label={t("runs.score.unfinished")} value={summary.unfinished_trials} />
+          {summary.active_trials > 0 && <Count label={t("runs.inProgress")} value={summary.active_trials} />}
+          {summary.queued_trials > 0 && <Count label={t("runs.count.queued")} value={summary.queued_trials} />}
+          {summary.passed_trials !== null && <Count label={t("runs.summary.passed")} value={summary.passed_trials} />}
         </div>
         <div className="grid gap-x-6 gap-y-2 sm:grid-cols-3 lg:grid-cols-5">
           <Info
-            label="均值（已评分试次）"
+            label={t("runs.summary.mean")}
             value={
               <span className="tabular-nums">
                 <b>{fmtNum(summary.mean)}</b>
                 <span className="ml-1 text-xs text-muted-foreground">
-                  已评分 {summary.scored_trials}/{summary.planned_trials}
+                  {t("runs.summary.scoredOf", {
+                    scored: summary.scored_trials,
+                    planned: summary.planned_trials,
+                  })}
                 </span>
               </span>
             }
           />
-          <Info label="标准差" value={<span className="tabular-nums">{fmtNum(summary.stddev)}</span>} />
+          <Info label={t("runs.summary.stddev")} value={<span className="tabular-nums">{fmtNum(summary.stddev)}</span>} />
           <Info
-            label="通过率"
+            label={t("runs.summary.passRate")}
             value={
               <span className="tabular-nums">
                 {fmtPct(summary.pass_rate)}
@@ -1150,38 +1214,44 @@ function ResultSummary({ summary, error }: { summary?: RunSummary; error: unknow
             }
           />
           <Info
-            label="评分覆盖 / 评估覆盖"
+            label={t("runs.summary.coverage")}
             value={
-              <span className="tabular-nums" title="评分覆盖 = 已评分 / 计划；评估覆盖计入按失败计分的试次">
+              <span className="tabular-nums" title={t("runs.summary.coverageTitle")}>
                 {fmtPct(summary.scored_coverage)} / {fmtPct(summary.evaluation_coverage)}
               </span>
             }
           />
           <Info
-            label="基准分（任务均值的宏平均）"
+            label={t("runs.summary.benchScore")}
             value={
               <span className="tabular-nums">
                 <b>{fmtNum(summary.bench_score)}</b>
                 <span className="ml-1 text-xs text-muted-foreground">
-                  有分任务 {summary.bench_scored_tasks}/{summary.task_count}
+                  {t("runs.summary.scoredTasks", {
+                    scored: summary.bench_scored_tasks,
+                    total: summary.task_count,
+                  })}
                   {summary.bench_task_coverage != null &&
-                    ` · 覆盖基准任务 ${fmtPct(summary.bench_task_coverage)}`}
+                    t("runs.summary.benchCoverage", { pct: fmtPct(summary.bench_task_coverage) })}
                 </span>
               </span>
             }
           />
           <Info
-            label="尝试 / 重试"
+            label={t("runs.summary.attemptsRetries")}
             value={
               <span className="tabular-nums">
-                {summary.attempts} 次尝试 · 重试 {summary.retry_count} 次（{summary.retried_trials}{" "}
-                个试次）
+                {t("runs.summary.attemptsValue", {
+                  attempts: summary.attempts,
+                  retries: summary.retry_count,
+                  trials: summary.retried_trials,
+                })}
               </span>
             }
           />
-          <Info label="评分完整性" value={<StatusPill value={label(RESULT_COMPLETENESS, summary.result_completeness)} />} />
+          <Info label={t("runs.summary.completeness")} value={<StatusPill value={label(RESULT_COMPLETENESS, summary.result_completeness)} />} />
           <Info
-            label="执行失败原因"
+            label={t("runs.summary.failureCauses")}
             value={
               causes.length === 0 ? (
                 "—"
@@ -1197,14 +1267,19 @@ function ResultSummary({ summary, error }: { summary?: RunSummary; error: unknow
             }
           />
           <Info
-            label="用量"
+            label={t("runs.summary.usage")}
             value={
               <span className="text-xs">
-                已知 {summary.usage.known_trials} 个试次，未知 {summary.usage.unknown_trials} 个
+                {t("runs.summary.usageValue", {
+                  known: summary.usage.known_trials,
+                  unknown: summary.usage.unknown_trials,
+                })}
                 {Object.keys(summary.usage.known_totals).length > 0 &&
-                  ` · ${Object.entries(summary.usage.known_totals)
-                    .map(([k, v]) => `${k} ${fmtNum(v)}`)
-                    .join("，")}`}
+                  t("runs.summary.usageTotals", {
+                    totals: Object.entries(summary.usage.known_totals)
+                      .map(([k, v]) => `${k} ${fmtNum(v)}`)
+                      .join(t("runs.commaSeparator")),
+                  })}
               </span>
             }
           />
@@ -1214,12 +1289,12 @@ function ResultSummary({ summary, error }: { summary?: RunSummary; error: unknow
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>任务</TableHead>
-                  <TableHead className="text-right">已评分 / 计划</TableHead>
-                  <TableHead className="text-right">均值</TableHead>
-                  <TableHead className="text-right">标准差</TableHead>
-                  <TableHead className="text-right">通过</TableHead>
-                  <TableHead>执行失败</TableHead>
+                  <TableHead>{t("runs.summary.task")}</TableHead>
+                  <TableHead className="text-right">{t("runs.summary.scoredPlanned")}</TableHead>
+                  <TableHead className="text-right">{t("runs.summary.meanShort")}</TableHead>
+                  <TableHead className="text-right">{t("runs.summary.stddev")}</TableHead>
+                  <TableHead className="text-right">{t("runs.summary.passed")}</TableHead>
+                  <TableHead>{t("runs.score.failed")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1228,8 +1303,8 @@ function ResultSummary({ summary, error }: { summary?: RunSummary; error: unknow
                     <TableCell className="max-w-[24rem] font-mono text-xs">
                       <LongName value={task.task_key} prefix={summaryPrefix} />
                       {task.partial && (
-                        <span className="ml-2" title="部分计划的重复没有得分，均值基于更少的样本">
-                          <Pill tone="warn">部分</Pill>
+                        <span className="ml-2" title={t("runs.summary.partialTitle")}>
+                          <Pill tone="warn">{t("runs.summary.partial")}</Pill>
                         </span>
                       )}
                     </TableCell>
@@ -1241,7 +1316,10 @@ function ResultSummary({ summary, error }: { summary?: RunSummary; error: unknow
                     <TableCell className="text-right tabular-nums">{task.passed_trials ?? "—"}</TableCell>
                     <TableCell className="text-xs">
                       {task.excluded_trials > 0
-                        ? `${task.excluded_trials} 个：${task.failure_causes.join("、") || "—"}`
+                        ? t("runs.summary.excludedValue", {
+                            count: task.excluded_trials,
+                            causes: task.failure_causes.join(t("runs.enumSeparator")) || "—",
+                          })
                         : "—"}
                     </TableCell>
                   </TableRow>

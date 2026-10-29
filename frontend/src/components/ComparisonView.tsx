@@ -15,6 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EmptyNote, LongName, Pill, StatusPill } from "@/components/common";
+import { t } from "@/i18n";
 import {
   DIMENSION,
   EVIDENCE,
@@ -82,17 +83,19 @@ export function ComparisonView({
       <Card>
         <CardHeader>
           <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-            结果
+            {t("comparison.view.result")}
             <span className="text-sm font-normal text-muted-foreground">
               {!table.comparable
-                ? "条件不同，显示各运行的原始汇总"
+                ? t("comparison.view.notComparable")
                 : settings.scope === "common"
-                  ? `共同任务 ${table.common_tasks} 个${
+                  ? `${t("comparison.view.commonTasks", { count: table.common_tasks })}${
                       table.dropped_tasks
-                        ? `，因剔除少比了 ${table.dropped_tasks} 个`
+                        ? t("comparison.view.droppedTasks", {
+                            count: table.dropped_tasks,
+                          })
                         : ""
                     }`
-                  : `全部任务 ${table.all_tasks} 个，不给差值`}
+                  : t("comparison.view.allTasks", { count: table.all_tasks })}
             </span>
             <span className="ml-auto flex flex-wrap gap-2">
               <Button
@@ -101,7 +104,7 @@ export function ComparisonView({
                 onClick={() => downloadText(csvName, comparisonCsv(table))}
               >
                 <Download />
-                导出 CSV
+                {t("comparison.view.exportCsv")}
               </Button>
             </span>
           </CardTitle>
@@ -115,7 +118,7 @@ export function ComparisonView({
             axes={axes}
           />
           {table.runs.length === 0 ? (
-            <EmptyNote>没有可比较的运行。</EmptyNote>
+            <EmptyNote>{t("comparison.view.noRuns")}</EmptyNote>
           ) : mode === "matrix" && matrix ? (
             <MatrixTable table={table} axes={matrix} evidenceOf={evidenceOf} />
           ) : (
@@ -142,21 +145,27 @@ function Conditions({ table }: { table: Comparison }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">条件核对</CardTitle>
+        <CardTitle className="text-base">
+          {t("comparison.view.conditions.title")}
+        </CardTitle>
       </CardHeader>
       <CardContent className="grid gap-2 text-sm">
         {first && (
           <p className="min-w-0 break-words">
-            <span className="mr-1 font-medium text-emerald-700">✓ 相同：</span>
+            <span className="mr-1 font-medium text-emerald-700">
+              {t("comparison.view.conditions.same")}
+            </span>
             {same.map((d, i) => (
               <span key={d.key}>
-                {i > 0 && "；"}
+                {i > 0 && t("comparison.view.conditions.separator")}
                 {DIMENSION[d.key]}
                 {["dataset", "model", "harness", "repetitions"].includes(
                   d.key,
                 ) && (
                   <span className="text-muted-foreground">
-                    （{valueText(d.labels[first])}）
+                    {t("comparison.view.conditions.sameValue", {
+                      value: valueText(d.labels[first]),
+                    })}
                   </span>
                 )}
               </span>
@@ -165,8 +174,12 @@ function Conditions({ table }: { table: Comparison }) {
         )}
         {varying.length > 0 && (
           <p>
-            <span className="mr-1 font-medium text-sky-700">↔ 不同：</span>
-            {varying.map((d) => DIMENSION[d.key]).join("、")}
+            <span className="mr-1 font-medium text-sky-700">
+              {t("comparison.view.conditions.differs")}
+            </span>
+            {varying
+              .map((d) => DIMENSION[d.key])
+              .join(t("comparison.shared.listJoin"))}
           </p>
         )}
         {table.blockers.map((b) => (
@@ -187,14 +200,20 @@ function Conditions({ table }: { table: Comparison }) {
         ))}
         {table.set_aside.length > 0 && (
           <p className="text-muted-foreground">
-            已删除、不参与计算：{table.set_aside.map((x) => x.name).join("、")}
+            {t("comparison.view.conditions.setAside", {
+              names: table.set_aside
+                .map((x) => x.name)
+                .join(t("comparison.shared.listJoin")),
+            })}
           </p>
         )}
         {table.dimensions.some(
           (d) => Object.keys(d.values ?? {}).length > 0,
         ) && (
           <details className="rounded-md border p-2">
-            <summary className="cursor-pointer">条件明细</summary>
+            <summary className="cursor-pointer">
+              {t("comparison.view.conditions.details")}
+            </summary>
             <div className="mt-2 grid gap-3">
               {table.dimensions.map((d) => (
                 <details key={d.key}>
@@ -240,10 +259,13 @@ function Controls({
   const excluded = new Set(settings.exclude);
   const removed = table.groups.filter((g) => g.excluded && g.trials > 0);
   const summary = removed.length
-    ? `已剔除 ${removed.reduce((n, g) => n + g.trials, 0)} 个试次（${removed
-        .map((g) => `${FAILURE_GROUP[g.key].split("（")[0]} ${g.trials}`)
-        .join("、")}）`
-    : "没有剔除任何试次";
+    ? t("comparison.view.controls.excludedSummary", {
+        count: removed.reduce((n, g) => n + g.trials, 0),
+        groups: removed
+          .map((g) => `${FAILURE_GROUP[g.key].split(/\s*[\uFF08(]/)[0]} ${g.trials}`)
+          .join(t("comparison.shared.listJoin")),
+      })
+    : t("comparison.view.controls.noneExcluded");
   const external = table.groups
     .filter((g) => g.side === "external")
     .map((g) => g.key);
@@ -264,9 +286,9 @@ function Controls({
       {table.comparable ? (
         <details className="rounded-md border p-2" open={false}>
           <summary className="cursor-pointer">
-            失败剔除：{summary}
+            {t("comparison.view.controls.exclusion", { summary })}
             <span className="ml-1 text-xs text-muted-foreground">
-              （没剔除的执行失败算 0 分、未通过；单个运行页的汇总不受影响）
+              {t("comparison.view.controls.exclusionHint")}
             </span>
           </summary>
           <div className="mt-2 grid gap-3 md:grid-cols-2">
@@ -274,8 +296,8 @@ function Controls({
               <div key={side} className="grid gap-1">
                 <div className="text-xs font-medium text-muted-foreground">
                   {side === "external"
-                    ? "外部或平台原因（预设剔除）"
-                    : "可能与被测对象有关（预设算 0 分）"}
+                    ? t("comparison.view.controls.sideExternal")
+                    : t("comparison.view.controls.sideSubject")}
                 </div>
                 {table.groups
                   .filter((g) => g.side === side)
@@ -309,22 +331,21 @@ function Controls({
                 variant="outline"
                 onClick={() => onChange({ exclude: external })}
               >
-                剔除外部原因
+                {t("comparison.view.controls.excludeExternal")}
               </Button>
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => onChange({ exclude: [] })}
               >
-                不剔除
+                {t("comparison.view.controls.excludeNone")}
               </Button>
             </div>
           )}
         </details>
       ) : (
         <p className="text-muted-foreground">
-          均分、标准差和通过率沿用各运行全部有效评分试次的原始统计；执行失败不计
-          0 分，不应用比较的失败剔除设置。
+          {t("comparison.view.controls.rawStats")}
         </p>
       )}
       {(!frozen || matrixAvailable) && (
@@ -333,8 +354,8 @@ function Controls({
             <Toggle
               value={settings.scope}
               options={[
-                ["common", "共同任务"],
-                ["all", "全部任务"],
+                ["common", t("comparison.view.controls.scopeCommon")],
+                ["all", t("comparison.view.controls.scopeAll")],
               ]}
               onChange={(scope) =>
                 onChange({ scope: scope as "common" | "all" })
@@ -348,9 +369,11 @@ function Controls({
                 : "leaderboard"
             }
             options={[
-              ["leaderboard", "排行榜"],
+              ["leaderboard", t("comparison.view.controls.leaderboard")],
               ...(matrixAvailable
-                ? ([["matrix", "矩阵"]] as [string, string][])
+                ? ([
+                    ["matrix", t("comparison.view.controls.matrix")],
+                  ] as [string, string][])
                 : []),
             ]}
             onChange={(mode) =>
@@ -385,12 +408,12 @@ function Controls({
                 }}
               >
                 <ArrowDownUp />
-                交换行列
+                {t("comparison.view.controls.swap")}
               </Button>
             )}
           {!frozen && settings.scope === "common" && table.comparable && (
             <label className="flex items-center gap-1">
-              基准
+              {t("comparison.view.controls.baseline")}
               <select
                 className="h-8 max-w-[16rem] rounded-md border bg-background px-2"
                 value={settings.baseline_run_id ?? table.runs[0]?.run_id ?? ""}
@@ -499,16 +522,23 @@ function Leaderboard({
       <Table className={NOWRAP}>
         <TableHeader>
           <TableRow>
-            {head("title", "运行", STICKY)}
-            <TableHead className="text-right">任务</TableHead>
-            {head("valid_trials", "有效 / 计划")}
-            {head("mean", table.comparable ? "均分" : "原始均分")}
-            <TableHead>与基准差</TableHead>
-            <TableHead>标准差</TableHead>
-            {head("pass_rate", "通过率")}
-            <TableHead>计 0 分</TableHead>
-            <TableHead>剔除</TableHead>
-            <TableHead>用量</TableHead>
+            {head("title", t("comparison.shared.run"), STICKY)}
+            <TableHead className="text-right">
+              {t("comparison.view.leaderboard.tasks")}
+            </TableHead>
+            {head("valid_trials", t("comparison.view.leaderboard.validPlanned"))}
+            {head(
+              "mean",
+              table.comparable
+                ? t("comparison.view.leaderboard.mean")
+                : t("comparison.view.leaderboard.rawMean"),
+            )}
+            <TableHead>{t("comparison.view.leaderboard.difference")}</TableHead>
+            <TableHead>{t("comparison.view.leaderboard.stddev")}</TableHead>
+            {head("pass_rate", t("comparison.view.leaderboard.passRate"))}
+            <TableHead>{t("comparison.view.leaderboard.zeroed")}</TableHead>
+            <TableHead>{t("comparison.view.leaderboard.excluded")}</TableHead>
+            <TableHead>{t("comparison.view.leaderboard.usage")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -531,11 +561,11 @@ function Leaderboard({
                   </div>
                 )}
                 <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
-                  {row.run_id === baseline && <Pill tone="info">基准</Pill>}
+                  {row.run_id === baseline && <Pill tone="info">{t("comparison.view.controls.baseline")}</Pill>}
                   {!row.terminal && (
                     <StatusPill value={label(RUN_STATE, row.state)} />
                   )}
-                  {row.relation === "rerun" && <span>重跑</span>}
+                  {row.relation === "rerun" && <span>{t("comparison.shared.rerun")}</span>}
                   <span className="truncate" title={row.name}>
                     {row.owner_username} · {row.name}
                   </span>
@@ -551,7 +581,9 @@ function Leaderboard({
                 {row.valid_trials} / {row.compared_trials}
                 {row.pending_trials > 0 && (
                   <div className="text-muted-foreground">
-                    进行中 {row.pending_trials}
+                    {t("comparison.view.leaderboard.pendingTrials", {
+                      n: row.pending_trials,
+                    })}
                   </div>
                 )}
               </TableCell>
@@ -609,7 +641,11 @@ function Usage({ row }: { row: ComparedRunRow }) {
   const totals = Object.entries(row.usage.known_totals);
   if (!totals.length) return <span className="text-muted-foreground">—</span>;
   return (
-    <span title={`${row.usage.known_trials} 个试次报告了用量`}>
+    <span
+      title={t("comparison.view.leaderboard.usageTitle", {
+        count: row.usage.known_trials,
+      })}
+    >
       {totals
         .slice(0, 3)
         .map(([k, v]) => `${k} ${fmtNum(v, 2)}`)
@@ -675,7 +711,12 @@ function MatrixTable({
                             evidence={evidenceOf(x)}
                             to={`/runs/${x.run_id}`}
                             className="font-semibold text-primary hover:underline"
-                            title={`${x.name}：有效 ${x.valid_trials}/${x.planned_trials}，通过率 ${fmtPct(x.pass_rate)}`}
+                            title={t("comparison.view.matrixTitle", {
+                              name: x.name,
+                              valid: x.valid_trials,
+                              planned: x.planned_trials,
+                              passRate: fmtPct(x.pass_rate),
+                            })}
                           >
                             {fmtNum(x.mean)}
                           </EvidenceLink>
@@ -739,21 +780,21 @@ function TaskTable({
     }
   });
   const filters: [TaskFilter, string][] = [
-    ["all", "全部"],
-    ["differs", "结果不一致"],
+    ["all", t("comparison.view.tasks.all")],
+    ["differs", t("comparison.view.tasks.differs")],
     ...(hasPassRule
       ? ([
-          ["none_passed", "都没通过"],
-          ["only", "只有某个通过"],
+          ["none_passed", t("comparison.view.tasks.nonePassed")],
+          ["only", t("comparison.view.tasks.only")],
         ] as [TaskFilter, string][])
       : []),
-    ["dropped", "未参与比较"],
+    ["dropped", t("comparison.view.tasks.dropped")],
   ];
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-          逐任务
+          {t("comparison.view.tasks.title")}
           <span className="text-sm font-normal text-muted-foreground">
             {shown.length} / {table.tasks.length}
           </span>
@@ -789,7 +830,9 @@ function TaskTable({
           <Table className="[&_td]:whitespace-nowrap">
             <TableHeader>
               <TableRow>
-                <TableHead className={STICKY}>任务</TableHead>
+                <TableHead className={STICKY}>
+                  {t("comparison.view.tasks.task")}
+                </TableHead>
                 {table.runs.map((r) => (
                   <TableHead
                     key={r.run_id}
@@ -812,10 +855,14 @@ function TaskTable({
                   <TableCell className={cn(STICKY, "max-w-[16rem]")}>
                     <LongName value={task.task_key} prefix={prefix} />
                     {task.status === "no_valid_trials" && (
-                      <div className="text-xs">因剔除未参与比较</div>
+                      <div className="text-xs">
+                        {t("comparison.view.tasks.noValidTrials")}
+                      </div>
                     )}
                     {task.status === "not_common" && (
-                      <div className="text-xs">不是共同任务</div>
+                      <div className="text-xs">
+                        {t("comparison.view.tasks.notCommon")}
+                      </div>
                     )}
                   </TableCell>
                   {table.runs.map((r) => (
@@ -847,13 +894,23 @@ function Cell({
   evidence: string;
 }) {
   if (!cell)
-    return <span className="text-xs text-muted-foreground">未包含</span>;
+    return (
+      <span className="text-xs text-muted-foreground">
+        {t("comparison.cell.notIncluded")}
+      </span>
+    );
   const notes = [
     cell.failed_trials
-      ? `计 0 分 ${cell.failed_trials}（${sumGroups(cell.failed_by_group)}）`
+      ? t("comparison.view.tasks.zeroedNote", {
+          n: cell.failed_trials,
+          groups: sumGroups(cell.failed_by_group),
+        })
       : "",
     cell.excluded_trials
-      ? `剔除 ${cell.excluded_trials}（${sumGroups(cell.excluded_by_group)}）`
+      ? t("comparison.view.tasks.excludedNote", {
+          n: cell.excluded_trials,
+          groups: sumGroups(cell.excluded_by_group),
+        })
       : "",
   ].filter(Boolean);
   const trial = cell.trial_ids[0];

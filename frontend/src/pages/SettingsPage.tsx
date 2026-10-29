@@ -26,40 +26,41 @@ import { ApiError, api, errorText } from "@/lib/api";
 import { PAT_STATE, fmtTime, label } from "@/lib/format";
 import { limit, useLoad, useSession } from "@/lib/hooks";
 import type { IssuedPat, Pat, Scope } from "@/lib/types";
+import { Trans, t } from "@/i18n";
 
 export function SettingsPage() {
   const { me } = useSession();
   return (
     <div className="grid gap-4">
-      <PageTitle title="设置" />
+      <PageTitle title={t("common.nav.settings")} />
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">我的账户</CardTitle>
+          <CardTitle className="text-base">{t("settings.account.title")}</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-2 text-sm sm:grid-cols-3">
           <div>
-            <div className="text-xs text-muted-foreground">用户名</div>
+            <div className="text-xs text-muted-foreground">{t("settings.account.username")}</div>
             {me.username}
           </div>
           <div>
-            <div className="text-xs text-muted-foreground">显示名称</div>
+            <div className="text-xs text-muted-foreground">{t("settings.account.displayName")}</div>
             {me.display_name || "—"}
           </div>
           <div>
-            <div className="text-xs text-muted-foreground">角色</div>
-            {me.role === "admin" ? "管理员" : "成员"}
+            <div className="text-xs text-muted-foreground">{t("settings.account.role")}</div>
+            {me.role === "admin" ? t("common.app.admin") : t("common.app.member")}
           </div>
           <div>
-            <div className="text-xs text-muted-foreground">用户 ID</div>
+            <div className="text-xs text-muted-foreground">{t("settings.account.userId")}</div>
             <code className="text-xs">{me.id}</code>
           </div>
           <div>
-            <div className="text-xs text-muted-foreground">创建时间</div>
+            <div className="text-xs text-muted-foreground">{t("settings.account.createdAt")}</div>
             {fmtTime(me.created_at)}
           </div>
           <div>
-            <div className="text-xs text-muted-foreground">状态</div>
-            {me.status === "active" ? "正常" : "已停用"}
+            <div className="text-xs text-muted-foreground">{t("settings.account.status")}</div>
+            {me.status === "active" ? t("settings.account.active") : t("settings.account.disabled")}
           </div>
         </CardContent>
       </Card>
@@ -77,7 +78,7 @@ function SdkCard() {
 client = MaestroClient(base_url="${window.location.origin}", token=os.environ["MAESTRO_TOKEN"])
 caps = client.capabilities()
 accepted = client.runs.submit(
-    name="基线",
+    name="${t("settings.sdk.exampleRunName")}",
     dataset_version_id="dsv_…",
     execution_mode="agent",
     model_config_id="mdl_…",
@@ -87,25 +88,25 @@ operation = client.operations.wait(accepted.operation_id, timeout=3600)`;
   return (
     <Card data-testid="sdk-card">
       <CardHeader>
-        <CardTitle className="text-base">SDK 快速上手</CardTitle>
-        <CardDescription>
-          用上面创建的 PAT 通过 Python SDK 提交和观察实验，网页能做的实验操作 SDK 都能做。服务端暂不提供
-          安装包下载，先从仓库安装；令牌放在环境变量里，不要写进代码。
-        </CardDescription>
+        <CardTitle className="text-base">{t("settings.sdk.title")}</CardTitle>
+        <CardDescription>{t("settings.sdk.description")}</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-2 text-sm">
         <pre className="overflow-auto rounded bg-muted p-2 font-mono text-xs">
-          pip install &lt;maestro 仓库&gt;/sdk
+          pip install &lt;{t("settings.sdk.repo")}&gt;/sdk
         </pre>
         <pre className="overflow-auto rounded bg-zinc-950 p-3 font-mono text-xs leading-relaxed text-zinc-100">
           {"import os\n" + example}
         </pre>
         <div className="text-xs text-muted-foreground">
-          只读 PAT 可以查询、解析配置和下载；提交与重跑需要 experiment PAT。客户端等待超时不会取消服务端的运行。
+          {t("settings.sdk.scopes")}
         </div>
         <div className="text-xs text-muted-foreground">
-          让 Agent 代为操作时，加载仓库里的 skill <code>skills/maestro-sdk/SKILL.md</code>
-          ，并通过环境变量 MAESTRO_URL 与 MAESTRO_TOKEN_FILE 提供地址和令牌。
+          <Trans
+            i18nKey="settings.sdk.skill"
+            values={{ path: "skills/maestro-sdk/SKILL.md" }}
+            components={{ code: <code /> }}
+          />
         </div>
       </CardContent>
     </Card>
@@ -122,14 +123,14 @@ function PasswordCard() {
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (next !== confirm) {
-      setError(new Error("两次输入的新密码不一致"));
+      setError(new Error(t("settings.password.mismatch")));
       return;
     }
     setBusy(true);
     setError(undefined);
     try {
       await api.post("/me/password", { body: { current_password: current, new_password: next } });
-      toast.success("密码已修改");
+      toast.success(t("settings.password.changed"));
       setCurrent("");
       setNext("");
       setConfirm("");
@@ -144,13 +145,13 @@ function PasswordCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">修改密码</CardTitle>
+        <CardTitle className="text-base">{t("settings.password.title")}</CardTitle>
       </CardHeader>
       <CardContent>
         <SettingsForm onSubmit={submit}>
           <TextField
             id="pw-current"
-            label="当前密码"
+            label={t("settings.password.current")}
             type="password"
             autoComplete="current-password"
             value={current}
@@ -160,7 +161,7 @@ function PasswordCard() {
           />
           <TextField
             id="pw-new"
-            label="新密码"
+            label={t("settings.password.new")}
             type="password"
             autoComplete="new-password"
             value={next}
@@ -170,17 +171,17 @@ function PasswordCard() {
           />
           <TextField
             id="pw-confirm"
-            label="确认新密码"
+            label={t("settings.password.confirm")}
             type="password"
             autoComplete="new-password"
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
             required
           />
-          <ErrorAlert error={error} title="修改失败" />
+          <ErrorAlert error={error} title={t("settings.password.failed")} />
           <FormActions>
             <Button type="submit" disabled={busy}>
-              {busy ? "提交中…" : "修改密码"}
+              {busy ? t("settings.password.submitting") : t("settings.password.title")}
             </Button>
           </FormActions>
         </SettingsForm>
@@ -228,26 +229,26 @@ function PatCard() {
   };
 
   const revoke = async (pat: Pat) => {
-    if (!window.confirm(`撤销访问令牌「${pat.name}」？使用它的脚本将立即失效。`)) return;
+    if (!window.confirm(t("settings.pat.revokeConfirm", { name: pat.name }))) return;
     try {
       await api.post("/me/pats/{pat_id}/revoke", { path: { pat_id: pat.id } });
-      toast.success("已撤销");
+      toast.success(t("settings.pat.revoked"));
       await pats.reload();
     } catch (err) {
-      toast.error(`撤销失败：${errorText(err)}`);
+      toast.error(t("settings.pat.revokeFailed", { error: errorText(err) }));
     }
   };
 
   const remove = async (pat: Pat) => {
-    const effect = pat.state === "active" ? "它会立即失效，并" : "它会";
-    if (!window.confirm(`删除访问令牌「${pat.name}」？${effect}从列表中移除（管理员可在回收站恢复记录）。`))
-      return;
+    const question =
+      pat.state === "active" ? "settings.pat.deleteConfirmActive" : "settings.pat.deleteConfirm";
+    if (!window.confirm(t(question, { name: pat.name }))) return;
     try {
       await api.del("/me/pats/{pat_id}", { path: { pat_id: pat.id } });
-      toast.success("已删除");
+      toast.success(t("settings.pat.deleted"));
       await pats.reload();
     } catch (err) {
-      toast.error(`删除失败：${errorText(err)}`);
+      toast.error(t("settings.pat.deleteFailed", { error: errorText(err) }));
     }
   };
   const field = (n: string) => (error instanceof ApiError ? error.field(n) : undefined);
@@ -255,16 +256,13 @@ function PatCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">个人访问令牌（PAT）</CardTitle>
-        <CardDescription>
-          供 SDK 与脚本使用。read 只能读取；experiment 还能提交和取消自己的运行。PAT
-          不具备管理员权限。运行上限按受理的运行数扣减。
-        </CardDescription>
+        <CardTitle className="text-base">{t("settings.pat.title")}</CardTitle>
+        <CardDescription>{t("settings.pat.description")}</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
         {issued && (
           <OneTimeSecret
-            title={`新令牌「${issued.name}」`}
+            title={t("settings.pat.issued", { name: issued.name })}
             value={issued.token}
             onDismiss={() => setIssued(null)}
           />
@@ -272,7 +270,7 @@ function PatCard() {
         <SettingsForm onSubmit={submit}>
           <TextField
             id="pat-name"
-            label="名称"
+            label={t("settings.pat.name")}
             value={name}
             onChange={(e) => setName(e.target.value)}
             error={field("name")}
@@ -280,18 +278,18 @@ function PatCard() {
           />
           <SelectField
             id="pat-scope"
-            label="权限范围"
+            label={t("settings.pat.scope")}
             value={scope}
             onChange={(e) => setScope(e.target.value as Scope)}
             error={field("scope")}
           >
-            <option value="experiment">experiment（提交与读取）</option>
-            <option value="read">read（只读）</option>
+            <option value="experiment">{t("settings.pat.scopeExperiment")}</option>
+            <option value="read">{t("settings.pat.scopeRead")}</option>
           </SelectField>
           <TextField
             id="pat-days"
-            label="有效天数"
-            hint={`最多 ${maxDays} 天`}
+            label={t("settings.pat.days")}
+            hint={t("settings.pat.daysHint", { count: maxDays })}
             type="number"
             min={1}
             max={maxDays}
@@ -301,8 +299,8 @@ function PatCard() {
           />
           <TextField
             id="pat-runs"
-            label="运行上限"
-            hint={`这个令牌最多提交 ${maxRuns} 个运行`}
+            label={t("settings.pat.runLimit")}
+            hint={t("settings.pat.runLimitHint", { count: maxRuns })}
             type="number"
             min={1}
             max={maxRuns}
@@ -312,26 +310,26 @@ function PatCard() {
           />
           <FormActions>
             <Button type="submit" disabled={busy}>
-              {busy ? "创建中…" : "创建令牌"}
+              {busy ? t("settings.pat.creating") : t("settings.pat.create")}
             </Button>
           </FormActions>
         </SettingsForm>
-        <ErrorAlert error={error} title="创建失败" />
-        <ErrorAlert error={pats.error} title="无法加载令牌" />
+        <ErrorAlert error={error} title={t("settings.pat.createFailed")} />
+        <ErrorAlert error={pats.error} title={t("settings.pat.loadFailed")} />
         {pats.loading && !pats.data && <Loading />}
-        {pats.data && pats.data.length === 0 && <EmptyNote>还没有令牌。</EmptyNote>}
+        {pats.data && pats.data.length === 0 && <EmptyNote>{t("settings.pat.empty")}</EmptyNote>}
         {pats.data && pats.data.length > 0 && (
           <div className="rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>名称</TableHead>
-                  <TableHead>前缀</TableHead>
-                  <TableHead>范围</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead>运行（已用 / 上限）</TableHead>
-                  <TableHead>到期</TableHead>
-                  <TableHead>最近使用</TableHead>
+                  <TableHead>{t("settings.pat.name")}</TableHead>
+                  <TableHead>{t("settings.pat.prefix")}</TableHead>
+                  <TableHead>{t("settings.pat.scopeColumn")}</TableHead>
+                  <TableHead>{t("settings.account.status")}</TableHead>
+                  <TableHead>{t("settings.pat.runsColumn")}</TableHead>
+                  <TableHead>{t("settings.pat.expires")}</TableHead>
+                  <TableHead>{t("settings.pat.lastUsed")}</TableHead>
                   <TableHead />
                 </TableRow>
               </TableHeader>
@@ -347,7 +345,7 @@ function PatCard() {
                     <TableCell className="tabular-nums">
                       {pat.accepted_runs} / {pat.run_limit}
                       <span className="ml-1 text-xs text-muted-foreground">
-                        （剩余 {pat.remaining_runs}）
+                        {t("settings.pat.remaining", { count: pat.remaining_runs })}
                       </span>
                     </TableCell>
                     <TableCell className="text-xs">{fmtTime(pat.expires_at)}</TableCell>
@@ -355,11 +353,11 @@ function PatCard() {
                     <TableCell className="flex justify-end gap-2">
                       {pat.state === "active" && (
                         <Button size="sm" variant="outline" onClick={() => void revoke(pat)}>
-                          撤销
+                          {t("settings.pat.revoke")}
                         </Button>
                       )}
                       <Button size="sm" variant="outline" onClick={() => void remove(pat)}>
-                        删除
+                        {t("settings.pat.delete")}
                       </Button>
                     </TableCell>
                   </TableRow>

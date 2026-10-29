@@ -1,0 +1,41 @@
+{
+  "operationKind": {
+    "dataset_import": "数据集导入",
+    "preparation_first": "首次准备",
+    "preparation_restore": "缓存恢复",
+    "preparation_eviction": "缓存回收"
+  },
+  "loadFailed": "无法加载工作台",
+  "refresh": "刷新",
+  "newRun": "新建运行",
+  "refreshFailed": "刷新失败（显示的是上次数据）",
+  "myRecent": "我的近期运行",
+  "myRecentEmpty": "还没有提交过运行。",
+  "teamResults": "团队近期结果",
+  "teamResultsEmpty": "团队还没有已结束的运行。",
+  "all": "全部",
+  "pending": {
+    "title": "待处理（{{count}}）",
+    "hint": "由运行、数据集与操作记录实时得出（最近 {{count}} 条）；源对象恢复正常后自动消失。",
+    "none": "没有待处理事项。",
+    "byAdmin": "管理员处理",
+    "bySubmitter": "提交者可处理",
+    "interrupted": "运行「{{name}}」有 {{count}} 个试次被中断",
+    "errors": "运行「{{name}}」有 {{count}} 个试次执行出错（含附件安装失败）",
+    "cleanupFailed": "运行「{{name}}」的执行环境清理失败",
+    "artifactFailed": "运行「{{name}}」有产物保存失败",
+    "notAdmitted": "{{dataset}} {{version}}：{{count}} 个任务未准入",
+    "operationFailed": "{{kind}}失败",
+    "operationInterrupted": "{{kind}}被中断",
+    "rerunUnscored": "重跑未得分的任务",
+    "checkErrorsRerun": "查看错因后重跑",
+    "checkContainers": "检查残留容器",
+    "viewArtifacts": "查看产物",
+    "retryPreparation": "在数据集页重试首次准备",
+    "handleOnDatasets": "在数据集页处理"
+  },
+  "system": {
+    "label": "系统",
+    "hint": "服务状态 {{status}}；健康、可受理与某个运行能否执行是三个不同的判断。"
+  }
+}

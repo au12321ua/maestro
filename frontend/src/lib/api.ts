@@ -3,6 +3,7 @@
 // generated schema.d.ts): path parameters, query, body, required headers and the returned
 // `data` all come from the contract, so a caller cannot pick the wrong response type.
 // The CSRF token lives in memory only.
+import { t, translateCode } from "@/i18n";
 import type { paths } from "./schema";
 import type { ApiErrorBody, Meta } from "./types";
 
@@ -44,7 +45,7 @@ export class ApiError extends Error {
       (f) => f.path === `/${name}` || f.path.endsWith(`/${name}`) || f.path === name,
     );
     if (!found) return undefined;
-    const limit = found.limit != null ? `（限制 ${found.limit}）` : "";
+    const limit = found.limit != null ? t("common.format.limit", { limit: found.limit }) : "";
     return `${found.message ?? found.code}${limit}`;
   }
 }
@@ -147,7 +148,7 @@ async function send<T>(method: string, template: string, options: Request = {}):
       0,
       {
         code: "NETWORK_ERROR",
-        message: `网络请求失败：${error instanceof Error ? error.message : String(error)}`,
+        message: error instanceof Error ? error.message : String(error),
         field_errors: [],
         retryable: true,
         suggested_actions: [],
@@ -172,7 +173,7 @@ async function send<T>(method: string, template: string, options: Request = {}):
         ? (payload as { error: ApiErrorBody }).error
         : {
             code: `HTTP_${response.status}`,
-            message: response.statusText || "请求失败",
+            message: response.statusText || t("errors.format.requestFailed"),
             field_errors: [],
             retryable: response.status >= 500,
             suggested_actions: [],
@@ -205,6 +206,10 @@ export const api = {
 };
 
 export function errorText(error: unknown): string {
-  if (error instanceof ApiError) return `${error.body.message}（${error.code}）`;
+  if (error instanceof ApiError) {
+    const { code, message } = error.body;
+    const text = translateCode(code);
+    return text ? t("errors.format.known", { text, message, code }) : t("errors.format.unknown", { message, code });
+  }
   return error instanceof Error ? error.message : String(error);
 }

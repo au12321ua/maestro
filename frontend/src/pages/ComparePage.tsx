@@ -16,6 +16,7 @@ import {
   TextAreaField,
   TextField,
 } from "@/components/common";
+import { Trans, t } from "@/i18n";
 import { api, errorText } from "@/lib/api";
 import {
   DIMENSION,
@@ -64,7 +65,7 @@ export function ComparePage() {
 
   return (
     <div className="grid gap-4">
-      <PageTitle title="比较">
+      <PageTitle title={t("comparison.compare.title")}>
         {table.data && (
           <>
             <Button
@@ -74,14 +75,14 @@ export function ComparePage() {
               title={
                 table.data.comparable
                   ? undefined
-                  : "数据集或计分规则不同，不能建成集合"
+                  : t("comparison.compare.cannotCollect")
               }
               onClick={() =>
                 setPanel(panel === "collection" ? null : "collection")
               }
             >
               <Library />
-              建成集合
+              {t("comparison.compare.makeCollection")}
             </Button>
             <Button
               size="sm"
@@ -89,15 +90,13 @@ export function ComparePage() {
               onClick={() => setPanel(panel === "snapshot" ? null : "snapshot")}
             >
               <Camera />
-              保存快照
+              {t("comparison.shared.saveSnapshot")}
             </Button>
           </>
         )}
       </PageTitle>
       {runIds.length === 0 && (
-        <EmptyNote>
-          在运行列表勾选几个运行，或在批次页点“比较这一批”。
-        </EmptyNote>
+        <EmptyNote>{t("comparison.compare.empty")}</EmptyNote>
       )}
       <ErrorAlert error={table.error} />
       {table.loading && !table.data && <Loading />}
@@ -155,7 +154,7 @@ function MakeCollection({
           },
         },
       });
-      toast.success("集合已建好");
+      toast.success(t("comparison.compare.created"));
       navigate(`/collections/${res.data.id}`);
     } catch (err) {
       setError(err);
@@ -166,35 +165,44 @@ function MakeCollection({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">建成集合</CardTitle>
+        <CardTitle className="text-base">
+          {t("comparison.compare.makeCollection")}
+        </CardTitle>
       </CardHeader>
       <CardContent className="grid gap-3 text-sm">
         <p>
-          场景：<b>{SCENARIO[found.scenario].label}</b>。可变的维度：
-          {found.variable.length
-            ? found.variable.map((d) => DIMENSION[d]).join("、")
-            : "无"}
-          ；其余维度固定为第一个运行的值。之后只有符合的运行能加入，规格建好后不能改。
+          <Trans
+            i18nKey="comparison.compare.collectionSpec"
+            values={{
+              scenario: SCENARIO[found.scenario].label,
+              dimensions: found.variable.length
+                ? found.variable
+                    .map((d) => DIMENSION[d])
+                    .join(t("comparison.shared.listJoin"))
+                : t("comparison.value.none"),
+            }}
+            components={{ b: <b /> }}
+          />
         </p>
         <TextField
           id="collection-name"
-          label="名称"
+          label={t("comparison.shared.name")}
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
         <TextAreaField
           id="collection-description"
-          label="用途（可选）"
+          label={t("comparison.shared.purpose")}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
         />
         <ErrorAlert error={error} />
         <div className="flex gap-2">
           <Button disabled={busy || !name.trim()} onClick={() => void create()}>
-            建好
+            {t("comparison.shared.create")}
           </Button>
           <Button variant="ghost" onClick={onClose}>
-            取消
+            {t("comparison.shared.cancel")}
           </Button>
         </div>
       </CardContent>
@@ -231,10 +239,10 @@ export function SaveSnapshot({
           note: note.trim() || null,
         },
       });
-      toast.success("快照已保存");
+      toast.success(t("comparison.compare.snapshotSaved"));
       navigate(`/snapshots/${res.data.id}`);
     } catch (err) {
-      toast.error(`保存失败：${errorText(err)}`);
+      toast.error(t("comparison.shared.saveFailed", { error: errorText(err) }));
     } finally {
       setBusy(false);
     }
@@ -242,26 +250,28 @@ export function SaveSnapshot({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">保存快照</CardTitle>
+        <CardTitle className="text-base">
+          {t("comparison.shared.saveSnapshot")}
+        </CardTitle>
       </CardHeader>
       <CardContent className="grid gap-3 text-sm">
         <p className="text-muted-foreground">
-          冻结当前的运行清单、剔除设置、摆法和整张表；之后运行增减、日志过期，快照里的数字都不变。
+          {t("comparison.compare.freezeHint")}
         </p>
         {active.length > 0 && (
           <p className="text-amber-800">
-            还有 {active.length} 个运行没结束，结束后才能保存快照。
+            {t("comparison.compare.activeRuns", { count: active.length })}
           </p>
         )}
         <TextField
           id="snapshot-name"
-          label="名称"
+          label={t("comparison.shared.name")}
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
         <TextAreaField
           id="snapshot-note"
-          label="结论（可选，之后也能补）"
+          label={t("comparison.compare.noteLabel")}
           value={note}
           onChange={(e) => setNote(e.target.value)}
         />
@@ -270,10 +280,10 @@ export function SaveSnapshot({
             disabled={busy || !name.trim() || active.length > 0}
             onClick={() => void save()}
           >
-            保存
+            {t("comparison.shared.save")}
           </Button>
           <Button variant="ghost" onClick={onClose}>
-            取消
+            {t("comparison.shared.cancel")}
           </Button>
         </div>
       </CardContent>
@@ -294,7 +304,7 @@ export function ScenarioPicker({
     <div className="grid gap-2">
       <SelectField
         id="collection-scenario"
-        label="场景"
+        label={t("comparison.shared.scenario")}
         value={scenario}
         onChange={(e) => {
           const next = e.target.value as Scenario;
@@ -305,14 +315,20 @@ export function ScenarioPicker({
           <option key={key} value={key}>
             {value.label}
             {value.variable
-              ? `（可变：${value.variable.map((d) => DIMENSION[d]).join("、") || "无"}）`
+              ? t("comparison.compare.scenarioVariable", {
+                  dimensions:
+                    value.variable
+                      .map((d) => DIMENSION[d])
+                      .join(t("comparison.shared.listJoin")) ||
+                    t("comparison.value.none"),
+                })
               : ""}
           </option>
         ))}
       </SelectField>
       {scenario === "custom" && (
         <div className="flex flex-wrap gap-3 text-sm">
-          可变的维度：
+          {t("comparison.compare.customDimensions")}
           {VARIABLE_DIMENSIONS.map((d) => (
             <label key={d} className="flex items-center gap-1">
               <input
@@ -335,7 +351,7 @@ export function ScenarioPicker({
         </div>
       )}
       <p className="text-xs text-muted-foreground">
-        数据集与计分规则永远固定；其余没选为可变的维度都固定为基准的值。
+        {t("comparison.compare.fixedHint")}
       </p>
     </div>
   );

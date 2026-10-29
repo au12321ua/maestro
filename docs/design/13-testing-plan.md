@@ -20,8 +20,8 @@ UI 文案与纯样式变更不写低价值单元测试；优先验证会导致�
 | 真实 Hub | 目录调用、失败分类、导入与首次准备 | `test_hub_live.py`，需 `MAESTRO_HUB_TESTS=1`；匿名读取公开数据集 |
 | 真实模型冒烟 | Terminus-2、OpenCode（1.x 与 2.x）、Codex、Claude Code 各一个试次 | `test_harbor_docker.py -k real_model`，需 `MAESTRO_MODEL_TESTS=1` 及模型地址、key 文件；Codex 与 Claude Code 另需各自的 Responses / Messages 地址，并在 setup 中真实安装（见交接）；会产生费用，须核对当前授权与预算 |
 | 安装运维 | 安装、更新、失败回退、备份恢复、卸载与清除 | `test_install.py`，需 `MAESTRO_INSTALL_TESTS=1`；用隐藏参数 `--test-root` 把布局放进临时目录，以 systemd 用户单元运行；规则部分在 `test_maestroctl.py`、`test_backup.py`，默认运行 |
-| 网页 | 关键路径冒烟 | `frontend/qa/smoke.spec.ts`（Playwright），需要全新的一次性 state 与 `serve --demo-executor` |
-| CI | lint、文档链接、默认 pytest（含契约与 SDK 模型漂移）、网页 lint / `check:api` / build、第三方许可证 | `.gitea/workflows/verify.yml`，每次改了 Markdown 以外内容的推送；pytest 并行，只传 PATH 与临时 HOME。`dev` 与版本 tag 通过后发布（[12](12-operations.md) 第 1 节）。真实 Docker、Hub、模型与安装测试不在 CI，手动运行 |
+| 网页 | 关键路径冒烟 | `frontend/qa/smoke.spec.ts`（Playwright），需要全新的一次性 state 与 `serve --demo-executor`；按中文界面定位元素，最后一项以英文浏览器逐页确认没有残留中文、显示 AI 翻译说明，并能切回中文。语言文件的一致性与代码里没有写死文字由 `npm run check:i18n` 检查（CI） |
+| CI | lint、文档链接、默认 pytest（含契约与 SDK 模型漂移）、网页 lint / `check:api` / `check:i18n` / build、第三方许可证 | `.gitea/workflows/verify.yml`，每次改了 Markdown 以外内容的推送；pytest 并行，只传 PATH 与临时 HOME。`dev` 与版本 tag 通过后发布（[12](12-operations.md) 第 1 节）。真实 Docker、Hub、模型与安装测试不在 CI，手动运行 |
 
 隔离要求：验证使用独立 HOME、state 与主密钥，清除继承的真实凭据环境；不用已有团队 state 或真实凭据作随手测试。真实 Docker 测试前后建议对 `docker images`、`ps -a`、`network ls`、`volume ls` 留快照对比。
 

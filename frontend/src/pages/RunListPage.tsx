@@ -20,6 +20,7 @@ import {
   ScoreCoverage,
   StatusPill,
 } from "@/components/common";
+import { t } from "@/i18n";
 import { api, errorText } from "@/lib/api";
 import {
   ARTIFACT_STATE,
@@ -89,10 +90,10 @@ export function RunListPage() {
     setExporting(true);
     try {
       await api.post("/exports", { body: { run_ids: [...selected] } });
-      toast.success(`已创建导出（${selected.size} 个运行），正在打包`);
+      toast.success(t("runs.list.exportCreated", { count: selected.size }));
       navigate("/exports");
     } catch (err) {
-      toast.error(`导出失败：${errorText(err)}`);
+      toast.error(t("runs.list.exportFailed", { error: errorText(err) }));
     } finally {
       setExporting(false);
     }
@@ -100,7 +101,7 @@ export function RunListPage() {
 
   return (
     <div>
-      <PageTitle title="运行">
+      <PageTitle title={t("runs.list.title")}>
         <div className="flex rounded-md border bg-background p-0.5 text-sm">
           {(["all", "mine"] as const).map((value) => (
             <button
@@ -112,23 +113,23 @@ export function RunListPage() {
               )}
               onClick={() => setScope(value)}
             >
-              {value === "all" ? "全部" : "我的"}
+              {value === "all" ? t("runs.list.scopeAll") : t("runs.list.scopeMine")}
             </button>
           ))}
         </div>
         <label className="flex items-center gap-1 text-xs text-muted-foreground">
-          受理于
+          {t("runs.list.acceptedFrom")}
           <input
             type="date"
-            aria-label="开始日期"
+            aria-label={t("runs.list.startDate")}
             className="h-8 rounded-md border bg-background px-2 text-sm text-foreground"
             value={from}
             onChange={(e) => setFrom(e.target.value)}
           />
-          至
+          {t("runs.list.dateTo")}
           <input
             type="date"
-            aria-label="结束日期"
+            aria-label={t("runs.list.endDate")}
             className="h-8 rounded-md border bg-background px-2 text-sm text-foreground"
             value={to}
             onChange={(e) => setTo(e.target.value)}
@@ -138,7 +139,7 @@ export function RunListPage() {
           variant="outline"
           size="sm"
           disabled={selected.size < 2}
-          title="把所选运行放在一起比较"
+          title={t("runs.list.compareTitle")}
           onClick={() =>
             navigate(
               `/compare?runs=${runs
@@ -149,7 +150,7 @@ export function RunListPage() {
           }
         >
           <GitCompare />
-          比较所选
+          {t("runs.list.compare")}
         </Button>
         <AddToCollection runIds={runs.filter((r) => selected.has(r.id)).map((r) => r.id)} />
         <Button
@@ -159,21 +160,22 @@ export function RunListPage() {
           onClick={() => void exportSelected()}
         >
           <Package />
-          导出所选{selected.size > 0 && `（${selected.size}）`}
+          {t("runs.list.export")}
+          {selected.size > 0 && t("runs.list.selectedCount", { n: selected.size })}
         </Button>
         <Button variant="outline" size="sm" onClick={() => void load(null)}>
           <RefreshCw />
-          刷新
+          {t("runs.list.refresh")}
         </Button>
         <Button asChild size="sm">
           <Link to="/runs/new">
             <Plus />
-            新建运行
+            {t("runs.list.newRun")}
           </Link>
         </Button>
       </PageTitle>
       <ErrorAlert error={error} />
-      {runs.length === 0 && !loading && !error && <EmptyNote>还没有运行记录。</EmptyNote>}
+      {runs.length === 0 && !loading && !error && <EmptyNote>{t("runs.list.empty")}</EmptyNote>}
       {runs.length > 0 && (
         <div className="rounded-md border bg-card">
           <Table>
@@ -182,22 +184,22 @@ export function RunListPage() {
                 <TableHead className="w-8">
                   <input
                     type="checkbox"
-                    aria-label="全选"
+                    aria-label={t("runs.list.selectAll")}
                     checked={allSelected}
                     onChange={() =>
                       setSelected(allSelected ? new Set() : new Set(runs.map((r) => r.id)))
                     }
                   />
                 </TableHead>
-                <TableHead>名称</TableHead>
-                <TableHead>提交者</TableHead>
-                <TableHead>生命周期</TableHead>
-                <TableHead>得分（均值 · 覆盖）</TableHead>
-                <TableHead>评分覆盖</TableHead>
-                <TableHead>产物</TableHead>
-                <TableHead>环境清理</TableHead>
-                <TableHead className="text-right">错误</TableHead>
-                <TableHead>受理时间</TableHead>
+                <TableHead>{t("runs.column.name")}</TableHead>
+                <TableHead>{t("runs.column.owner")}</TableHead>
+                <TableHead>{t("runs.column.lifecycle")}</TableHead>
+                <TableHead>{t("runs.column.score")}</TableHead>
+                <TableHead>{t("runs.column.resultCompleteness")}</TableHead>
+                <TableHead>{t("runs.column.artifacts")}</TableHead>
+                <TableHead>{t("runs.column.cleanup")}</TableHead>
+                <TableHead className="text-right">{t("runs.column.errors")}</TableHead>
+                <TableHead>{t("runs.column.acceptedAt")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -206,7 +208,7 @@ export function RunListPage() {
                   <TableCell>
                     <input
                       type="checkbox"
-                      aria-label={`选择 ${run.name}`}
+                      aria-label={t("runs.list.select", { name: run.name })}
                       checked={selected.has(run.id)}
                       onChange={() => toggle(run.id)}
                     />
@@ -222,14 +224,14 @@ export function RunListPage() {
                     <div className="text-xs text-muted-foreground">{shortId(run.id, 16)}</div>
                   </TableCell>
                   <TableCell className="text-xs">
-                    {run.owner_id === me.id ? "我" : run.owner.display_name}
-                    {run.owner.deleted && <span className="text-muted-foreground">（已删除）</span>}
+                    {run.owner_id === me.id ? t("runs.me") : run.owner.display_name}
+                    {run.owner.deleted && <span className="text-muted-foreground">{t("runs.ownerDeleted")}</span>}
                     {run.pat_id && <div className="text-muted-foreground">PAT</div>}
                   </TableCell>
                   <TableCell>
                     <StatusPill value={label(RUN_STATE, run.state)} />
                     {run.stop_requested && run.state !== "cancelled" && (
-                      <div className="mt-1 text-xs text-amber-700">已请求停止</div>
+                      <div className="mt-1 text-xs text-amber-700">{t("runs.stopRequested")}</div>
                     )}
                   </TableCell>
                   <TableCell>
@@ -256,7 +258,7 @@ export function RunListPage() {
       {cursor && !loading && (
         <div className="mt-4 flex justify-center">
           <Button variant="outline" onClick={() => void load(cursor)}>
-            加载更多
+            {t("runs.list.loadMore")}
           </Button>
         </div>
       )}

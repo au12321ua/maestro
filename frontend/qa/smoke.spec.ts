@@ -668,3 +668,48 @@ test("copying a collection edits fixed resources through the configuration form"
   await expect(page.getByText("old run：资源与时限不同")).toBeVisible();
   await expect(page.getByRole("link", { name: "打开新集合" })).toHaveAttribute("href", "/collections/col_2");
 });
+
+// The English UI (N-18): a browser without a stored choice and an English locale gets English,
+// says the text is AI-translated, and no page shows Chinese UI text. Run after the flows above,
+// which leave runs, plans, collections and attachments (all with English names) to show.
+test("English pages show no Chinese text", async ({ browser }) => {
+  test.skip(!token, "MAESTRO_SETUP_TOKEN not set");
+  const context = await browser.newContext({ locale: "en-US" });
+  const page = await context.newPage();
+  const cjk = /[㐀-鿿＀-￯]/;
+  const noChinese = async (where: string) => {
+    await expect(page.getByRole("navigation", { name: "Main navigation" }), where).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    const text = await page.locator("body").innerText();
+    const lines = text.split("\n").filter((line) => cjk.test(line) && !line.includes("中文"));
+    expect(lines, `${where} shows Chinese text`).toEqual([]);
+  };
+  await page.goto("/");
+  await expect(page.getByTestId("ai-translation-notice")).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  expect((await page.locator("body").innerText()).replace("中文", "")).not.toMatch(cjk);
+  await page.getByLabel("Username").fill("admin");
+  await page.getByLabel("Password").fill(password);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Workbench" })).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  await expect(page.getByTestId("ai-translation-notice")).toBeVisible();
+  const pages = ["/", "/runs", "/runs/new", "/batches", "/collections", "/plans", "/datasets",
+    "/attachments", "/exports", "/settings"];
+  for (const admin of ["members", "credentials", "models", "harnesses", "policy", "capacity",
+    "setup-network", "datasets", "recycle-bin", "audit", "maintenance"])
+    pages.push(`/admin/${admin}`);
+  for (const path of pages) {
+    await page.goto(path);
+    await noChinese(path);
+  }
+  // A run's detail page, and back to Chinese with the switch.
+  await page.goto("/runs");
+  await page.getByRole("link", { name: "m5 source" }).first().click();
+  await expect(page).toHaveURL(/\/runs\/(?!new$)[^/]+$/);
+  await noChinese("run detail");
+  await page.getByLabel("Language").first().selectOption("zh-CN");
+  await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
+  await expect(page.getByTestId("ai-translation-notice")).toHaveCount(0);
+  await context.close();
+});

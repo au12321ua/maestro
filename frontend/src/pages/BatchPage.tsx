@@ -13,6 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EmptyNote, ErrorAlert, Loading, PageTitle, StatusPill } from "@/components/common";
+import { t } from "@/i18n";
 import { api, errorText } from "@/lib/api";
 import { OPERATION_STATUS, RUN_STATE, fmtTime, label } from "@/lib/format";
 import { useInterval, useLoad } from "@/lib/hooks";
@@ -24,22 +25,22 @@ export function BatchListPage() {
   const list = useLoad(async () => (await api.get("/run-batches")).data);
   return (
     <div className="grid gap-4">
-      <PageTitle title="批次" />
+      <PageTitle title={t("runs.batch.title")} />
       {list.loading && !list.data && <Loading />}
       <ErrorAlert error={list.error} />
       {list.data && list.data.length === 0 && (
-        <EmptyNote>还没有批次。在“新建运行”页把几个配置加入批次草稿后一起提交。</EmptyNote>
+        <EmptyNote>{t("runs.batch.empty")}</EmptyNote>
       )}
       {list.data && list.data.length > 0 && (
         <div className="overflow-auto rounded-md border">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>名称</TableHead>
-                <TableHead>提交者</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>运行</TableHead>
-                <TableHead>受理时间</TableHead>
+                <TableHead>{t("runs.column.name")}</TableHead>
+                <TableHead>{t("runs.column.owner")}</TableHead>
+                <TableHead>{t("runs.column.status")}</TableHead>
+                <TableHead>{t("runs.column.run")}</TableHead>
+                <TableHead>{t("runs.column.acceptedAt")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -59,7 +60,10 @@ export function BatchListPage() {
                     <StatusPill value={label(OPERATION_STATUS, b.status)} />
                   </TableCell>
                   <TableCell className="text-xs">
-                    {b.progress.terminal_runs}/{b.progress.runs} 已结束
+                    {t("runs.batch.ended", {
+                      ended: b.progress.terminal_runs,
+                      runs: b.progress.runs,
+                    })}
                   </TableCell>
                   <TableCell className="text-xs">{fmtTime(b.created_at)}</TableCell>
                 </TableRow>
@@ -90,14 +94,14 @@ export function BatchPage() {
   useInterval(() => void load(), 2000, !!batch && !ENDED.has(batch.status));
 
   const cancel = async () => {
-    if (!window.confirm("取消整个批次？还没结束的运行会停止，已得到的评分保留。")) return;
+    if (!window.confirm(t("runs.batch.cancelConfirm"))) return;
     try {
       setBatch(
         (await api.post("/run-batches/{batch_id}/cancel", { path: { batch_id: batchId } })).data,
       );
-      toast.success("已请求取消批次");
+      toast.success(t("runs.batch.cancelRequested"));
     } catch (err) {
-      toast.error(`取消失败：${errorText(err)}`);
+      toast.error(t("runs.cancelFailed", { error: errorText(err) }));
     }
   };
 
@@ -105,33 +109,44 @@ export function BatchPage() {
   const p = batch.progress;
   return (
     <div className="grid gap-4">
-      <PageTitle title={`批次：${batch.name}`}>
+      <PageTitle title={t("runs.batch.detailTitle", { name: batch.name })}>
         {batch.runs.length > 1 && (
           <Button asChild size="sm" variant="outline">
-            <Link to={`/compare?runs=${batch.runs.map((r) => r.id).join(",")}`}>比较这一批</Link>
+            <Link to={`/compare?runs=${batch.runs.map((r) => r.id).join(",")}`}>
+              {t("runs.batch.compare")}
+            </Link>
           </Button>
         )}
         {batch.allowed_actions.includes("cancel") && (
           <Button size="sm" variant="destructive" onClick={() => void cancel()}>
-            取消批次
+            {t("runs.batch.cancel")}
           </Button>
         )}
       </PageTitle>
-      <ErrorAlert error={error} title="刷新失败（显示的是上次数据）" />
+      <ErrorAlert error={error} title={t("runs.refreshFailed")} />
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <StatusPill value={label(OPERATION_STATUS, batch.status)} />
-            {batch.stop_requested && <span className="text-sm text-muted-foreground">已请求取消</span>}
+            {batch.stop_requested && <span className="text-sm text-muted-foreground">{t("runs.batch.stopRequested")}</span>}
           </CardTitle>
         </CardHeader>
         <CardContent className="grid gap-1 text-sm">
           <p>
-            {p.runs} 个运行：已结束 {p.terminal_runs}（完成 {p.finished}、取消 {p.cancelled}、中断{" "}
-            {p.interrupted}）
+            {t("runs.batch.runProgress", {
+              count: p.runs,
+              ended: p.terminal_runs,
+              finished: p.finished,
+              cancelled: p.cancelled,
+              interrupted: p.interrupted,
+            })}
           </p>
           <p>
-            计划 {p.planned_trials} 个试次：得分 {p.scored_trials}、出错 {p.error_trials}
+            {t("runs.batch.trialProgress", {
+              count: p.planned_trials,
+              scored: p.scored_trials,
+              errors: p.error_trials,
+            })}
           </p>
           <p className="text-xs text-muted-foreground">
             {batch.owner_username} · {fmtTime(batch.created_at)} · <code>{batch.id}</code>
@@ -142,9 +157,9 @@ export function BatchPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>运行</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead>得分 / 计划</TableHead>
+              <TableHead>{t("runs.column.run")}</TableHead>
+              <TableHead>{t("runs.column.status")}</TableHead>
+              <TableHead>{t("runs.batch.scoredPlanned")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

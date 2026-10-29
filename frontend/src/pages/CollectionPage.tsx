@@ -23,6 +23,7 @@ import {
 } from "@/components/common";
 import { SaveSnapshot } from "@/pages/ComparePage";
 import { SnapshotList } from "@/pages/CollectionsPage";
+import { Trans, t } from "@/i18n";
 import { api, errorText } from "@/lib/api";
 import { DIMENSION, SCENARIO, valueText } from "@/lib/comparison";
 import { RUN_STATE, fmtTime, label } from "@/lib/format";
@@ -33,15 +34,9 @@ import type {
   Dimension,
 } from "@/lib/types";
 
-const ACTION: Record<string, string> = {
-  create: "建立集合",
-  copy: "复制建立",
-  add: "加入",
-  remove: "移出",
-  purged: "运行被彻底删除，移出",
-  label: "改列名",
-  edit: "修改",
-};
+const ACTION: Record<string, string> = t("comparison.collection.action", {
+  returnObjects: true,
+});
 
 export function CollectionPage() {
   const { collectionId = "" } = useParams();
@@ -107,23 +102,27 @@ export function CollectionPage() {
       });
       await reloadAll();
     } catch (err) {
-      toast.error(`保存设置失败：${errorText(err)}`);
+      toast.error(
+        t("comparison.collection.saveSettingsFailed", { error: errorText(err) }),
+      );
     }
   };
   const remove = async (runId: string) => {
-    if (!window.confirm("把这个运行移出集合？运行本身不受影响。")) return;
+    if (!window.confirm(t("comparison.collection.removeConfirm"))) return;
     try {
       await api.del("/collections/{collection_id}/runs/{run_id}", {
         path: { ...path, run_id: runId },
       });
       await reloadAll();
     } catch (err) {
-      toast.error(`移出失败：${errorText(err)}`);
+      toast.error(
+        t("comparison.collection.removeFailed", { error: errorText(err) }),
+      );
     }
   };
   const rename = async (runId: string, current: string | null) => {
     const value = window.prompt(
-      "这一列的名字（留空则按维度自动命名）",
+      t("comparison.collection.renamePrompt"),
       current ?? "",
     );
     if (value === null) return;
@@ -134,18 +133,22 @@ export function CollectionPage() {
       });
       await reloadAll();
     } catch (err) {
-      toast.error(`修改失败：${errorText(err)}`);
+      toast.error(
+        t("comparison.collection.editFailed", { error: errorText(err) }),
+      );
     }
   };
   const deleteCollection = async () => {
-    if (!window.confirm("删除这个集合？它会进回收站；运行和快照不受影响。"))
+    if (!window.confirm(t("comparison.collection.deleteConfirm")))
       return;
     try {
       await api.del("/collections/{collection_id}", { path });
-      toast.success("已移入回收站");
+      toast.success(t("comparison.shared.movedToBin"));
       navigate("/collections");
     } catch (err) {
-      toast.error(`删除失败：${errorText(err)}`);
+      toast.error(
+        t("comparison.shared.deleteFailed", { error: errorText(err) }),
+      );
     }
   };
 
@@ -156,7 +159,7 @@ export function CollectionPage() {
           <Button asChild size="sm">
             <Link to={`/runs/new?collection=${c.id}`}>
               <Play />
-              从集合新建运行
+              {t("comparison.collection.newRun")}
             </Link>
           </Button>
         )}
@@ -166,7 +169,7 @@ export function CollectionPage() {
             variant="outline"
             onClick={() => setPanel(panel === "add" ? null : "add")}
           >
-            加入已有运行
+            {t("comparison.collection.addRuns")}
           </Button>
         )}
         {can("snapshot") && (
@@ -176,14 +179,14 @@ export function CollectionPage() {
             onClick={() => setPanel(panel === "snapshot" ? null : "snapshot")}
           >
             <Camera />
-            保存快照
+            {t("comparison.shared.saveSnapshot")}
           </Button>
         )}
         {c.allowed_actions.includes("copy") && (
           <Button asChild size="sm" variant="outline">
             <Link to={`/runs/new?copy_collection=${c.id}`}>
               <CopyPlus />
-              复制并修改规格
+              {t("comparison.collection.copySpec")}
             </Link>
           </Button>
         )}
@@ -194,14 +197,14 @@ export function CollectionPage() {
             onClick={() => void deleteCollection()}
           >
             <Trash2 />
-            删除
+            {t("comparison.shared.delete")}
           </Button>
         )}
       </PageTitle>
       {c.deletion && (
         <ErrorAlert
-          error={new Error("这个集合已删除，在回收站中。")}
-          title="已删除"
+          error={new Error(t("comparison.collection.deletedError"))}
+          title={t("comparison.collection.deletedTitle")}
         />
       )}
       <Spec collection={c} />
@@ -221,7 +224,7 @@ export function CollectionPage() {
         <>
           {!can("edit") && Object.keys(view).length > 0 && (
             <p className="text-xs text-muted-foreground">
-              你改的设置只用于这次查看，不会保存到集合。
+              {t("comparison.collection.viewOnly")}
             </p>
           )}
           <ComparisonView
@@ -234,18 +237,20 @@ export function CollectionPage() {
       )}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">运行（{c.run_count}）</CardTitle>
+          <CardTitle className="text-base">
+            {t("comparison.collection.runsTitle", { n: c.run_count })}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>运行</TableHead>
-                  <TableHead>列名</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead>加入者</TableHead>
-                  <TableHead>加入时间</TableHead>
+                  <TableHead>{t("comparison.shared.run")}</TableHead>
+                  <TableHead>{t("comparison.collection.label")}</TableHead>
+                  <TableHead>{t("comparison.shared.state")}</TableHead>
+                  <TableHead>{t("comparison.collection.addedBy")}</TableHead>
+                  <TableHead>{t("comparison.collection.addedAt")}</TableHead>
                   <TableHead />
                 </TableRow>
               </TableHeader>
@@ -270,7 +275,7 @@ export function CollectionPage() {
                     <TableCell>
                       {m.deletion ? (
                         <span className="text-xs text-muted-foreground">
-                          已删除，不参与计算
+                          {t("comparison.collection.memberDeleted")}
                         </span>
                       ) : (
                         <StatusPill value={label(RUN_STATE, m.run_state)} />
@@ -289,7 +294,7 @@ export function CollectionPage() {
                           variant="ghost"
                           onClick={() => void rename(m.run_id, m.label)}
                         >
-                          列名
+                          {t("comparison.collection.label")}
                         </Button>
                       )}
                       {can("remove_runs") && (
@@ -298,7 +303,7 @@ export function CollectionPage() {
                           variant="ghost"
                           onClick={() => void remove(m.run_id)}
                         >
-                          移出
+                          {t("comparison.collection.remove")}
                         </Button>
                       )}
                     </TableCell>
@@ -311,11 +316,15 @@ export function CollectionPage() {
       </Card>
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">快照</CardTitle>
+          <CardTitle className="text-base">
+            {t("comparison.shared.snapshots")}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {snapshots.data && snapshots.data.length === 0 && (
-            <p className="text-sm text-muted-foreground">还没有快照。</p>
+            <p className="text-sm text-muted-foreground">
+              {t("comparison.shared.noSnapshots")}
+            </p>
           )}
           {snapshots.data && snapshots.data.length > 0 && (
             <SnapshotList items={snapshots.data} />
@@ -323,12 +332,14 @@ export function CollectionPage() {
         </CardContent>
       </Card>
       <details className="rounded-md border p-3 text-sm">
-        <summary className="cursor-pointer">修改记录</summary>
+        <summary className="cursor-pointer">
+          {t("comparison.collection.history")}
+        </summary>
         <ul className="mt-2 grid gap-1">
           {(events.data ?? []).map((e) => (
             <li key={e.id} className="text-xs">
               {fmtTime(e.at)} · {e.actor_username}
-              {e.pat_id ? "（PAT）" : ""} · {ACTION[e.action] ?? e.action}
+              {e.pat_id ? t("comparison.shared.pat") : ""} · {ACTION[e.action] ?? e.action}
               {e.run_id && (
                 <>
                   {" "}
@@ -352,17 +363,27 @@ function Spec({ collection: c }: { collection: Collection }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">规格</CardTitle>
+        <CardTitle className="text-base">
+          {t("comparison.collection.spec.title")}
+        </CardTitle>
       </CardHeader>
       <CardContent className="grid gap-2 text-sm">
         {c.description && (
           <p className="whitespace-pre-wrap">{c.description}</p>
         )}
         <p>
-          场景：<b>{SCENARIO[c.scenario].label}</b>；可变：
-          {c.variable_dimensions
-            .map((d) => DIMENSION[d as Dimension])
-            .join("、") || "无"}
+          <Trans
+            i18nKey="comparison.collection.spec.scenario"
+            values={{
+              scenario: SCENARIO[c.scenario].label,
+              dimensions:
+                c.variable_dimensions
+                  .map((d) => DIMENSION[d as Dimension])
+                  .join(t("comparison.shared.listJoin")) ||
+                t("comparison.value.none"),
+            }}
+            components={{ b: <b /> }}
+          />
         </p>
         <div className="grid gap-1 md:grid-cols-2">
           {Object.entries(c.fixed_labels).map(([dimension, text]) => (
@@ -372,7 +393,9 @@ function Spec({ collection: c }: { collection: Collection }) {
               title={valueText(text)}
             >
               <span className="text-muted-foreground">
-                固定 · {DIMENSION[dimension as Dimension]}：
+                {t("comparison.collection.spec.fixed", {
+                  dimension: DIMENSION[dimension as Dimension],
+                })}
               </span>
               {dimension === "dataset" && c.template.dataset_version_id ? (
                 <Link
@@ -388,23 +411,33 @@ function Spec({ collection: c }: { collection: Collection }) {
           ))}
         </div>
         <p className="text-xs text-muted-foreground">
-          规格建好后不能改；要换比法请“复制并修改规格”。{c.owner_username} 建于{" "}
-          {fmtTime(c.created_at)}
+          {t("comparison.collection.spec.immutable", {
+            owner: c.owner_username,
+            time: fmtTime(c.created_at),
+          })}
           {c.base_run_id && (
-            <>
-              ，固定值取自运行{" "}
-              <Link className="underline" to={`/runs/${c.base_run_id}`}>
-                {c.base_run_id}
-              </Link>
-            </>
+            <Trans
+              i18nKey="comparison.collection.spec.baseRun"
+              values={{ id: c.base_run_id }}
+              components={{
+                link: (
+                  <Link className="underline" to={`/runs/${c.base_run_id}`} />
+                ),
+              }}
+            />
           )}
           {c.copied_from && (
-            <>
-              ，复制自{" "}
-              <Link className="underline" to={`/collections/${c.copied_from}`}>
-                另一个集合
-              </Link>
-            </>
+            <Trans
+              i18nKey="comparison.collection.spec.copiedFrom"
+              components={{
+                link: (
+                  <Link
+                    className="underline"
+                    to={`/collections/${c.copied_from}`}
+                  />
+                ),
+              }}
+            />
           )}
         </p>
       </CardContent>
@@ -443,7 +476,9 @@ function AddRuns({
         path,
         body: { runs: [...chosen].map((run_id) => ({ run_id })) },
       });
-      toast.success(`已加入 ${chosen.size} 个运行`);
+      toast.success(
+        t("comparison.collection.add.added", { count: chosen.size }),
+      );
       setChosen(new Set());
       onDone();
     } catch (err) {
@@ -456,7 +491,7 @@ function AddRuns({
         <TableCell className="w-8">
           <input
             type="checkbox"
-            aria-label={`选择 ${x.name}`}
+            aria-label={t("comparison.collection.add.select", { name: x.name })}
             checked={chosen.has(x.run_id)}
             onChange={() => toggle(x.run_id)}
           />
@@ -472,7 +507,7 @@ function AddRuns({
         </Link>
         <div className="text-xs text-muted-foreground">
           {x.owner_username} · {fmtTime(x.accepted_at)}
-          {x.relation === "rerun" && " · 重跑"}
+          {x.relation === "rerun" && ` · ${t("comparison.shared.rerun")}`}
         </div>
       </TableCell>
       <TableCell className="text-xs">{x.model}</TableCell>
@@ -482,12 +517,13 @@ function AddRuns({
           <StatusPill value={label(RUN_STATE, x.state)} />
         ) : (
           <span className="text-xs text-muted-foreground">
-            {[
-              ...new Set(
-                x.mismatches.map((m) => DIMENSION[m.dimension as Dimension]),
-              ),
-            ].join("、")}
-            不同
+            {t("comparison.collection.add.differs", {
+              dimensions: [
+                ...new Set(
+                  x.mismatches.map((m) => DIMENSION[m.dimension as Dimension]),
+                ),
+              ].join(t("comparison.shared.listJoin")),
+            })}
           </span>
         )}
       </TableCell>
@@ -496,7 +532,9 @@ function AddRuns({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">加入已有运行</CardTitle>
+        <CardTitle className="text-base">
+          {t("comparison.collection.addRuns")}
+        </CardTitle>
       </CardHeader>
       <CardContent className="grid gap-3">
         <ErrorAlert error={candidates.error} />
@@ -504,9 +542,9 @@ function AddRuns({
         {candidates.data && (
           <>
             <p className="text-sm text-muted-foreground">
-              最近的运行里，有 {fitting.length} 个符合这个集合的规格，可以加入。
+              {t("comparison.collection.add.fitting", { count: fitting.length })}
               {others.length > 0 &&
-                `另有 ${others.length} 个与固定条件不同，加不进来（见下方）。`}
+                t("comparison.collection.add.others", { count: others.length })}
             </p>
             {fitting.length > 0 && (
               <div className="max-h-[24rem] overflow-auto rounded-md border">
@@ -516,7 +554,7 @@ function AddRuns({
                       <TableHead className="w-8">
                         <input
                           type="checkbox"
-                          aria-label="全选"
+                          aria-label={t("comparison.collection.add.selectAll")}
                           checked={fitting.every((x) => chosen.has(x.run_id))}
                           onChange={() =>
                             setChosen(
@@ -527,39 +565,50 @@ function AddRuns({
                           }
                         />
                       </TableHead>
-                      <TableHead>运行</TableHead>
-                      <TableHead>模型</TableHead>
+                      <TableHead>{t("comparison.shared.run")}</TableHead>
+                      <TableHead>{t("comparison.shared.model")}</TableHead>
                       <TableHead>Harness</TableHead>
-                      <TableHead>状态</TableHead>
+                      <TableHead>{t("comparison.shared.state")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>{fitting.map((x) => row(x, true))}</TableBody>
                 </Table>
               </div>
             )}
-            <ErrorAlert error={error} title="没有加入" />
+            <ErrorAlert
+              error={error}
+              title={t("comparison.collection.add.notAdded")}
+            />
             <div>
               <Button
                 size="sm"
                 disabled={chosen.size === 0}
                 onClick={() => void add()}
               >
-                加入所选{chosen.size > 0 && `（${chosen.size}）`}
+                {t("comparison.collection.add.addSelected")}
+                {chosen.size > 0 &&
+                  t("comparison.collection.add.selectedCount", {
+                    n: chosen.size,
+                  })}
               </Button>
             </div>
             {others.length > 0 && (
               <details className="text-sm">
                 <summary className="cursor-pointer text-muted-foreground">
-                  不符合规格的运行（{others.length}）
+                  {t("comparison.collection.add.mismatched", {
+                    n: others.length,
+                  })}
                 </summary>
                 <div className="mt-2 max-h-[24rem] overflow-auto rounded-md border">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>运行</TableHead>
-                        <TableHead>模型</TableHead>
+                        <TableHead>{t("comparison.shared.run")}</TableHead>
+                        <TableHead>{t("comparison.shared.model")}</TableHead>
                         <TableHead>Harness</TableHead>
-                        <TableHead>原因</TableHead>
+                        <TableHead>
+                          {t("comparison.collection.add.reason")}
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>{others.map((x) => row(x, false))}</TableBody>

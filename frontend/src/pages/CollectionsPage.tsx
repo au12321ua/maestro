@@ -22,6 +22,7 @@ import {
   TextField,
 } from "@/components/common";
 import { ScenarioPicker } from "@/pages/ComparePage";
+import { t } from "@/i18n";
 import { api } from "@/lib/api";
 import { DIMENSION, SCENARIO } from "@/lib/comparison";
 import { fmtTime } from "@/lib/format";
@@ -36,33 +37,34 @@ export function CollectionsPage() {
   const [creating, setCreating] = useState(false);
   return (
     <div className="grid gap-4">
-      <PageTitle title="集合">
+      <PageTitle title={t("comparison.collections.title")}>
         <Button size="sm" onClick={() => setCreating(!creating)}>
           <Plus />
-          新建集合
+          {t("comparison.collections.new")}
         </Button>
       </PageTitle>
       <p className="text-sm text-muted-foreground">
-        集合是团队一起维护的一组运行，例如“TB2
-        各家模型”。建集合时选场景，定下哪些维度可以变、其余维度固定为什么值；之后只有符合的运行能加入。也可以在运行列表勾选几个运行先比较，再“建成集合”。
+        {t("comparison.collections.intro")}
       </p>
       {creating && <NewCollection onClose={() => setCreating(false)} />}
       <ErrorAlert error={collections.error} />
       {collections.loading && !collections.data && <Loading />}
       {collections.data && collections.data.length === 0 && (
-        <EmptyNote>还没有集合。</EmptyNote>
+        <EmptyNote>{t("comparison.collections.empty")}</EmptyNote>
       )}
       {collections.data && collections.data.length > 0 && (
         <div className="overflow-x-auto rounded-md border">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>名称</TableHead>
-                <TableHead>场景</TableHead>
-                <TableHead>数据集</TableHead>
-                <TableHead className="text-right">运行</TableHead>
-                <TableHead>创建者</TableHead>
-                <TableHead>更新时间</TableHead>
+                <TableHead>{t("comparison.shared.name")}</TableHead>
+                <TableHead>{t("comparison.shared.scenario")}</TableHead>
+                <TableHead>{t("comparison.collections.dataset")}</TableHead>
+                <TableHead className="text-right">
+                  {t("comparison.shared.run")}
+                </TableHead>
+                <TableHead>{t("comparison.collections.owner")}</TableHead>
+                <TableHead>{t("comparison.collections.updatedAt")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -88,10 +90,11 @@ export function CollectionsPage() {
                   <TableCell className="text-xs">
                     {SCENARIO[c.scenario].label}
                     <div className="text-muted-foreground">
-                      可变：
+                      {t("comparison.shared.variable")}
                       {c.variable_dimensions
                         .map((d) => DIMENSION[d as Dimension])
-                        .join("、") || "无"}
+                        .join(t("comparison.shared.listJoin")) ||
+                        t("comparison.value.none")}
                     </div>
                   </TableCell>
                   <TableCell className="text-xs">
@@ -112,12 +115,14 @@ export function CollectionsPage() {
       )}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">快照</CardTitle>
+          <CardTitle className="text-base">
+            {t("comparison.shared.snapshots")}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <ErrorAlert error={snapshots.error} />
           {snapshots.data && snapshots.data.length === 0 && (
-            <EmptyNote>还没有快照。在比较页或集合页点“保存快照”。</EmptyNote>
+            <EmptyNote>{t("comparison.collections.noSnapshots")}</EmptyNote>
           )}
           {snapshots.data && snapshots.data.length > 0 && (
             <SnapshotList items={snapshots.data} />
@@ -151,8 +156,11 @@ export function SnapshotList({
             {s.name}
           </Link>
           <span className="text-xs text-muted-foreground">
-            {s.run_count} 个运行 · {s.owner_username}
-            {s.pat_id ? "（PAT）" : ""} · {fmtTime(s.created_at)}
+            {t("comparison.collections.snapshotMeta", {
+              count: s.run_count,
+              owner: s.owner_username,
+            })}
+            {s.pat_id ? t("comparison.shared.pat") : ""} · {fmtTime(s.created_at)}
           </span>
         </li>
       ))}
@@ -196,18 +204,20 @@ function NewCollection({ onClose }: { onClose: () => void }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">新建集合</CardTitle>
+        <CardTitle className="text-base">
+          {t("comparison.collections.new")}
+        </CardTitle>
       </CardHeader>
       <CardContent className="grid gap-3">
         <TextField
           id="new-collection-name"
-          label="名称"
+          label={t("comparison.shared.name")}
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
         <TextAreaField
           id="new-collection-description"
-          label="用途（可选）"
+          label={t("comparison.shared.purpose")}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
         />
@@ -220,21 +230,25 @@ function NewCollection({ onClose }: { onClose: () => void }) {
           }}
         />
         <label className="grid gap-1 text-sm">
-          基准运行：固定维度取它的值，它也是集合的第一个运行
+          {t("comparison.collections.baseRun")}
           <select
             className="h-9 rounded-md border bg-background px-2"
             value={baseRun}
             onChange={(e) => setBaseRun(e.target.value)}
           >
-            <option value="">选择一个运行</option>
+            <option value="">{t("comparison.collections.pickRun")}</option>
             {(runs.data ?? []).map((r) => (
               <option key={r.id} value={r.id}>
-                {r.name}（{r.owner.username}，{fmtTime(r.accepted_at)}）
+                {t("comparison.collections.runOption", {
+                  name: r.name,
+                  owner: r.owner.username,
+                  time: fmtTime(r.accepted_at),
+                })}
               </option>
             ))}
           </select>
           <span className="text-xs text-muted-foreground">
-            也可以在“新建运行”页把填好的表单建成集合，不必先有运行。
+            {t("comparison.collections.fromNewRun")}
           </span>
         </label>
         <ErrorAlert error={error} />
@@ -243,10 +257,10 @@ function NewCollection({ onClose }: { onClose: () => void }) {
             disabled={busy || !name.trim() || !baseRun}
             onClick={() => void create()}
           >
-            建好
+            {t("comparison.shared.create")}
           </Button>
           <Button variant="ghost" onClick={onClose}>
-            取消
+            {t("comparison.shared.cancel")}
           </Button>
         </div>
       </CardContent>

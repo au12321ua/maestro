@@ -24,6 +24,7 @@ import {
   TextField,
 } from "@/components/common";
 import { TaskStatusCells } from "@/components/TaskStatusCells";
+import { t, Trans } from "@/i18n";
 import { api, errorText } from "@/lib/api";
 import { commonPrefix, fmtTime, OPERATION_STATUS, shortId } from "@/lib/format";
 import { useInterval, useLoad, useSession } from "@/lib/hooks";
@@ -40,19 +41,7 @@ import type {
 import { cn } from "@/lib/utils";
 import { SetupNetworkRevision } from "@/pages/admin/SetupNetworkTab";
 
-const PHASES: Record<string, string> = {
-  queued: "排队",
-  resolving: "解析引用",
-  downloading: "下载任务",
-  recording: "登记版本",
-  preparing: "准备环境",
-  building: "构建镜像",
-  pulling: "拉取镜像",
-  loading: "载入原件",
-  exporting: "导出原件",
-  checking: "校验",
-  done: "完成",
-};
+const PHASES: Record<string, string> = t("datasets.phase", { returnObjects: true });
 
 const TERMINAL = new Set(["succeeded", "failed", "cancelled", "interrupted"]);
 
@@ -93,14 +82,21 @@ function OperationLine({
       )}
       {progress?.tasks_total != null && (
         <span className="text-xs text-muted-foreground">
-          {progress.tasks_done ?? 0}/{progress.tasks_total} 个任务
-          {prepared?.admitted != null && ` · 准入 ${prepared.admitted}`}
-          {prepared?.failed ? ` · 失败 ${prepared.failed}` : ""}
+          {t("datasets.operation.tasks", {
+            done: progress.tasks_done ?? 0,
+            count: progress.tasks_total,
+          })}
+          {prepared?.admitted != null &&
+            t("datasets.operation.admitted", { n: prepared.admitted })}
+          {prepared?.failed ? t("datasets.operation.failed", { n: prepared.failed }) : ""}
         </span>
       )}
       {op.data.error && (
         <span className="text-xs text-destructive">
-          {op.data.error.message ?? op.data.error.code}（{op.data.error.code}）
+          {t("datasets.operation.error", {
+            message: op.data.error.message ?? op.data.error.code,
+            code: op.data.error.code,
+          })}
         </span>
       )}
       <code className="ml-auto text-xs text-muted-foreground">{shortId(op.data.id, 16)}</code>
@@ -136,15 +132,15 @@ export function DatasetsPage() {
   const removeDataset = async (dataset: Dataset) => {
     if (
       !window.confirm(
-        `删除数据集「${dataset.namespace}/${dataset.name}」及其全部版本？它会移入回收站；已有运行记录保留，但不能再用它提交或重跑。`,
+        t("datasets.page.deleteDatasetConfirm", { name: `${dataset.namespace}/${dataset.name}` }),
       )
     )
       return;
     try {
       await api.del("/admin/datasets/{dataset_id}", { path: { dataset_id: dataset.id } });
-      toast.success("已移入回收站");
+      toast.success(t("datasets.page.deleted"));
     } catch (err) {
-      toast.error(`删除失败：${errorText(err)}`);
+      toast.error(t("datasets.page.deleteFailed", { error: errorText(err) }));
     }
     await datasets.reload();
   };
@@ -152,24 +148,27 @@ export function DatasetsPage() {
   const removeVersion = async (dataset: Dataset, version: DatasetVersion) => {
     if (
       !window.confirm(
-        `删除版本「${dataset.name} ${version.upstream_ref}」？它会移入回收站；已有运行记录保留，但不能再用它提交或重跑。`,
+        t("datasets.page.deleteVersionConfirm", {
+          dataset: dataset.name,
+          ref: version.upstream_ref,
+        }),
       )
     )
       return;
     try {
       await api.del("/admin/dataset-versions/{version_id}", { path: { version_id: version.id } });
-      toast.success("已移入回收站");
+      toast.success(t("datasets.page.deleted"));
     } catch (err) {
-      toast.error(`删除失败：${errorText(err)}`);
+      toast.error(t("datasets.page.deleteFailed", { error: errorText(err) }));
     }
     await datasets.reload();
   };
 
   return (
     <div>
-      <PageTitle title="数据集" />
+      <PageTitle title={t("datasets.page.title")} />
       <p className="mb-4 text-sm text-muted-foreground">
-        准入、内容可得性与本机缓存分开显示：缓存被回收的已准入任务仍可提交，运行时按原摘要自动恢复。
+        {t("datasets.page.intro")}
       </p>
       {isAdmin && <AddDataset datasets={datasets.data ?? []} onImported={imported} />}
       {isAdmin && upstreamDataset && (
@@ -182,7 +181,7 @@ export function DatasetsPage() {
       )}
       <ErrorAlert error={datasets.error} />
       {datasets.loading && !datasets.data && <Loading />}
-      {datasets.data && datasets.data.length === 0 && <EmptyNote>还没有数据集。</EmptyNote>}
+      {datasets.data && datasets.data.length === 0 && <EmptyNote>{t("datasets.page.empty")}</EmptyNote>}
       <div className="grid gap-4 lg:grid-cols-[minmax(260px,1fr)_minmax(0,3fr)]">
         <div className="grid content-start gap-3">
           {datasets.data?.map((dataset) => (
@@ -194,8 +193,8 @@ export function DatasetsPage() {
                     <Button
                       size="sm"
                       variant="ghost"
-                      title="删除数据集"
-                      aria-label={`删除数据集 ${dataset.name}`}
+                      title={t("datasets.page.deleteDataset")}
+                      aria-label={t("datasets.page.deleteDatasetLabel", { name: dataset.name })}
                       onClick={() => void removeDataset(dataset)}
                     >
                       <Trash2 />
@@ -203,8 +202,10 @@ export function DatasetsPage() {
                   )}
                 </CardTitle>
                 <div className="text-xs text-muted-foreground">
-                  来源：{dataset.source_kind}
-                  {dataset.credential_id ? " · 使用团队凭据" : " · 匿名读取"}
+                  {t("datasets.page.source", { kind: dataset.source_kind })}
+                  {dataset.credential_id
+                    ? t("datasets.page.teamCredential")
+                    : t("datasets.page.anonymous")}
                   {dataset.description && ` · ${dataset.description}`}
                 </div>
                 {isAdmin && (
@@ -214,14 +215,14 @@ export function DatasetsPage() {
                       variant="outline"
                       onClick={() => setUpstreamOf(dataset.id)}
                     >
-                      检查上游更新
+                      {t("datasets.page.checkUpstream")}
                     </Button>
                   </div>
                 )}
               </CardHeader>
               <CardContent className="grid gap-1">
                 {dataset.versions.length === 0 && (
-                  <span className="text-xs text-muted-foreground">无版本</span>
+                  <span className="text-xs text-muted-foreground">{t("datasets.page.noVersions")}</span>
                 )}
                 {dataset.versions.map((version) => (
                   <div key={version.id} className="flex items-center gap-1">
@@ -240,16 +241,19 @@ export function DatasetsPage() {
                         </span>
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        可提交 {version.submittable_task_count}/{version.task_count} · 缓存就绪{" "}
-                        {version.cache_ready_task_count}
+                        {t("datasets.page.versionCounts", {
+                          submittable: version.submittable_task_count,
+                          total: version.task_count,
+                          ready: version.cache_ready_task_count,
+                        })}
                       </span>
                     </button>
                     {isAdmin && (
                       <Button
                         size="sm"
                         variant="ghost"
-                        title="删除该版本"
-                        aria-label={`删除版本 ${version.upstream_ref}`}
+                        title={t("datasets.page.deleteVersion")}
+                        aria-label={t("datasets.page.deleteVersionLabel", { ref: version.upstream_ref })}
                         onClick={() => void removeVersion(dataset, version)}
                       >
                         <Trash2 />
@@ -265,7 +269,7 @@ export function DatasetsPage() {
           <div className="grid min-w-0 content-start gap-2">
             {datasets.data && !listed && chosen && (
               <p className="text-sm text-amber-800">
-                这个版本不在数据集列表中：它已删除或不存在；已删除的版本仍可查看，但不能再用来提交。
+                {t("datasets.page.notListed")}
               </p>
             )}
             <VersionTasks
@@ -332,16 +336,31 @@ function TaskDiff({ preview, local }: { preview: SourceVersionDetail; local: Dat
   const added = [...after.keys()].filter((k) => !before.has(k)).sort();
   const removed = [...before.keys()].filter((k) => !after.has(k)).sort();
   const changed = [...after.keys()].filter((k) => before.has(k) && before.get(k) !== after.get(k)).sort();
-  const groups: [string, string[]][] = [
-    ["新增", added],
-    ["删除", removed],
-    ["内容变化", changed],
+  const groups: { id: string; title: string; heading: string; keys: string[] }[] = [
+    {
+      id: "added",
+      title: t("datasets.diff.added"),
+      heading: t("datasets.diff.addedTasks", { count: added.length }),
+      keys: added,
+    },
+    {
+      id: "removed",
+      title: t("datasets.diff.removed"),
+      heading: t("datasets.diff.removedTasks", { count: removed.length }),
+      keys: removed,
+    },
+    {
+      id: "changed",
+      title: t("datasets.diff.changed"),
+      heading: t("datasets.diff.changedTasks", { count: changed.length }),
+      keys: changed,
+    },
   ];
   return (
     <div className="grid gap-1">
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <label htmlFor="diff-base" className="shrink-0 text-muted-foreground">
-          与本地版本比较
+          {t("datasets.diff.compareWith")}
         </label>
         <select
           id="diff-base"
@@ -351,7 +370,7 @@ function TaskDiff({ preview, local }: { preview: SourceVersionDetail; local: Dat
         >
           {newestFirst(local).map((v) => (
             <option key={v.id} value={v.id}>
-              {v.upstream_ref}（{fmtTime(v.created_at)} 导入）
+              {t("datasets.diff.localOption", { ref: v.upstream_ref, time: fmtTime(v.created_at) })}
             </option>
           ))}
         </select>
@@ -361,16 +380,18 @@ function TaskDiff({ preview, local }: { preview: SourceVersionDetail; local: Dat
       {base.data && (
         <div className="grid gap-1 text-xs">
           <div>
-            {groups.map(([title, keys]) => `${title} ${keys.length}`).join(" · ")} · 未变{" "}
-            {preview.tasks.length - added.length - changed.length}
+            {[
+              ...groups.map(({ title, keys }) => `${title} ${keys.length}`),
+              t("datasets.diff.unchanged", {
+                count: preview.tasks.length - added.length - changed.length,
+              }),
+            ].join(" · ")}
           </div>
           {groups
-            .filter(([, keys]) => keys.length > 0)
-            .map(([title, keys]) => (
-              <details key={title}>
-                <summary className="cursor-pointer">
-                  {title}的任务（{keys.length}）
-                </summary>
+            .filter(({ keys }) => keys.length > 0)
+            .map(({ id, heading, keys }) => (
+              <details key={id}>
+                <summary className="cursor-pointer">{heading}</summary>
                 <div className="max-h-40 overflow-auto font-mono text-muted-foreground">
                   {keys.map((k) => (
                     <div key={k} className="break-all">
@@ -460,25 +481,25 @@ function SourceVersions({
     }
   };
   const confirmMoved = (tag: string) =>
-    window.confirm(`标签「${tag}」已指向新内容，将作为新版本添加；旧版本保留，已有运行不受影响。`);
+    window.confirm(t("datasets.source.confirmMoved", { tag }));
 
   return (
     <div className="grid gap-3">
-      <ErrorAlert error={upstream.error} title="无法读取上游版本" />
-      {upstream.loading && !upstream.data && <Loading text="读取上游版本…" />}
+      <ErrorAlert error={upstream.error} title={t("datasets.source.upstreamError")} />
+      {upstream.loading && !upstream.data && <Loading text={t("datasets.source.upstreamLoading")} />}
       {rows && rows.length === 0 && (
-        <EmptyNote>数据源没有列出版本；可在下方按标签、修订或摘要添加。</EmptyNote>
+        <EmptyNote>{t("datasets.source.noUpstream")}</EmptyNote>
       )}
       {rows && rows.length > 0 && (
         <div className="rounded-md border">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>修订</TableHead>
-                <TableHead>标签</TableHead>
-                <TableHead>摘要</TableHead>
-                <TableHead>发布</TableHead>
-                <TableHead>平台中</TableHead>
+                <TableHead>{t("datasets.source.columns.revision")}</TableHead>
+                <TableHead>{t("datasets.source.columns.tags")}</TableHead>
+                <TableHead>{t("datasets.source.columns.digest")}</TableHead>
+                <TableHead>{t("datasets.source.columns.published")}</TableHead>
+                <TableHead>{t("datasets.source.columns.onPlatform")}</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
@@ -491,7 +512,7 @@ function SourceVersions({
                     {shortId(v.resolved_digest, 19)}
                   </TableCell>
                   <TableCell className="text-xs">
-                    {fmtTime(v.published_at)} {v.yanked && <Pill tone="warn">已撤回</Pill>}
+                    {fmtTime(v.published_at)} {v.yanked && <Pill tone="warn">{t("datasets.source.yanked")}</Pill>}
                   </TableCell>
                   <TableCell className="text-xs">
                     {imported ? (
@@ -499,15 +520,20 @@ function SourceVersions({
                         className="text-primary underline"
                         to={`/datasets?version=${imported.id}`}
                       >
-                        已导入（{imported.upstream_ref}）
+                        {t("datasets.source.imported", { ref: imported.upstream_ref })}
                       </Link>
                     ) : (
-                      <Pill tone="info">未导入</Pill>
+                      <Pill tone="info">{t("datasets.source.notImported")}</Pill>
                     )}
                     {movedTags.map(({ tag, from }) => (
                       <div key={tag} className="mt-1">
-                        <Pill tone="warn" title={`本地版本 ${shortId(from.resolved_digest, 19)}`}>
-                          标签 {tag} 已移动
+                        <Pill
+                          tone="warn"
+                          title={t("datasets.source.localVersion", {
+                            digest: shortId(from.resolved_digest, 19),
+                          })}
+                        >
+                          {t("datasets.source.tagMoved", { tag })}
                         </Pill>
                       </div>
                     ))}
@@ -521,7 +547,7 @@ function SourceVersions({
                         // A moved tag is looked up by the tag, so the new version keeps it.
                         onClick={() => void look(movedTags[0]?.tag ?? v.ref)}
                       >
-                        添加为新版本…
+                        {t("datasets.source.addAsNewEllipsis")}
                       </Button>
                     )}
                   </TableCell>
@@ -540,24 +566,32 @@ function SourceVersions({
       >
         <TextField
           id={`ref-${target.namespace}-${target.name}`}
-          label="添加指定版本"
+          label={t("datasets.source.addRef")}
           value={ref}
-          placeholder="标签、修订号或 sha256 摘要"
+          placeholder={t("datasets.source.refPlaceholder")}
           onChange={(e) => setRef(e.target.value)}
         />
         <Button type="submit" variant="outline" disabled={busy || !ref.trim()}>
-          查看
+          {t("datasets.source.look")}
         </Button>
       </form>
       <ErrorAlert error={error} />
       {preview && (
         <div className="grid gap-2 rounded-md border p-3 text-sm">
           <div>
-            {preview.namespace}/{preview.name}@{preview.upstream_ref}（{preview.ref_kind}）→{" "}
-            <code title={preview.resolved_digest}>{shortId(preview.resolved_digest, 23)}</code> ·{" "}
-            {preview.tasks.length} 个任务
-            {preview.existing_version_id && <Pill tone="info">已添加过此内容</Pill>}
-            {movedFrom && <Pill tone="warn">标签已移动</Pill>}
+            <Trans
+              i18nKey="datasets.source.preview"
+              count={preview.tasks.length}
+              values={{
+                ref: `${preview.namespace}/${preview.name}@${preview.upstream_ref}`,
+                kind: preview.ref_kind,
+                digest: shortId(preview.resolved_digest, 23),
+                count: preview.tasks.length,
+              }}
+              components={{ code: <code title={preview.resolved_digest} /> }}
+            />
+            {preview.existing_version_id && <Pill tone="info">{t("datasets.source.alreadyAdded")}</Pill>}
+            {movedFrom && <Pill tone="warn">{t("datasets.source.tagMovedShort")}</Pill>}
           </div>
           {preview.description && <p className="text-muted-foreground">{preview.description}</p>}
           {local.length > 0 ? (
@@ -577,7 +611,7 @@ function SourceVersions({
               checked={prepare}
               onChange={(e) => setPrepare(e.target.checked)}
             />
-            添加后立即进行首次准备（构建或拉取环境并保存原件）
+            {t("datasets.source.prepareAfter")}
           </label>
           <div className="flex gap-2">
             <Button
@@ -587,7 +621,7 @@ function SourceVersions({
                 void add(!!movedFrom);
               }}
             >
-              {preview.existing_version_id ? "重新核对" : "添加为新版本"}
+              {preview.existing_version_id ? t("datasets.source.recheck") : t("datasets.source.addAsNew")}
             </Button>
           </div>
         </div>
@@ -595,19 +629,21 @@ function SourceVersions({
       {operation && (
         <OperationLine
           id={operation}
-          label="添加版本"
+          label={t("datasets.source.operation")}
           onDone={(op) => {
             setOperation(undefined);
             const imported = op.kind === "dataset_import" ? op.result : null;
             if (op.status === "succeeded") {
-              toast.success(imported?.existing ? "该内容已登记，未重复创建" : "版本已添加");
+              toast.success(
+                imported?.existing ? t("datasets.source.existing") : t("datasets.source.added"),
+              );
               setPreview(undefined);
               void upstream.reload();
               void onImported(imported?.dataset_version_id);
             } else if (op.error?.code === "CONTENT_REFERENCE_CHANGED" && preview) {
               if (confirmMoved(preview.upstream_ref)) void add(true);
             } else {
-              toast.error(`添加失败：${op.error?.message ?? op.status}`);
+              toast.error(t("datasets.source.addFailed", { error: op.error?.message ?? op.status }));
             }
           }}
         />
@@ -664,7 +700,7 @@ function AddDataset({
     return (
       <div className="mb-4">
         <Button variant="outline" onClick={() => setOpen(true)}>
-          添加数据集
+          {t("datasets.add.title")}
         </Button>
       </div>
     );
@@ -673,20 +709,20 @@ function AddDataset({
     <Card className="mb-4">
       <CardHeader>
         <CardTitle className="flex items-center justify-between gap-2 text-base">
-          添加数据集
+          {t("datasets.add.title")}
           <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
-            收起
+            {t("datasets.collapse")}
           </Button>
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          搜索只读取外部描述；添加时引用固定为确切摘要，任务材料下载并校验后登记，再按需进行首次准备。已有数据集的新版本可以直接在它的卡片上“检查上游更新”。
+          {t("datasets.add.intro")}
         </p>
       </CardHeader>
       <CardContent className="grid gap-3">
         <div className="grid gap-3 md:grid-cols-[160px_minmax(0,1fr)_minmax(0,1fr)]">
           <SelectField
             id="source"
-            label="来源"
+            label={t("datasets.add.source")}
             value={sourceKind}
             onChange={(e) => setKind(e.target.value)}
           >
@@ -698,11 +734,11 @@ function AddDataset({
           </SelectField>
           <SelectField
             id="credential"
-            label="来源凭据"
+            label={t("datasets.add.credential")}
             value={credentialId}
             onChange={(e) => setCredentialId(e.target.value)}
           >
-            <option value="">匿名（公开数据）</option>
+            <option value="">{t("datasets.add.anonymous")}</option>
             {credentials.data?.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -718,18 +754,18 @@ function AddDataset({
           >
             <TextField
               id="query"
-              label="作者 / 名称"
+              label={t("datasets.add.query")}
               value={query}
-              placeholder="org/name 或关键字"
+              placeholder={t("datasets.add.queryPlaceholder")}
               onChange={(e) => setQuery(e.target.value)}
             />
             <Button type="submit" disabled={busy || !query.trim()}>
-              搜索
+              {t("datasets.add.search")}
             </Button>
           </form>
         </div>
         <ErrorAlert error={error} />
-        {found && found.length === 0 && <EmptyNote>没有找到数据集。</EmptyNote>}
+        {found && found.length === 0 && <EmptyNote>{t("datasets.add.notFound")}</EmptyNote>}
         {found && found.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {found.map((item) => {
@@ -780,13 +816,13 @@ function UpstreamVersions({
     <Card className="mb-4">
       <CardHeader>
         <CardTitle className="flex items-center justify-between gap-2 text-base">
-          {dataset.namespace}/{dataset.name} 的上游版本
+          {t("datasets.upstream.title", { name: `${dataset.namespace}/${dataset.name}` })}
           <Button size="sm" variant="ghost" onClick={onClose}>
-            收起
+            {t("datasets.collapse")}
           </Button>
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          按内容摘要对照平台中的版本。添加新版本不影响已有版本和引用它们的运行；结果只在此显示，不保存。
+          {t("datasets.upstream.intro")}
         </p>
       </CardHeader>
       <CardContent>
@@ -847,7 +883,7 @@ function VersionTasks({
     }
   };
   const revoke = async (task: Task) => {
-    const reason = window.prompt(`撤销 ${task.task_key} 的准入原因（已受理的运行不受影响）`);
+    const reason = window.prompt(t("datasets.tasks.revokePrompt", { task: task.task_key }));
     if (!reason || !task.admission) return;
     try {
       await api.post("/admin/task-admissions/{admission_id}/revoke", {
@@ -857,7 +893,7 @@ function VersionTasks({
           expected_revision: task.admission.revision,
         },
       });
-      toast.success("已撤销准入");
+      toast.success(t("datasets.tasks.revoked"));
       await refresh();
     } catch (err) {
       toast.error(errorText(err));
@@ -870,24 +906,31 @@ function VersionTasks({
         <CardTitle className="text-base">
           {detail.data
             ? `${detail.data.namespace}/${detail.data.name}@${detail.data.upstream_ref}`
-            : "版本任务"}
+            : t("datasets.tasks.title")}
         </CardTitle>
         {detail.data && (
           <div className="grid gap-1 text-xs text-muted-foreground">
             <div>
-              上游摘要{" "}
-              <code title={detail.data.resolved_digest}>
-                {shortId(detail.data.resolved_digest, 23)}
-              </code>{" "}
-              · 本地材料摘要{" "}
-              <code title={detail.data.materialization_digest ?? ""}>
-                {shortId(detail.data.materialization_digest, 23)}
-              </code>{" "}
-              · 登记于 {fmtTime(detail.data.created_at)}
+              <Trans
+                i18nKey="datasets.tasks.digests"
+                values={{
+                  upstream: shortId(detail.data.resolved_digest, 23),
+                  material: shortId(detail.data.materialization_digest, 23),
+                  time: fmtTime(detail.data.created_at),
+                }}
+                components={{
+                  upstream: <code title={detail.data.resolved_digest} />,
+                  material: <code title={detail.data.materialization_digest ?? ""} />,
+                }}
+              />
             </div>
             <div className="text-sm text-foreground">
-              共 {detail.data.task_count} 个任务 · 已准入 {detail.data.admitted_task_count} · 可提交{" "}
-              {detail.data.submittable_task_count} · 缓存就绪 {detail.data.cache_ready_task_count}
+              {t("datasets.tasks.counts", {
+                count: detail.data.task_count,
+                admitted: detail.data.admitted_task_count,
+                submittable: detail.data.submittable_task_count,
+                ready: detail.data.cache_ready_task_count,
+              })}
             </div>
             <ScoringContract
               versionId={versionId}
@@ -897,9 +940,13 @@ function VersionTasks({
             />
             {detail.data.deletion && (
               <div className="text-sm text-amber-800">
-                该版本已删除（
-                {detail.data.deletion.state === "purged" ? "已彻底删除" : "在回收站中"}，
-                {fmtTime(detail.data.deletion.deleted_at)}）。
+                {t("datasets.tasks.deleted", {
+                  state:
+                    detail.data.deletion.state === "purged"
+                      ? t("datasets.tasks.purged")
+                      : t("datasets.tasks.inRecycleBin"),
+                  time: fmtTime(detail.data.deletion.deleted_at),
+                })}
               </div>
             )}
           </div>
@@ -909,7 +956,7 @@ function VersionTasks({
             <Button
               size="sm"
               onClick={() =>
-                void act("首次准备", () =>
+                void act(t("datasets.tasks.firstPreparation"), () =>
                   api.post("/admin/dataset-versions/{version_id}/preparations", {
                     path: { version_id: versionId },
                     body: {},
@@ -918,12 +965,16 @@ function VersionTasks({
               }
             >
               {preparable.some((t) => t.admission?.state === "first_failed")
-                ? `重试未准入的 ${preparable.length} 个任务`
-                : `首次准备 ${preparable.length} 个任务`}
+                ? t("datasets.tasks.retry", { count: preparable.length })
+                : t("datasets.tasks.prepare", { count: preparable.length })}
             </Button>
           </div>
         )}
-        {firstOp && <OperationLine id={firstOp} label="首次准备" onDone={() => void refresh()} />}
+        {firstOp && <OperationLine
+            id={firstOp}
+            label={t("datasets.tasks.firstPreparation")}
+            onDone={() => void refresh()}
+          />}
         {operations.map((op) => (
           <OperationLine
             key={op.id}
@@ -939,18 +990,18 @@ function VersionTasks({
       <CardContent>
         <ErrorAlert error={detail.error ?? tasks.error} />
         {tasks.loading && !tasks.data && <Loading />}
-        {tasks.data && tasks.data.length === 0 && <EmptyNote>该版本没有任务。</EmptyNote>}
+        {tasks.data && tasks.data.length === 0 && <EmptyNote>{t("datasets.tasks.empty")}</EmptyNote>}
         {tasks.data && tasks.data.length > 0 && (
           <div className="rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>任务</TableHead>
-                  <TableHead>准入</TableHead>
-                  <TableHead>内容</TableHead>
-                  <TableHead>本机缓存</TableHead>
-                  <TableHead>可提交</TableHead>
-                  <TableHead>说明</TableHead>
+                  <TableHead>{t("datasets.tasks.columns.task")}</TableHead>
+                  <TableHead>{t("datasets.tasks.columns.admission")}</TableHead>
+                  <TableHead>{t("datasets.tasks.columns.content")}</TableHead>
+                  <TableHead>{t("datasets.tasks.columns.cache")}</TableHead>
+                  <TableHead>{t("datasets.tasks.columns.submittable")}</TableHead>
+                  <TableHead>{t("datasets.tasks.columns.notes")}</TableHead>
                   {isAdmin && <TableHead />}
                 </TableRow>
               </TableHeader>
@@ -975,23 +1026,23 @@ function VersionTasks({
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                title="删除本机镜像；准入与原件保留"
+                                title={t("datasets.tasks.evictTitle")}
                                 onClick={() => {
                                   const preparationId = task.local_preparation.id;
                                   if (!preparationId) return;
-                                  void act(`回收 ${task.task_key} 的缓存`, () =>
+                                  void act(t("datasets.tasks.evictOperation", { task: task.task_key }), () =>
                                     api.post("/admin/preparations/{preparation_id}/evict", {
                                       path: { preparation_id: preparationId },
                                     }),
                                   );
                                 }}
                               >
-                                回收缓存
+                                {t("datasets.tasks.evict")}
                               </Button>
                             )}
                           {task.admission?.state === "admitted" && (
                             <Button size="sm" variant="ghost" onClick={() => void revoke(task)}>
-                              撤销准入
+                              {t("datasets.tasks.revoke")}
                             </Button>
                           )}
                         </TableCell>
@@ -1041,7 +1092,7 @@ function ScoringContract({
           pass_threshold: threshold.trim() === "" ? null : Number(threshold),
         },
       });
-      toast.success("评分规则已确认，之后提交的运行使用它");
+      toast.success(t("datasets.scoring.saved"));
       setEditing(false);
       onSaved();
     } catch (err) {
@@ -1051,13 +1102,23 @@ function ScoringContract({
   return (
     <div className="grid gap-1">
       <div>
-        评分规则：{contract.name}，
-        {contract.direction === "higher_is_better" ? "越高越好" : "越低越好"}，
-        {contract.passed ? `达到 ${contract.passed.threshold} 记为通过` : "不计通过率"}（
-        {contract.source === "dataset_version" ? "管理员已确认" : "平台默认"}）
+        {t("datasets.scoring.summary", {
+          name: contract.name,
+          direction:
+            contract.direction === "higher_is_better"
+              ? t("datasets.scoring.higherIsBetter")
+              : t("datasets.scoring.lowerIsBetter"),
+          passed: contract.passed
+            ? t("datasets.scoring.passAt", { threshold: contract.passed.threshold })
+            : t("datasets.scoring.noPassRate"),
+          source:
+            contract.source === "dataset_version"
+              ? t("datasets.scoring.confirmed")
+              : t("datasets.scoring.platformDefault"),
+        })}
         {editable && !editing && (
           <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
-            确认 / 修改
+            {t("datasets.scoring.edit")}
           </Button>
         )}
       </div>
@@ -1065,24 +1126,24 @@ function ScoringContract({
         <div className="flex flex-wrap items-end gap-2">
           <SelectField
             id="direction"
-            label="方向"
+            label={t("datasets.scoring.direction")}
             value={direction}
             onChange={(e) => setDirection(e.target.value as typeof direction)}
           >
-            <option value="higher_is_better">越高越好</option>
-            <option value="lower_is_better">越低越好</option>
+            <option value="higher_is_better">{t("datasets.scoring.higherIsBetter")}</option>
+            <option value="lower_is_better">{t("datasets.scoring.lowerIsBetter")}</option>
           </SelectField>
           <TextField
             id="threshold"
-            label="通过阈值（留空则不计通过率）"
+            label={t("datasets.scoring.threshold")}
             value={threshold}
             onChange={(e) => setThreshold(e.target.value)}
           />
           <Button size="sm" onClick={() => void save()}>
-            保存
+            {t("datasets.scoring.save")}
           </Button>
           <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
-            取消
+            {t("datasets.scoring.cancel")}
           </Button>
           <ErrorAlert error={error} />
         </div>
@@ -1098,67 +1159,96 @@ function TaskDetail({ task }: { task: Task }) {
     <div className="grid gap-3 text-xs">
       <div className="grid gap-1">
         <div>
-          资源建议：CPU {String(resources.cpus ?? "—")} · 内存 {String(resources.memory_mb ?? "—")}{" "}
-          MB
-          {resources.storage_mb != null && ` · 磁盘 ${String(resources.storage_mb)} MB`}
-          （作者建议值，约束强度未知）
+          {t("datasets.detail.resources", {
+            cpus: String(resources.cpus ?? "—"),
+            memory: String(resources.memory_mb ?? "—"),
+            storage:
+              resources.storage_mb != null
+                ? t("datasets.detail.storage", { storage: String(resources.storage_mb) })
+                : "",
+          })}
         </div>
         {resources.environments.map((e) => (
           <div key={e.role}>
-            {e.role === "verifier" ? "独立验证器" : e.role}：CPU{" "}
-            {String(e.cpus ?? "团队默认")} · 内存{" "}
-            {e.memory_mb == null ? "团队默认" : `${String(e.memory_mb)} MB`}
+            {t("datasets.detail.environment", {
+              role: e.role === "verifier" ? t("datasets.detail.verifier") : e.role,
+              cpus: String(e.cpus ?? t("datasets.detail.teamDefault")),
+              memory:
+                e.memory_mb == null ? t("datasets.detail.teamDefault") : `${String(e.memory_mb)} MB`,
+            })}
           </div>
         ))}
         <div>
-          时限：Agent {String(timeouts.agent_sec ?? "—")} 秒 · 验证{" "}
-          {String(timeouts.verifier_sec ?? "—")} 秒 · 构建 {String(timeouts.build_sec ?? "—")} 秒
+          {t("datasets.detail.timeouts", {
+            agent: String(timeouts.agent_sec ?? "—"),
+            verifier: String(timeouts.verifier_sec ?? "—"),
+            build: String(timeouts.build_sec ?? "—"),
+          })}
         </div>
         {task.content.resources.map((r) => (
           <div key={r.resource_kind}>
-            {r.resource_kind === "task_content" ? "任务内容" : "环境镜像"}：<code>{r.digest}</code>（
-            {r.availability}，{fmtTime(r.checked_at)}）
+            <Trans
+              i18nKey="datasets.detail.resource"
+              values={{
+                kind:
+                  r.resource_kind === "task_content"
+                    ? t("datasets.detail.taskContent")
+                    : t("datasets.detail.environmentImage"),
+                digest: r.digest,
+                availability: r.availability,
+                time: fmtTime(r.checked_at),
+              }}
+              components={{ code: <code /> }}
+            />
           </div>
         ))}
         {task.content.material_digest && (
           <div>
-            本地材料：<code>{task.content.material_digest}</code>
+            <Trans
+              i18nKey="datasets.detail.material"
+              values={{ digest: task.content.material_digest }}
+              components={{ code: <code /> }}
+            />
           </div>
         )}
         {task.spec_digest && (
           <div>
-            准备规格：<code>{task.spec_digest}</code>
+            <Trans
+              i18nKey="datasets.detail.spec"
+              values={{ digest: task.spec_digest }}
+              components={{ code: <code /> }}
+            />
           </div>
         )}
         {task.local_preparation.setup_network_revision != null && (
           <SetupNetworkRevision
             revision={task.local_preparation.setup_network_revision}
-            prefix="镜像构建时用的安装网络："
+            prefix={t("datasets.detail.setupNetwork")}
           />
         )}
       </div>
       <div>
-        <div className="mb-1 font-medium">作者参数</div>
+        <div className="mb-1 font-medium">{t("datasets.detail.parameters")}</div>
         {task.parameters.length === 0 ? (
-          <span className="text-muted-foreground">无</span>
+          <span className="text-muted-foreground">{t("datasets.detail.none")}</span>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>名称</TableHead>
-                <TableHead>默认值</TableHead>
-                <TableHead>必填</TableHead>
-                <TableHead>出现位置</TableHead>
+                <TableHead>{t("datasets.detail.columns.name")}</TableHead>
+                <TableHead>{t("datasets.detail.columns.default")}</TableHead>
+                <TableHead>{t("datasets.detail.columns.required")}</TableHead>
+                <TableHead>{t("datasets.detail.columns.usedIn")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {task.parameters.map((p) => (
                 <TableRow key={p.name}>
                   <TableCell className="font-mono">
-                    {p.name} {p.sensitive && <Pill tone="warn">敏感</Pill>}
+                    {p.name} {p.sensitive && <Pill tone="warn">{t("datasets.detail.sensitive")}</Pill>}
                   </TableCell>
                   <TableCell className="font-mono">{p.default ?? "—"}</TableCell>
-                  <TableCell>{p.required ? "是" : "否"}</TableCell>
+                  <TableCell>{p.required ? t("datasets.detail.yes") : t("datasets.detail.no")}</TableCell>
                   <TableCell>{p.used_in.join(", ")}</TableCell>
                 </TableRow>
               ))}
@@ -1168,7 +1258,7 @@ function TaskDetail({ task }: { task: Task }) {
       </div>
       {task.instruction && (
         <details>
-          <summary className="cursor-pointer">任务说明</summary>
+          <summary className="cursor-pointer">{t("datasets.detail.instruction")}</summary>
           <pre className="mt-1 max-h-60 overflow-auto whitespace-pre-wrap rounded border bg-background p-2">
             {task.instruction}
           </pre>

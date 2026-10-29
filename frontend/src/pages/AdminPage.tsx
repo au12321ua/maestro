@@ -39,6 +39,7 @@ import { limit, useLoad, useSession } from "@/lib/hooks";
 import { HarnessesTab, ModelsTab, PolicyTab } from "@/pages/admin/ConfigurationTabs";
 import { SetupNetworkTab } from "@/pages/admin/SetupNetworkTab";
 import { ADMIN_SECTIONS, type AdminSection } from "@/pages/admin/sections";
+import { Trans, t } from "@/i18n";
 import type {
   AuditEvent,
   Credential,
@@ -87,7 +88,7 @@ export function AdminPage() {
   if (!current) return <Navigate to="/admin/members" replace />;
   return (
     <div>
-      <PageTitle title={`管理 · ${current.label}`} />
+      <PageTitle title={t("admin.pageTitle", { section: current.label })} />
       <div className="grid min-w-0 gap-8">{RENDER[current.id]()}</div>
     </div>
   );
@@ -99,15 +100,22 @@ function MembersTab() {
   const [reset, setReset] = useState<{ user: User; link: string } | null>(null);
 
   const setStatus = async (user: User, action: "disable" | "enable") => {
-    const verb = action === "disable" ? "停用" : "启用";
-    if (!window.confirm(`${verb}账户「${user.username}」？`)) return;
+    const disable = action === "disable";
+    const confirmText = disable
+      ? t("admin.members.confirmDisable", { name: user.username })
+      : t("admin.members.confirmEnable", { name: user.username });
+    if (!window.confirm(confirmText)) return;
     try {
       const options = { path: { user_id: user.id }, body: { expected_revision: user.revision } };
       if (action === "disable") await api.post("/admin/members/{user_id}/disable", options);
       else await api.post("/admin/members/{user_id}/enable", options);
-      toast.success(`已${verb}`);
+      toast.success(disable ? t("admin.toast.disabled") : t("admin.toast.enabled"));
     } catch (err) {
-      toast.error(`${verb}失败：${errorText(err)}`);
+      toast.error(
+        disable
+          ? t("admin.members.disableFailed", { error: errorText(err) })
+          : t("admin.members.enableFailed", { error: errorText(err) }),
+      );
     }
     await members.reload();
   };
@@ -115,41 +123,41 @@ function MembersTab() {
   const remove = async (user: User) => {
     if (
       !window.confirm(
-        `删除账户「${user.username}」？其会话和访问令牌立即失效，账户移入回收站；历史运行保留提交者名称。`,
+        t("admin.members.confirmDelete", { name: user.username }),
       )
     )
       return;
     try {
       await api.del("/admin/members/{user_id}", { path: { user_id: user.id } });
-      toast.success("已移入回收站");
+      toast.success(t("admin.toast.movedToRecycleBin"));
     } catch (err) {
-      toast.error(`删除失败：${errorText(err)}`);
+      toast.error(t("admin.toast.deleteFailed", { error: errorText(err) }));
     }
     await members.reload();
   };
 
   const issueReset = async (user: User) => {
-    if (!window.confirm(`为「${user.username}」生成重置密码链接？`)) return;
+    if (!window.confirm(t("admin.members.confirmReset", { name: user.username }))) return;
     try {
       const res = await api.post("/admin/members/{user_id}/password-reset", {
         path: { user_id: user.id },
       });
       setReset({ user, link: inviteLink(res.data.token) });
     } catch (err) {
-      toast.error(`生成失败：${errorText(err)}`);
+      toast.error(t("admin.members.resetFailed", { error: errorText(err) }));
     }
   };
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">成员</CardTitle>
-        <CardDescription>不开放注册；新成员通过“邀请”加入。</CardDescription>
+        <CardTitle className="text-base">{t("admin.members.title")}</CardTitle>
+        <CardDescription>{t("admin.members.description")}</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-3">
         {reset && (
           <OneTimeSecret
-            title={`「${reset.user.username}」的重置密码链接`}
+            title={t("admin.members.resetLinkTitle", { name: reset.user.username })}
             value={reset.link}
             onDismiss={() => setReset(null)}
           />
@@ -161,12 +169,12 @@ function MembersTab() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>用户名</TableHead>
-                  <TableHead>显示名称</TableHead>
-                  <TableHead>角色</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead>创建时间</TableHead>
-                  <TableHead>ID</TableHead>
+                  <TableHead>{t("admin.members.username")}</TableHead>
+                  <TableHead>{t("admin.members.displayName")}</TableHead>
+                  <TableHead>{t("admin.members.role")}</TableHead>
+                  <TableHead>{t("admin.members.status")}</TableHead>
+                  <TableHead>{t("admin.members.createdAt")}</TableHead>
+                  <TableHead>{t("admin.members.id")}</TableHead>
                   <TableHead />
                 </TableRow>
               </TableHeader>
@@ -175,12 +183,12 @@ function MembersTab() {
                   <TableRow key={user.id}>
                     <TableCell>{user.username}</TableCell>
                     <TableCell>{user.display_name || "—"}</TableCell>
-                    <TableCell>{user.role === "admin" ? "管理员" : "成员"}</TableCell>
+                    <TableCell>{user.role === "admin" ? t("admin.role.admin") : t("admin.role.member")}</TableCell>
                     <TableCell>
                       {user.status === "active" ? (
-                        <Pill tone="good">正常</Pill>
+                        <Pill tone="good">{t("admin.members.active")}</Pill>
                       ) : (
-                        <Pill tone="muted">已停用 {fmtTime(user.disabled_at)}</Pill>
+                        <Pill tone="muted">{t("admin.members.disabledAt", { time: fmtTime(user.disabled_at) })}</Pill>
                       )}
                     </TableCell>
                     <TableCell className="text-xs">{fmtTime(user.created_at)}</TableCell>
@@ -189,19 +197,19 @@ function MembersTab() {
                       {user.id !== me.id &&
                         (user.status === "active" ? (
                           <Button size="sm" variant="outline" onClick={() => void setStatus(user, "disable")}>
-                            停用
+                            {t("admin.actions.disable")}
                           </Button>
                         ) : (
                           <Button size="sm" variant="outline" onClick={() => void setStatus(user, "enable")}>
-                            启用
+                            {t("admin.actions.enable")}
                           </Button>
                         ))}
                       <Button size="sm" variant="outline" onClick={() => void issueReset(user)}>
-                        生成重置密码链接
+                        {t("admin.members.issueReset")}
                       </Button>
                       {user.id !== me.id && (
                         <Button size="sm" variant="outline" onClick={() => void remove(user)}>
-                          删除
+                          {t("admin.actions.delete")}
                         </Button>
                       )}
                     </TableCell>
@@ -249,14 +257,14 @@ function InvitationsTab() {
   };
 
   const revoke = async (inv: Invitation) => {
-    if (!window.confirm("撤销这个链接？")) return;
+    if (!window.confirm(t("admin.invitations.confirmRevoke"))) return;
     try {
       await api.post("/admin/invitations/{invitation_id}/revoke", {
         path: { invitation_id: inv.id },
       });
-      toast.success("已撤销");
+      toast.success(t("admin.invitations.revoked"));
     } catch (err) {
-      toast.error(`撤销失败：${errorText(err)}`);
+      toast.error(t("admin.invitations.revokeFailed", { error: errorText(err) }));
     }
     await invitations.reload();
   };
@@ -265,34 +273,34 @@ function InvitationsTab() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">邀请</CardTitle>
-        <CardDescription>生成一次性邀请链接，通过可信渠道发给受邀人。</CardDescription>
+        <CardTitle className="text-base">{t("admin.invitations.title")}</CardTitle>
+        <CardDescription>{t("admin.invitations.description")}</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
         {issued && (
-          <OneTimeSecret title="邀请链接" value={issued} onDismiss={() => setIssued(null)} />
+          <OneTimeSecret title={t("admin.invitations.linkTitle")} value={issued} onDismiss={() => setIssued(null)} />
         )}
         <SettingsForm onSubmit={submit}>
           <SelectField
             id="inv-role"
-            label="角色"
+            label={t("admin.invitations.role")}
             value={role}
             onChange={(e) => setRole(e.target.value as Role)}
             error={field("role")}
           >
-            <option value="member">成员</option>
-            <option value="admin">管理员</option>
+            <option value="member">{t("admin.role.member")}</option>
+            <option value="admin">{t("admin.role.admin")}</option>
           </SelectField>
           <TextField
             id="inv-note"
-            label="备注"
+            label={t("admin.invitations.note")}
             value={note}
             onChange={(e) => setNote(e.target.value)}
             error={field("note")}
           />
           <TextField
             id="inv-hours"
-            label="有效小时数"
+            label={t("admin.invitations.validHours")}
             type="number"
             min={1}
             value={hours}
@@ -301,33 +309,33 @@ function InvitationsTab() {
           />
           <FormActions>
             <Button type="submit" disabled={busy}>
-              {busy ? "生成中…" : "生成邀请链接"}
+              {busy ? t("admin.invitations.generating") : t("admin.invitations.generate")}
             </Button>
           </FormActions>
         </SettingsForm>
-        <ErrorAlert error={error} title="生成失败" />
+        <ErrorAlert error={error} title={t("admin.invitations.generateFailed")} />
         <ErrorAlert error={invitations.error} />
-        {invitations.data && invitations.data.length === 0 && <EmptyNote>还没有邀请。</EmptyNote>}
+        {invitations.data && invitations.data.length === 0 && <EmptyNote>{t("admin.invitations.empty")}</EmptyNote>}
         {invitations.data && invitations.data.length > 0 && (
           <div className="rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>类型</TableHead>
-                  <TableHead>角色</TableHead>
-                  <TableHead>备注</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead>创建</TableHead>
-                  <TableHead>到期</TableHead>
-                  <TableHead>使用</TableHead>
+                  <TableHead>{t("admin.invitations.kind")}</TableHead>
+                  <TableHead>{t("admin.invitations.role")}</TableHead>
+                  <TableHead>{t("admin.invitations.note")}</TableHead>
+                  <TableHead>{t("admin.invitations.status")}</TableHead>
+                  <TableHead>{t("admin.invitations.created")}</TableHead>
+                  <TableHead>{t("admin.invitations.expires")}</TableHead>
+                  <TableHead>{t("admin.invitations.used")}</TableHead>
                   <TableHead />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {invitations.data.map((inv) => (
                   <TableRow key={inv.id}>
-                    <TableCell>{inv.kind === "invitation" ? "邀请" : "重置密码"}</TableCell>
-                    <TableCell>{inv.role === "admin" ? "管理员" : "成员"}</TableCell>
+                    <TableCell>{inv.kind === "invitation" ? t("admin.invitations.kindInvitation") : t("admin.invitations.kindReset")}</TableCell>
+                    <TableCell>{inv.role === "admin" ? t("admin.role.admin") : t("admin.role.member")}</TableCell>
                     <TableCell className="text-xs">{inv.note || "—"}</TableCell>
                     <TableCell>
                       <StatusPill value={label(INVITATION_STATE, inv.state)} />
@@ -340,7 +348,7 @@ function InvitationsTab() {
                     <TableCell className="text-right">
                       {inv.state === "pending" && (
                         <Button size="sm" variant="outline" onClick={() => void revoke(inv)}>
-                          撤销
+                          {t("admin.actions.revoke")}
                         </Button>
                       )}
                     </TableCell>
@@ -355,11 +363,7 @@ function InvitationsTab() {
   );
 }
 
-const KIND_LABEL: Record<CredentialKind, string> = {
-  model_api_key: "模型 API key",
-  hub_token: "Hub token",
-  generic_secret: "通用密钥",
-};
+const KIND_LABEL: Record<CredentialKind, string> = t("admin.credentials.kindLabel", { returnObjects: true });
 
 function CredentialsTab() {
   const credentials = useLoad(async () => (await api.get("/admin/credentials")).data);
@@ -380,7 +384,7 @@ function CredentialsTab() {
     setError(undefined);
     try {
       await api.post("/admin/credentials", { body: form });
-      toast.success("凭据已保存");
+      toast.success(t("admin.credentials.saved"));
       setForm({ ...form, name: "", description: "", value: "" });
       await credentials.reload();
     } catch (err) {
@@ -401,23 +405,23 @@ function CredentialsTab() {
       if (action === "disable")
         await api.post("/admin/credentials/{credential_id}/disable", options);
       else await api.post("/admin/credentials/{credential_id}/enable", options);
-      toast.success(cred.enabled ? "已停用" : "已启用");
+      toast.success(cred.enabled ? t("admin.toast.disabled") : t("admin.toast.enabled"));
     } catch (err) {
-      toast.error(`操作失败：${errorText(err)}`);
+      toast.error(t("admin.credentials.actionFailed", { error: errorText(err) }));
     }
     await credentials.reload();
   };
   const remove = async (cred: Credential) => {
-    if (!window.confirm(`删除凭据「${cred.name}」？它会移入回收站，之后的运行不能再使用它。`)) return;
+    if (!window.confirm(t("admin.credentials.confirmDelete", { name: cred.name }))) return;
     try {
       await api.del("/admin/credentials/{credential_id}", { path: { credential_id: cred.id } });
-      toast.success("已移入回收站");
+      toast.success(t("admin.toast.movedToRecycleBin"));
     } catch (err) {
       const hint =
         err instanceof ApiError && err.code === "CREDENTIAL_IN_USE"
-          ? "。仍有运行在使用该凭据：可先停用，待这些运行结束后再删除"
+          ? t("admin.credentials.inUseHint")
           : "";
-      toast.error(`删除失败：${errorText(err)}${hint}`);
+      toast.error(t("admin.credentials.deleteFailedWithHint", { error: errorText(err), hint }));
     }
     await credentials.reload();
   };
@@ -426,16 +430,16 @@ function CredentialsTab() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">团队凭据</CardTitle>
+        <CardTitle className="text-base">{t("admin.credentials.title")}</CardTitle>
         <CardDescription>
-          值只写不读：保存后不会再显示，也不会回传到浏览器。替换值只影响之后的运行。
+          {t("admin.credentials.description")}
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
         <SettingsForm onSubmit={submit} autoComplete="off">
           <TextField
             id="cred-name"
-            label="名称"
+            label={t("admin.credentials.name")}
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             error={field("name")}
@@ -443,7 +447,7 @@ function CredentialsTab() {
           />
           <SelectField
             id="cred-kind"
-            label="类型"
+            label={t("admin.credentials.kind")}
             value={form.kind}
             onChange={(e) => setForm({ ...form, kind: e.target.value as CredentialKind })}
             error={field("kind")}
@@ -456,7 +460,7 @@ function CredentialsTab() {
           </SelectField>
           <TextField
             id="cred-provider"
-            label="提供商"
+            label={t("admin.credentials.provider")}
             value={form.provider}
             onChange={(e) => setForm({ ...form, provider: e.target.value })}
             error={field("provider")}
@@ -464,15 +468,15 @@ function CredentialsTab() {
           />
           <TextField
             id="cred-description"
-            label="说明"
+            label={t("admin.credentials.note")}
             value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
             error={field("description")}
           />
           <TextField
             id="cred-value"
-            label="值"
-            hint="只写：保存后不再显示"
+            label={t("admin.credentials.value")}
+            hint={t("admin.credentials.valueHint")}
             type="password"
             autoComplete="new-password"
             value={form.value}
@@ -482,24 +486,24 @@ function CredentialsTab() {
           />
           <FormActions>
             <Button type="submit" disabled={busy}>
-              {busy ? "保存中…" : "添加凭据"}
+              {busy ? t("admin.actions.saving") : t("admin.credentials.add")}
             </Button>
           </FormActions>
         </SettingsForm>
-        <ErrorAlert error={error} title="保存失败" />
+        <ErrorAlert error={error} title={t("admin.credentials.saveFailed")} />
         <ErrorAlert error={credentials.error} />
-        {credentials.data && credentials.data.length === 0 && <EmptyNote>还没有凭据。</EmptyNote>}
+        {credentials.data && credentials.data.length === 0 && <EmptyNote>{t("admin.credentials.empty")}</EmptyNote>}
         {credentials.data && credentials.data.length > 0 && (
           <div className="rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>名称</TableHead>
-                  <TableHead>类型</TableHead>
-                  <TableHead>提供商</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead>修订 / 密钥代</TableHead>
-                  <TableHead>更新</TableHead>
+                  <TableHead>{t("admin.credentials.name")}</TableHead>
+                  <TableHead>{t("admin.credentials.kind")}</TableHead>
+                  <TableHead>{t("admin.credentials.provider")}</TableHead>
+                  <TableHead>{t("admin.credentials.status")}</TableHead>
+                  <TableHead>{t("admin.credentials.revision")}</TableHead>
+                  <TableHead>{t("admin.credentials.updated")}</TableHead>
                   <TableHead />
                 </TableRow>
               </TableHeader>
@@ -515,7 +519,11 @@ function CredentialsTab() {
                     <TableCell className="text-xs">{KIND_LABEL[cred.kind] ?? cred.kind}</TableCell>
                     <TableCell>{cred.provider}</TableCell>
                     <TableCell>
-                      {cred.enabled ? <Pill tone="good">启用</Pill> : <Pill tone="muted">停用</Pill>}
+                      {cred.enabled ? (
+                        <Pill tone="good">{t("admin.actions.enable")}</Pill>
+                      ) : (
+                        <Pill tone="muted">{t("admin.actions.disable")}</Pill>
+                      )}
                     </TableCell>
                     <TableCell className="tabular-nums text-xs">
                       r{cred.revision} / k{cred.key_version}
@@ -527,13 +535,13 @@ function CredentialsTab() {
                         variant="outline"
                         onClick={() => setReplacing(replacing === cred.id ? null : cred.id)}
                       >
-                        替换值
+                        {t("admin.credentials.replaceValue")}
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => void toggle(cred)}>
-                        {cred.enabled ? "停用" : "启用"}
+                        {cred.enabled ? t("admin.actions.disable") : t("admin.actions.enable")}
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => void remove(cred)}>
-                        删除
+                        {t("admin.actions.delete")}
                       </Button>
                     </TableCell>
                   </TableRow>,
@@ -577,7 +585,7 @@ function ReplaceValue({ credential, onDone }: { credential: Credential; onDone: 
         },
       });
       setValue("");
-      toast.success("已替换；之后的运行使用新值");
+      toast.success(t("admin.credentials.replaced"));
       await onDone();
     } catch (err) {
       setValue("");
@@ -590,18 +598,18 @@ function ReplaceValue({ credential, onDone }: { credential: Credential; onDone: 
     <SettingsForm onSubmit={submit} autoComplete="off">
       <TextField
         id={`replace-${credential.id}`}
-        label="新值"
-        hint={`替换「${credential.name}」的值；只写，保存后不再显示`}
+        label={t("admin.credentials.newValue")}
+        hint={t("admin.credentials.newValueHint", { name: credential.name })}
         type="password"
         autoComplete="new-password"
         value={value}
         onChange={(e) => setValue(e.target.value)}
         required
       />
-      <ErrorAlert error={error} title="替换失败" />
+      <ErrorAlert error={error} title={t("admin.credentials.replaceFailed")} />
       <FormActions>
         <Button type="submit" size="sm" disabled={busy}>
-          {busy ? "保存中…" : "保存新值"}
+          {busy ? t("admin.actions.saving") : t("admin.credentials.saveNewValue")}
         </Button>
       </FormActions>
     </SettingsForm>
@@ -617,10 +625,10 @@ function StorageBadge() {
   const [text, tone] = label(STORAGE_LEVEL, storage.level);
   return (
     <div className="flex items-center gap-2 text-sm" data-testid="storage-badge">
-      <span className="text-xs text-muted-foreground">数据存储</span>
+      <span className="text-xs text-muted-foreground">{t("admin.storage.label")}</span>
       <Pill tone={tone}>{text}</Pill>
       <span className="text-xs tabular-nums text-muted-foreground">
-        剩余 {fmtBytes(storage.free_bytes)} / 共 {fmtBytes(storage.total_bytes)}
+        {t("admin.storage.space", { free: fmtBytes(storage.free_bytes), total: fmtBytes(storage.total_bytes) })}
       </span>
     </div>
   );
@@ -643,7 +651,11 @@ function CapacityTab() {
           max_concurrent_trials: value,
         },
       });
-      toast.success(value === null ? `已取消 ${provider} 的并发上限` : `${provider} 上限已设为 ${value}`);
+      toast.success(
+        value === null
+          ? t("admin.capacity.limitCleared", { provider })
+          : t("admin.capacity.limitSet", { provider, value }),
+      );
       setForm({ provider: "", limit: "" });
       await overview.reload();
     } catch (err) {
@@ -661,10 +673,9 @@ function CapacityTab() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">执行容量</CardTitle>
+        <CardTitle className="text-base">{t("admin.capacity.title")}</CardTitle>
         <CardDescription>
-          运行按“并发 × 单试次资源”整体占用容量，资源确认释放后才归还；清理失败的运行会继续占用。
-          主机总量由部署配置决定，这里只设置各模型提供商同时运行的试次上限。
+          {t("admin.capacity.description")}
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4 text-sm">
@@ -673,20 +684,20 @@ function CapacityTab() {
         {overview.loading && !data && <Loading />}
         {data && (
           <div className="grid gap-2 sm:grid-cols-3">
-            <Usage label="试次槽位" used={data.in_use.slots} total={data.host.slots} />
-            <Usage label="CPU（核）" used={data.in_use.cpus} total={data.host.cpus} />
-            <Usage label="内存（MiB）" used={data.in_use.memory_mb} total={data.host.memory_mb} />
+            <Usage label={t("admin.capacity.slots")} used={data.in_use.slots} total={data.host.slots} />
+            <Usage label={t("admin.capacity.cpus")} used={data.in_use.cpus} total={data.host.cpus} />
+            <Usage label={t("admin.capacity.memory")} used={data.in_use.memory_mb} total={data.host.memory_mb} />
           </div>
         )}
-        {data && data.providers.length === 0 && <EmptyNote>还没有设置任何提供商上限。</EmptyNote>}
+        {data && data.providers.length === 0 && <EmptyNote>{t("admin.capacity.empty")}</EmptyNote>}
         {data && data.providers.length > 0 && (
           <div className="rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>提供商</TableHead>
-                  <TableHead>同时运行的试次上限</TableHead>
-                  <TableHead>当前占用</TableHead>
+                  <TableHead>{t("admin.capacity.provider")}</TableHead>
+                  <TableHead>{t("admin.capacity.limit")}</TableHead>
+                  <TableHead>{t("admin.capacity.inUse")}</TableHead>
                   <TableHead />
                 </TableRow>
               </TableHeader>
@@ -694,12 +705,12 @@ function CapacityTab() {
                 {data.providers.map((p) => (
                   <TableRow key={p.provider}>
                     <TableCell className="font-mono text-xs">{p.provider}</TableCell>
-                    <TableCell className="tabular-nums">{p.max_concurrent_trials ?? "不限"}</TableCell>
+                    <TableCell className="tabular-nums">{p.max_concurrent_trials ?? t("admin.capacity.unlimited")}</TableCell>
                     <TableCell className="tabular-nums">{p.in_use}</TableCell>
                     <TableCell className="text-right">
                       {p.max_concurrent_trials != null && (
                         <Button size="sm" variant="outline" disabled={busy} onClick={() => void save(p.provider, "")}>
-                          取消上限
+                          {t("admin.capacity.clearLimit")}
                         </Button>
                       )}
                     </TableCell>
@@ -712,15 +723,15 @@ function CapacityTab() {
         <SettingsForm onSubmit={submit}>
           <TextField
             id="capacity-provider"
-            label="提供商"
+            label={t("admin.capacity.provider")}
             value={form.provider}
             onChange={(e) => setForm({ ...form, provider: e.target.value })}
             required
           />
           <TextField
             id="capacity-limit"
-            label="同时运行的试次上限"
-            hint="留空表示不限"
+            label={t("admin.capacity.limit")}
+            hint={t("admin.capacity.limitHint")}
             type="number"
             min={1}
             value={form.limit}
@@ -729,7 +740,7 @@ function CapacityTab() {
           />
           <FormActions>
             <Button type="submit" disabled={busy || !form.provider.trim()}>
-              保存
+              {t("admin.actions.save")}
             </Button>
           </FormActions>
         </SettingsForm>
@@ -766,7 +777,7 @@ function MasterKeyTab() {
     if (!current || current.generation == null) return;
     if (
       !window.confirm(
-        "轮换主密钥会生成新一代主密钥并重新加密全部凭据。请先确认已有可用备份方案。继续？",
+        t("admin.masterKey.confirmRotate"),
       )
     )
       return;
@@ -778,9 +789,9 @@ function MasterKeyTab() {
         },
       });
       setResult(res.data);
-      toast.success("主密钥已轮换");
+      toast.success(t("admin.masterKey.rotated"));
     } catch (err) {
-      toast.error(`轮换失败：${errorText(err)}`);
+      toast.error(t("admin.masterKey.rotateFailed", { error: errorText(err) }));
     } finally {
       setBusy(false);
       await status.reload();
@@ -790,8 +801,8 @@ function MasterKeyTab() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">主密钥</CardTitle>
-        <CardDescription>主密钥保存在数据库之外，不可删除；这里只显示状态。</CardDescription>
+        <CardTitle className="text-base">{t("admin.masterKey.title")}</CardTitle>
+        <CardDescription>{t("admin.masterKey.description")}</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-3 text-sm">
         <ErrorAlert error={status.error} />
@@ -799,25 +810,31 @@ function MasterKeyTab() {
         {status.data && (
           <div className="grid gap-2 sm:grid-cols-4">
             <div>
-              <div className="text-xs text-muted-foreground">已初始化</div>
-              {status.data.initialized ? "是" : "否"}
+              <div className="text-xs text-muted-foreground">{t("admin.masterKey.initialized")}</div>
+              {status.data.initialized ? t("admin.masterKey.yes") : t("admin.masterKey.no")}
             </div>
             <div>
-              <div className="text-xs text-muted-foreground">可用</div>
-              {status.data.available ? <Pill tone="good">可用</Pill> : <Pill tone="bad">不可用</Pill>}
+              <div className="text-xs text-muted-foreground">{t("admin.masterKey.available")}</div>
+              {status.data.available ? (
+                <Pill tone="good">{t("admin.masterKey.available")}</Pill>
+              ) : (
+                <Pill tone="bad">{t("admin.masterKey.unavailable")}</Pill>
+              )}
             </div>
             <div>
-              <div className="text-xs text-muted-foreground">代（generation）</div>
+              <div className="text-xs text-muted-foreground">{t("admin.masterKey.generation")}</div>
               {status.data.generation ?? "—"}
             </div>
             <div>
-              <div className="text-xs text-muted-foreground">上次轮换</div>
+              <div className="text-xs text-muted-foreground">{t("admin.masterKey.rotatedAt")}</div>
               {fmtTime(status.data.rotated_at)}
             </div>
           </div>
         )}
         {result?.reencrypted_credentials != null && (
-          <p className="text-sm">本次重新加密了 {result.reencrypted_credentials} 条凭据。</p>
+          <p className="text-sm">
+            {t("admin.masterKey.reencrypted", { count: result.reencrypted_credentials })}
+          </p>
         )}
         <div>
           <Button
@@ -825,7 +842,7 @@ function MasterKeyTab() {
             disabled={busy || !status.data?.available || status.data?.generation == null}
             onClick={() => void rotate()}
           >
-            {busy ? "轮换中…" : "轮换主密钥"}
+            {busy ? t("admin.masterKey.rotating") : t("admin.masterKey.rotate")}
           </Button>
         </div>
       </CardContent>
@@ -860,9 +877,9 @@ function AuditTab() {
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between">
-        <CardTitle className="text-base">审计事件</CardTitle>
+        <CardTitle className="text-base">{t("admin.audit.title")}</CardTitle>
         <Button size="sm" variant="outline" onClick={() => void load(null)}>
-          刷新
+          {t("admin.actions.refresh")}
         </Button>
       </CardHeader>
       <CardContent className="grid gap-3">
@@ -872,12 +889,12 @@ function AuditTab() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>时间</TableHead>
-                  <TableHead>动作</TableHead>
-                  <TableHead>结果</TableHead>
-                  <TableHead>操作者</TableHead>
-                  <TableHead>对象</TableHead>
-                  <TableHead>详情</TableHead>
+                  <TableHead>{t("admin.audit.time")}</TableHead>
+                  <TableHead>{t("admin.audit.action")}</TableHead>
+                  <TableHead>{t("admin.audit.outcome")}</TableHead>
+                  <TableHead>{t("admin.audit.actor")}</TableHead>
+                  <TableHead>{t("admin.audit.object")}</TableHead>
+                  <TableHead>{t("admin.audit.detail")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -911,12 +928,12 @@ function AuditTab() {
             </Table>
           </div>
         )}
-        {!loading && events.length === 0 && !error && <EmptyNote>没有审计事件。</EmptyNote>}
+        {!loading && events.length === 0 && !error && <EmptyNote>{t("admin.audit.empty")}</EmptyNote>}
         {loading && <Loading />}
         {cursor && !loading && (
           <div className="flex justify-center">
             <Button variant="outline" onClick={() => void load(cursor)}>
-              加载更多
+              {t("admin.actions.loadMore")}
             </Button>
           </div>
         )}
@@ -964,14 +981,21 @@ function RecycleBinTab() {
   }, [load]);
 
   const restore = async (entry: RecycleEntry) => {
-    if (!window.confirm(`恢复${RECYCLE_TYPE[entry.object_type] ?? entry.object_type}「${entry.label}」？`))
+    if (
+      !window.confirm(
+        t("admin.recycleBin.confirmRestore", {
+          type: RECYCLE_TYPE[entry.object_type] ?? entry.object_type,
+          name: entry.label,
+        }),
+      )
+    )
       return;
     setBusy(entry.id);
     try {
       await api.post("/admin/recycle-bin/{entry_id}/restore", { path: { entry_id: entry.id } });
-      toast.success("已恢复");
+      toast.success(t("admin.recycleBin.restored"));
     } catch (err) {
-      toast.error(`恢复失败：${errorText(err)}`);
+      toast.error(t("admin.recycleBin.restoreFailed", { error: errorText(err) }));
     } finally {
       setBusy(null);
     }
@@ -980,13 +1004,15 @@ function RecycleBinTab() {
 
   const purge = async (entry: RecycleEntry) => {
     const typed = window.prompt(
-      `彻底删除${RECYCLE_TYPE[entry.object_type] ?? entry.object_type}「${entry.label}」？\n` +
-        "此操作不可撤销：内容与文件会被永久删除，只留下删除回执。\n\n" +
-        `请输入对象 ID 确认：${entry.object_id}`,
+      t("admin.recycleBin.purgePrompt", {
+        type: RECYCLE_TYPE[entry.object_type] ?? entry.object_type,
+        name: entry.label,
+        id: entry.object_id,
+      }),
     );
     if (typed === null) return;
     if (typed.trim() !== entry.object_id) {
-      toast.error("输入的对象 ID 不一致，未删除");
+      toast.error(t("admin.recycleBin.idMismatch"));
       return;
     }
     setBusy(entry.id);
@@ -995,9 +1021,9 @@ function RecycleBinTab() {
         path: { entry_id: entry.id },
         body: { confirm_object_id: typed.trim() },
       });
-      toast.success("已彻底删除");
+      toast.success(t("admin.recycleBin.purged"));
     } catch (err) {
-      toast.error(`彻底删除失败：${errorText(err)}`);
+      toast.error(t("admin.recycleBin.purgeFailed", { error: errorText(err) }));
     } finally {
       setBusy(null);
     }
@@ -1007,10 +1033,9 @@ function RecycleBinTab() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">回收站</CardTitle>
+        <CardTitle className="text-base">{t("admin.recycleBin.title")}</CardTitle>
         <CardDescription>
-          删除的对象先进入这里，可以恢复；“彻底删除”会永久移除内容和文件，不可撤销，只保留删除回执。
-          主密钥不可删除。
+          {t("admin.recycleBin.description")}
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-3">
@@ -1026,17 +1051,17 @@ function RecycleBinTab() {
                 )}
                 onClick={() => setState(value)}
               >
-                {value === "recycled" ? "回收站" : "删除回执"}
+                {value === "recycled" ? t("admin.recycleBin.viewRecycled") : t("admin.recycleBin.viewPurged")}
               </button>
             ))}
           </div>
           <select
-            aria-label="对象类型"
+            aria-label={t("admin.recycleBin.objectType")}
             className="h-8 rounded-md border border-input bg-background px-2 text-sm"
             value={objectType}
             onChange={(e) => setObjectType(e.target.value as RecycleObjectType | "")}
           >
-            <option value="">全部类型</option>
+            <option value="">{t("admin.recycleBin.allTypes")}</option>
             {RECYCLE_TYPES.map((type) => (
               <option key={type} value={type}>
                 {RECYCLE_TYPE[type]}
@@ -1044,24 +1069,24 @@ function RecycleBinTab() {
             ))}
           </select>
           <Button size="sm" variant="outline" onClick={() => void load(null)}>
-            刷新
+            {t("admin.actions.refresh")}
           </Button>
         </div>
         <ErrorAlert error={error} />
         {!loading && entries.length === 0 && !error && (
-          <EmptyNote>{state === "recycled" ? "回收站是空的。" : "没有删除回执。"}</EmptyNote>
+          <EmptyNote>{state === "recycled" ? t("admin.recycleBin.emptyRecycled") : t("admin.recycleBin.emptyPurged")}</EmptyNote>
         )}
         {entries.length > 0 && (
           <div className="rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>类型</TableHead>
-                  <TableHead>名称</TableHead>
-                  <TableHead>所有者</TableHead>
-                  <TableHead>删除者</TableHead>
-                  <TableHead>删除时间</TableHead>
-                  {state === "purged" && <TableHead>彻底删除时间</TableHead>}
+                  <TableHead>{t("admin.recycleBin.type")}</TableHead>
+                  <TableHead>{t("admin.recycleBin.name")}</TableHead>
+                  <TableHead>{t("admin.recycleBin.owner")}</TableHead>
+                  <TableHead>{t("admin.recycleBin.deletedBy")}</TableHead>
+                  <TableHead>{t("admin.recycleBin.deletedAt")}</TableHead>
+                  {state === "purged" && <TableHead>{t("admin.recycleBin.purgedAt")}</TableHead>}
                   <TableHead />
                 </TableRow>
               </TableHeader>
@@ -1096,7 +1121,7 @@ function RecycleBinTab() {
                             disabled={busy === entry.id}
                             onClick={() => void restore(entry)}
                           >
-                            恢复
+                            {t("admin.actions.restore")}
                           </Button>
                           <Button
                             size="sm"
@@ -1104,7 +1129,7 @@ function RecycleBinTab() {
                             disabled={busy === entry.id}
                             onClick={() => void purge(entry)}
                           >
-                            彻底删除
+                            {t("admin.actions.purge")}
                           </Button>
                         </>
                       )}
@@ -1119,7 +1144,7 @@ function RecycleBinTab() {
         {cursor && !loading && (
           <div className="flex justify-center">
             <Button variant="outline" onClick={() => void load(cursor)}>
-              加载更多
+              {t("admin.actions.loadMore")}
             </Button>
           </div>
         )}
@@ -1151,35 +1176,36 @@ function DatasetImportsTab() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">数据集导入与首次准备</CardTitle>
+        <CardTitle className="text-base">{t("admin.datasetImports.title")}</CardTitle>
         <CardDescription>
-          从数据源检索、添加版本和重试首次准备都在
-          <Link className="mx-1 text-primary underline" to="/datasets">
-            数据集
-          </Link>
-          页进行（只有管理员网页会话可以）。下面是最近的导入与首次准备操作。
+          <Trans
+            i18nKey="admin.datasetImports.description"
+            components={{ link: <Link className="mx-1 text-primary underline" to="/datasets" /> }}
+          />
         </CardDescription>
       </CardHeader>
       <CardContent>
         <ErrorAlert error={ops.error} />
         {!ops.data && !ops.error && <Loading />}
-        {ops.data && ops.data.length === 0 && <EmptyNote>还没有导入过数据集。</EmptyNote>}
+        {ops.data && ops.data.length === 0 && <EmptyNote>{t("admin.datasetImports.empty")}</EmptyNote>}
         {ops.data && ops.data.length > 0 && (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>操作</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>阶段</TableHead>
-                <TableHead>错误</TableHead>
-                <TableHead>时间</TableHead>
+                <TableHead>{t("admin.datasetImports.operation")}</TableHead>
+                <TableHead>{t("admin.datasetImports.status")}</TableHead>
+                <TableHead>{t("admin.datasetImports.phase")}</TableHead>
+                <TableHead>{t("admin.datasetImports.error")}</TableHead>
+                <TableHead>{t("admin.datasetImports.time")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {ops.data.map((op) => (
                 <TableRow key={op.id}>
                   <TableCell className="text-xs">
-                    {op.kind === "dataset_import" ? "导入" : "首次准备"}{" "}
+                    {op.kind === "dataset_import"
+                      ? t("admin.datasetImports.kindImport")
+                      : t("admin.datasetImports.kindFirstPreparation")}{" "}
                     <code className="text-muted-foreground">{shortId(op.id)}</code>
                   </TableCell>
                   <TableCell>
@@ -1232,54 +1258,62 @@ function MaintenanceTab() {
     <div className="grid gap-4">
       <Card data-testid="maintenance">
         <CardHeader className="flex-row items-center justify-between">
-          <CardTitle className="text-base">健康与可受理</CardTitle>
+          <CardTitle className="text-base">{t("admin.maintenance.healthTitle")}</CardTitle>
           <Button size="sm" variant="outline" onClick={() => void data.reload()}>
-            刷新
+            {t("admin.actions.refresh")}
           </Button>
         </CardHeader>
         <CardContent className="grid gap-2 text-sm sm:grid-cols-2">
           <ErrorAlert error={data.error} />
-          <Field label="进程存活（/health/live）" value={probe(data.data?.live)} />
-          <Field label="就绪（/health/ready）" value={probe(data.data?.ready)} />
+          <Field label={t("admin.maintenance.live")} value={probe(data.data?.live)} />
+          <Field label={t("admin.maintenance.ready")} value={probe(data.data?.ready)} />
           <Field
-            label="受理新运行"
+            label={t("admin.maintenance.acceptingRuns")}
             value={
               data.data?.status.accepting_runs ? (
-                <Pill tone="good">可受理</Pill>
+                <Pill tone="good">{t("admin.maintenance.accepting")}</Pill>
               ) : (
-                <Pill tone="warn">暂不受理</Pill>
+                <Pill tone="warn">{t("admin.maintenance.notAccepting")}</Pill>
               )
             }
           />
           <Field
-            label="执行进程"
+            label={t("admin.maintenance.worker")}
             value={
               detail?.worker_running ? (
-                <Pill tone="good">运行中</Pill>
+                <Pill tone="good">{t("admin.maintenance.workerRunning")}</Pill>
               ) : (
-                <Pill tone="bad">未运行</Pill>
+                <Pill tone="bad">{t("admin.maintenance.workerStopped")}</Pill>
               )
             }
           />
-          <Field label="执行器" value={detail ? (detail.executor ?? "未配置") : "—"} />
           <Field
-            label="主密钥"
+            label={t("admin.maintenance.executor")}
+            value={detail ? (detail.executor ?? t("admin.maintenance.executorNone")) : "—"}
+          />
+          <Field
+            label={t("admin.maintenance.masterKey")}
             value={
               detail?.master_key_available ? (
-                <Pill tone="good">可用</Pill>
+                <Pill tone="good">{t("admin.maintenance.available")}</Pill>
               ) : (
-                <Pill tone="bad">不可用</Pill>
+                <Pill tone="bad">{t("admin.maintenance.unavailable")}</Pill>
               )
             }
           />
           <Field
-            label="数据库结构"
+            label={t("admin.maintenance.schema")}
             value={
               detail ? (
                 <span>
-                  <code>{detail.schema.current ?? "—"}</code>（最新{" "}
-                  <code>{detail.schema.head}</code>）
-                  {detail.schema.compatible === false && <Pill tone="bad">不兼容</Pill>}
+                  <Trans
+                    i18nKey="admin.maintenance.schemaValue"
+                    values={{ current: detail.schema.current ?? "—", head: detail.schema.head }}
+                    components={{ code: <code /> }}
+                  />
+                  {detail.schema.compatible === false && (
+                    <Pill tone="bad">{t("admin.maintenance.incompatible")}</Pill>
+                  )}
                 </span>
               ) : (
                 "—"
@@ -1293,28 +1327,28 @@ function MaintenanceTab() {
       </Card>
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">版本</CardTitle>
+          <CardTitle className="text-base">{t("admin.maintenance.versionsTitle")}</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-2 text-sm sm:grid-cols-2">
-          <Field label="服务版本" value={<code>{capabilities?.service_version ?? "—"}</code>} />
-          <Field label="API 版本" value={<code>{capabilities?.api_version ?? "—"}</code>} />
-          <Field label="结构修订" value={<code>{capabilities?.schema_revision ?? "—"}</code>} />
+          <Field label={t("admin.maintenance.serviceVersion")} value={<code>{capabilities?.service_version ?? "—"}</code>} />
+          <Field label={t("admin.maintenance.apiVersion")} value={<code>{capabilities?.api_version ?? "—"}</code>} />
+          <Field label={t("admin.maintenance.schemaRevision")} value={<code>{capabilities?.schema_revision ?? "—"}</code>} />
           <Field
-            label="错误策略版本"
+            label={t("admin.maintenance.policyVersion")}
             value={<code>{capabilities?.execution.policy_version ?? "—"}</code>}
           />
           <Field
-            label="契约摘要（OpenAPI）"
+            label={t("admin.maintenance.contractDigest")}
             value={
               <code className="break-all text-xs">{capabilities?.contract_digest ?? "—"}</code>
             }
           />
-          <Field label="团队策略修订" value={capabilities?.team_policy_revision ?? "—"} />
+          <Field label={t("admin.maintenance.teamPolicyRevision")} value={capabilities?.team_policy_revision ?? "—"} />
         </CardContent>
       </Card>
       <Card>
         <CardContent className="pt-6 text-sm text-muted-foreground">
-          更新、排空、备份与恢复不在网页中提供（P0 未实现），由部署脚本处理；完整的服务状态见
+          {t("admin.maintenance.notInWeb")}
           <JsonDetails value={data.data?.status.detail} />
         </CardContent>
       </Card>
@@ -1334,7 +1368,7 @@ function Field({ label, value }: { label: string; value: ReactNode }) {
 function JsonDetails({ value }: { value: unknown }) {
   return (
     <details className="mt-1">
-      <summary className="cursor-pointer text-xs">system-status 详情</summary>
+      <summary className="cursor-pointer text-xs">{t("admin.maintenance.statusDetails")}</summary>
       <pre className="mt-1 overflow-auto text-xs">{JSON.stringify(value ?? null, null, 2)}</pre>
     </details>
   );

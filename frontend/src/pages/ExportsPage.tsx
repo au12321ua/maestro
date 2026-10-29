@@ -15,6 +15,7 @@ import { API, api } from "@/lib/api";
 import { EXPORT_STATE, fmtBytes, fmtTime, label, shortId } from "@/lib/format";
 import { useInterval } from "@/lib/hooks";
 import type { Export } from "@/lib/types";
+import { t } from "@/i18n";
 
 const PENDING = new Set(["queued", "building"]);
 
@@ -52,36 +53,35 @@ export function ExportsPage() {
 
   return (
     <div>
-      <PageTitle title="导出">
+      <PageTitle title={t("common.nav.exports")}>
         {pending && (
           <span className="flex items-center gap-1 text-xs text-muted-foreground">
             <Loader2 className="size-3 animate-spin" />
-            打包中，每 2 秒自动刷新
+            {t("exports.building", { count: 2 })}
           </span>
         )}
         <Button variant="outline" size="sm" onClick={() => void load(null)}>
           <RefreshCw />
-          刷新
+          {t("exports.refresh")}
         </Button>
       </PageTitle>
       <p className="mb-4 text-sm text-muted-foreground">
-        这里只列出你自己创建的导出。在运行列表勾选运行，或在运行详情点“导出”即可创建；压缩包含结果汇总、
-        试次记录和仍在保留期内的产物，生成后限时可下载。
+        {t("exports.intro")}
       </p>
       <ErrorAlert error={error} />
-      {exports.length === 0 && !loading && !error && <EmptyNote>还没有导出。</EmptyNote>}
+      {exports.length === 0 && !loading && !error && <EmptyNote>{t("exports.empty")}</EmptyNote>}
       {exports.length > 0 && (
         <div className="rounded-md border bg-card">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>导出</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>运行</TableHead>
-                <TableHead className="text-right">大小</TableHead>
-                <TableHead className="text-right">文件 / 缺失 / 警告</TableHead>
-                <TableHead>创建</TableHead>
-                <TableHead>到期</TableHead>
+                <TableHead>{t("exports.column.export")}</TableHead>
+                <TableHead>{t("exports.column.state")}</TableHead>
+                <TableHead>{t("exports.column.runs")}</TableHead>
+                <TableHead className="text-right">{t("exports.column.size")}</TableHead>
+                <TableHead className="text-right">{t("exports.column.files")}</TableHead>
+                <TableHead>{t("exports.column.created")}</TableHead>
+                <TableHead>{t("exports.column.expires")}</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
@@ -100,7 +100,10 @@ export function ExportsPage() {
                     <StatusPill value={label(EXPORT_STATE, item.state)} />
                     {item.state === "failed" && item.error && (
                       <div className="mt-1 max-w-xs text-xs text-red-700">
-                        {item.error.message ?? item.error.code}（{item.error.code}）
+                        {t("common.format.withDetails", {
+                          base: item.error.message ?? item.error.code,
+                          details: item.error.code,
+                        })}
                       </div>
                     )}
                   </TableCell>
@@ -114,11 +117,11 @@ export function ExportsPage() {
                     ))}
                     {item.request.run_ids.length > 3 && (
                       <div className="text-muted-foreground">
-                        等 {item.request.run_ids.length} 个
+                        {t("exports.moreRuns", { count: item.request.run_ids.length })}
                       </div>
                     )}
                     {!item.request.include_artifacts && (
-                      <div className="text-muted-foreground">不含产物</div>
+                      <div className="text-muted-foreground">{t("exports.noArtifacts")}</div>
                     )}
                   </TableCell>
                   <TableCell className="text-right text-xs tabular-nums">
@@ -135,7 +138,7 @@ export function ExportsPage() {
                       <Button asChild size="sm" variant="outline">
                         <a href={item.links.download ?? `${API}/exports/${item.id}/download`}>
                           <Download />
-                          下载
+                          {t("exports.download")}
                         </a>
                       </Button>
                     )}
@@ -150,7 +153,7 @@ export function ExportsPage() {
       {cursor && !loading && (
         <div className="mt-4 flex justify-center">
           <Button variant="outline" onClick={() => void load(cursor)}>
-            加载更多
+            {t("exports.loadMore")}
           </Button>
         </div>
       )}

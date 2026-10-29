@@ -1,0 +1,19 @@
+{
+  "building": "打包中，每 {{count}} 秒自动刷新",
+  "refresh": "刷新",
+  "intro": "这里只列出你自己创建的导出。在运行列表勾选运行，或在运行详情点“导出”即可创建；压缩包含结果汇总、 试次记录和仍在保留期内的产物，生成后限时可下载。",
+  "empty": "还没有导出。",
+  "column": {
+    "export": "导出",
+    "state": "状态",
+    "runs": "运行",
+    "size": "大小",
+    "files": "文件 / 缺失 / 警告",
+    "created": "创建",
+    "expires": "到期"
+  },
+  "moreRuns": "等 {{count}} 个",
+  "noArtifacts": "不含产物",
+  "download": "下载",
+  "loadMore": "加载更多"
+}
