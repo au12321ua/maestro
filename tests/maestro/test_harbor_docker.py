@@ -43,6 +43,7 @@ ROOT = Path(__file__).resolve().parents[2]
 TASKS = Path(__file__).with_name("fixtures") / "harbor-tasks"
 # Separate verifiers of all three kinds and Compose services (N-01); the verifier with its
 # own named image is made by the test, which pushes that image to the test registry first.
+# Services pull ubuntu:22.04 by digest, so the host's own ubuntu:22.04 tag never moves.
 N01_TASKS = Path(__file__).with_name("fixtures") / "n01-tasks"
 # Agent tasks need tmux in the image (Terminus-2): build ``maestro-test/ubuntu-tmux:22.04``
 # once, see the test docstring.
@@ -113,14 +114,18 @@ def prepared_images(instance_id: str) -> list[str]:
 
 
 def remove_prepared(instance_id: str) -> None:
-    ids = subprocess.run(
-        ["docker", "image", "ls", "-q", f"{REGISTRY}/maestro-prep/{instance_id.lower()}"],
+    """Untag by name, never remove by id: a pulled image (``ubuntu:22.04`` for a service)
+    shares its id with the name it was pulled by, and that one is not ours."""
+    repository = f"{REGISTRY}/maestro-prep/{instance_id.lower()}"
+    tags = subprocess.run(
+        ["docker", "image", "ls", repository, "--format", "{{.Repository}}:{{.Tag}}"],
         capture_output=True,
         text=True,
         check=False,
     ).stdout.split()
-    if ids:
-        subprocess.run(["docker", "image", "rm", "-f", *set(ids)], capture_output=True, check=False)
+    names = [n for n in tags if not n.endswith("<none>")] + prepared_images(instance_id)
+    if names:
+        subprocess.run(["docker", "image", "rm", *names], capture_output=True, check=False)
 
 
 def image_ids() -> set[str]:
@@ -318,12 +323,16 @@ def push_grader(source: Path) -> str:
     return reference
 
 
-def n01_tasks(tmp_path: Path) -> Path:
+def n01_tasks(tmp_path: Path, request) -> Path:
     tasks = tmp_path / "n01-tasks"
     shutil.copytree(N01_TASKS, tasks)
     named = tasks / "verifier-named"
     shutil.copytree(tasks / "verifier-built", named)
     grader = push_grader(named / "tests")
+    # Preparing pulls it under this name; the name is the test's, the content stays shared.
+    request.addfinalizer(
+        lambda: subprocess.run(["docker", "image", "rm", grader], capture_output=True, check=False)
+    )
     for name in ("Dockerfile", "docker-compose.yaml"):
         (named / "tests" / name).unlink()
     toml = (named / "task.toml").read_text().replace('environment_mode = "separate"\n', "")
@@ -344,12 +353,14 @@ def created_containers(since: float, until: float) -> list[dict]:
     return [a for a in found if "com.docker.compose.project" in a]
 
 
-def test_separate_verifiers_and_compose_services_run_from_prepared_images(settings, tmp_path):
+def test_separate_verifiers_and_compose_services_run_from_prepared_images(
+    settings, tmp_path, request
+):
     """N-01 acceptance: the three kinds of separate verifier, Compose services pulled and
     built, a verifier-side service and a volume. Everything is prepared up front, nothing
     is built or pulled while the run executes, every container carries the platform
     labels (the separate verifier's too) and nothing labelled is left afterwards."""
-    with harbor(settings, n01_tasks(tmp_path), "n01") as service:
+    with harbor(settings, n01_tasks(tmp_path, request), "n01") as service:
         instance = service.worker.instance_id or read_instance_id(service.db)
         with running(service) as client:
             pat = create_pat(setup_admin(service, client))

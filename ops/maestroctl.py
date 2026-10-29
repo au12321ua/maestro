@@ -1392,8 +1392,9 @@ def instance_id(layout: Layout) -> str | None:
 
 
 def docker_resources(layout: Layout, instance: str) -> dict[str, list[str]]:
-    """The instance's labelled containers, networks, volumes and run images, and the local
-    copies of its prepared images (named after the registry)."""
+    """The instance's labelled containers, networks, volumes and run images, and the names
+    of its prepared images (after the registry). Prepared images are untagged by name,
+    never removed by id: a pulled one shares its id with the name it was pulled by."""
     env = docker_env(layout)
     found = {}
     for kind, cmd in (
@@ -1405,9 +1406,15 @@ def docker_resources(layout: Layout, instance: str) -> dict[str, list[str]]:
         result = _docker([*cmd, "--filter", f"label={LABEL_INSTANCE}={instance}"], env)
         found[kind] = sorted(set(result.stdout.split())) if result and not result.returncode else []
     repository = f"{registry_address(layout)}/maestro-prep/{instance.lower()}"
-    result = _docker(["images", "-q", "--no-trunc", repository], env)
-    prepared = set(result.stdout.split()) if result and not result.returncode else set()
-    found["image"] = sorted(set(found["image"]) | prepared)
+    names = set()
+    for listing in (
+        ["images", "--format", "{{.Repository}}:{{.Tag}}", repository],
+        ["images", "--digests", "--format", "{{.Repository}}@{{.Digest}}", repository],
+    ):
+        result = _docker(listing, env)
+        if result and not result.returncode:
+            names |= {n for n in result.stdout.split() if not n.endswith(("<none>", "@"))}
+    found["prepared image"] = sorted(names)
     return found
 
 
@@ -1459,6 +1466,7 @@ def cmd_uninstall(layout: Layout, args) -> int:
                             "network": ["network", "rm"],
                             "volume": ["volume", "rm"],
                             "image": ["image", "rm", "-f"],
+                            "prepared image": ["image", "rm"],
                         }[kind]
                         + items,
                         docker_env(layout),
