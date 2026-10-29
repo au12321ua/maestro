@@ -994,7 +994,7 @@ class Resolver:
     def environments(definition: dict, team) -> list[dict]:
         """Every container a trial starts, with its CPUs and memory: the main environment,
         then a separate verifier and the Compose services; the team default fills in
-        where the author gave no limit (U-53, U-55)."""
+        where the author gave no limit (U-54, U-56)."""
         resources = definition.get("resources") or {}
         found = [
             {
@@ -1019,7 +1019,7 @@ class Resolver:
     @staticmethod
     def _task_settings(definition: dict, overrides: dict, team) -> dict:
         """A trial's resources are the sum over its containers, reserved together even
-        though a separate verifier starts after the agent's environment stops (U-53). An
+        though a separate verifier starts after the agent's environment stops (U-54). An
         override is a new total; what it adds goes to the main environment."""
         timeouts = definition.get("timeouts") or {}
         environments = Resolver.environments(definition, team)

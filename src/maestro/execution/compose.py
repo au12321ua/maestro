@@ -3,7 +3,7 @@ environment (02 section 6).
 
 ``docker compose config --no-interpolate`` parses the file; variables stay as written.
 What decides an image's content (``image:`` and ``build:``) is frozen at the defaults the
-author wrote, so members never change it (U-53). A variable there without a usable
+author wrote, so members never change it (U-54). A variable there without a usable
 default, or one that looks like a secret, cannot be prepared.
 """
 

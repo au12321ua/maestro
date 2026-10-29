@@ -19,7 +19,7 @@
 /var/lib/maestro/app.db             业务数据库，WAL / SHM 同目录
 /var/lib/maestro/artifacts/         原始产物
 /var/lib/maestro/attachments/       附件的文件内容（blobs/）与快照清单（snapshots/）
-/var/lib/maestro/registry/          本机镜像仓库的存储：准备好的镜像（U-17、U-54；是数据，不是缓存）
+/var/lib/maestro/registry/          本机镜像仓库的存储：准备好的镜像（U-17、U-55；是数据，不是缓存）
 /var/lib/maestro/work/              Runner 工作目录，归档为产物前的暂存
 /var/lib/maestro/exports/           临时导出包
 /var/lib/maestro/home/              服务账号的家目录（Docker 客户端与 buildx 的状态）
@@ -34,7 +34,7 @@ journald                            服务标准输出 / 错误
 
 管理入口只有命令行 `maestroctl`：check、install、status、start / stop / restart、logs、backup、restore、update、registry-gc、uninstall、version。网页不发起维护动作（U-29）。
 
-**本机镜像仓库**（N-01、U-55）：准备好的镜像存在 Docker 官方 `registry` 镜像（按 digest 固定版本）运行的容器 `maestro-registry` 里，只绑定 `127.0.0.1`（默认端口 8425，安装时 `--registry-port` 指定，写入配置 `image_registry`），重启策略 `unless-stopped`，以服务账户身份运行、数据挂在 `/var/lib/maestro/registry`。Docker 默认信任 `127.0.0.0/8` 上的 HTTP 仓库，不改守护进程配置。`install` 与 `update` 在启动服务前创建或重建这个容器；`status` 与 `check` 报告它是否应答；`uninstall` 删除容器、保留数据，`--purge` 连数据一起删。
+**本机镜像仓库**（N-01、U-56）：准备好的镜像存在 Docker 官方 `registry` 镜像（按 digest 固定版本）运行的容器 `maestro-registry` 里，只绑定 `127.0.0.1`（默认端口 8425，安装时 `--registry-port` 指定，写入配置 `image_registry`），重启策略 `unless-stopped`，以服务账户身份运行、数据挂在 `/var/lib/maestro/registry`。Docker 默认信任 `127.0.0.0/8` 上的 HTTP 仓库，不改守护进程配置。`install` 与 `update` 在启动服务前创建或重建这个容器；`status` 与 `check` 报告它是否应答；`uninstall` 删除容器、保留数据，`--purge` 连数据一起删。
 
 `maestroctl registry-gc` 释放不再被任何镜像清单引用的层（物理删除数据集版本后）：把仓库切到只读（拉取照常、推送被拒），执行官方的垃圾回收，再恢复可写。有导入、首次准备或恢复在进行时拒绝（它们可能要推送），`--force` 例外；运行可以照常进行。
 

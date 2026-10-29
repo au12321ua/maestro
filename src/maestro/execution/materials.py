@@ -556,7 +556,7 @@ def inspect_task(
             # Author resource values are suggestions unless stated otherwise (02 section 3).
             "constraint_strength": "unknown",
             # Every container a trial starts besides the main one, with the author's limits
-            # (None: the team default applies). A trial reserves their sum (U-53).
+            # (None: the team default applies). A trial reserves their sum (U-54).
             "environments": environments,
         },
         "timeouts": {

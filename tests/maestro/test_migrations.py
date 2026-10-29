@@ -169,7 +169,7 @@ def test_the_last_admission_reset_names_the_current_preparation_method():
 
 
 def test_upgrading_resets_admissions_and_drops_old_preparations(tmp_path):
-    """U-53: nothing from single-image preparations is converted."""
+    """U-54: nothing from single-image preparations is converted."""
     from maestro.execution.materials import PREPARATION_METHOD_DIGEST
 
     db = Database.open(tmp_path / "app.db")

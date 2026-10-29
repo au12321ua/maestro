@@ -1,6 +1,6 @@
 """preparations as image lists in the local image registry (N-01)
 
-Not converted (U-53): every task goes back to "pending" under the new preparation
+Not converted (U-54): every task goes back to "pending" under the new preparation
 method and its old evidence is dropped; a revoked task stays revoked. Cache rows, their
 waiters and pins, and environment image availability go too; the results of earlier
 preparation Operations (single images and their originals) are cleared, their status and
@@ -43,4 +43,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    raise NotImplementedError("prepared images are not converted back (U-53)")
+    raise NotImplementedError("prepared images are not converted back (U-54)")

@@ -414,7 +414,7 @@ class HarborExecutor:
             return ExecutionReport(cleanup_complete=True)
         settings = {x["task_key"]: x for x in spec.effective_config.get("tasks") or []}
         for key, entry in tasks.items():
-            # Each container's share of the trial's resources (U-53); the Runner gives an
+            # Each container's share of the trial's resources (U-54); the Runner gives an
             # override's extra to the main environment.
             entry["environments"] = (settings.get(key) or {}).get("environments") or []
         harness = bool(spec.effective_config.get("harness"))

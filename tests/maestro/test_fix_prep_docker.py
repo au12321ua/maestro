@@ -383,7 +383,7 @@ def test_sweep_temporary_does_nothing_unbound_or_when_docker_fails(tmp_path, doc
 
 
 def test_sweep_legacy_removes_the_old_originals(tmp_path, environment):
-    """Originals from before the registry are not used again (U-53)."""
+    """Originals from before the registry are not used again (U-54)."""
     assert environment.sweep_legacy() == []  # nothing there
     legacy = environment.legacy_dir
     legacy.mkdir()

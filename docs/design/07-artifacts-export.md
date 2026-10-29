@@ -23,7 +23,7 @@
 | 原始产物：日志、会话、输出、验证报告、Runner 诊断 | 团队策略 `artifact_ttl_days`，默认 7 天 |
 | 导出包 | 团队策略 `export_ttl_hours`，默认 24 小时 |
 | 半写文件、附件上传与整包下载的临时文件、半建的附件目录 | 启动时清除 |
-| 本机镜像仓库中的准备好的镜像（U-17、U-54） | 随最后一个使用它的数据集版本物理删除，`maestroctl registry-gc` 释放空间（[02](02-datasets-preparation.md)、[12](12-operations.md)） |
+| 本机镜像仓库中的准备好的镜像（U-17、U-55） | 随最后一个使用它的数据集版本物理删除，`maestroctl registry-gc` 释放空间（[02](02-datasets-preparation.md)、[12](12-operations.md)） |
 | 本机 Docker 中的准备好的镜像 | 管理员手动回收，用时从仓库拉回（[02](02-datasets-preparation.md)） |
 | 服务日志 | journald，由宿主决定 |
 

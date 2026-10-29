@@ -45,7 +45,7 @@ DEFAULT_PORT = 8420
 READY_TIMEOUT = 180
 KEEP_VERSIONS = 2
 LABEL_INSTANCE = "io.maestro.instance_id"
-# The local image registry prepared images are kept in (N-01, U-55): the official image,
+# The local image registry prepared images are kept in (N-01, U-56): the official image,
 # pinned, run by Docker. Deleting manifests is allowed so purged versions free space.
 REGISTRY_IMAGE = (
     "registry:3.0.0@sha256:6c5666b861f3505b116bb9aa9b25175e71210414bd010d92035ff64018f9457e"

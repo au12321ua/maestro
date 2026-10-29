@@ -26,7 +26,7 @@ RUN_DEFAULT_CONCURRENCY = 4
 RUN_MAX_CONCURRENCY = 10
 TRIAL_CPUS_MAX = 16
 TRIAL_MEMORY_MB_MAX = 64 * 1024
-# A Compose service or verifier container without its own limits (U-55).
+# A Compose service or verifier container without its own limits (U-56).
 SERVICE_CPUS_DEFAULT = 1
 SERVICE_MEMORY_MB_DEFAULT = 1024
 AGENT_TIMEOUT_SEC_MAX = 24 * 3600

@@ -462,7 +462,7 @@ class DockerEnvironment:
 
     def sweep_legacy(self) -> list[str]:
         """Remove what the archive-based preparation left (``docker save`` originals): the
-        registry holds every image now, and older preparations are prepared again (U-53)."""
+        registry holds every image now, and older preparations are prepared again (U-54)."""
         if self.legacy_dir is None or not self.legacy_dir.is_dir():
             return []
         removed = sorted(path.name for path in self.legacy_dir.iterdir())

@@ -909,7 +909,7 @@ class Preparer:
 
     async def _reinspect(self, ctx: TaskContext) -> tuple[TaskContext, dict]:
         """Inspect a task that is not admitted yet again from its material: how the
-        platform prepares may have changed since the import (U-53). An admitted task keeps
+        platform prepares may have changed since the import (U-54). An admitted task keeps
         what it was admitted with."""
         with self.db.read() as conn:
             recorded = conn.execute(

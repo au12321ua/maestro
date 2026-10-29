@@ -259,7 +259,7 @@ def _with_images(copy: Path, task: dict, overrides: dict) -> None:
         if config.verifier.environment is None:
             config.verifier.environment = config.environment.model_copy(deep=True)
         config.verifier.environment.docker_image = images["tests/main"]
-    # The trial's resources are the sum over its containers (U-53); an override is a new
+    # The trial's resources are the sum over its containers (U-54); an override is a new
     # total and its extra goes to the main environment. A verifier that is a fresh copy of
     # the main environment gets the same settings from Harbor, so each takes half.
     inherited = (
@@ -309,7 +309,7 @@ def _pin_overrides(path: Path, task: dict, labels: dict, out: Path) -> dict[str,
     Each override pins every service to its prepared image and never pulls, drops the
     author's ``build`` (Compose builds a missing image even with ``pull_policy: never``;
     ``!reset`` needs Compose 2.24), gives a service without limits the team default
-    (U-55), and labels services, networks and volumes for cleanup after a killed Runner
+    (U-56), and labels services, networks and volumes for cleanup after a killed Runner
     (05 section 7).
     """
     images = task["images"]
