@@ -1,6 +1,10 @@
 """Isolated instances: fresh data, cache and master-key directories per test."""
 
 import asyncio
+import socket
+import subprocess
+import time
+import urllib.request
 
 import pytest
 
@@ -13,6 +17,40 @@ from maestro.testing.fakes import (
     FakeExecutor,
     MemoryArtifactStore,
 )
+
+# The registry ``maestroctl`` runs for prepared images (N-01), without its digest pin.
+REGISTRY_IMAGE = "registry:3.0.0"
+
+
+@pytest.fixture(scope="module")
+def local_registry(tmp_path_factory):
+    """A throwaway image registry for real-Docker tests: ``host:port``. Its data lives in
+    the test's temporary directory and the container is removed afterwards."""
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    data = tmp_path_factory.mktemp("registry")
+    name = f"maestro-test-registry-{port}"
+    subprocess.run(
+        ["docker", "run", "-d", "--rm", "--name", name, "-p", f"127.0.0.1:{port}:5000",
+         "-v", f"{data}:/var/lib/registry", "-e", "REGISTRY_STORAGE_DELETE_ENABLED=true",
+         REGISTRY_IMAGE],
+        capture_output=True, check=True, timeout=600,
+    )  # fmt: skip
+    address = f"127.0.0.1:{port}"
+    deadline = time.monotonic() + 30
+    while True:
+        try:
+            with urllib.request.urlopen(f"http://{address}/v2/", timeout=2):
+                break
+        except OSError:
+            if time.monotonic() > deadline:
+                raise
+            time.sleep(0.2)
+    try:
+        yield address
+    finally:
+        subprocess.run(["docker", "rm", "-f", name], capture_output=True, check=False)
 
 
 @pytest.fixture

@@ -304,6 +304,15 @@ def test_a_failed_build_is_classified_and_its_temporary_tag_removed(
         (REGISTRY_REFUSALS[0], "acme/private:1", AUTH),
         (REGISTRY_REFUSALS[1], "acme/private@sha256:" + "ab" * 32, AUTH),
         ("Error response from daemon: manifest unknown", "acme/x@sha256:" + "ab" * 32, UNAVAILABLE),
+        (  # what the containerd image store says (Docker 29)
+            'Error response from daemon: failed to resolve reference "acme/x@sha256:'
+            + "ab" * 32
+            + '": acme/x@sha256:'
+            + "ab" * 32
+            + ": not found",
+            "acme/x@sha256:" + "ab" * 32,
+            UNAVAILABLE,
+        ),
         # a tag that is gone could also be a typo or a moved tag: not "exactly gone"
         ("Error response from daemon: manifest unknown", "acme/x:1", FAILED),
         (KNOWN_TRANSIENT[0], "acme/x:1", TRANSIENT),

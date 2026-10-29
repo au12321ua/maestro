@@ -67,8 +67,12 @@ _AUTH = re.compile(
     r"failed to authorize\b.*\b(401|403)\b",
     re.IGNORECASE,
 )
+# "Exactly gone". The containerd image store says the last one for a digest the registry
+# does not have (Docker 29).
 _MISSING = re.compile(
-    r"manifest unknown|not found: manifest|manifest for .* not found", re.IGNORECASE
+    r"manifest unknown|not found: manifest|manifest for .* not found|"
+    r"failed to resolve reference .*@sha256:[0-9a-f]{64}: not found",
+    re.IGNORECASE,
 )
 # What is known to pass by itself; anything else (a Dockerfile error, a RUN step that
 # exits non-zero, an unsupported platform) fails the same way again and is not retried.
@@ -135,8 +139,10 @@ class DockerEnvironment:
         self.pull_timeout = pull_timeout
         self.push_timeout = push_timeout
         self.legacy_dir = legacy_dir
-        # One producer per definition: a second task with it waits and reuses the result.
+        # One producer per definition: a second task with it waits and reuses the result,
+        # also when both started before either was recorded.
         self._locks: dict[str, asyncio.Lock] = {}
+        self._produced: dict[str, PreparedImage] = {}
 
     def bind(self, instance_id: str) -> None:
         """Images live under a per-instance repository, so instances never collide."""
@@ -196,13 +202,14 @@ class DockerEnvironment:
 
     # --- the registry ------------------------------------------------------------------
 
+    # The registry is local: proxy settings meant for the internet never apply to it.
     def _manifest_url(self, reference: str) -> str:
         return f"http://{self.registry}/v2/{self.path}/manifests/{reference}"
 
     async def _registry_digest(self, key: str) -> str:
         """The manifest digest the registry holds under a definition's tag."""
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
+            async with httpx.AsyncClient(timeout=30, trust_env=False) as client:
                 response = await client.head(
                     self._manifest_url(key.split(":", 1)[1]), headers={"Accept": MANIFESTS}
                 )
@@ -218,7 +225,7 @@ class DockerEnvironment:
 
     async def _delete_manifest(self, digest: str) -> None:
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
+            async with httpx.AsyncClient(timeout=30, trust_env=False) as client:
                 response = await client.delete(self._manifest_url(digest))
         except httpx.HTTPError as error:
             raise PreparationError(TRANSIENT, f"the image registry is unreachable: {error}")
@@ -368,13 +375,14 @@ class DockerEnvironment:
         for entry in entries:
             key = image_key(entry)
             async with self._lock(key):
-                known = spec.known.get(key)
+                known = self._produced.get(key) or spec.known.get(key)
                 if known is not None and await self._fetch(self.ref(known.digest), progress):
                     # The same definition was prepared before, for this task or another.
                     image = replace(known, role=entry["role"], ref=self.ref(known.digest))
                 else:
                     digest, detail = await self._produce(spec, entry, progress, None)
                     image = PreparedImage(entry["role"], digest, self.ref(digest), key, detail)
+                    self._produced[key] = image
             images.append(image)
         network = spec.setup_network
         return PreparedOutput(tuple(images), {"setup_network_revision": network.revision})

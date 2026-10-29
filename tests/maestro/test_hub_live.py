@@ -55,8 +55,8 @@ def test_catalog_calls_and_classified_failures(tmp_path):
 
 
 @pytest.fixture
-def hub_service(settings):
-    environment = DockerEnvironment(settings.preparation_dir)
+def hub_service(settings, local_registry):
+    environment = DockerEnvironment(local_registry)
     service = Maestro.build(
         settings,
         executor=FakeExecutor(),

@@ -1,0 +1,7 @@
+services:
+  main:
+    depends_on: [helper]
+  helper:
+    image: ubuntu:22.04
+    command: ["sleep", "infinity"]
+    init: true

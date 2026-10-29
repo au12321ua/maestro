@@ -268,6 +268,7 @@ class FakeEnvironment:
         self.restores: list[str] = []
         self.loads: list[str] = []
         self.reused: list[str] = []
+        self.produced: dict[str, PreparedImage] = {}
         self.outputs: dict[str, PreparedOutput] = {}  # by spec digest, for tests
         self.started = asyncio.Event()
         self.builds = 0
@@ -304,7 +305,7 @@ class FakeEnvironment:
         images = []
         for entry in self._entries(spec):
             key = image_key(entry)
-            known = spec.known.get(key)
+            known = spec.known.get(key) or self.produced.get(key)
             if known is not None and known.digest in self.registry:
                 self.reused.append(entry["role"])
                 digest, detail = known.digest, known.detail
@@ -312,7 +313,9 @@ class FakeEnvironment:
                 digest, detail = self._digest(entry, salt), {"method": entry["source"]}
             self.registry.add(digest)
             self.images.add(digest)
-            images.append(PreparedImage(entry["role"], digest, self.ref(digest), key, detail))
+            image = PreparedImage(entry["role"], digest, self.ref(digest), key, detail)
+            self.produced.setdefault(key, image)
+            images.append(image)
         output = PreparedOutput(
             tuple(images), {"setup_network_revision": spec.setup_network.revision}
         )

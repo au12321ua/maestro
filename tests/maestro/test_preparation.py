@@ -11,6 +11,7 @@ from test_datasets import evict, import_and_prepare, import_dataset, tasks_by_ke
 
 from maestro.db import schema as t
 from maestro.services import operations
+from maestro.testing.fakes import FakeDatasetSource
 
 
 def until(condition, timeout=10.0, message="condition"):
@@ -429,3 +430,20 @@ def test_eviction_is_refused_when_the_cache_is_no_longer_ready(service, source, 
     op = service.operations.get(op_id)
     assert (op["status"], op["error"]["code"]) == ("failed", "NOT_READY")
     assert environment.images
+
+
+def test_tasks_with_an_identical_environment_share_one_image(service, source, environment):
+    """N-01: the second task reuses what the first built, also within one first
+    preparation, and both tasks record the same image."""
+    files = FakeDatasetSource.task_files("demo", "twins", "same")
+    other = {**files, "instruction.md": "Solve the other one\n"}
+    source.add("demo", "twins", "v1", ["a", "b"], files={"a": files, "b": other})
+    with running(service) as client:
+        admin = setup_admin(service, client)
+        version_id, prepared = import_and_prepare(admin, name="twins")
+        assert prepared["status"] == "succeeded"
+        tasks = tasks_by_key(admin, version_id)
+        assert tasks["a"]["spec_digest"] != tasks["b"]["spec_digest"]
+        assert environment.reused == ["environment/main"]
+        images = [environment.outputs[t["spec_digest"]].images for t in tasks.values()]
+        assert images[0] == images[1]

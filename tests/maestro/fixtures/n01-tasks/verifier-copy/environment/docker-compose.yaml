@@ -1,0 +1,17 @@
+services:
+  main:
+    depends_on: [db, api]
+  db:
+    image: ubuntu:${BASE_TAG:-22.04}
+    command: ["sleep", "infinity"]
+    init: true
+    volumes: ["data:/data"]
+  api:
+    build:
+      context: ./api
+    command: ["sleep", "infinity"]
+    init: true
+    cpus: 0.5
+    mem_limit: 256m
+volumes:
+  data: {}

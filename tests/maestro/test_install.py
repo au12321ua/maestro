@@ -95,7 +95,8 @@ def test_install_update_rollback_backup_and_uninstall(tmp_path):
     third = _package(tmp_path / "dist", "three")
     site = Installation(tmp_path / "root", _free_port())
     release = _unpack(first, tmp_path / "unpacked")
-    flags = ["--port", str(site.port), "--insecure-cookie"]
+    registry_port = _free_port()
+    flags = ["--port", str(site.port), "--insecure-cookie", "--registry-port", str(registry_port)]
     if os.environ.get("DOCKER_HOST"):
         flags += ["--docker-host", os.environ["DOCKER_HOST"]]
     try:
@@ -106,6 +107,9 @@ def test_install_update_rollback_backup_and_uninstall(tmp_path):
                                    "password": "correct-horse-battery"})  # fmt: skip
         status = site.ctl("status").stdout
         assert "health:   ready" in status and first.name.removeprefix("maestro-")[:-7] in status
+        # The prepared-image registry runs beside the service, its data under data_dir.
+        assert f"registry: up at 127.0.0.1:{registry_port}" in status
+        assert (site.root / "var/lib/maestro/registry").is_dir()
         # The service reads only what the installer wrote; the program is not its data.
         assert (site.root / "etc/maestro/secrets").stat().st_mode & 0o077 == 0
         assert "Application startup complete" in site.ctl("logs", "-n", "50").stdout
@@ -136,8 +140,16 @@ def test_install_update_rollback_backup_and_uninstall(tmp_path):
         with sqlite3.connect(site.root / "var/lib/maestro/app.db") as connection:
             assert connection.execute("SELECT display_name FROM users").fetchone()[0] == "admin"
 
+        # Garbage collection runs with nothing to free.
+        assert "registry " in site.ctl("registry-gc").stdout
+        assert "registry: up" in site.ctl("status").stdout
+
         # Uninstall keeps configuration, key and data; installing again picks them up.
         site.ctl("uninstall")
+        assert not subprocess.run(
+            ["docker", "ps", "-q", "--filter", f"publish={registry_port}"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()  # fmt: skip
         assert not (site.root / "opt/maestro").exists()
         assert (site.root / "var/lib/maestro/app.db").exists()
         assert list((site.root / "etc/maestro/secrets").iterdir())
