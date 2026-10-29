@@ -354,7 +354,17 @@ function RunDetailView({ runId }: { runId: string }) {
             />
           )}
           <SourceDifferences snapshot={run.snapshot} />
-          <Info label="数据集版本" value={<code>{run.dataset_version_id}</code>} />
+          <Info
+            label="数据集版本"
+            value={
+              <Link
+                className="text-primary underline"
+                to={`/datasets?version=${run.dataset_version_id}`}
+              >
+                <code>{run.dataset_version_id}</code>
+              </Link>
+            }
+          />
           <Info label="Operation" value={<code>{run.operation_id}</code>} />
           <Info label="客户端请求标识" value={run.client_request_id ?? "—"} />
           <Info label="受理时间" value={fmtTime(run.accepted_at)} />

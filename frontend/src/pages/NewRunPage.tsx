@@ -54,6 +54,8 @@ import type {
   Scenario,
   VariableDimension,
   Collection,
+  Dataset,
+  DatasetVersion,
 } from "@/lib/types";
 import { ScenarioPicker } from "@/pages/ComparePage";
 import { TaskStatusCells } from "@/components/TaskStatusCells";
@@ -120,6 +122,15 @@ const OVERRIDE_DIMENSION: Record<string, string> = {
   bootstrap_sec: "attachments",
 };
 
+function newestFirst(versions: DatasetVersion[]): DatasetVersion[] {
+  return [...versions].sort((a, b) => b.created_at.localeCompare(a.created_at));
+}
+
+/** The most recently imported version with a task that can be submitted. */
+function defaultVersion(dataset: Dataset): DatasetVersion | undefined {
+  return newestFirst(dataset.versions).find((v) => v.submittable_task_count > 0);
+}
+
 function numberOrNull(text: string): number | null {
   return text.trim() === "" ? null : Number(text);
 }
@@ -162,8 +173,18 @@ export function NewRunPage() {
     [datasets.data],
   );
 
+  // Dataset first, then one of its versions. A version chosen by a plan, a source run
+  // or the user decides the dataset; otherwise the dataset's default version is used.
+  const [chosenDataset, setChosenDataset] = useState("");
   const [chosenVersion, setChosenVersion] = useState("");
-  const versionId = chosenVersion || versions[0]?.version.id || "";
+  const versionOwner = versions.find((v) => v.version.id === chosenVersion)?.dataset;
+  const dataset =
+    versionOwner ??
+    datasets.data?.find((d) => d.id === chosenDataset) ??
+    datasets.data?.find((d) => defaultVersion(d)) ??
+    datasets.data?.[0];
+  const datasetVersions = dataset ? newestFirst(dataset.versions) : [];
+  const versionId = chosenVersion || (dataset && defaultVersion(dataset)?.id) || "";
 
   const tasks = useLoad(
     async () =>
@@ -838,20 +859,55 @@ export function NewRunPage() {
                 required
               />}
               <SelectField
+                id="run-dataset"
+                label="数据集"
+                value={dataset?.id ?? ""}
+                disabled={!!collectionId}
+                onChange={(e) => {
+                  // A new dataset is a new experiment: its tasks and parameters start empty.
+                  changed(setChosenDataset)(e.target.value);
+                  setChosenVersion("");
+                  setSelected(new Set());
+                  setParameters({});
+                }}
+              >
+                {datasets.data?.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.namespace}/{d.name}
+                  </option>
+                ))}
+              </SelectField>
+              <SelectField
                 id="run-version"
-                label="数据集版本"
+                label="版本"
                 value={versionId}
                 disabled={!!collectionId}
                 onChange={(e) => {
+                  // Another version may change tasks and parameters: choose them again.
                   changed(setChosenVersion)(e.target.value);
                   setSelected(new Set());
                   setParameters({});
                 }}
                 error={fieldErr("dataset_version_id")}
+                hint={
+                  datasetVersions.length > 0 && !defaultVersion(dataset!)
+                    ? "这个数据集的版本都没有可提交的任务，请管理员先完成首次准备。"
+                    : undefined
+                }
               >
-                {versions.map(({ dataset, version }) => (
-                  <option key={version.id} value={version.id}>
-                    {dataset.namespace}/{dataset.name} @ {version.upstream_ref} ({version.status})
+                {!versionOwner && chosenVersion && (
+                  <option value={chosenVersion}>已删除或不可用的版本 {chosenVersion}</option>
+                )}
+                {!versionId && <option value="">没有可提交的版本</option>}
+                {datasetVersions.map((v) => (
+                  <option
+                    key={v.id}
+                    value={v.id}
+                    disabled={v.submittable_task_count === 0 && v.id !== versionId}
+                  >
+                    {v.upstream_ref} · {fmtTime(v.created_at)} 导入 · 可提交 {v.submittable_task_count}/
+                    {v.task_count}
+                    {v.submittable_task_count === 0 ? "（没有可提交的任务）" : ""}
                   </option>
                 ))}
               </SelectField>

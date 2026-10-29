@@ -374,7 +374,16 @@ function Spec({ collection: c }: { collection: Collection }) {
               <span className="text-muted-foreground">
                 固定 · {DIMENSION[dimension as Dimension]}：
               </span>
-              {valueText(text)}
+              {dimension === "dataset" && c.template.dataset_version_id ? (
+                <Link
+                  className="text-primary underline"
+                  to={`/datasets?version=${c.template.dataset_version_id}`}
+                >
+                  {valueText(text)}
+                </Link>
+              ) : (
+                valueText(text)
+              )}
             </div>
           ))}
         </div>

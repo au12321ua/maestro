@@ -39,12 +39,12 @@ test("setup, run, PAT, admin and invitation flow", async ({ page, browser }) => 
 
   // Datasets: add a version from the (fake) source; first preparation admits its tasks.
   await nav(page, "数据集").click();
-  await page.getByRole("button", { name: "从数据源添加版本" }).click();
+  await page.getByRole("button", { name: "添加数据集" }).click();
   await page.getByLabel("作者 / 名称").fill("demo");
   await page.getByRole("button", { name: "搜索" }).click();
   await page.getByRole("button", { name: "demo/arith" }).click();
-  await page.getByRole("row", { name: /^v1 / }).getByRole("button", { name: "查看" }).click();
-  await page.getByRole("button", { name: "添加", exact: true }).click();
+  await page.getByRole("row", { name: /^v1 / }).getByRole("button", { name: "添加为新版本…" }).click();
+  await page.getByRole("button", { name: "添加为新版本", exact: true }).click();
   await expect(page.getByText("add-01")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText("缓存就绪").first()).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText("已准入 3 · 可提交 3")).toBeVisible({ timeout: 30_000 });
@@ -55,9 +55,29 @@ test("setup, run, PAT, admin and invitation flow", async ({ page, browser }) => 
   await page.getByRole("button", { name: "add-01" }).click();
   await expect(page.getByText("作者参数")).toBeVisible();
   await page.screenshot({ path: `${shots}/datasets-cold.png`, fullPage: true });
+  await page.getByRole("button", { name: "收起", exact: true }).click();
 
-  // New run, explicit task selection.
+  // A new version from the dataset's card: upstream v2 is not imported yet; its preview
+  // compares tasks with v1. Added without first preparation, so v1 stays the default.
+  await page.getByRole("button", { name: "检查上游更新" }).click();
+  await expect(page.getByRole("row", { name: /^v1 / }).getByText("已导入（v1）")).toBeVisible();
+  await page.getByRole("row", { name: /^v2 / }).getByRole("button", { name: "添加为新版本…" }).click();
+  await expect(page.getByText("新增 1 · 删除 0 · 内容变化 3 · 未变 0")).toBeVisible();
+  await page.getByLabel("添加后立即进行首次准备").uncheck();
+  await page.getByRole("button", { name: "添加为新版本", exact: true }).click();
+  await expect(page.getByRole("row", { name: /^v2 / }).getByText("已导入（v2）")).toBeVisible({
+    timeout: 30_000,
+  });
+  // The selected version is in the address and survives a reload.
+  await expect(page).toHaveURL(/[?&]version=/);
+  await page.reload();
+  await expect(page.getByText("demo/arith@v2")).toBeVisible();
+
+  // New run: dataset, then version; the default is the latest one with submittable tasks.
   await newRun(page);
+  await expect(page.locator("#run-dataset option:checked")).toHaveText("demo/arith");
+  await expect(page.locator("#run-version option:checked")).toContainText("v1");
+  await expect(page.locator("#run-version option", { hasText: "v2" })).toBeDisabled();
   await page.getByLabel("运行名称").fill("smoke run");
   await page.getByLabel("手动选择").check();
   await page.getByLabel("选择 add-01").check();
@@ -94,6 +114,10 @@ test("setup, run, PAT, admin and invitation flow", async ({ page, browser }) => 
   await page.goto(runUrl);
   await page.getByRole("tab", { name: "配置快照" }).click();
   await expect(page.getByText("生效配置（effective）")).toBeVisible();
+  // The dataset version links to its page on the datasets page.
+  await page.getByRole("link", { name: /^dsv_/ }).click();
+  await expect(page.getByText("demo/arith@v1")).toBeVisible();
+  await page.goto(runUrl);
 
   // M6 results: summary card, per-task rows, artifact retention.
   await page.getByRole("tab", { name: "结果汇总" }).click();
@@ -612,8 +636,9 @@ test("copying a collection edits fixed resources through the configuration form"
     "/api/v1/collections/col_1/comparison": comparisonFixture,
     "/api/v1/collections/col_1/events": [], "/api/v1/analysis-snapshots": [],
     "/api/v1/plans": [], "/api/v1/credentials": [], "/api/v1/attachments": [],
-    "/api/v1/datasets": [{ namespace: "demo", name: "arith", versions: [
-      { id: "dsv_1", upstream_ref: "v1", status: "ready" },
+    "/api/v1/datasets": [{ id: "ds_1", namespace: "demo", name: "arith", versions: [
+      { id: "dsv_1", upstream_ref: "v1", status: "ready", created_at: "2026-10-22T00:00:00Z",
+        task_count: 0, submittable_task_count: 0 },
     ] }],
     "/api/v1/dataset-versions/dsv_1": { task_count: 0, admitted_task_count: 0, submittable_task_count: 0 },
     "/api/v1/dataset-versions/dsv_1/tasks": [],

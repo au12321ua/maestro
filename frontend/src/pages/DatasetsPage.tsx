@@ -1,4 +1,5 @@
 import { Fragment, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -113,12 +114,24 @@ export function DatasetsPage() {
   const datasets = useLoad(
     async () => (await api.get("/datasets", { query: { limit: 200 } })).data,
   );
-  const [chosen, setVersionId] = useState<string>("");
-  const visible = datasets.data?.some((d) => d.versions.some((v) => v.id === chosen));
+  // The selected version is in the address (?version=), so a link opens it, including a
+  // deleted version that runs still reference.
+  const [params, setParams] = useSearchParams();
+  const chosen = params.get("version") ?? "";
+  const listed = datasets.data?.some((d) => d.versions.some((v) => v.id === chosen));
   const versionId =
-    (visible ? chosen : "") ||
-    datasets.data?.find((d) => d.versions.length > 0)?.versions[0].id ||
-    "";
+    chosen || datasets.data?.find((d) => d.versions.length > 0)?.versions[0].id || "";
+  const setVersionId = (id: string) => {
+    const next = new URLSearchParams(params);
+    next.set("version", id);
+    setParams(next, { replace: true });
+  };
+  const [upstreamOf, setUpstreamOf] = useState<string>();
+  const upstreamDataset = datasets.data?.find((d) => d.id === upstreamOf);
+  const imported = async (id?: string) => {
+    await datasets.reload();
+    if (id) setVersionId(id);
+  };
 
   const removeDataset = async (dataset: Dataset) => {
     if (
@@ -158,12 +171,13 @@ export function DatasetsPage() {
       <p className="mb-4 text-sm text-muted-foreground">
         准入、内容可得性与本机缓存分开显示：缓存被回收的已准入任务仍可提交，运行时按原摘要自动恢复。
       </p>
-      {isAdmin && (
-        <AddDataset
-          onImported={async (id) => {
-            await datasets.reload();
-            if (id) setVersionId(id);
-          }}
+      {isAdmin && <AddDataset datasets={datasets.data ?? []} onImported={imported} />}
+      {isAdmin && upstreamDataset && (
+        <UpstreamVersions
+          key={upstreamDataset.id}
+          dataset={upstreamDataset}
+          onImported={imported}
+          onClose={() => setUpstreamOf(undefined)}
         />
       )}
       <ErrorAlert error={datasets.error} />
@@ -193,6 +207,17 @@ export function DatasetsPage() {
                   {dataset.credential_id ? " · 使用团队凭据" : " · 匿名读取"}
                   {dataset.description && ` · ${dataset.description}`}
                 </div>
+                {isAdmin && (
+                  <div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setUpstreamOf(dataset.id)}
+                    >
+                      检查上游更新
+                    </Button>
+                  </div>
+                )}
               </CardHeader>
               <CardContent className="grid gap-1">
                 {dataset.versions.length === 0 && (
@@ -237,19 +262,367 @@ export function DatasetsPage() {
           ))}
         </div>
         {versionId && (
-          <VersionTasks
-            key={versionId}
-            versionId={versionId}
-            isAdmin={isAdmin}
-            onChange={datasets.reload}
-          />
+          <div className="grid min-w-0 content-start gap-2">
+            {datasets.data && !listed && chosen && (
+              <p className="text-sm text-amber-800">
+                这个版本不在数据集列表中：它已删除或不存在；已删除的版本仍可查看，但不能再用来提交。
+              </p>
+            )}
+            <VersionTasks
+              key={versionId}
+              versionId={versionId}
+              isAdmin={isAdmin}
+              onChange={datasets.reload}
+            />
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-function AddDataset({ onImported }: { onImported: (versionId?: string) => Promise<void> }) {
+/** Where a dataset's versions come from: the source and the credential used to read it. */
+interface SourceTarget {
+  source_kind: string;
+  namespace: string;
+  name: string;
+  credential_id: string | null;
+}
+
+/** An upstream version against what the platform holds: imported (same content), not
+ * imported, or carrying a tag that an imported version used and that moved since. */
+interface UpstreamRow {
+  version: SourceVersion;
+  imported?: DatasetVersion;
+  movedTags: { tag: string; from: DatasetVersion }[];
+}
+
+function classify(upstream: SourceVersion[], local: DatasetVersion[]): UpstreamRow[] {
+  return upstream.map((version) => ({
+    version,
+    imported: local.find((v) => v.resolved_digest === version.resolved_digest),
+    movedTags: local.flatMap((from) =>
+      from.ref_kind === "tag" &&
+      version.tags.includes(from.upstream_ref) &&
+      from.resolved_digest !== version.resolved_digest
+        ? [{ tag: from.upstream_ref, from }]
+        : [],
+    ),
+  }));
+}
+
+function newestFirst(versions: DatasetVersion[]): DatasetVersion[] {
+  return [...versions].sort((a, b) => b.created_at.localeCompare(a.created_at));
+}
+
+/** Tasks added, removed and changed (same key, other content) against a local version. */
+function TaskDiff({ preview, local }: { preview: SourceVersionDetail; local: DatasetVersion[] }) {
+  const [baseId, setBaseId] = useState(newestFirst(local)[0]?.id ?? "");
+  const base = useLoad(
+    async () =>
+      baseId
+        ? (await api.get("/dataset-versions/{version_id}/tasks", { path: { version_id: baseId } }))
+            .data
+        : undefined,
+    [baseId],
+  );
+  if (local.length === 0) return null;
+  const before = new Map((base.data ?? []).map((t) => [t.task_key, t.content.digest]));
+  const after = new Map(preview.tasks.map((t) => [t.task_key, t.content_digest]));
+  const added = [...after.keys()].filter((k) => !before.has(k)).sort();
+  const removed = [...before.keys()].filter((k) => !after.has(k)).sort();
+  const changed = [...after.keys()].filter((k) => before.has(k) && before.get(k) !== after.get(k)).sort();
+  const groups: [string, string[]][] = [
+    ["新增", added],
+    ["删除", removed],
+    ["内容变化", changed],
+  ];
+  return (
+    <div className="grid gap-1">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <label htmlFor="diff-base" className="shrink-0 text-muted-foreground">
+          与本地版本比较
+        </label>
+        <select
+          id="diff-base"
+          className="h-8 min-w-0 max-w-full rounded-md border border-input bg-background px-2 text-sm"
+          value={baseId}
+          onChange={(e) => setBaseId(e.target.value)}
+        >
+          {newestFirst(local).map((v) => (
+            <option key={v.id} value={v.id}>
+              {v.upstream_ref}（{fmtTime(v.created_at)} 导入）
+            </option>
+          ))}
+        </select>
+      </div>
+      <ErrorAlert error={base.error} />
+      {base.loading && !base.data && <Loading />}
+      {base.data && (
+        <div className="grid gap-1 text-xs">
+          <div>
+            {groups.map(([title, keys]) => `${title} ${keys.length}`).join(" · ")} · 未变{" "}
+            {preview.tasks.length - added.length - changed.length}
+          </div>
+          {groups
+            .filter(([, keys]) => keys.length > 0)
+            .map(([title, keys]) => (
+              <details key={title}>
+                <summary className="cursor-pointer">
+                  {title}的任务（{keys.length}）
+                </summary>
+                <div className="max-h-40 overflow-auto font-mono text-muted-foreground">
+                  {keys.map((k) => (
+                    <div key={k} className="break-all">
+                      {k}
+                    </div>
+                  ))}
+                </div>
+              </details>
+            ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Upstream versions of one dataset, a preview of one of them and its import. Used both
+ * when adding a dataset and from an existing dataset's card ("检查上游更新"). */
+function SourceVersions({
+  target,
+  local,
+  onImported,
+}: {
+  target: SourceTarget;
+  local: DatasetVersion[];
+  onImported: (versionId?: string) => Promise<void>;
+}) {
+  const common = {
+    source_kind: target.source_kind,
+    namespace: target.namespace,
+    name: target.name,
+    credential_id: target.credential_id ?? undefined,
+  };
+  const upstream = useLoad(
+    async () => (await api.get("/dataset-search/versions", { query: common })).data,
+    [target.source_kind, target.namespace, target.name, target.credential_id],
+  );
+  const [ref, setRef] = useState("");
+  const [preview, setPreview] = useState<SourceVersionDetail>();
+  const [prepare, setPrepare] = useState(true);
+  const [error, setError] = useState<unknown>();
+  const [busy, setBusy] = useState(false);
+  const [operation, setOperation] = useState<string>();
+  const rows = upstream.data ? classify(upstream.data, local) : undefined;
+  // The preview's reference is a tag an imported version used, now on other content.
+  const movedFrom = preview
+    ? local.find(
+        (v) =>
+          v.ref_kind === "tag" &&
+          v.upstream_ref === preview.upstream_ref &&
+          v.resolved_digest !== preview.resolved_digest,
+      )
+    : undefined;
+
+  const look = async (value: string) => {
+    setBusy(true);
+    setError(undefined);
+    setPreview(undefined);
+    try {
+      setPreview((await api.get("/dataset-search/version", { query: { ...common, ref: value } })).data);
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const add = async (accept: boolean) => {
+    if (!preview) return;
+    setBusy(true);
+    setError(undefined);
+    try {
+      const op = await api.post("/admin/dataset-imports", {
+        body: {
+          source_kind: target.source_kind,
+          namespace: preview.namespace,
+          name: preview.name,
+          ref: preview.upstream_ref,
+          credential_id: target.credential_id,
+          prepare,
+          accept_changed_content: accept,
+        },
+      });
+      setOperation(op.data.id);
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const confirmMoved = (tag: string) =>
+    window.confirm(`标签「${tag}」已指向新内容，将作为新版本添加；旧版本保留，已有运行不受影响。`);
+
+  return (
+    <div className="grid gap-3">
+      <ErrorAlert error={upstream.error} title="无法读取上游版本" />
+      {upstream.loading && !upstream.data && <Loading text="读取上游版本…" />}
+      {rows && rows.length === 0 && (
+        <EmptyNote>数据源没有列出版本；可在下方按标签、修订或摘要添加。</EmptyNote>
+      )}
+      {rows && rows.length > 0 && (
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>修订</TableHead>
+                <TableHead>标签</TableHead>
+                <TableHead>摘要</TableHead>
+                <TableHead>发布</TableHead>
+                <TableHead>平台中</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map(({ version: v, imported, movedTags }) => (
+                <TableRow key={v.ref}>
+                  <TableCell>{v.ref}</TableCell>
+                  <TableCell className="text-xs">{v.tags.join(", ") || "—"}</TableCell>
+                  <TableCell className="font-mono text-xs" title={v.resolved_digest}>
+                    {shortId(v.resolved_digest, 19)}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {fmtTime(v.published_at)} {v.yanked && <Pill tone="warn">已撤回</Pill>}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {imported ? (
+                      <Link
+                        className="text-primary underline"
+                        to={`/datasets?version=${imported.id}`}
+                      >
+                        已导入（{imported.upstream_ref}）
+                      </Link>
+                    ) : (
+                      <Pill tone="info">未导入</Pill>
+                    )}
+                    {movedTags.map(({ tag, from }) => (
+                      <div key={tag} className="mt-1">
+                        <Pill tone="warn" title={`本地版本 ${shortId(from.resolved_digest, 19)}`}>
+                          标签 {tag} 已移动
+                        </Pill>
+                      </div>
+                    ))}
+                  </TableCell>
+                  <TableCell>
+                    {!imported && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={busy}
+                        // A moved tag is looked up by the tag, so the new version keeps it.
+                        onClick={() => void look(movedTags[0]?.tag ?? v.ref)}
+                      >
+                        添加为新版本…
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+      <form
+        className="flex items-end gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void look(ref.trim());
+        }}
+      >
+        <TextField
+          id={`ref-${target.namespace}-${target.name}`}
+          label="添加指定版本"
+          value={ref}
+          placeholder="标签、修订号或 sha256 摘要"
+          onChange={(e) => setRef(e.target.value)}
+        />
+        <Button type="submit" variant="outline" disabled={busy || !ref.trim()}>
+          查看
+        </Button>
+      </form>
+      <ErrorAlert error={error} />
+      {preview && (
+        <div className="grid gap-2 rounded-md border p-3 text-sm">
+          <div>
+            {preview.namespace}/{preview.name}@{preview.upstream_ref}（{preview.ref_kind}）→{" "}
+            <code title={preview.resolved_digest}>{shortId(preview.resolved_digest, 23)}</code> ·{" "}
+            {preview.tasks.length} 个任务
+            {preview.existing_version_id && <Pill tone="info">已添加过此内容</Pill>}
+            {movedFrom && <Pill tone="warn">标签已移动</Pill>}
+          </div>
+          {preview.description && <p className="text-muted-foreground">{preview.description}</p>}
+          {local.length > 0 ? (
+            <TaskDiff key={preview.resolved_digest} preview={preview} local={local} />
+          ) : (
+            <div className="max-h-40 overflow-auto font-mono text-xs text-muted-foreground">
+              {preview.tasks.map((t) => (
+                <div key={t.task_key} className="break-all">
+                  {t.task_key} {shortId(t.content_digest, 19)}
+                </div>
+              ))}
+            </div>
+          )}
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={prepare}
+              onChange={(e) => setPrepare(e.target.checked)}
+            />
+            添加后立即进行首次准备（构建或拉取环境并保存原件）
+          </label>
+          <div className="flex gap-2">
+            <Button
+              disabled={busy || !!operation}
+              onClick={() => {
+                if (movedFrom && !confirmMoved(preview.upstream_ref)) return;
+                void add(!!movedFrom);
+              }}
+            >
+              {preview.existing_version_id ? "重新核对" : "添加为新版本"}
+            </Button>
+          </div>
+        </div>
+      )}
+      {operation && (
+        <OperationLine
+          id={operation}
+          label="添加版本"
+          onDone={(op) => {
+            setOperation(undefined);
+            const imported = op.kind === "dataset_import" ? op.result : null;
+            if (op.status === "succeeded") {
+              toast.success(imported?.existing ? "该内容已登记，未重复创建" : "版本已添加");
+              setPreview(undefined);
+              void upstream.reload();
+              void onImported(imported?.dataset_version_id);
+            } else if (op.error?.code === "CONTENT_REFERENCE_CHANGED" && preview) {
+              if (confirmMoved(preview.upstream_ref)) void add(true);
+            } else {
+              toast.error(`添加失败：${op.error?.message ?? op.status}`);
+            }
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function AddDataset({
+  datasets,
+  onImported,
+}: {
+  datasets: Dataset[];
+  onImported: (versionId?: string) => Promise<void>;
+}) {
   const sources = useLoad(async () => (await api.get("/dataset-sources")).data);
   const credentials = useLoad(async () =>
     (await api.get("/admin/credentials")).data.filter((c) => c.kind === "hub_token" && c.enabled),
@@ -260,68 +633,38 @@ function AddDataset({ onImported }: { onImported: (versionId?: string) => Promis
   const [query, setQuery] = useState("");
   const [found, setFound] = useState<SourceDataset[]>();
   const [target, setTarget] = useState<SourceDataset>();
-  const [versions, setVersions] = useState<SourceVersion[]>();
-  const [preview, setPreview] = useState<SourceVersionDetail>();
-  const [prepare, setPrepare] = useState(true);
   const [error, setError] = useState<unknown>();
   const [busy, setBusy] = useState(false);
-  const [operation, setOperation] = useState<string>();
   const sourceKind = kind || sources.data?.[0]?.kind || "hub";
-  const common = { source_kind: sourceKind, credential_id: credentialId || undefined };
 
-  const run = async (work: () => Promise<void>) => {
+  const search = async () => {
     setBusy(true);
     setError(undefined);
+    setTarget(undefined);
     try {
-      await work();
+      const common = { source_kind: sourceKind, credential_id: credentialId || undefined };
+      setFound((await api.get("/dataset-search", { query: { q: query, ...common } })).data);
     } catch (err) {
       setError(err);
     } finally {
       setBusy(false);
     }
   };
-  const search = () =>
-    run(async () => {
-      setTarget(undefined);
-      setVersions(undefined);
-      setPreview(undefined);
-      setFound((await api.get("/dataset-search", { query: { q: query, ...common } })).data);
-    });
-  const pick = (item: SourceDataset) =>
-    run(async () => {
-      setTarget(item);
-      setPreview(undefined);
-      const query = { namespace: item.namespace, name: item.name, ...common };
-      setVersions((await api.get("/dataset-search/versions", { query: query })).data);
-    });
-  const look = (ref: string) =>
-    run(async () => {
-      if (!target) return;
-      const query = { namespace: target.namespace, name: target.name, ref, ...common };
-      setPreview((await api.get("/dataset-search/version", { query: query })).data);
-    });
-  const add = (accept = false) =>
-    run(async () => {
-      if (!preview) return;
-      const op = await api.post("/admin/dataset-imports", {
-        body: {
-          source_kind: sourceKind,
-          namespace: preview.namespace,
-          name: preview.name,
-          ref: preview.upstream_ref,
-          credential_id: credentialId || null,
-          prepare,
-          accept_changed_content: accept,
-        },
-      });
-      setOperation(op.data.id);
-    });
+  // Picking a dataset the platform already has compares against its versions.
+  const existing =
+    target &&
+    datasets.find(
+      (d) =>
+        d.source_kind === sourceKind &&
+        d.namespace === target.namespace &&
+        d.name === target.name,
+    );
 
   if (!open) {
     return (
       <div className="mb-4">
         <Button variant="outline" onClick={() => setOpen(true)}>
-          从数据源添加版本
+          添加数据集
         </Button>
       </div>
     );
@@ -329,9 +672,14 @@ function AddDataset({ onImported }: { onImported: (versionId?: string) => Promis
   return (
     <Card className="mb-4">
       <CardHeader>
-        <CardTitle className="text-base">从数据源添加版本</CardTitle>
+        <CardTitle className="flex items-center justify-between gap-2 text-base">
+          添加数据集
+          <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+            收起
+          </Button>
+        </CardTitle>
         <p className="text-xs text-muted-foreground">
-          搜索只读取外部描述；添加时引用固定为确切摘要，任务材料下载并校验后登记，再按需进行首次准备。
+          搜索只读取外部描述；添加时引用固定为确切摘要，任务材料下载并校验后登记，再按需进行首次准备。已有数据集的新版本可以直接在它的卡片上“检查上游更新”。
         </p>
       </CardHeader>
       <CardContent className="grid gap-3">
@@ -391,7 +739,7 @@ function AddDataset({ onImported }: { onImported: (versionId?: string) => Promis
                   key={`${item.namespace}/${item.name}`}
                   size="sm"
                   variant={picked ? "default" : "outline"}
-                  onClick={() => void pick(item)}
+                  onClick={() => setTarget(item)}
                 >
                   {item.namespace}/{item.name}
                   {item.visibility && item.visibility !== "public" && ` · ${item.visibility}`}
@@ -400,100 +748,58 @@ function AddDataset({ onImported }: { onImported: (versionId?: string) => Promis
             })}
           </div>
         )}
-        {versions && (
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>修订</TableHead>
-                  <TableHead>标签</TableHead>
-                  <TableHead>摘要</TableHead>
-                  <TableHead>发布</TableHead>
-                  <TableHead />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {versions.map((v) => (
-                  <TableRow key={v.ref}>
-                    <TableCell>{v.ref}</TableCell>
-                    <TableCell className="text-xs">{v.tags.join(", ") || "—"}</TableCell>
-                    <TableCell className="font-mono text-xs" title={v.resolved_digest}>
-                      {shortId(v.resolved_digest, 19)}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {fmtTime(v.published_at)} {v.yanked && <Pill tone="warn">已撤回</Pill>}
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={busy}
-                        onClick={() => void look(v.ref)}
-                      >
-                        查看
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-        {preview && (
-          <div className="grid gap-2 rounded-md border p-3 text-sm">
-            <div>
-              {preview.namespace}/{preview.name}@{preview.upstream_ref}（{preview.ref_kind}）→{" "}
-              <code title={preview.resolved_digest}>{shortId(preview.resolved_digest, 23)}</code> ·{" "}
-              {preview.tasks.length} 个任务
-              {preview.existing_version_id && <Pill tone="info">已添加过此内容</Pill>}
-            </div>
-            {preview.description && <p className="text-muted-foreground">{preview.description}</p>}
-            <div className="max-h-40 overflow-auto font-mono text-xs text-muted-foreground">
-              {preview.tasks.map((t) => (
-                <div key={t.task_key} className="break-all">
-                  {t.task_key} {shortId(t.content_digest, 19)}
-                </div>
-              ))}
-            </div>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={prepare}
-                onChange={(e) => setPrepare(e.target.checked)}
-              />
-              添加后立即进行首次准备（构建或拉取环境并保存原件）
-            </label>
-            <div className="flex gap-2">
-              <Button disabled={busy || !!operation} onClick={() => void add()}>
-                添加
-              </Button>
-              <Button variant="ghost" onClick={() => setOpen(false)}>
-                收起
-              </Button>
-            </div>
-          </div>
-        )}
-        {operation && (
-          <OperationLine
-            id={operation}
-            label="添加版本"
-            onDone={(op) => {
-              setOperation(undefined);
-              const imported = op.kind === "dataset_import" ? op.result : null;
-              if (op.status === "succeeded") {
-                toast.success(imported?.existing ? "该内容已登记，未重复创建" : "版本已添加");
-                void onImported(imported?.dataset_version_id);
-              } else if (op.error?.code === "CONTENT_REFERENCE_CHANGED") {
-                const ok = window.confirm(
-                  "此引用现在指向不同的内容。作为新的内部版本添加？旧版本保持不变。",
-                );
-                if (ok) void add(true);
-              } else {
-                toast.error(`添加失败：${op.error?.message ?? op.status}`);
-              }
+        {target && (
+          <SourceVersions
+            key={`${sourceKind}/${target.namespace}/${target.name}/${credentialId}`}
+            target={{
+              source_kind: sourceKind,
+              namespace: target.namespace,
+              name: target.name,
+              credential_id: credentialId || null,
             }}
+            local={existing?.versions ?? []}
+            onImported={onImported}
           />
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** "检查上游更新" on an existing dataset: its source, credential and versions. */
+function UpstreamVersions({
+  dataset,
+  onImported,
+  onClose,
+}: {
+  dataset: Dataset;
+  onImported: (versionId?: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  return (
+    <Card className="mb-4">
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between gap-2 text-base">
+          {dataset.namespace}/{dataset.name} 的上游版本
+          <Button size="sm" variant="ghost" onClick={onClose}>
+            收起
+          </Button>
+        </CardTitle>
+        <p className="text-xs text-muted-foreground">
+          按内容摘要对照平台中的版本。添加新版本不影响已有版本和引用它们的运行；结果只在此显示，不保存。
+        </p>
+      </CardHeader>
+      <CardContent>
+        <SourceVersions
+          target={{
+            source_kind: dataset.source_kind,
+            namespace: dataset.namespace,
+            name: dataset.name,
+            credential_id: dataset.credential_id,
+          }}
+          local={dataset.versions}
+          onImported={onImported}
+        />
       </CardContent>
     </Card>
   );
