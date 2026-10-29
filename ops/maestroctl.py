@@ -1048,6 +1048,10 @@ def cmd_registry_gc(layout: Layout, args) -> int:
             "Wait for them, or pass --force"
         )
     before = directory_size(layout.registry_dir)
+    if not (layout.registry_dir / "docker" / "registry" / "v2" / "repositories").is_dir():
+        # The collector itself fails on a registry that never stored anything.
+        say("the registry holds no images yet: nothing to collect")
+        return 0
     step("Registry read-only: pulls go on, pushes are refused")
     start_registry(host, read_only=True)
     try:

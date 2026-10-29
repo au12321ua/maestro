@@ -140,8 +140,32 @@ def test_install_update_rollback_backup_and_uninstall(tmp_path):
         with sqlite3.connect(site.root / "var/lib/maestro/app.db") as connection:
             assert connection.execute("SELECT display_name FROM users").fetchone()[0] == "admin"
 
-        # Garbage collection runs with nothing to free.
-        assert "registry " in site.ctl("registry-gc").stdout
+        # Garbage collection: nothing to do while nothing is stored; then an image whose
+        # manifest is deleted (as a purge does) gives its space back.
+        assert "nothing to collect" in site.ctl("registry-gc").stdout
+        registry = f"127.0.0.1:{registry_port}"
+        pushed = f"{registry}/maestro-prep/gc-check:1"
+        for cmd in (["tag", "ubuntu:22.04", pushed], ["push", "-q", pushed]):
+            subprocess.run(["docker", *cmd], capture_output=True, check=True, timeout=600)
+        local = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        digest = local.open(
+            urllib.request.Request(
+                f"http://{registry}/v2/maestro-prep/gc-check/manifests/1",
+                method="HEAD",
+                headers={"Accept": "application/vnd.oci.image.manifest.v1+json, "
+                         "application/vnd.docker.distribution.manifest.v2+json"},
+            ),
+            timeout=10,
+        ).headers["Docker-Content-Digest"]  # fmt: skip
+        local.open(
+            urllib.request.Request(
+                f"http://{registry}/v2/maestro-prep/gc-check/manifests/{digest}", method="DELETE"
+            ),
+            timeout=10,
+        )
+        subprocess.run(["docker", "image", "rm", pushed], capture_output=True, check=False)
+        before, after = site.ctl("registry-gc").stdout.rsplit("registry ", 1)[1].split(" MiB -> ")
+        assert float(after.split()[0].replace(",", "")) < float(before.replace(",", ""))
         assert "registry: up" in site.ctl("status").stdout
 
         # Uninstall keeps configuration, key and data; installing again picks them up.
