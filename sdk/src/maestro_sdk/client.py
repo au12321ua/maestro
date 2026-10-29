@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import os
 import random
+import shutil
 import tempfile
 import time
 import uuid
@@ -455,15 +456,44 @@ class Attachments(_Resource):
         prune: bool = False,
     ) -> Path:
         """Make ``directory`` hold the snapshot's files, downloading only those missing
-        or different here. With ``prune``, files the snapshot lacks are removed too."""
+        or different here. With ``prune``, extra files and file/directory conflicts are
+        removed too. Existing links in a destination path are refused."""
         attachment_id = attachment if isinstance(attachment, str) else attachment.id
         snapshot = self.get(attachment_id)
         root = Path(directory)
+        for parent in (root.absolute(), *root.absolute().parents):
+            if parent.is_symlink():
+                raise ValueError(f"Fetch destination cannot contain a link: {parent}")
         root.mkdir(parents=True, exist_ok=True)
         wanted = {f.path for f in snapshot.files or []}
+        conflicts: set[Path] = set()
+        # Check every destination before modifying anything. The server only publishes
+        # relative paths, but an existing local parent can still point outside root.
+        for entry in snapshot.files or []:
+            parts = PurePosixPath(entry.path).parts
+            if not parts or entry.path.startswith("/") or any(p in {".", ".."} for p in parts):
+                raise ValueError(f"Unsafe attachment path: {entry.path}")
+            target = root
+            for index, part in enumerate(parts):
+                target = target / part
+                if target.is_symlink():
+                    raise ValueError(f"Fetch destination cannot contain a link: {target}")
+                if target.exists() and target.is_dir() != (index < len(parts) - 1):
+                    conflicts.add(target)
+                    break
+        if conflicts and not prune:
+            raise ValueError("File/directory conflicts in fetch destination; use prune=True")
+        for target in sorted(conflicts, key=lambda p: len(p.parts)):
+            if target.is_dir():
+                shutil.rmtree(target)
+            else:
+                target.unlink(missing_ok=True)
         for entry in snapshot.files or []:
             target = root.joinpath(*PurePosixPath(entry.path).parts)
-            if not (target.is_file() and _sha256(target) == entry.sha256):
+            # Replacing a hard-linked file also keeps chmod local to the destination.
+            if not (
+                target.is_file() and target.stat().st_nlink == 1 and _sha256(target) == entry.sha256
+            ):
                 _save(self._c, f"attachments/{attachment_id}/files/{entry.path}", target)
             target.chmod(0o755 if entry.executable else 0o644)
         if prune:

@@ -137,11 +137,15 @@ export function settingsFromParams(
   if (params.get("baseline")) found.baseline_run_id = params.get("baseline");
   const mode = params.get("layout");
   if (mode === "matrix" || mode === "leaderboard") {
+    const key = params.get("sort");
     found.layout = {
       mode,
       rows: (params.get("rows") as Dimension) || null,
       columns: (params.get("cols") as Dimension) || null,
-      sort: null,
+      sort:
+        key && ["mean", "pass_rate", "valid_trials", "title"].includes(key)
+          ? { key, descending: params.get("descending") === "true" }
+          : null,
     };
   }
   return found;
@@ -164,6 +168,13 @@ export function settingsToParams(
     else next.delete("rows");
     if (change.layout.columns) next.set("cols", change.layout.columns);
     else next.delete("cols");
+    if (change.layout.sort) {
+      next.set("sort", change.layout.sort.key);
+      next.set("descending", String(change.layout.sort.descending ?? false));
+    } else {
+      next.delete("sort");
+      next.delete("descending");
+    }
   }
   return next;
 }

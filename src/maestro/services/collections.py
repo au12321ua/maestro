@@ -43,6 +43,7 @@ from maestro.services.configuration import (
     check_request,
     comparison_view,
     pinned_request,
+    request_input,
 )
 from maestro.services.plans import Plans, merge
 from maestro.services.principal import (
@@ -477,7 +478,7 @@ class Collections:
             "variable_dimensions": row["variable_json"],
             "fixed": row["fixed_json"],
             "fixed_labels": {d: label(d, v) for d, v in row["fixed_json"].items()},
-            "template": row["template_json"],
+            "template": request_input(row["template_json"]),
             "base_run_id": row["base_run_id"],
             "settings": row["settings_json"],
             "copied_from": row["copied_from"],
@@ -969,7 +970,7 @@ class Collections:
         if collection_id is None:
             return body, None
         row = self._live(conn, collection_id)
-        merged, supplied = merge(row["template_json"], body)
+        merged, supplied = merge(request_input(row["template_json"]), body)
         return merged, {"collection_id": collection_id, "fields": supplied, "row": row}
 
     def check(self, conn: Connection, collection_id: str, res: Resolution) -> list[Blocker]:
@@ -1022,7 +1023,7 @@ def template_of(request: dict, variable: list[str]) -> dict:
     drop = {f for d in variable for f in REQUEST_FIELDS_OF.get(d, ())}
     drop |= {"task_selection", "plan", "plan_id", "plan_revision"}
     template = {}
-    for key, value in request.items():
+    for key, value in request_input(request).items():
         if key in drop or value is None:
             continue
         if key == "timeouts":

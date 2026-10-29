@@ -15,6 +15,7 @@ The content digest covers each file's path, SHA-256 and executable bit, so the R
 compare a container's copy file by file with ``sha256sum``.
 """
 
+import fcntl
 import hashlib
 import json
 import os
@@ -343,6 +344,17 @@ class AttachmentStore:
     def verified(self, content_digest: str) -> Path | None:
         """The snapshot's directory, rebuilt from the stored contents when missing, and
         only if its files match the digest."""
+        value = _hex(content_digest)
+        if value is None:
+            return None
+        self.trees.mkdir(parents=True, exist_ok=True)
+        # Re-check after locking: another cold-cache caller may have already returned
+        # this directory to a Runner. Never remove that freshly built directory.
+        with (self.trees / f".{value}.lock").open("a") as handle:
+            fcntl.flock(handle, fcntl.LOCK_EX)
+            return self._verified(content_digest)
+
+    def _verified(self, content_digest: str) -> Path | None:
         path = self.path_for(content_digest)
         try:
             if path is not None and files_digest(describe(path)) == content_digest:
@@ -367,11 +379,7 @@ class AttachmentStore:
                 return None
             target = self.trees / _hex(content_digest)
             shutil.rmtree(target, ignore_errors=True)
-            try:
-                os.rename(staging, target)
-            except OSError:
-                # Another caller rebuilt it at the same moment; theirs is as good.
-                pass
+            os.rename(staging, target)
             return self.path_for(content_digest)
         finally:
             shutil.rmtree(staging, ignore_errors=True)

@@ -96,8 +96,11 @@ def test_story_two_agent_runs_a_complete_experiment(service, version_id, executo
 
         caps = agent.require("runs", "execution", "configuration_resolution")
         assert caps.actions["runs.submit"].pat_scopes == ["experiment"]
+        caps = agent.require("collections", "comparisons", "analysis_snapshots")
+        assert caps.actions["collections.create"].pat_scopes == ["experiment"]
+        assert caps.actions["comparisons.read"].pat_scopes == ["read", "experiment"]
         with pytest.raises(UnsupportedCapability):
-            agent.require("collections")  # P1, switched off
+            agent.require("unknown_feature")
 
         assert [d.id for d in agent.catalog.datasets()]
         assert all(task.can_submit for task in agent.catalog.tasks(version_id))
@@ -324,6 +327,52 @@ def test_attachments_publish_fetch_and_compare_directories(service, tmp_path):
         archive = agent.attachments.download(child, tmp_path / "helper.zip")
         with zipfile.ZipFile(archive) as opened:
             assert min(opened.namelist()).endswith("bin/run.sh")
+
+        # Destination links never change a file outside the requested tree, even if
+        # the linked contents already match and only chmod would have been needed.
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        victim = outside / "run.sh"
+        victim.write_bytes(b"#!/bin/sh\necho hi\n")
+        victim.chmod(0o600)
+        root_link = tmp_path / "root-link"
+        root_link.symlink_to(outside, target_is_directory=True)
+        with pytest.raises(ValueError, match="link"):
+            agent.attachments.fetch(published, root_link / "nested")
+        assert not (outside / "nested").exists()
+        unsafe = tmp_path / "unsafe"
+        unsafe.mkdir()
+        (unsafe / "bin").symlink_to(outside, target_is_directory=True)
+        with pytest.raises(ValueError, match="link"):
+            agent.attachments.fetch(published, unsafe, prune=True)
+        assert victim.read_bytes() == b"#!/bin/sh\necho hi\n"
+        assert victim.stat().st_mode & 0o777 == 0o600
+        assert not (unsafe / "manifest.json").exists()  # preflight, no partial update
+        (unsafe / "bin").unlink()
+        (unsafe / "bin").mkdir()
+        (unsafe / "bin" / "run.sh").symlink_to(victim)
+        with pytest.raises(ValueError, match="link"):
+            agent.attachments.fetch(published, unsafe)
+        assert victim.stat().st_mode & 0o777 == 0o600
+
+        # Hard links are replaced before permissions are applied locally.
+        (unsafe / "bin" / "run.sh").unlink()
+        (unsafe / "bin" / "run.sh").hardlink_to(victim)
+        agent.attachments.fetch(published, unsafe)
+        assert victim.stat().st_mode & 0o777 == 0o600
+        assert (unsafe / "bin" / "run.sh").stat().st_ino != victim.stat().st_ino
+
+        # Repeated fetches can change a file to a directory and back with prune.
+        (package / "bin" / "run.sh").unlink()
+        (package / "bin").rmdir()
+        (package / "bin").write_text("now a file")
+        flat = agent.attachments.publish(package)
+        with pytest.raises(ValueError, match="prune=True"):
+            agent.attachments.fetch(flat, copy)
+        agent.attachments.fetch(flat, copy, prune=True)
+        assert (copy / "bin").read_text() == "now a file"
+        agent.attachments.fetch(published, copy, prune=True)
+        assert (copy / "bin" / "run.sh").read_text() == "#!/bin/sh\necho hi\n"
 
         (package / "link").symlink_to("manifest.json")
         with pytest.raises(ValueError):
