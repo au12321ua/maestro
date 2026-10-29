@@ -3,14 +3,19 @@ E2E-OUT-02 and E2E-OUT-03 with the fake executor)."""
 
 import uuid
 
+import pytest
+from sqlalchemy import select, update
 from support import create_pat, invite_member, running, setup_admin, wait_operation
 from test_configuration import agent_body, error
+from test_datasets import import_and_prepare
 from test_e2e_run import credential_of, prepare_model
 from test_recycle import bin_entry, purge
 
-from maestro.testing.fakes import failed, scored
+from maestro.db import schema as t
+from maestro.execution.policy import harbor_outcome
+from maestro.testing.fakes import FakeDatasetSource, failed, scored
 
-RATE_LIMITED = failed("provider_transient", exception="ApiRateLimitError")
+RATE_LIMITED = harbor_outcome("ApiRateLimitError", "rate limited", None, False)
 OUT_OF_MEMORY = failed("sandbox_failed", exception="MemoryLimitExceededError")
 
 
@@ -292,6 +297,11 @@ def test_a_snapshot_stays_while_runs_and_files_go(service, version_id, executor)
         ).json()["data"]
         before = rows(snapshot["result"])
         assert before[run_b]["mean"] == 2 / 3
+        conditions = snapshot["result"]["dimensions"]
+        model_values = next(d["values"] for d in conditions if d["key"] == "model")
+        assert model_values[run_b]["model"]["endpoint"] == "https://models.example.test/v1"
+        assert model_values[run_b]["model"]["params"] == {"temperature": 0}
+        assert "credential_id" not in str(conditions)
         assert snapshot["spec"]["variable_dimensions"] == ["model"]
         note = snapshot["notes"][0]
         assert note["author_username"] == "alice" and note["pat_id"] is not None
@@ -314,6 +324,26 @@ def test_a_snapshot_stays_while_runs_and_files_go(service, version_id, executor)
         purge(admin, bin_entry(admin, run_b), run_b)
         again = alice.get(f"/api/v1/analysis-snapshots/{snapshot['id']}").json()["data"]
         assert rows(again["result"]) == before and again["evidence"][run_b] == "purged"
+        assert again["result"]["dimensions"] == conditions
+
+        # Older frozen results remain readable, with no invented historical conditions.
+        with service.db.write() as conn:
+            stored = conn.execute(
+                select(t.analysis_snapshots.c.result_json).where(
+                    t.analysis_snapshots.c.id == snapshot["id"]
+                )
+            ).scalar_one()
+            stored["comparison_version"] = 1
+            for dimension in stored["dimensions"]:
+                dimension.pop("values", None)
+            conn.execute(
+                update(t.analysis_snapshots)
+                .where(t.analysis_snapshots.c.id == snapshot["id"])
+                .values(result_json=stored)
+            )
+        old = alice.get(f"/api/v1/analysis-snapshots/{snapshot['id']}", expect=200).json()["data"]
+        assert rows(old["result"]) == before
+        assert all(d["values"] == {} for d in old["result"]["dimensions"])
         events = alice.get(f"/api/v1/collections/{collection['id']}/events").json()["data"]
         assert events[0]["action"] == "purged" and events[0]["run_id"] == run_b
 
@@ -368,3 +398,199 @@ def test_an_agent_keeps_a_collection_through_the_sdk(service, version_id, execut
         assert snapshot.notes[0].pat_id is not None
         assert agent.comparisons.compare([base, submission.accepted.run_id]).comparable
         assert [e.action for e in agent.collections.events(collection.id)][:1] == ["add"]
+
+
+def test_text_author_parameters_work_in_templates_and_run_requests(service, source):
+    source.add(
+        "demo",
+        "params",
+        "v1",
+        ["region"],
+        files={
+            "region": {
+                **FakeDatasetSource.task_files("demo", "params", "region"),
+                "task.toml": '[environment]\ncpus = 1\nmemory_mb = 2048\n[verifier.env]\nREGION = "${REGION}"\nGRADER_TOKEN = "${GRADER_TOKEN}"\n',
+            }
+        },
+    )
+    with running(service) as client:
+        admin = setup_admin(service, client)
+        version, _ = import_and_prepare(admin, name="params")
+        model, harness = prepare_model(admin)
+        credential = admin.post(
+            "/api/v1/admin/credentials",
+            json={
+                "name": "grader",
+                "kind": "generic_secret",
+                "provider": "grader",
+                "value": "fake-grader-value",
+            },
+            expect=201,
+        ).json()["data"]
+        parameters = {"REGION": "eu", "GRADER_TOKEN": {"credential_id": credential["id"]}}
+        base = run_of(admin, version, model, harness, parameters=parameters)
+        request = admin.get(f"/api/v1/runs/{base}/request", expect=200).json()["data"]
+        assert request["parameters"] == parameters
+        c = admin.post(
+            "/api/v1/collections",
+            json={
+                "name": "region",
+                "scenario": "models",
+                "base": {"run_id": base},
+            },
+            expect=201,
+        ).json()["data"]
+        assert c["template"]["parameters"] == parameters
+        assert admin.get("/api/v1/collections", expect=200).json()["data"][0]["id"] == c["id"]
+        from_request = admin.post(
+            "/api/v1/collections",
+            json={
+                "name": "from request",
+                "scenario": "models",
+                "base": {"request": request},
+            },
+            expect=201,
+        ).json()["data"]
+        assert from_request["template"]["parameters"] == parameters
+        # A row created before this fix has the internal {value: ...} wrapper.
+        with service.db.write() as conn:
+            conn.execute(
+                update(t.collections)
+                .where(t.collections.c.id == c["id"])
+                .values(
+                    template_json={
+                        **c["template"],
+                        "parameters": {**parameters, "REGION": {"value": "eu"}},
+                    }
+                )
+            )
+        legacy = admin.get(f"/api/v1/collections/{c['id']}", expect=200).json()["data"]
+        assert legacy["template"]["parameters"] == parameters
+        admin.get("/api/v1/collections", expect=200)
+        submitted = admin.post(
+            "/api/v1/runs",
+            json={
+                "name": "from legacy collection",
+                "collection_id": c["id"],
+                **agent_body(model, harness),
+            },
+            headers={"Idempotency-Key": uuid.uuid4().hex},
+            expect=202,
+        ).json()["data"]
+        wait_operation(admin, submitted["operation_id"])
+        used = admin.get(f"/api/v1/runs/{submitted['run_id']}/request", expect=200).json()["data"]
+        assert used["parameters"] == parameters
+        assert "fake-grader-value" not in str([request, c, from_request, legacy, used])
+
+
+@pytest.mark.parametrize(
+    ("before", "after"), [({}, {"temperature": None}), ({"flag": False}, {"flag": 0})]
+)
+def test_collection_refuses_model_params_that_only_python_considers_equal(
+    service, version_id, before, after
+):
+    with running(service) as client:
+        admin = setup_admin(service, client)
+        model, harness = prepare_model(admin)
+        m = admin.get(f"/api/v1/model-configs/{model}", expect=200).json()["data"]
+        m = admin.put(
+            f"/api/v1/admin/model-configs/{model}",
+            json={
+                **{k: m[k] for k in ("provider", "protocol", "endpoint", "model_id")},
+                "expected_revision": m["revision"],
+                "params": before,
+            },
+            expect=200,
+        ).json()["data"]
+        base = run_of(admin, version_id, model, harness)
+        c = admin.post(
+            "/api/v1/collections",
+            json={
+                "name": "fixed",
+                "scenario": "repeats",
+                "base": {"run_id": base},
+            },
+            expect=201,
+        ).json()["data"]
+        resolution = admin.post(
+            "/api/v1/config-resolutions",
+            json={"dataset_version_id": version_id, **agent_body(model, harness)},
+            expect=201,
+        ).json()["data"]
+        admin.put(
+            f"/api/v1/admin/model-configs/{model}",
+            json={
+                **{k: m[k] for k in ("provider", "protocol", "endpoint", "model_id")},
+                "expected_revision": m["revision"],
+                "params": after,
+            },
+            expect=200,
+        )
+        changed = run_of(admin, version_id, model, harness, source_run_id=base)
+        refused = admin.post(
+            f"/api/v1/collections/{c['id']}/runs", json={"runs": [{"run_id": changed}]}
+        )
+        assert error(refused) == (409, "COLLECTION_MISMATCH")
+        assert "model" in refused.json()["error"]["field_errors"][0]["message"]
+        parameter_path = f"/model/params/{next(iter(after))}"
+        detail = admin.get(f"/api/v1/runs/{changed}", expect=200).json()["data"]
+        changes = detail["snapshot"]["provenance"]["source"]["differences"]
+        assert parameter_path in {d["path"] for d in changes}
+        stale = admin.post(
+            "/api/v1/runs",
+            json={"name": "stale", "resolution_id": resolution["resolution_id"]},
+            headers={"Idempotency-Key": uuid.uuid4().hex},
+        )
+        assert error(stale) == (409, "CONFIG_RESOLUTION_STALE")
+        assert parameter_path in {d["path"] for d in stale.json()["error"]["field_errors"]}
+
+
+@pytest.mark.parametrize("batch", [False, True])
+def test_confirmed_resolution_keeps_collection_provenance(service, version_id, batch):
+    with running(service, run_worker=False) as client:
+        admin = setup_admin(service, client)
+        model, harness = prepare_model(admin)
+        c = admin.post(
+            "/api/v1/collections",
+            json={
+                "name": "resources",
+                "scenario": "models",
+                "base": {
+                    "request": {
+                        "dataset_version_id": version_id,
+                        **agent_body(model, harness),
+                        "resources": {"cpus": 2},
+                        "repetitions": 2,
+                    }
+                },
+            },
+            expect=201,
+        ).json()["data"]
+        res = admin.post(
+            "/api/v1/config-resolutions",
+            json={
+                "collection_id": c["id"],
+                **agent_body(model, harness),
+            },
+            expect=201,
+        ).json()["data"]
+        expected = {"layer": "collection", "source_id": c["id"]}
+        assert res["field_sources"]["/resources/cpus"] == expected
+        member = {
+            "name": "confirmed",
+            "collection_id": c["id"],
+            "resolution_id": res["resolution_id"],
+        }
+        accepted = admin.post(
+            "/api/v1/run-batches" if batch else "/api/v1/runs",
+            json={"name": "batch", "runs": [member]} if batch else member,
+            headers={"Idempotency-Key": uuid.uuid4().hex},
+            expect=202,
+        ).json()["data"]
+        run_id = accepted["runs"][0]["run_id"] if batch else accepted["run_id"]
+        detail = admin.get(f"/api/v1/runs/{run_id}", expect=200).json()["data"]
+        provenance = detail["snapshot"]["provenance"]
+        assert provenance["field_sources"]["/resources/cpus"] == expected
+        assert provenance["field_sources"]["/repetitions"] == expected
+        assert provenance["reference_revisions"]["collection"] == {"id": c["id"]}
+        assert admin.get(f"/api/v1/collections/{c['id']}").json()["data"]["run_count"] == 1

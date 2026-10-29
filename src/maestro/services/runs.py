@@ -59,6 +59,7 @@ from maestro.services.configuration import (
     differences,
     hide_model_credential,
     pinned_request,
+    request_input,
 )
 from maestro.services.plans import Plans
 from maestro.services.principal import (
@@ -386,6 +387,14 @@ class Runs:
                 field_errors=[FieldError(d["path"], "CHANGED") for d in changed[:50]],
                 suggested_actions=[{"type": "resolve_configuration"}],
             )
+        # The effective configuration is unchanged; keep the collection provenance
+        # frozen by the resolution rather than relabelling inherited values as overrides.
+        previous = row["result_json"]
+        for pointer, source in previous.get("field_sources", {}).items():
+            if source.get("layer") == "collection":
+                res.field_sources[pointer] = dict(source)
+        if collection := previous.get("reference_revisions", {}).get("collection"):
+            res.references["collection"] = dict(collection)
         return res
 
     # --- acceptance ------------------------------------------------------------
@@ -495,7 +504,7 @@ class Runs:
         team defaults and the model revision are pinned to what the run used."""
         with self.db.read() as conn:
             source = self._source(conn, run_id)
-        return pinned_request(source["request"], source["effective"])
+        return request_input(pinned_request(source["request"], source["effective"]))
 
     def rerun(
         self, principal: Principal, idempotency_key: str, run_id: str, body: dict

@@ -483,3 +483,148 @@ test("attachment snapshots", async ({ page }) => {
   expect((await download).suggestedFilename()).toBe("smoke-tools-v2.zip");
   await page.screenshot({ path: `${shots}/attachments.png`, fullPage: true });
 });
+
+// Comparisons keep their settings in shared URLs and their frozen evidence status
+// in every layout, even when the underlying run has since been deleted.
+const comparisonFixture = {
+  comparison_version: 2, grouping_version: 2, comparable: true,
+  blockers: [], warnings: [], set_aside: [], groups: [],
+  settings: { exclude: [], scope: "common", baseline_run_id: "run_a",
+    layout: { mode: "leaderboard", rows: null, columns: null, sort: null } },
+  varying: ["model", "harness"],
+  dimensions: [
+    { key: "model", varies: true, paths: ["/model/model_id"],
+      labels: { run_a: "M1", run_b: "M2", run_c: "M3" },
+      values: { run_a: { model: { endpoint: "https://comparison.example/v1", model_id: "M1" } },
+        run_b: { model: { endpoint: "https://comparison.example/v2", model_id: "M2" } } } },
+    { key: "harness", varies: true, paths: ["/harness/name"],
+      labels: { run_a: "H1", run_b: "H2", run_c: "H1" }, values: {} },
+  ],
+  runs: [0.2, 0.8, null].map((mean, i) => ({
+    run_id: `run_${"abc"[i]}`, name: `run ${"abc"[i]}`, title: "ABC"[i], label: null,
+    owner_username: "u", state: "finished", terminal: true, relation: "initial",
+    accepted_at: "2026-10-22T00:00:00Z", evidence: "available",
+    task_count: 1, planned_trials: 1, compared_trials: 1, valid_trials: mean == null ? 0 : 1,
+    scored_trials: mean == null ? 0 : 1, passed_trials: 0, pass_rate: 0,
+    failed_trials: 0, excluded_trials: 0, pending_trials: 0, mean, stddev: null,
+    failed_by_group: {}, excluded_by_group: {}, actual_models: [], difference: null,
+    usage: { known_trials: 0, known_totals: {} },
+  })),
+  tasks: [{ task_key: "one", status: "compared", cells: Object.fromEntries(
+    ["a", "b", "c"].map((id) => [`run_${id}`, {
+      planned_trials: 1, scored_trials: 1, valid_trials: 1, failed_trials: 0,
+      excluded_trials: 0, pending_trials: 0, mean: 1, passed_trials: 1,
+      failed_by_group: {}, excluded_by_group: {}, trial_ids: [`trl_${id}`], scores: [1],
+    }]),
+  ) }], common_tasks: 1, all_tasks: 1, dropped_tasks: 0,
+};
+
+test("comparison sorting survives URL changes and reloads", async ({ page }) => {
+  await serveFixtures(page, sessionRoutes);
+  await page.route("**/api/v1/comparisons", (route) => {
+    const body = route.request().postDataJSON();
+    return route.fulfill({ json: { meta, data: {
+      ...comparisonFixture,
+      settings: { ...comparisonFixture.settings, ...body },
+    } } });
+  });
+  await page.goto("/compare?runs=run_a,run_b,run_c");
+  const titles = page.getByRole("table").first().locator("tbody tr td:first-child > a");
+  await expect(titles).toHaveText(["A", "B", "C"]);
+  await page.getByRole("button", { name: "均分", exact: true }).click();
+  await expect(page).toHaveURL(/sort=mean&descending=true/);
+  await expect(titles).toHaveText(["B", "A", "C"]); // missing scores stay last
+  await page.reload();
+  await expect(titles).toHaveText(["B", "A", "C"]);
+  await page.getByRole("button", { name: "均分 ↓", exact: true }).click();
+  await expect(titles).toHaveText(["A", "B", "C"]);
+});
+
+for (const state of ["none", "deleted", "purged"]) {
+  test(`snapshot ${state} evidence has no links in any layout`, async ({ page }) => {
+    await serveFixtures(page, {
+      ...sessionRoutes,
+      "/api/v1/analysis-snapshots/snap_1": {
+        id: "snap_1", name: "frozen", owner_username: "u", pat_id: null,
+        created_at: "2026-10-22T00:00:00Z", run_count: 3, collection_id: null,
+        spec: null, result: comparisonFixture, notes: [], allowed_actions: [], deletion: null,
+        evidence: { run_a: "available", run_b: state, run_c: "available" },
+      },
+    });
+    await page.goto("/snapshots/snap_1");
+    await expect(page.getByRole("heading", { name: "快照：frozen" })).toBeVisible();
+    const broken = page.locator('a[href^="/runs/run_b"]');
+    await expect(broken).toHaveCount(0); // leaderboard and task cells
+    await expect(page.locator('a[href^="/runs/run_a"]').first()).toBeVisible();
+    await page.getByText("条件明细", { exact: true }).click();
+    await page.getByText("模型", { exact: true }).last().click();
+    await expect(page.getByText(/https:\/\/comparison.example\/v2/)).toBeVisible();
+    await page.getByRole("button", { name: "矩阵", exact: true }).click();
+    await expect(page.getByRole("columnheader", { name: /模型.*Harness/ })).toBeVisible();
+    await expect(broken).toHaveCount(0); // matrix and task cells use current status too
+  });
+}
+
+test("incomparable runs show raw summaries without comparison filters", async ({ page }) => {
+  await serveFixtures(page, {
+    ...sessionRoutes,
+    "/api/v1/comparisons": { ...comparisonFixture, comparable: false, tasks: [],
+      blockers: [{ code: "DATASET_DIFFERS", dimension: "dataset" }],
+      settings: { ...comparisonFixture.settings, scope: "all" } },
+  });
+  await page.goto("/compare?runs=run_a,run_b");
+  await expect(page.getByText("条件不同，显示各运行的原始汇总")).toBeVisible();
+  await expect(page.getByRole("button", { name: "原始均分" })).toBeVisible();
+  await expect(page.getByText(/失败剔除：/)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "共同任务", exact: true })).toHaveCount(0);
+});
+
+test("copying a collection edits fixed resources through the configuration form", async ({ page }) => {
+  const collection = {
+    id: "col_1", name: "one CPU", description: "baseline", scenario: "models",
+    variable_dimensions: ["model"], fixed: { resources: { overrides: { cpus: 1 } } },
+    fixed_labels: { resources: "cpus=1" }, owner_username: "u", run_count: 1,
+    template: { dataset_version_id: "dsv_1", execution_mode: "agent",
+      harness_version_id: "har_1", resources: { cpus: 1 }, repetitions: 1,
+      timeouts: { verifier_sec: 30.5 } },
+    members: [], allowed_actions: ["copy"], deletion: null,
+    settings: comparisonFixture.settings, base_run_id: null, copied_from: null,
+    created_at: "2026-10-22T00:00:00Z",
+  };
+  await serveFixtures(page, {
+    ...sessionRoutes,
+    "/api/v1/collections/col_1": collection,
+    "/api/v1/collections/col_1/comparison": comparisonFixture,
+    "/api/v1/collections/col_1/events": [], "/api/v1/analysis-snapshots": [],
+    "/api/v1/plans": [], "/api/v1/credentials": [], "/api/v1/attachments": [],
+    "/api/v1/datasets": [{ namespace: "demo", name: "arith", versions: [
+      { id: "dsv_1", upstream_ref: "v1", status: "ready" },
+    ] }],
+    "/api/v1/dataset-versions/dsv_1": { task_count: 0, admitted_task_count: 0, submittable_task_count: 0 },
+    "/api/v1/dataset-versions/dsv_1/tasks": [],
+    "/api/v1/model-configs": [{ id: "mdl_1", name: "model", protocol: "openai", revision: 1 }],
+    "/api/v1/harness-versions": [{ id: "har_1", name: "harness", version: "1", enabled: true,
+      protocols: ["openai"], parameter_schema: { parameters: {} } }],
+  });
+  await page.route("**/api/v1/collections/col_1/copy", (route) => route.fulfill({ json: { meta,
+    data: { ...collection, id: "col_2", name: "two CPUs", run_count: 0,
+      not_carried: [{ run_id: "run_a", name: "old run", mismatches: [
+        { dimension: "resources", path: "/overrides/cpus" },
+      ] }] },
+  } }));
+  await page.goto("/collections/col_1");
+  await page.getByRole("link", { name: "复制并修改规格" }).click();
+  await expect(page.getByRole("heading", { name: "复制并修改集合规格" })).toBeVisible();
+  await expect(page.locator("#run-cpus")).toHaveValue("1");
+  await expect(page.locator("#run-cpus")).toBeEnabled();
+  await expect(page.getByLabel("验证时限（秒）", { exact: true })).toHaveValue("30.5");
+  await page.locator("#run-cpus").fill("2");
+  await page.getByLabel("新集合名称").fill("two CPUs");
+  const copied = page.waitForRequest((r) => r.url().endsWith("/collections/col_1/copy"));
+  await page.getByRole("button", { name: "建立副本" }).click();
+  const body = (await copied).postDataJSON();
+  expect(body.base.request.resources.cpus).toBe(2);
+  expect(body.base.request.timeouts.verifier_sec).toBe(30.5);
+  await expect(page.getByText("old run：资源与时限不同")).toBeVisible();
+  await expect(page.getByRole("link", { name: "打开新集合" })).toHaveAttribute("href", "/collections/col_2");
+});

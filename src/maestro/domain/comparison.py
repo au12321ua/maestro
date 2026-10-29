@@ -17,13 +17,13 @@ from collections import defaultdict
 from dataclasses import dataclass
 
 from maestro.core.digests import digest_json
-from maestro.domain.scoring import mean, passed, sample_stddev
+from maestro.domain.scoring import TrialRecord, mean, passed, sample_stddev, summarize
 from maestro.domain.states import TRIAL_ACTIVE, TrialState
 
 # Snapshots keep the tables they computed: a change to the table's shape bumps this, and
 # reading a snapshot must then still understand the older shape.
-COMPARISON_VERSION = 1
-GROUPING_VERSION = 1
+COMPARISON_VERSION = 2
+GROUPING_VERSION = 2
 
 # --- dimensions -------------------------------------------------------------------------
 
@@ -93,18 +93,23 @@ def dimensions_of(view: dict, contract: dict) -> dict[str, dict]:
 
 def pointers(old, new, path: str = "") -> list[str]:
     """JSON pointers where two values differ (lists compared item by item)."""
-    if old == new:
-        return []
     if isinstance(old, dict) and isinstance(new, dict):
         found = []
         for key in sorted(set(old) | set(new)):
-            found += pointers(old.get(key), new.get(key), f"{path}/{key}")
+            pointer = f"{path}/{key.replace('~', '~0').replace('/', '~1')}"
+            if key not in old or key not in new:
+                found.append(pointer)
+            else:
+                found += pointers(old[key], new[key], pointer)
         return found
     if isinstance(old, list) and isinstance(new, list) and len(old) == len(new):
         found = []
         for index, (a, b) in enumerate(zip(old, new, strict=True)):
             found += pointers(a, b, f"{path}/{index}")
         return found
+    # JSON booleans and numbers are different even though Python says False == 0.
+    if old == new and isinstance(old, bool) == isinstance(new, bool):
+        return []
     return [path or "/"]
 
 
@@ -199,6 +204,36 @@ _BY_EXCEPTION = {
     "ApiUsageLimitError": "provider_access",
     "PaymentRequiredError": "provider_access",
     "BudgetExceededError": "provider_access",
+    **dict.fromkeys(
+        (
+            "ApiRateLimitError",
+            "ApiInternalServerError",
+            "ApiOverloadedError",
+            "ApiConnectionClosedError",
+            "ApiResponseStalledError",
+            "NetworkConnectionError",
+            "RateLimitError",
+            "APIConnectionError",
+            "InternalServerError",
+            "ServiceUnavailableError",
+            "BadGatewayError",
+            "MidStreamFallbackError",
+            "Timeout",
+            "APIError",
+        ),
+        "provider_unavailable",
+    ),
+    **dict.fromkeys(
+        (
+            "AgentAuthenticationError",
+            "ModelNotFoundError",
+            "ApiProviderResourceNotFoundError",
+            "AuthenticationError",
+            "PermissionDeniedError",
+            "NotFoundError",
+        ),
+        "provider_access",
+    ),
 }
 _BY_CAUSE = {
     "provider_transient": "provider_unavailable",
@@ -358,6 +393,7 @@ def compare(
                 "varies": bool(paths),
                 "paths": paths,
                 "labels": _labels(dimension, values),
+                "values": values,
             }
         )
     varying = [d["key"] for d in dimensions if d["varies"]]
@@ -379,7 +415,9 @@ def compare(
     for run in runs:
         by_task: dict[str, list] = defaultdict(list)
         for trial in run.trials:
-            kind, group = _outcome(trial, excluded)
+            # Different benchmarks show original summaries: every unscored trial is
+            # left out, independent of this comparison's failure-filter settings.
+            kind, group = _outcome(trial, excluded if comparable else set(GROUPS))
             by_task[trial.task_key].append((trial, kind, group))
         outcomes[run.run_id] = by_task
     task_sets = [set(outcomes[run_id]) for run_id in ids]
@@ -456,6 +494,23 @@ def compare(
                 "difference": None,
             }
         )
+        if not comparable:
+            raw = summarize(
+                [
+                    TrialRecord(x.task_key, x.state, x.raw_score, x.failure_cause)
+                    for x in run.trials
+                ],
+                run.contract,
+            )
+            rows[-1].update(
+                task_count=raw["task_count"],
+                compared_trials=raw["planned_trials"],
+                valid_trials=raw["scored_trials"],
+                mean=raw["mean"],
+                stddev=raw["stddev"],
+                passed_trials=raw["passed_trials"],
+                pass_rate=raw["pass_rate"],
+            )
 
     by_model: dict[str, set] = defaultdict(set)
     for row in rows:
