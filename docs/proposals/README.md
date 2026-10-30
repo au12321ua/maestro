@@ -21,7 +21,7 @@
 
 | 编号 | 提案 | 状态 | 要点 |
 | --- | --- | --- | --- |
-| N-25 | [附件包的管理与改进](N-25-package-improvement.md) | 设计中 | 一个仓库一个附件包，`payload/` 等于附件；SDK 提供包工具（初始化、检查、从 git 发布、评测、尝试、严格口径对照、晋升）并随 wheel 发布 skill；尝试自由、晋升严格，记录写进包仓库；SDK 发布到 Gitea 包仓库。取代独立的 rsi-workbench |
+| N-25 | [Agent 客户端](N-25-agent-client.md) | 实施中 | SDK 与 skill 怎样让 Agent 用好 Maestro（U-59、U-60）：平台保存事实、Agent 的工作过程自由；SDK 生成推荐的本地工作区与 `AGENTS.md` 模板；附件仓库只装附件，SDK 从 git 提交发布；skill 打进 SDK wheel 安装，SDK 发到 Gitea 包仓库；新 skill `maestro-package` 给出做附件、改进与恢复的建议。取代独立的 rsi-workbench |
 
 ### 由用户测试后再推进
 
