@@ -57,39 +57,13 @@ Example config: `{"dataset_version_id": ..., "execution_mode": "agent", "model_c
 - If `TransportError` is raised, repeat the same call with `idempotency_key=error.idempotency_key`. If the key is lost too, use `client.runs.find("<client_request_id>")`.
 - Only use a new key (omit it) when you really mean to run again.
 
-## Follow-up runs
+## More
 
-| Need | Call |
-| --- | --- |
-| Same configuration again (snapshot fixed) | `client.runs.rerun(run_id)`; `mode="unfinished"` reruns only tasks without scores; `mode="explicit", task_ids=[...]` reruns a chosen subset |
-| Change something | `req = client.runs.request(run_id)`, edit the fields, then `client.runs.submit(req, name=..., source_run_id=run_id)`; the differences are recorded |
-| Several configs, all or none | `client.batches.preview(name, [c1, c2])`, then `client.batches.submit(name, [c1, c2])` |
-| Package for analysis | `e = client.exports.create([run_ids])`, `client.operations.wait(e.operation_id)`, `client.exports.download(e.id, "x.zip")` |
-| Publish tools for the agent under test | `client.attachments.publish("dir", label=..., parent=...)` (needs `manifest.json`, no `version`; uploads only changed files, same content returns the same snapshot); then put the id in `attachments`. `fetch(id, "dir")` restores a snapshot to edit |
-| Filter runs | `client.runs.list(dataset_version_id=..., model_config_id=..., state=..., accepted_after="2026-10-24T00:00:00Z")` |
-| Compare runs | `client.comparisons.compare([run_a, run_b])`: what differs, per-run statistics over common tasks, per-task cells. External failures (rate limits, environment build, platform stops) are excluded by default and the rest count as failed (0); pass `exclude=[]` to keep them all. Report `dropped_tasks`, the excluded counts and any `warnings` with the numbers |
-| Keep a collection | `c = client.collections.create(name, "models", base_run_id=run_id, run_ids=[...])`; submit into it with `client.runs.submit(cfg, name=..., collection_id=c.id)` (fixed fields are filled in; a mismatch is refused); `client.collections.compare(c.id)` |
-| Record a conclusion | `s = client.snapshots.create(name, collection_id=c.id)` once the runs ended, then `client.snapshots.add_note(s.id, text)`; your note is stored apart from the computed table |
+Read the file that matches the task before acting on it:
 
-## Errors
+- [references/follow-up-runs.md](references/follow-up-runs.md): rerun a run, change a configuration and run it again, submit several configurations together, use plans, filter runs, export runs for analysis.
+- [references/comparing.md](references/comparing.md): compare runs, keep a collection, record a conclusion in a snapshot, and how to report comparison numbers.
+- [references/attachments.md](references/attachments.md): publish tools for the agent under test, restore a snapshot to edit it, see what changed.
+- [references/errors.md](references/errors.md): the fields of `ApiError` and what the common error codes ask you to do.
 
-`ApiError` carries these fields:
-
-- `status` and `code`: the HTTP status and a stable error code.
-- `message`
-- `field_errors`: JSON paths such as `/repetitions`.
-- `retryable`: whether the same request may succeed later. It never means "resubmit with a new key".
-- `suggested_actions` and `request_id`.
-
-Common codes:
-
-| Code | Meaning |
-| --- | --- |
-| `PAT_SCOPE_INSUFFICIENT` | A read PAT tried to write. |
-| `ADMIN_SESSION_REQUIRED` | Administration happens only in the web UI; ask an administrator. |
-| `CONFIG_RESOLUTION_STALE` (409) | The team defaults or the model changed; resolve again. |
-| `RERUN_CONFIG_CHANGED` | Use a modified run instead. |
-| `EXECUTION_UNAVAILABLE` (503) | The service cannot run anything right now. |
-| 429 | Rate limit or PAT quota. Do not retry in a loop. |
-
-Full reference: `sdk/README.md` in the Maestro repository.
+Every SDK method has a docstring; `help(client.runs.submit)` shows the arguments it takes.

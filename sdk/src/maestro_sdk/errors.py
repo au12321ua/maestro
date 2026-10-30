@@ -9,6 +9,10 @@ class MaestroError(Exception):
     """Base class of every SDK error."""
 
 
+class ContractDriftWarning(UserWarning):
+    """The service's OpenAPI document differs from the one this SDK was generated from."""
+
+
 class ApiError(MaestroError):
     """The service answered with its structured error (10 section 2).
 

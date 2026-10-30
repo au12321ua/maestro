@@ -30,8 +30,8 @@
 | --- | --- | --- |
 | 公开契约 | `openapi/maestro-v1.json` | 由服务导出、受版本控制的 OpenAPI；网页类型与 SDK 模型都从它生成，服务在 `/capabilities` 报告它的摘要 |
 | 生成 | `tools/generate_clients.py` | 导出契约并生成 SDK 的 `models.py` 与 `_contract.py`；`--check` 只比较。网页类型在 `frontend/` 用 `npm run gen:api` / `check:api` |
-| Python SDK | `sdk/src/maestro_sdk/` | 只依赖 httpx 与 pydantic：生成的模型，以及手写的认证、幂等提交与重试、翻页、等待、核对摘要的下载（`client.py`）、错误类型（`errors.py`）。用法见 `sdk/README.md` |
-| Agent skill | `skills/maestro-sdk/SKILL.md` | 让 Agent 经 SDK 操作 Maestro 的流程与报告规则；提到的 SDK 调用由 `test_sdk.py` 核对 |
+| Python SDK | `sdk/src/maestro_sdk/` | 只依赖 httpx 与 pydantic。生成的模型（`models.py`）；手写的部分：入口 `MaestroClient`（`client.py`），认证、重试、翻页与核对摘要的下载（`_transport.py`），每组接口一个模块（`resources/`），在生成模型之外的返回类型（`results.py`），错误类型（`errors.py`）。用法见 `sdk/README.md` |
+| Agent skill | `skills/maestro-sdk/` | 让 Agent 经 SDK 操作 Maestro：`SKILL.md` 写常用流程与报告规则，`references/` 按任务分文件，用到时再读；提到的 SDK 调用由 `test_sdk.py` 核对 |
 | 网页 | `frontend/src/` | Vite + React + shadcn/ui：页面（`pages/`，管理页的配置标签在 `pages/admin/`）、API 调用与生成的类型（`lib/`）、公用组件（`components/`）、界面语言（`i18n.ts` 与 `locales/` 的中英文语言文件）；Playwright 冒烟在 `frontend/qa/` |
 
 ## 安装、发布与检查

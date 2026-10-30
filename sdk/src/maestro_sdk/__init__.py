@@ -10,23 +10,18 @@ client.operations.wait(submitted.operation_id)
 """
 
 from maestro_sdk import models
-from maestro_sdk.client import (
-    BatchSubmission,
-    ContractDriftWarning,
-    Download,
-    MaestroClient,
-    Resolution,
-    Submission,
-)
+from maestro_sdk.client import MaestroClient
 from maestro_sdk.errors import (
     ApiError,
     BlockersPresent,
     ContentMismatch,
+    ContractDriftWarning,
     MaestroError,
     TransportError,
     UnsupportedCapability,
     WaitTimeout,
 )
+from maestro_sdk.results import BatchSubmission, Download, Resolution, Submission
 
 __all__ = [
     "ApiError",

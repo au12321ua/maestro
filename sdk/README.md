@@ -2,7 +2,7 @@
 
 用一个个人访问令牌（PAT）在 Maestro 上查看数据集、解析配置、提交和重跑运行、等待结果、读取评分并下载证据。SDK 只发 HTTP 请求，不需要服务器目录、服务端代码或 Harbor；网页上能做的实验操作，SDK 都能做（管理与账号设置除外，它们只在网页里）。
 
-让 Agent 代为操作时，给它加载仓库里的 skill [`skills/maestro-sdk/SKILL.md`](../skills/maestro-sdk/SKILL.md)（工作流程、诚实报告结果的规则、丢失回答后的恢复），本页是完整参考。
+让 Agent 代为操作时，给它加载仓库里的 skill [`skills/maestro-sdk/`](../skills/maestro-sdk/SKILL.md)（`SKILL.md` 写工作流程、诚实报告结果的规则、丢失回答后的恢复，`references/` 按任务细分），本页是完整参考。
 
 ## 安装与连接
 
@@ -105,3 +105,5 @@ except TransportError as lost:
 ## 维护
 
 `models.py` 与 `_contract.py` 由 `uv run python tools/generate_clients.py` 从服务的 OpenAPI 生成，不要手改；API 改了不重新生成，测试会失败。
+
+手写部分：`client.py` 是入口，`_transport.py` 负责认证、重试、翻页和下载，`resources/` 每组接口一个模块，`results.py` 放生成模型之外的返回类型。新增一组接口时加一个 `resources/` 模块，并在 `MaestroClient.__init__` 里挂上。

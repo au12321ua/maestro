@@ -534,11 +534,14 @@ def test_generated_contract_and_sdk_models_are_current():
 
 
 def test_the_skill_and_the_guide_only_name_real_sdk_calls():
-    """skills/maestro-sdk/SKILL.md and sdk/README.md teach agents; a renamed method fails here."""
+    """The skill (SKILL.md and its references) and sdk/README.md teach agents; a renamed
+    method fails here."""
     client = MaestroClient("http://127.0.0.1:9")
-    for doc in (ROOT / "skills" / "maestro-sdk" / "SKILL.md", ROOT / "sdk" / "README.md"):
+    skill = ROOT / "skills" / "maestro-sdk"
+    docs = [skill / "SKILL.md", *sorted((skill / "references").glob("*.md"))]
+    for doc in (*docs, ROOT / "sdk" / "README.md"):
         calls = set(re.findall(r"client\.([a-z_]+(?:\.[a-z_]+)?)\(", doc.read_text()))
-        assert calls, doc
+        assert calls or doc.parent.name == "references", doc  # errors.md names none
         for dotted in calls:
             target = client
             for part in dotted.split("."):
