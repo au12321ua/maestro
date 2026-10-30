@@ -221,7 +221,13 @@
     "openDrawer": "打开导航",
     "closeDrawer": "关闭导航",
     "expand": "展开侧边栏",
-    "fold": "收起侧边栏"
+    "fold": "收起侧边栏",
+    "back": {
+      "runs": "返回运行列表",
+      "batches": "返回批次列表",
+      "collections": "返回集合列表",
+      "collection": "返回集合"
+    }
   },
   "app": {
     "sessionExpired": "登录已失效，请重新登录",

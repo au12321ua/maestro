@@ -29,6 +29,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  BackLink,
   EmptyNote,
   ErrorAlert,
   JsonBlock,
@@ -74,6 +75,7 @@ import { cn } from "@/lib/utils";
 import { SetupNetworkRevision } from "@/pages/admin/SetupNetworkTab";
 import { ArtifactTree } from "@/components/ArtifactTree";
 import { AddToCollection } from "@/components/AddToCollection";
+import { ConfigDifferences, type ConfigDifference } from "@/components/ConfigDifferences";
 
 const TABS = new Set(["execution", "results", "config", "artifacts"]);
 const TRIAL_TERMINAL = new Set(["scored", "execution_error", "not_started", "cancelled", "interrupted"]);
@@ -220,12 +222,19 @@ function RunDetailView({ runId }: { runId: string }) {
   };
 
   if (!run) {
-    return error ? <ErrorAlert error={error} title={t("runs.detail.loadFailed")} /> : <Loading />;
+    return error ? (
+      <div>
+        <BackLink to="/runs">{t("common.nav.back.runs")}</BackLink>
+        <ErrorAlert error={error} title={t("runs.detail.loadFailed")} />
+      </div>
+    ) : (
+      <Loading />
+    );
   }
 
   return (
     <div className="grid gap-4">
-      <PageTitle title={run.name}>
+      <PageTitle title={run.name} back={{ to: "/runs", label: t("common.nav.back.runs") }}>
         {active && (
           <span className="flex items-center gap-1 text-xs text-muted-foreground">
             <Loader2 className="size-3 animate-spin" />
@@ -528,7 +537,7 @@ function ExecutionMode({ mode }: { mode: unknown }) {
 function SourceDifferences({ snapshot }: { snapshot: RunDetail["snapshot"] }) {
   const source = snapshot.provenance.source as
     | {
-        differences?: { path: string; before: unknown; after: unknown }[];
+        differences?: ConfigDifference[];
         task_causes?: Record<string, string[]>;
       }
     | null
@@ -537,27 +546,9 @@ function SourceDifferences({ snapshot }: { snapshot: RunDetail["snapshot"] }) {
   if (source.differences) {
     return (
       <Info
+        className="sm:col-span-2 lg:col-span-3"
         label={t("runs.detail.differences")}
-        value={
-          source.differences.length === 0 ? (
-            t("runs.none")
-          ) : (
-            <ul className="text-xs">
-              {source.differences.slice(0, 12).map((d) => (
-                <li key={d.path}>
-                  <code>{d.path}</code>
-                  {t("runs.detail.difference", {
-                    before: JSON.stringify(d.before),
-                    after: JSON.stringify(d.after),
-                  })}
-                </li>
-              ))}
-              {source.differences.length > 12 && (
-                <li>{t("runs.detail.moreDifferences", { count: source.differences.length })}</li>
-              )}
-            </ul>
-          )
-        }
+        value={<ConfigDifferences differences={source.differences} />}
       />
     );
   }
@@ -614,9 +605,17 @@ function AgentSummary({ snapshot }: { snapshot: RunDetail["snapshot"] }) {
   );
 }
 
-function Info({ label, value }: { label: string; value: ReactNode }) {
+function Info({
+  label,
+  value,
+  className,
+}: {
+  label: string;
+  value: ReactNode;
+  className?: string;
+}) {
   return (
-    <div className="min-w-0">
+    <div className={cn("min-w-0", className)}>
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="break-all">{value}</div>
     </div>

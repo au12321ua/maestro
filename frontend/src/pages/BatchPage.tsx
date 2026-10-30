@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { EmptyNote, ErrorAlert, Loading, PageTitle, StatusPill } from "@/components/common";
+import { BackLink, EmptyNote, ErrorAlert, Loading, PageTitle, StatusPill } from "@/components/common";
 import { t } from "@/i18n";
 import { api, errorText } from "@/lib/api";
 import { OPERATION_STATUS, RUN_STATE, fmtTime, label } from "@/lib/format";
@@ -105,11 +105,22 @@ export function BatchPage() {
     }
   };
 
-  if (!batch) return error ? <ErrorAlert error={error} /> : <Loading />;
+  if (!batch)
+    return error ? (
+      <div>
+        <BackLink to="/batches">{t("common.nav.back.batches")}</BackLink>
+        <ErrorAlert error={error} />
+      </div>
+    ) : (
+      <Loading />
+    );
   const p = batch.progress;
   return (
     <div className="grid gap-4">
-      <PageTitle title={t("runs.batch.detailTitle", { name: batch.name })}>
+      <PageTitle
+        title={t("runs.batch.detailTitle", { name: batch.name })}
+        back={{ to: "/batches", label: t("common.nav.back.batches") }}
+      >
         {batch.runs.length > 1 && (
           <Button asChild size="sm" variant="outline">
             <Link to={`/compare?runs=${batch.runs.map((r) => r.id).join(",")}`}>

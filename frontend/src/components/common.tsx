@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
-import { AlertTriangle, Check, Copy, Loader2 } from "lucide-react";
+import { Link } from "react-router-dom";
+import { AlertTriangle, ArrowLeft, Check, Copy, Loader2 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -83,13 +84,38 @@ export function Loading({ text = t("common.loading") }: { text?: string }) {
   );
 }
 
-export function PageTitle({ title, children }: { title: string; children?: ReactNode }) {
+/** A way up from a page that opens one object: always to its parent list, so it does not
+ * depend on how the visitor arrived (tab and filter changes leave history entries). */
+export function BackLink({ to, children }: { to: string; children: ReactNode }) {
   return (
-    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-      <h1 className="min-w-0 break-words text-xl font-semibold [overflow-wrap:anywhere]">
-        {title}
-      </h1>
-      <div className="flex flex-wrap items-center gap-2">{children}</div>
+    <Link
+      to={to}
+      className="mb-2 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+    >
+      <ArrowLeft className="size-4" />
+      {children}
+    </Link>
+  );
+}
+
+export function PageTitle({
+  title,
+  back,
+  children,
+}: {
+  title: string;
+  back?: { to: string; label: string };
+  children?: ReactNode;
+}) {
+  return (
+    <div className="mb-4">
+      {back && <BackLink to={back.to}>{back.label}</BackLink>}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="min-w-0 break-words text-xl font-semibold [overflow-wrap:anywhere]">
+          {title}
+        </h1>
+        <div className="flex flex-wrap items-center gap-2">{children}</div>
+      </div>
     </div>
   );
 }

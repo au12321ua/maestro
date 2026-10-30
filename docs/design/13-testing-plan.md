@@ -152,7 +152,7 @@ UI 文案与纯样式变更不写低价值单元测试；优先验证会导致�
 
 预期：第二次只上传改动的文件，相同内容返回原快照；两份子快照并存，标签重复被拒绝；差异列出新增、删除与改动；`fetch` 只下载不同的文件并恢复可执行位；他人未发布的上传不能被引用；物理删除后该快照不可读，其他快照仍持有的内容保留，无人持有的内容与过期上传被清除。
 
-覆盖：`test_attachments.py`、`test_sdk.py`、`test_migrations.py`（旧附件清空）；网页的文件夹发布、差异与下载由 `frontend/qa/smoke.spec.ts` 覆盖。
+覆盖：`test_attachments.py`（含 0.3.0 受理的运行仍能打开）、`test_sdk.py`、`test_migrations.py`（旧附件清空）；网页的文件夹发布、分支树、差异与下载由 `frontend/qa/smoke.spec.ts` 覆盖。
 
 ## 6. 故事三：查询与导出
 

@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
 import pytest
+from sqlalchemy import select, update
 from support import (
     create_pat,
     invite_member,
@@ -530,6 +531,32 @@ def test_deleting_and_purging_an_attachment(service, version_id):
         assert run["snapshot"]["effective"]["attachments"][0]["name"] == "tools"
     root = service.settings.data_dir / "attachments"
     assert list((root / "blobs").iterdir()) == [] and list((root / "snapshots").iterdir()) == []
+
+
+def test_a_run_from_before_attachment_snapshots_still_opens(service, version_id):
+    """0.3.0 recorded an attachment's ``version``; its runs must keep opening."""
+    with running(service, run_worker=False) as client:
+        admin = setup_admin(service, client)
+        model_id, harness_id = prepare_model(admin)
+        tools = attach(admin, label="2")
+        body = agent_body(model_id, harness_id, attachments=[tools])
+        run_id = submit(admin, version_id, **body).json()["data"]["run_id"]
+        with service.db.write() as conn:
+            snapshot = t.run_snapshots.c
+            effective = conn.execute(
+                select(snapshot.effective_json).where(snapshot.run_id == run_id)
+            ).scalar_one()
+            for attachment in effective["attachments"]:
+                attachment["version"] = attachment.pop("label")
+            conn.execute(
+                update(t.run_snapshots)
+                .where(snapshot.run_id == run_id)
+                .values(effective_json=effective)
+            )
+        run = admin.get(f"/api/v1/runs/{run_id}", expect=200).json()["data"]
+        shown = run["snapshot"]["effective"]["attachments"]
+        assert [(a["name"], a["label"]) for a in shown] == [("tools", "2")]
+        assert "version" not in shown[0]
 
 
 def test_a_purge_keeps_contents_another_snapshot_still_holds(service):
