@@ -10,8 +10,13 @@ Maestro runs Harbor experiments for a team. You reach it over HTTP with a PAT; y
 ## Setup
 
 ```bash
-pip install <maestro-repo>/sdk        # Python >= 3.10; depends only on httpx and pydantic
+# Python >= 3.10; depends only on httpx and pydantic. Use the service's version.
+uv pip install "maestro-sdk==<version>" --index maestro=https://<gitea>/api/packages/<owner>/pypi/simple
+python -c "import maestro_sdk.skills as s; s.install()"   # these skills, matching that SDK
 ```
+
+- Take the index and version from the workspace's `AGENTS.md` or ask. A private index reads a `read:package` token from `~/.netrc`; never put it on the command line.
+- `maestro_sdk.workspace.init(dir)` sets up a whole workspace (see the `maestro-package` skill).
 
 ```python
 from maestro_sdk import MaestroClient
