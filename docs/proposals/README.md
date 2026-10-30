@@ -17,12 +17,6 @@
 
 2026-10-27 用户在 0.3.0 部署使用后提出，按优先级排列（U-30～U-33），2026-10-29 重新排过（U-57）。“已定”指用户已明确的选择，其余是建议。
 
-### Agent 客户端
-
-| 编号 | 提案 | 状态 | 要点 |
-| --- | --- | --- | --- |
-| N-25 | [Agent 客户端](N-25-agent-client.md) | 实施中 | SDK 与 skill 怎样让 Agent 用好 Maestro（U-59、U-60）：平台保存事实、Agent 的工作过程自由；SDK 生成推荐的本地工作区与 `AGENTS.md` 模板；附件仓库只装附件，SDK 从 git 提交发布；skill 打进 SDK wheel 安装，SDK 发到 Gitea 包仓库；新 skill `maestro-package` 给出做附件、改进与恢复的建议。取代独立的 rsi-workbench |
-
 ### 由用户测试后再推进
 
 | 编号 | 提案 | 状态 | 要点 |
@@ -52,6 +46,7 @@
 
 ### 已完成
 
+- N-25 Agent 客户端（U-59、U-60）：平台保存别人要依赖的事实，Agent 的工作过程自由、skill 只给建议；skill 打进 SDK wheel，`maestro_sdk.skills.install` 安装到 `.agents/skills/` 与 `.claude/skills/` 并记下 SDK 版本；`maestro_sdk.workspace.init` 生成推荐的工作区（`AGENTS.md` 模板、自由格式的 `notes/`、每个附件一个 git 仓库的 `attachments/`）；`attachments.publish_commit` 只发布 git 提交跟踪的文件，两种发布都核对摘要；新 skill `maestro-package` 讲附件的制作、改进与恢复，当前最优的附件记在分析快照的结论里、不靠标签；SDK 发布到 Gitea 包仓库。不做集合的固定任务列表与客户端另算的口径。取代独立的 rsi-workbench。结论并入 [10](../design/10-api-sdk-cli.md) 第 7 节、[03](../design/03-configuration-attachments.md) 第 6 节与 [13](../design/13-testing-plan.md) 的 E2E-RUN-06。
 - N-18 网页多语言（U-31、U-57、U-58）：界面文字全部移进 `frontend/src/locales/` 的中英文语言文件（`i18next`），按浏览器语言默认、可在侧边栏与登录页切换并存在浏览器本地；英文为 AI 翻译、未经人工复查，界面上注明；API 错误按 `code` 翻译标题；`npm run check:i18n` 进 CI，检查两种语言一致、代码里不写死文字；补了简短的英文 README。后端、SDK 与对外文档的英文版不在内（文档留给 N-19）。结论并入 [11](../design/11-web-ui.md) 第 1 节、[13](../design/13-testing-plan.md) 与交接。
 - N-24 CI 稳定（U-43、U-57）：本仓库一侧的时限、重试、可选代理 `CI_PROXY`、去掉重复检查、并行 pytest 与只改文档时跳过 CI 已合入；主机一侧由用户在 runner 主机上解决。CI 证据不再要求放 Actions artifacts，CI 的输出看 Actions 页的运行日志即可。
 - N-07 数据集版本操作（U-30、U-53）：数据集卡片上“检查上游更新”，按上游 digest 标出已导入、未导入与标签已移动的版本，预览与本地版本的任务差异后添加为新版本，也可直接填引用添加；新建运行页先选数据集再选版本，默认最近导入且可提交的版本；数据集页以 `?version=` 记住所选版本，运行详情与集合规格链接过去（原 N-22 的一项）。不做在已选配置或方案中切换版本：换版本仍清空任务与参数。只改网页，不改接口。结论并入 [02](../design/02-datasets-preparation.md) 第 3 节、[11](../design/11-web-ui.md) 第 1、2 节与 [13](../design/13-testing-plan.md) 的 E2E-DS-01。

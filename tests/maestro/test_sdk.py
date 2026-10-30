@@ -15,6 +15,8 @@ import zipfile
 from pathlib import Path
 
 import httpx
+import maestro_sdk.skills
+import maestro_sdk.workspace
 import pytest
 from maestro_sdk import (
     ApiError,
@@ -25,6 +27,7 @@ from maestro_sdk import (
     WaitTimeout,
     models,
 )
+from maestro_sdk.resources.attachments import files_digest
 from support import create_pat, invite_member, running, setup_admin
 from test_datasets import evict, import_and_prepare, tasks_by_key
 from test_e2e_run import prepare_model
@@ -385,6 +388,115 @@ def test_attachments_publish_fetch_and_compare_directories(service, tmp_path):
             agent.attachments.publish(package)
 
 
+def git(repository: Path, *args: str) -> str:
+    command = ["git", "-C", str(repository), "-c", "user.name=t", "-c", "user.email=t@t"]
+    return subprocess.run([*command, *args], check=True, capture_output=True, text=True).stdout
+
+
+def test_attachments_publish_what_a_commit_tracks(service, tmp_path):
+    repository = tmp_path / "helper"
+    (repository / "bin").mkdir(parents=True)
+    git(repository, "init", "-q", "-b", "main")
+    (repository / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "name": "helper",
+                "effects": ["agent_tools"],
+                "compatible_harnesses": ["*"],
+            }
+        )
+    )
+    (repository / "bin" / "run.sh").write_text("#!/bin/sh\necho hi\n")
+    (repository / "bin" / "run.sh").chmod(0o755)
+    (repository / "same.txt").write_text("#!/bin/sh\necho hi\n")  # same content, mode 644
+    (repository / ".gitignore").write_text("cache/\n")
+    git(repository, "add", ".")
+    git(repository, "commit", "-q", "-m", "v0")
+    (repository / "cache").mkdir()
+    (repository / "cache" / "big.bin").write_bytes(b"ignored")
+    (repository / "untracked.txt").write_text("not committed")
+    with running(service) as client:
+        admin = setup_admin(service, client)
+        agent = sdk(create_pat(admin, "experiment"))
+        with pytest.warns(UserWarning, match="uncommitted changes"):
+            v0 = agent.attachments.publish_commit(repository, label="v0")  # labels still work
+        files = {f.path: f.executable for f in v0.files}
+        assert files == {
+            ".gitignore": False,
+            "bin/run.sh": True,
+            "manifest.json": False,
+            "same.txt": False,
+        }
+        assert v0.content_digest == files_digest(
+            [{"path": f.path, "sha256": f.sha256, "executable": f.executable} for f in v0.files]
+        )
+        # The commit is published, not the working tree; the same commit is the same snapshot.
+        (repository / "bin" / "run.sh").write_text("#!/bin/sh\necho changed\n")
+        with pytest.warns(UserWarning):
+            assert agent.attachments.publish_commit(repository).id == v0.id
+        git(repository, "commit", "-q", "-am", "change")
+        (repository / "untracked.txt").unlink()
+        child = agent.attachments.publish_commit(repository, parent=v0)
+        assert child.parent_id == v0.id
+        assert agent.attachments.publish_commit(repository, "HEAD~1").id == v0.id
+        assert [c.path for c in agent.attachments.diff(child).changed] == ["bin/run.sh"]
+
+        with pytest.raises(ValueError, match="inside"):
+            agent.attachments.publish_commit(repository / "bin")
+        with pytest.raises(ValueError, match="rev-parse"):
+            agent.attachments.publish_commit(repository, "no-such-branch")
+        (repository / "link").symlink_to("manifest.json")
+        git(repository, "add", "link")
+        git(repository, "commit", "-q", "-m", "link")
+        with pytest.raises(ValueError, match="link"):
+            agent.attachments.publish_commit(repository)
+        git(repository, "rm", "-q", "link")
+        commit = git(repository, "rev-parse", "HEAD").strip()
+        git(repository, "update-index", "--add", "--cacheinfo", f"160000,{commit},vendor")
+        git(repository, "commit", "-q", "-m", "submodule")
+        with pytest.warns(UserWarning), pytest.raises(ValueError, match="submodule"):
+            agent.attachments.publish_commit(repository)
+
+
+def test_the_sdk_computes_the_services_content_digest():
+    from maestro.execution.attachments import files_digest as service_digest
+
+    files = [
+        {"path": "z/é.txt", "sha256": "a" * 64, "executable": False},
+        {"path": "bootstrap.sh", "sha256": "b" * 64, "executable": True},
+        {"path": "manifest.json", "sha256": "c" * 64, "executable": False},
+    ]
+    assert files_digest(files) == service_digest(sorted(files, key=lambda f: f["path"]))
+
+
+def test_skills_install_and_workspace_init(tmp_path):
+    root = maestro_sdk.workspace.init(tmp_path / "work")
+    assert (root / "notes").is_dir() and (root / "attachments").is_dir()
+    assert "/attachments/" in (root / ".gitignore").read_text()
+    shipped = maestro_sdk.skills.names()
+    assert {"maestro-sdk", "maestro-package"} <= set(shipped)
+    for target in maestro_sdk.skills.TARGETS:
+        for name in shipped:
+            skill = root / target / name
+            assert (skill / "SKILL.md").read_text() == (
+                maestro_sdk.skills.source() / name / "SKILL.md"
+            ).read_text()
+            assert maestro_sdk.skills.installed_version(skill) == maestro_sdk.skills.version()
+
+    # Again: the person's files stay, the skills are replaced as a whole.
+    (root / "AGENTS.md").write_text("mine")
+    (root / "notes" / "a.md").write_text("note")
+    stale = root / ".claude" / "skills" / "maestro-sdk" / "old.md"
+    stale.write_text("from an older SDK")
+    other = root / ".claude" / "skills" / "someone-else"
+    other.mkdir()
+    maestro_sdk.workspace.init(root)
+    assert (root / "AGENTS.md").read_text() == "mine"
+    assert (root / "notes" / "a.md").read_text() == "note"
+    assert not stale.exists() and other.is_dir()
+
+
 # --- contract -----------------------------------------------------------------------------
 
 # Web-account flows (session, setup, invitations, own PATs and password) and administration
@@ -537,8 +649,9 @@ def test_the_skill_and_the_guide_only_name_real_sdk_calls():
     """The skill (SKILL.md and its references) and sdk/README.md teach agents; a renamed
     method fails here."""
     client = MaestroClient("http://127.0.0.1:9")
-    skill = ROOT / "skills" / "maestro-sdk"
-    docs = [skill / "SKILL.md", *sorted((skill / "references").glob("*.md"))]
+    docs = sorted((ROOT / "skills").glob("*/SKILL.md"))
+    docs += sorted((ROOT / "skills").glob("*/references/*.md"))
+    assert len(docs) > 2
     for doc in (*docs, ROOT / "sdk" / "README.md"):
         calls = set(re.findall(r"client\.([a-z_]+(?:\.[a-z_]+)?)\(", doc.read_text()))
         assert calls or doc.parent.name == "references", doc  # errors.md names none

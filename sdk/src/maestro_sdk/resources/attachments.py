@@ -1,14 +1,19 @@
-"""Attachment snapshots: publish a directory, fetch it back, compare snapshots."""
+"""Attachment snapshots: publish a directory or a git commit, fetch it back, compare."""
 
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import shutil
+import subprocess
+import warnings
+from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 
 from maestro_sdk import models
 from maestro_sdk._transport import _Resource, _save
+from maestro_sdk.errors import ContentMismatch
 
 
 class Attachments(_Resource):
@@ -41,28 +46,68 @@ class Attachments(_Resource):
         if not root.is_dir():
             raise ValueError(f"Not a directory: {root}")
         files = _describe(root, exclude)
-        by_sha = {f["sha256"]: f["source"] for f in files}
+        return self._publish(files, lambda f: f["source"].read_bytes(), label, parent)
+
+    def publish_commit(
+        self,
+        repository: str | os.PathLike[str] = ".",
+        rev: str = "HEAD",
+        *,
+        label: str | None = None,
+        parent: models.Attachment | str | None = None,
+    ) -> models.Attachment:
+        """Publish the files of a git commit: the repository root is the attachment root.
+
+        Only what the commit tracks is published, read from git objects, never from the
+        working tree, so untracked and ignored files stay out and the executable bit is
+        git's file mode. Links and submodules are refused. Uncommitted changes are left
+        out with a warning. Needs ``git`` on PATH.
+        """
+        git = _Git(Path(repository))
+        if git.run("rev-parse", "--show-prefix").strip():
+            top = git.run("rev-parse", "--show-toplevel").strip()
+            raise ValueError(f"{repository} is inside {top}; the whole repository is published")
+        commit = git.run("rev-parse", "--verify", "--end-of-options", f"{rev}^{{commit}}").strip()
+        if git.run("status", "--porcelain").strip():
+            warnings.warn(
+                f"{repository} has uncommitted changes; publishing commit {commit[:12]} only",
+                UserWarning,
+                stacklevel=2,
+            )
+        files = git.tree(commit)
+        return self._publish(files, lambda f: git.blob(f["object"]), label, parent)
+
+    def _publish(
+        self,
+        files: list[dict],
+        read: Callable[[dict], bytes],
+        label: str | None,
+        parent: models.Attachment | str | None,
+    ) -> models.Attachment:
+        by_sha = {f["sha256"]: f for f in files}
         missing = self._c._call(
             "POST", "attachment-contents/missing", json={"sha256": sorted(by_sha)}, retry=True
         ).json()["data"]["missing"]
         for sha in missing:
-            with by_sha[sha].open("rb") as content:
-                self._c._call(
-                    "PUT",
-                    f"attachment-contents/{sha}",
-                    content=content.read(),
-                    headers={"Content-Type": "application/octet-stream"},
-                    retry=True,
-                )
+            self._c._call(
+                "PUT",
+                f"attachment-contents/{sha}",
+                content=read(by_sha[sha]),
+                headers={"Content-Type": "application/octet-stream"},
+                retry=True,
+            )
         parent_id = parent if isinstance(parent, str) or parent is None else parent.id
-        body = {
-            "files": [{k: f[k] for k in ("path", "sha256", "executable")} for f in files],
-            "label": label,
-            "parent_id": parent_id,
-        }
+        listed = [{k: f[k] for k in ("path", "sha256", "executable")} for f in files]
+        body = {"files": listed, "label": label, "parent_id": parent_id}
         # Publishing the same content twice returns the same snapshot: safe to repeat.
         response = self._c._call("POST", "attachments", json=body, retry=True)
-        return self._c._parse(models.Attachment, response.json()["data"])
+        snapshot = self._c._parse(models.Attachment, response.json()["data"])
+        if snapshot.content_digest != files_digest(listed):
+            raise ContentMismatch(
+                f"Snapshot {snapshot.id} has digest {snapshot.content_digest}, "
+                f"the published files {files_digest(listed)}"
+            )
+        return snapshot
 
     def fetch(
         self,
@@ -154,6 +199,79 @@ def _sha256(path: Path) -> str:
         while chunk := handle.read(1 << 20):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def files_digest(files: list[dict]) -> str:
+    """A snapshot's ``content_digest``: the canonical JSON of each file's path, SHA-256
+    and executable bit in path order, as the service computes it (03 section 6)."""
+    listed = sorted([f["path"], f["sha256"], f["executable"]] for f in files)
+    encoded = json.dumps(listed, separators=(",", ":"), ensure_ascii=False).encode()
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+class _Git:
+    """Read a repository's commits through the ``git`` command."""
+
+    def __init__(self, repository: Path):
+        if not repository.is_dir():
+            raise ValueError(f"Not a directory: {repository}")
+        self.repository = repository
+        self._sha256: dict[str, str] = {}
+
+    def run(self, *args: str) -> str:
+        return self._bytes(*args).decode()
+
+    def _bytes(self, *args: str) -> bytes:
+        try:
+            done = subprocess.run(
+                ["git", "-C", str(self.repository), *args], capture_output=True, check=False
+            )
+        except FileNotFoundError:
+            raise ValueError("Publishing a commit needs git on PATH") from None
+        if done.returncode:
+            message = done.stderr.decode(errors="replace").strip()
+            raise ValueError(f"git {args[0]} failed: {message}")
+        return done.stdout
+
+    def tree(self, commit: str) -> list[dict]:
+        """Every file of the commit in path order; links and submodules are refused."""
+        listing = self._bytes("ls-tree", "-r", "-z", "--full-tree", commit)
+        files = []
+        for entry in filter(None, listing.split(b"\0")):
+            meta, _, raw = entry.partition(b"\t")
+            mode, _, obj = meta.decode().split(" ")
+            path = raw.decode("utf-8", errors="surrogateescape")
+            if mode not in ("100644", "100755"):
+                kind = {"120000": "link", "160000": "submodule"}.get(mode, f"mode {mode}")
+                raise ValueError(f"Attachments cannot hold a {kind}: {path}")
+            files.append(
+                {
+                    "path": path,
+                    "sha256": self.sha256(obj),
+                    "executable": mode == "100755",
+                    "object": obj,
+                }
+            )
+        files.sort(key=lambda f: f["path"])
+        return files
+
+    def blob(self, obj: str) -> bytes:
+        return self._bytes("cat-file", "blob", obj)
+
+    def sha256(self, obj: str) -> str:
+        if obj not in self._sha256:
+            digest = hashlib.sha256()
+            with subprocess.Popen(
+                ["git", "-C", str(self.repository), "cat-file", "blob", obj],
+                stdout=subprocess.PIPE,
+            ) as reading:
+                assert reading.stdout is not None
+                while chunk := reading.stdout.read(1 << 20):
+                    digest.update(chunk)
+            if reading.returncode:
+                raise ValueError(f"git cat-file failed for {obj}")
+            self._sha256[obj] = digest.hexdigest()
+        return self._sha256[obj]
 
 
 def _describe(root: Path, exclude: tuple[str, ...]) -> list[dict]:

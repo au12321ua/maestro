@@ -63,7 +63,7 @@ Read the file that matches the task before acting on it:
 
 - [references/follow-up-runs.md](references/follow-up-runs.md): rerun a run, change a configuration and run it again, submit several configurations together, use plans, filter runs, export runs for analysis.
 - [references/comparing.md](references/comparing.md): compare runs, keep a collection, record a conclusion in a snapshot, and how to report comparison numbers.
-- [references/attachments.md](references/attachments.md): publish tools for the agent under test, restore a snapshot to edit it, see what changed.
+- [references/attachments.md](references/attachments.md): publish tools for the agent under test from a directory or a git commit, restore a snapshot to edit it, see what changed. To make or improve an attachment, use the `maestro-package` skill.
 - [references/errors.md](references/errors.md): the fields of `ApiError` and what the common error codes ask you to do.
 
 Every SDK method has a docstring; `help(client.runs.submit)` shows the arguments it takes.
