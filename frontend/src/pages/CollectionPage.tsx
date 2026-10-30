@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/table";
 import { ComparisonView } from "@/components/ComparisonView";
 import {
+  BackLink,
   ErrorAlert,
   Loading,
   PageTitle,
@@ -76,7 +77,10 @@ export function CollectionPage() {
   const c = collection.data;
   if (!c)
     return collection.error ? (
-      <ErrorAlert error={collection.error} />
+      <div>
+        <BackLink to="/collections">{t("common.nav.back.collections")}</BackLink>
+        <ErrorAlert error={collection.error} />
+      </div>
     ) : (
       <Loading />
     );
@@ -154,7 +158,10 @@ export function CollectionPage() {
 
   return (
     <div className="grid gap-4">
-      <PageTitle title={c.name}>
+      <PageTitle
+        title={c.name}
+        back={{ to: "/collections", label: t("common.nav.back.collections") }}
+      >
         {can("submit") && (
           <Button asChild size="sm">
             <Link to={`/runs/new?collection=${c.id}`}>

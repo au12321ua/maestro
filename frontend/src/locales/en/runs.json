@@ -57,7 +57,16 @@
     "empty": "No runs yet.",
     "selectAll": "Select all",
     "select": "Select {{name}}",
-    "loadMore": "Load more"
+    "loadMore": "Load more",
+    "delete": "Delete selected",
+    "deleteTitle": "Only runs that have ended and that you may delete are deleted",
+    "deleteConfirm_one": "Move the {{count}} selected run to the recycle bin? It is hidden from the run list; only admins can restore or permanently delete it from the recycle bin.",
+    "deleteConfirm_other": "Move the {{count}} selected runs to the recycle bin? They are hidden from the run list; only admins can restore or permanently delete them from the recycle bin.",
+    "deleteSkipped_one": "{{count}} other selected run cannot be deleted (not ended, or not yours) and stays.",
+    "deleteSkipped_other": "{{count}} other selected runs cannot be deleted (not ended, or not yours) and stay.",
+    "deleted_one": "Moved {{count}} run to the recycle bin",
+    "deleted_other": "Moved {{count}} runs to the recycle bin",
+    "deletePartial": "Deleted {{done}}, {{failed}} failed: {{error}}"
   },
   "taskStatus": {
     "admission": {
@@ -164,9 +173,6 @@
     "oracle": "Test mode (Oracle)",
     "agentMode": "Model experiment",
     "differences": "Differences from the original run",
-    "difference": ": {{before}} → {{after}}",
-    "moreDifferences_one": "…{{count}} in total",
-    "moreDifferences_other": "…{{count}} in total",
     "rerunScope": "Rerun scope",
     "rerunScopeValue_one": "{{count}} task; original results: {{causes}}",
     "rerunScopeValue_other": "{{count}} tasks; original results: {{causes}}",
@@ -270,5 +276,29 @@
     "partial": "Partial",
     "excludedValue_one": "{{count}}: {{causes}}",
     "excludedValue_other": "{{count}}: {{causes}}"
+  },
+  "diff": {
+    "path": {
+      "attachments": "Attachments",
+      "model": "Model",
+      "harness": "Harness",
+      "dataset": "Dataset",
+      "execution_mode": "Execution mode",
+      "repetitions": "Repetitions",
+      "concurrency": "Concurrency",
+      "run_deadline_hours": "Run deadline (hours)",
+      "bootstrap_timeout_sec": "Attachment install limit (s)",
+      "overrides": "Resource overrides",
+      "parameters": "Author parameters",
+      "tasks": "Tasks",
+      "deviates_from_author_baseline": "Deviates from author baseline"
+    },
+    "whole": "Whole configuration",
+    "added": "Added",
+    "removed": "Removed",
+    "fileChanges": "View file changes",
+    "order": "Load order: {{before}} → {{after}}",
+    "showAll": "Show all {{count}}",
+    "showLess": "Show fewer"
   }
 }

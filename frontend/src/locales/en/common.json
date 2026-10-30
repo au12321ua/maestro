@@ -221,7 +221,13 @@
     "openDrawer": "Open navigation",
     "closeDrawer": "Close navigation",
     "expand": "Expand sidebar",
-    "fold": "Collapse sidebar"
+    "fold": "Collapse sidebar",
+    "back": {
+      "runs": "Back to runs",
+      "batches": "Back to batches",
+      "collections": "Back to collections",
+      "collection": "Back to the collection"
+    }
   },
   "app": {
     "sessionExpired": "Your session has expired; please sign in again",

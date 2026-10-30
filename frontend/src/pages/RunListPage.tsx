@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { GitCompare, Package, Plus, RefreshCw } from "lucide-react";
+import { GitCompare, Package, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -47,6 +47,7 @@ export function RunListPage() {
   const [to, setTo] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [exporting, setExporting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const navigate = useNavigate();
 
   const load = useCallback(
@@ -97,6 +98,33 @@ export function RunListPage() {
     } finally {
       setExporting(false);
     }
+  };
+
+  // What the server would allow: ended runs the caller owns (any, for an admin).
+  const deletable = runs.filter((r) => selected.has(r.id) && r.allowed_actions.includes("delete"));
+  const deleteSelected = async () => {
+    const skipped = selected.size - deletable.length;
+    const text =
+      t("runs.list.deleteConfirm", { count: deletable.length }) +
+      (skipped > 0 ? `\n\n${t("runs.list.deleteSkipped", { count: skipped })}` : "");
+    if (!window.confirm(text)) return;
+    setDeleting(true);
+    let done = 0;
+    let failed = 0;
+    let firstError: unknown;
+    for (const run of deletable) {
+      try {
+        await api.del("/runs/{run_id}", { path: { run_id: run.id } });
+        done += 1;
+      } catch (err) {
+        failed += 1;
+        firstError ??= err;
+      }
+    }
+    if (failed === 0) toast.success(t("runs.list.deleted", { count: done }));
+    else toast.error(t("runs.list.deletePartial", { done, failed, error: errorText(firstError) }));
+    setDeleting(false);
+    await load(null);
   };
 
   return (
@@ -162,6 +190,17 @@ export function RunListPage() {
           <Package />
           {t("runs.list.export")}
           {selected.size > 0 && t("runs.list.selectedCount", { n: selected.size })}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={deletable.length === 0 || deleting}
+          title={t("runs.list.deleteTitle")}
+          onClick={() => void deleteSelected()}
+        >
+          <Trash2 />
+          {t("runs.list.delete")}
+          {deletable.length > 0 && t("runs.list.selectedCount", { n: deletable.length })}
         </Button>
         <Button variant="outline" size="sm" onClick={() => void load(null)}>
           <RefreshCw />

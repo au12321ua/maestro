@@ -468,6 +468,13 @@ test("rerun, plan and batch", async ({ page }) => {
   await expect(page.getByRole("link", { name: "batch one" })).toBeVisible();
   await expect(page.getByText("2 个运行：已结束 2")).toBeVisible({ timeout: 60_000 });
   await page.screenshot({ path: `${shots}/batch.png`, fullPage: true });
+
+  // Every page that opens one object has a way back to its list.
+  await page.getByRole("link", { name: "返回批次列表" }).click();
+  await expect(page).toHaveURL(/\/batches$/);
+  await page.goto(source);
+  await page.getByRole("link", { name: "返回运行列表" }).click();
+  await expect(page).toHaveURL(/\/runs$/);
 });
 
 // N-06: publish a folder, then a changed copy based on it; only the changed file uploads.
@@ -509,10 +516,11 @@ test("attachment snapshots", async ({ page }) => {
   await page.getByLabel("标签（可选）").fill("v2");
   await page.getByRole("button", { name: "上传并发布" }).click();
   await expect(page.getByText("已发布 smoke-tools v2（上传 1 个文件）")).toBeVisible();
-  await expect(page.getByText("基于 v1")).toBeVisible();
+  // Under its parent, with how many files it changed from it.
+  await expect(page.getByText("较父快照")).toBeVisible();
 
   // The new snapshot against its parent, and one file's content.
-  await page.getByRole("button", { name: /smoke-tools v2/ }).click();
+  await page.getByRole("button", { name: "v2", exact: true }).click();
   await expect(page.getByText("~ bin/run.sh")).toBeVisible();
   await page.getByRole("button", { name: "查看" }).first().click();
   await expect(page.getByText("echo two")).toBeVisible();
@@ -520,6 +528,18 @@ test("attachment snapshots", async ({ page }) => {
   // The whole snapshot (the row's button), not one file.
   await page.locator('a[href$="/archive"]').last().click();
   expect((await download).suggestedFilename()).toBe("smoke-tools-v2.zip");
+
+  // A second snapshot built on v1 makes the history a tree with two branches.
+  writeFileSync(join(folder, "bin", "run.sh"), "#!/bin/sh\necho three\n");
+  await page.getByRole("button", { name: "基于此发布" }).first().click();
+  await expect(page.getByText("将基于 smoke-tools v1 发布")).toBeVisible();
+  await choose.setInputFiles(folder);
+  await page.getByLabel("标签（可选）").fill("v3");
+  await page.getByRole("button", { name: "上传并发布" }).click();
+  await expect(page.getByText("已发布 smoke-tools v3（上传 1 个文件）")).toBeVisible();
+  await expect(page.getByText("分出 2 支")).toBeVisible();
+  await expect(page.getByText("分支 1")).toBeVisible();
+  await expect(page.getByText("分支 2")).toBeVisible();
   await page.screenshot({ path: `${shots}/attachments.png`, fullPage: true });
 });
 
@@ -712,4 +732,26 @@ test("English pages show no Chinese text", async ({ browser }) => {
   await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
   await expect(page.getByTestId("ai-translation-notice")).toHaveCount(0);
   await context.close();
+});
+
+// Runs are deleted from the list by selecting them: only the selected ones go, to the recycle bin.
+test("delete selected runs from the list", async ({ page }) => {
+  test.skip(!token, "MAESTRO_SETUP_TOKEN not set");
+  page.on("dialog", (dialog) => void dialog.accept());
+  await page.goto("/");
+  await page.getByLabel("用户名").fill("admin");
+  await page.getByLabel("密码").fill(password);
+  await page.getByRole("button", { name: "登录" }).click();
+  await nav(page, "运行").click();
+  await expect(page).toHaveURL(/\/runs$/);
+  const rows = page.locator("tbody");
+  await expect(rows.getByRole("link", { name: "batch one" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /删除所选/ })).toBeDisabled();
+  await page.getByLabel("选择 batch one").check();
+  await page.getByLabel("选择 batch two").check();
+  await page.getByRole("button", { name: /删除所选/ }).click();
+  await expect(page.getByText("已把 2 个运行移入回收站")).toBeVisible();
+  await expect(rows.getByRole("link", { name: "batch one" })).toHaveCount(0);
+  await expect(rows.getByRole("link", { name: "batch two" })).toHaveCount(0);
+  await expect(rows.getByRole("link", { name: "m5 source", exact: true })).toBeVisible();
 });

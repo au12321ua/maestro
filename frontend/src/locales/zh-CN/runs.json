@@ -54,7 +54,13 @@
     "empty": "还没有运行记录。",
     "selectAll": "全选",
     "select": "选择 {{name}}",
-    "loadMore": "加载更多"
+    "loadMore": "加载更多",
+    "delete": "删除所选",
+    "deleteTitle": "只有已结束、且你有权删除的运行会被删除",
+    "deleteConfirm": "把所选的 {{count}} 个运行移入回收站？它们会从运行列表中隐藏；只有管理员可以从回收站恢复或彻底删除。",
+    "deleteSkipped": "另有 {{count}} 个所选运行不能删除（未结束或不是你的），会保留。",
+    "deleted": "已把 {{count}} 个运行移入回收站",
+    "deletePartial": "已删除 {{done}} 个，{{failed}} 个失败：{{error}}"
   },
   "taskStatus": {
     "admission": {
@@ -159,8 +165,6 @@
     "oracle": "测试模式（Oracle）",
     "agentMode": "模型实验",
     "differences": "与原运行的差异",
-    "difference": "：{{before}} → {{after}}",
-    "moreDifferences": "…共 {{count}} 处",
     "rerunScope": "重跑范围",
     "rerunScopeValue": "{{count}} 个任务；原结果：{{causes}}",
     "agentSummary": "{{label}}（<code>{{modelId}}</code>，{{provider}}，修订 {{revision}}）· {{harness}}",
@@ -259,5 +263,29 @@
     "partialTitle": "部分计划的重复没有得分，均值基于更少的样本",
     "partial": "部分",
     "excludedValue": "{{count}} 个：{{causes}}"
+  },
+  "diff": {
+    "path": {
+      "attachments": "附件",
+      "model": "模型",
+      "harness": "Harness",
+      "dataset": "数据集",
+      "execution_mode": "执行方式",
+      "repetitions": "重复次数",
+      "concurrency": "并发",
+      "run_deadline_hours": "运行时限（小时）",
+      "bootstrap_timeout_sec": "附件安装时限（秒）",
+      "overrides": "资源覆盖",
+      "parameters": "作者参数",
+      "tasks": "任务",
+      "deviates_from_author_baseline": "偏离作者基线"
+    },
+    "whole": "整份配置",
+    "added": "新增",
+    "removed": "移除",
+    "fileChanges": "查看文件差异",
+    "order": "加载顺序：{{before}} → {{after}}",
+    "showAll": "显示全部 {{count}} 处",
+    "showLess": "收起"
   }
 }

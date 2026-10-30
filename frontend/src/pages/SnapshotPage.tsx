@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ComparisonView } from "@/components/ComparisonView";
 import {
+  BackLink,
   ErrorAlert,
   Loading,
   PageTitle,
@@ -31,7 +32,14 @@ export function SnapshotPage() {
   );
   const s = snapshot.data;
   if (!s)
-    return snapshot.error ? <ErrorAlert error={snapshot.error} /> : <Loading />;
+    return snapshot.error ? (
+      <div>
+        <BackLink to="/collections">{t("common.nav.back.collections")}</BackLink>
+        <ErrorAlert error={snapshot.error} />
+      </div>
+    ) : (
+      <Loading />
+    );
 
   const remove = async () => {
     if (!window.confirm(t("comparison.snapshot.deleteConfirm"))) return;
@@ -50,7 +58,14 @@ export function SnapshotPage() {
 
   return (
     <div className="grid gap-4">
-      <PageTitle title={t("comparison.snapshot.title", { name: s.name })}>
+      <PageTitle
+        title={t("comparison.snapshot.title", { name: s.name })}
+        back={
+          s.collection_id
+            ? { to: `/collections/${s.collection_id}`, label: t("common.nav.back.collection") }
+            : { to: "/collections", label: t("common.nav.back.collections") }
+        }
+      >
         {s.allowed_actions.includes("delete") && !s.deletion && (
           <Button size="sm" variant="outline" onClick={() => void remove()}>
             <Trash2 />

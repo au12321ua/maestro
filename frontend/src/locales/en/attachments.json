@@ -26,23 +26,14 @@
     "publishing": "Publishing…"
   },
   "list": {
-    "title": "Published snapshots",
-    "description": "Attachments are files loaded with a model run, such as tools, SDKs or setup scripts. Each publish produces a snapshot with fixed content; identical content is the same snapshot. You can publish again based on any snapshot to branch in several directions. At run time, each trial copies the attachments into<dir>/opt/maestro/attachments/</dir>in its own container and runs their <code>bootstrap.sh</code> before the Agent starts; setup may use the network, while the Agent and verification still follow the platform's network limits.",
+    "title": "Published attachments",
+    "description": "Attachments are files loaded with a model run, such as tools, SDKs or setup scripts. Each publish produces a snapshot with fixed content; identical content is the same snapshot. Snapshots of the same name are grouped as one attachment, as a history by time; you can also publish again based on any snapshot to branch in several directions. At run time, each trial copies the attachments into<dir>/opt/maestro/attachments/</dir>in its own container and runs their <code>bootstrap.sh</code> before the Agent starts; setup may use the network, while the Agent and verification still follow the platform's network limits.",
     "empty": "No attachments published yet.",
-    "columns": {
-      "snapshot": "Attachment and snapshot",
-      "owner": "Published by",
-      "effects": "Affects",
-      "content": "Content",
-      "state": "State"
-    },
-    "basedOn": "Based on {{name}}",
     "deletedSnapshot": "a deleted snapshot",
     "anyHarness": "Any",
     "files_one": "{{count}} file · {{size}}",
     "files_other": "{{count}} files · {{size}}",
     "hasBootstrap": "Has setup script",
-    "enabled": "Available",
     "disabled": "Disabled",
     "baseOn": "Publish based on this",
     "disable": "Disable",
@@ -71,5 +62,20 @@
     "exampleSummary": "manifest.json example",
     "exampleDescription": "Description (optional)",
     "exampleNote": "effects currently supports model_call, agent_tools and task_environment; attachments that change verification or scoring are not supported yet. compatible_harnesses lists Harness adapter names, or [\"*\"] for any. provides is used to detect conflicts between two attachments. Snapshots have no version number; tell them apart by the label given at publishing."
+  },
+  "history": {
+    "count_one": "{{count}} snapshot",
+    "count_other": "{{count}} snapshots",
+    "latestIs": "latest {{snapshot}} · {{time}} · {{owner}}",
+    "baseOnLatest": "Publish from the latest",
+    "latest": "Latest",
+    "changes": "vs. parent ",
+    "legend": "Files added / removed / changed",
+    "noChange": "No file changes",
+    "basedOn": "Based on {{name}}",
+    "separate": "No parent (a separate line)",
+    "first": "First snapshot",
+    "branches": "{{count}} branches",
+    "branch": "Branch {{n}}"
   }
 }

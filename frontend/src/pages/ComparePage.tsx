@@ -65,7 +65,10 @@ export function ComparePage() {
 
   return (
     <div className="grid gap-4">
-      <PageTitle title={t("comparison.compare.title")}>
+      <PageTitle
+        title={t("comparison.compare.title")}
+        back={{ to: "/runs", label: t("common.nav.back.runs") }}
+      >
         {table.data && (
           <>
             <Button

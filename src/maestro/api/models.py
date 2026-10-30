@@ -2,7 +2,15 @@
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, RootModel, model_serializer
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    RootModel,
+    model_serializer,
+    model_validator,
+)
 
 # Free-form JSON. Only for values that are open by design (provider request parameters,
 # executor references, evidence, audit details); test_api_contract keeps the list.
@@ -912,6 +920,17 @@ class EffectiveAttachment(Model):
     effects: list[str]
     provides: AttachmentProvides
     has_bootstrap: bool
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_version(cls, data):
+        """A run accepted before attachment snapshots (0.3.0) recorded the attachment's
+        ``version``, which the label replaced (N-06). Show it as the label; the stored
+        snapshot and the digests over it stay as they were."""
+        if isinstance(data, dict) and "version" in data and "label" not in data:
+            data = {**data, "label": data["version"]}
+            del data["version"]
+        return data
 
 
 class EffectiveTask(Model):
