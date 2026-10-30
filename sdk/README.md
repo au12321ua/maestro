@@ -6,11 +6,15 @@
 
 ## 安装与连接
 
-需要 Python 3.10 及以上。在本仓库里：
+需要 Python 3.10 及以上。SDK 随每次发布推送到 Gitea 的 Python 包仓库，按版本安装，选与服务相同的版本（下文 `<索引>` 是 `https://<Gitea 地址>/api/packages/<所有者>/pypi/simple`）：
 
 ```bash
-pip install ./sdk          # 或 uv pip install ./sdk
+uv add "maestro-sdk==0.4.0" --index maestro=<索引>             # uv 项目：maestro-sdk 只从这个索引装
+uv pip install "maestro-sdk==0.4.0" --index maestro=<索引>     # 已有的虚拟环境
+pip install "maestro-sdk==0.4.0" --extra-index-url <索引>       # pip 会同时查 PyPI，务必固定版本
 ```
+
+`dev` 的预发布版本是 `<版本>.dev<N>`（例如 `0.4.1.dev1234`），同样用 `==` 安装；服务装的是某个 `dev-<提交>` 预发布时，对应的 SDK 就是那个预发布附带的 wheel，版本也写在发布包 `RELEASE.json` 的 `sdk_version` 里。`"maestro-sdk>=0.4.1.dev0"` 取最新的预发布。包仓库不公开时，把只有 `read:package` 权限的 Gitea 令牌写进 `~/.netrc`（[开发流程](../docs/guides/development-workflow.md)的“SDK 包仓库”），不要放进命令或 `pyproject.toml`。在本仓库里也可以直接 `pip install ./sdk`。
 
 PAT 在网页“设置”页创建：`read` 只能读，`experiment` 还能提交、取消、重跑、发布附件和方案。令牌只显示一次，请放进文件或环境变量，不要写进代码或命令行参数。
 

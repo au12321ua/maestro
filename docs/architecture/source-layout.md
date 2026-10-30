@@ -39,6 +39,6 @@
 | 板块 | 位置 | 职责 |
 | --- | --- | --- |
 | 安装管理 | `ops/maestroctl.py` | 只用系统 Python 标准库的 `maestroctl`：检查、安装、启停、状态、日志、备份恢复、更新与失败回退、卸载，按 [12](../design/12-operations.md) 的系统级布局；发布包随附一份。用法见[部署指南](../guides/deployment.md) |
-| 打包与发布 | `tools/build_release.py`、`tools/third_party_licenses.py`、`tools/publish_release.py` | 打出含服务 / Runner / SDK wheel、带哈希锁定的依赖、`INSTALL.md`（即部署指南）、`LICENSE`、`NOTICE`、第三方许可证清单与 `RELEASE.json` 的压缩包；许可证清单只允许列表内的许可证；CI 把产物发布到 Gitea Releases |
+| 打包与发布 | `tools/build_release.py`、`tools/third_party_licenses.py`、`tools/publish_release.py`、`tools/publish_package.py` | 打出含服务 / Runner / SDK wheel、带哈希锁定的依赖、`INSTALL.md`（即部署指南）、`LICENSE`、`NOTICE`、第三方许可证清单与 `RELEASE.json` 的压缩包；许可证清单只允许列表内的许可证；CI 把产物发布到 Gitea Releases，把 SDK wheel 发布到 Gitea 的 Python 包仓库 |
 | 测试 | `tests/maestro/` | pytest；分层与开关见 [13](../design/13-testing-plan.md) 第 2 节 |
 | CI 与检查 | `.gitea/workflows/verify.yml`、`.github/workflows/release.yml`、`tools/check_doc_links.py` | Gitea：每次推送运行 lint、Markdown 相对链接、不含 Docker / Hub / 模型的 pytest（含契约与 SDK 模型漂移）、网页构建与许可证检查，`dev` 与版本 tag 通过后发布；GitHub：只在推送版本 tag 时构建并发布。命令见[开发交接](../HANDOFF.md)的验证入口 |

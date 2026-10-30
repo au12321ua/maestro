@@ -1,10 +1,16 @@
-"""Release tooling (N-02, N-16): the license rules and Gitea publishing against a fake API.
-Building a real package runs in test_install.py (opt-in); the license list itself runs in CI."""
+"""Release tooling (N-02, N-16, N-25): the license rules, the SDK version stamp, and
+publishing to Gitea Releases and the Python package registry against fake APIs. Building a
+real package runs in test_install.py (opt-in); the license list itself runs in CI."""
 
+import hashlib
 import importlib.util
 import json
 import re
 import threading
+import urllib.parse
+import zipfile
+from email.parser import BytesParser
+from email.policy import HTTP
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -22,6 +28,8 @@ def _load(name):
 
 licenses = _load("third_party_licenses")
 publish = _load("publish_release")
+package = _load("publish_package")
+build = _load("build_release")
 
 
 @pytest.mark.parametrize(
@@ -177,3 +185,150 @@ def test_formal_release_is_never_pruned(gitea, tmp_path):
     assert release["prerelease"] is False
     assert release["body"] == "- change one\n"
     assert release["target_commitish"] == "c" * 40
+
+
+def test_the_sdk_wheel_is_stamped_without_changing_the_checkout(monkeypatch, tmp_path):
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text('[project]\nname = "maestro-sdk"\nversion = "0.4.1.dev0"\n')
+    monkeypatch.setattr(build, "SDK_PYPROJECT", pyproject)
+    seen = []
+
+    def fake_wheel(project, out):
+        seen.append(build.SDK_VERSION.search(pyproject.read_text())[1])
+        raise RuntimeError("build failed")
+
+    monkeypatch.setattr(build, "wheel", fake_wheel)
+    with pytest.raises(RuntimeError):
+        build.sdk_wheel_as("0.4.1.dev57", tmp_path)
+    assert seen == ["0.4.1.dev57"]
+    assert 'version = "0.4.1.dev0"' in pyproject.read_text()  # restored even on failure
+
+
+def _sdk_wheel(directory: Path, version: str, content: bytes = b"") -> Path:
+    path = directory / f"maestro_sdk-{version}-py3-none-any.whl"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("maestro_sdk/__init__.py", content)
+        archive.writestr(
+            f"maestro_sdk-{version}.dist-info/METADATA",
+            f"Metadata-Version: 2.4\nName: maestro-sdk\nVersion: {version}\n"
+            "Summary: Python client\nRequires-Python: >=3.10\n",
+        )
+    return path
+
+
+class FakeRegistry(BaseHTTPRequestHandler):
+    """Just the package endpoints publish_package.py uses, as Gitea answers them."""
+
+    state: dict
+
+    def log_message(self, *args):
+        pass
+
+    def _reply(self, code, body=b"", content_type="application/json"):
+        raw = json.dumps(body).encode() if not isinstance(body, bytes) else body
+        self.send_response(code)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def _route(self, method):
+        s = self.state
+        s["auth"].add(self.headers.get("Authorization"))
+        url = urllib.parse.urlsplit(self.path)
+        body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+        if method == "POST" and url.path == "/api/packages/o/pypi":
+            head = f"Content-Type: {self.headers['Content-Type']}\r\n\r\n".encode()
+            form = BytesParser(policy=HTTP).parsebytes(head + body)
+            fields = {
+                p.get_param("name", header="content-disposition"): p for p in form.iter_parts()
+            }
+            content = fields.pop("content")
+            data = {k: v.get_content() for k, v in fields.items()}
+            assert data[":action"] == "file_upload" and data["requires_python"] == ">=3.10"
+            raw = content.get_content()
+            if data["sha256_digest"] != hashlib.sha256(raw).hexdigest():
+                return self._reply(400, {"message": "hash mismatch"})
+            files = s["files"].setdefault(data["version"], {})
+            if content.get_filename() in files:
+                return self._reply(409, {"message": "package file already exists"})
+            files[content.get_filename()] = data["sha256_digest"]
+            s["created"] += 1
+            s["created_at"][data["version"]] = f"2026-10-30T{s['created']:03d}"
+            return self._reply(201)
+        if method == "GET" and url.path == "/api/packages/o/pypi/simple/maestro-sdk":
+            links = "".join(
+                f'<a href="/files/{name}#sha256={digest}">{name}</a>'
+                for files in s["files"].values()
+                for name, digest in files.items()
+            )
+            return self._reply(200, links.encode(), "text/html")
+        if method == "GET" and url.path == "/api/v1/packages/o":
+            query = urllib.parse.parse_qs(url.query)
+            assert query["type"] == ["pypi"] and query["q"] == ["maestro-sdk"]
+            versions = [
+                {"name": "maestro-sdk", "version": v, "created_at": s["created_at"][v]}
+                for v in s["files"]
+            ] + [{"name": "maestro-sdk-extra", "version": "0.1.0.dev1", "created_at": "2026"}]
+            return self._reply(200, versions if query["page"] == ["1"] else [])
+        if method == "DELETE" and (
+            m := re.fullmatch(r"/api/v1/packages/o/pypi/maestro-sdk/(.+)", url.path)
+        ):
+            del s["files"][urllib.parse.unquote(m[1])]
+            return self._reply(204)
+        return self._reply(500, {"unexpected": f"{method} {self.path}"})
+
+    def do_GET(self):
+        self._route("GET")
+
+    def do_POST(self):
+        self._route("POST")
+
+    def do_DELETE(self):
+        self._route("DELETE")
+
+
+@pytest.fixture
+def registry(monkeypatch):
+    state = {"files": {}, "created": 0, "created_at": {}, "auth": set()}
+    handler = type("Handler", (FakeRegistry,), {"state": state})
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    monkeypatch.setenv("GITEA_URL", f"http://127.0.0.1:{server.server_port}")
+    monkeypatch.setenv("GITEA_OWNER", "o")
+    monkeypatch.setenv("GITEA_TOKEN", "t0ken")
+    yield state
+    server.shutdown()
+
+
+def test_dev_versions_upload_rerun_and_prune(registry, tmp_path, capsys):
+    release = tmp_path / "release"
+    release.mkdir()
+    _sdk_wheel(release, "0.4.0")
+    assert package.main(["--dist", str(release)]) == 0  # a formal version, never pruned
+    for n in range(1, 13):
+        dist = tmp_path / f"dev{n}"
+        dist.mkdir()
+        wheel = _sdk_wheel(dist, f"0.4.1.dev{n}", content=str(n).encode())
+        (dist / "SHA256SUMS").write_text("other assets are ignored\n")
+        assert package.main(["--dist", str(dist), "--keep", "10"]) == 0
+    assert set(registry["files"]) == {"0.4.0"} | {f"0.4.1.dev{n}" for n in range(3, 13)}
+    assert registry["auth"] == {"token t0ken"}
+
+    # Re-running the job finds the same file and succeeds; other content is refused.
+    capsys.readouterr()
+    assert package.main(["--dist", str(wheel.parent)]) == 0
+    assert "already published" in capsys.readouterr().out
+    _sdk_wheel(wheel.parent, "0.4.1.dev12", content=b"changed")
+    with pytest.raises(SystemExit, match="already published"):
+        package.main(["--dist", str(wheel.parent)])
+
+
+def test_only_one_sdk_wheel_is_published(registry, tmp_path):
+    with pytest.raises(SystemExit, match="exactly one SDK wheel"):
+        package.main(["--dist", str(tmp_path)])
+    _sdk_wheel(tmp_path, "0.4.0")
+    _sdk_wheel(tmp_path, "0.4.1.dev1")
+    with pytest.raises(SystemExit, match="exactly one SDK wheel"):
+        package.main(["--dist", str(tmp_path)])
+    assert registry["files"] == {}
