@@ -406,21 +406,13 @@ def _images(config: dict, task_dir: Path) -> tuple[list[dict], list[dict], set[s
         prefix = directory.name
         try:
             document = compose.read(directory)
+            if document is not None:
+                compose.check_runtime(document, f"{prefix}/{compose.COMPOSE_FILE}")
         except (compose.ComposeUnsupported, OSError, subprocess.TimeoutExpired) as error:
             reasons.setdefault("compose", str(error) or f"{prefix}: compose file unreadable")
             return
         if document is None:
             return
-        for kind in ("networks", "volumes"):
-            for name, settings in (document.get(kind) or {}).items():
-                if isinstance(settings, dict) and (
-                    settings.get("external") or settings.get("name")
-                ):
-                    reasons.setdefault(
-                        "compose_external_resources",
-                        f"{prefix}/{compose.COMPOSE_FILE} {kind}.{name}: external or named "
-                        "resources are unsupported",
-                    )
         for name, service in sorted((document.get("services") or {}).items()):
             service = service if isinstance(service, dict) else {}
             where = f"{prefix}/{compose.COMPOSE_FILE} services.{name}"

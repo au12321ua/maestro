@@ -16,12 +16,13 @@ import os
 import re
 import shutil
 import stat
+import subprocess
 import traceback
 from collections import defaultdict
 from importlib.metadata import version
 from pathlib import Path
 
-from maestro_runner import agents, network, protocol
+from maestro_runner import agents, compose, network, protocol
 from maestro_runner.protocol import emit
 
 # Harbor hook -> platform step. Collection has no hook: it is the span between
@@ -252,6 +253,15 @@ def _with_images(copy: Path, task: dict, overrides: dict) -> None:
 
     images = task["images"]
     config = TaskFile.model_validate_toml((copy / "task.toml").read_text())
+    if (
+        resolve_task_verifier_mode(config).value == "separate"
+        and config.verifier.environment is None
+    ):
+        # Freeze inherited resources before increasing main's limits. Image selection is
+        # independent: without tests/main Harbor must still fall back to environment/,
+        # including its Compose services and test upload behavior.
+        config.verifier.environment = config.environment.model_copy(deep=True)
+        config.verifier.environment.docker_image = None
     config.environment.docker_image = images["environment/main"]
     if "tests/main" in images:
         # The verifier's own image, built from tests/ or named by the author: as a named
@@ -260,11 +270,8 @@ def _with_images(copy: Path, task: dict, overrides: dict) -> None:
             config.verifier.environment = config.environment.model_copy(deep=True)
         config.verifier.environment.docker_image = images["tests/main"]
     # The trial's resources are the sum over its containers (U-54); an override is a new
-    # total and its extra goes to the main environment. A verifier that is a fresh copy of
-    # the main environment gets the same settings from Harbor, so each takes half.
-    inherited = (
-        resolve_task_verifier_mode(config).value == "separate" and "tests/main" not in images
-    )
+    # total and its extra goes to the main environment. The verifier keeps its own or
+    # inherited baseline, regardless of where its image comes from.
     environments = task.get("environments") or []
     for key in ("cpus", "memory_mb"):
         value = overrides.get(key)
@@ -272,7 +279,7 @@ def _with_images(copy: Path, task: dict, overrides: dict) -> None:
             continue
         extra = int(max(0, value - sum(e[key] for e in environments)))
         main = getattr(config.environment, key) or environments[0][key]
-        setattr(config.environment, key, int(main) + (extra // 2 if inherited else extra))
+        setattr(config.environment, key, int(main) + extra)
     (copy / "task.toml").write_text(config.model_dump_toml())
 
 
@@ -280,15 +287,17 @@ def _author_compose(file: Path) -> tuple[dict, list[str], list[str]]:
     """The services, networks and volumes an author Compose file declares. Read only:
     nothing from it is written back, because YAML 1.1 (PyYAML) and Compose read some plain
     values differently (``yes``, ``22:22``)."""
-    import yaml
-
-    if not file.is_file():
-        return {}, [], []
     try:
-        document = yaml.safe_load(file.read_text())
-    except yaml.YAMLError:
-        raise Rejected("RUNNER_INPUT_INVALID", f"{file.parent.name}: unreadable compose file")
-    document = document if isinstance(document, dict) else {}
+        document = compose.read(file.parent)
+    except (ValueError, OSError, subprocess.TimeoutExpired) as error:
+        message = (
+            f"{file.parent.name}/docker-compose.yaml cannot be read"
+            if isinstance(error, subprocess.TimeoutExpired)
+            else str(error)
+        )
+        raise Rejected("RUNNER_INPUT_INVALID", message) from None
+    if document is None:
+        return {}, [], []
     services = document.get("services")
     services = services if isinstance(services, dict) else {}
     names = {}
@@ -567,6 +576,10 @@ class Execution:
             path = Path(task["path"]).resolve()
             if not (path / "task.toml").is_file():
                 raise Rejected("TASK_MATERIAL_MISSING", f"no task.toml for {task['task_key']}")
+            # Admissions made before the mount/replica checks must not bypass the runtime
+            # boundary. Check every author service, including main and tests/.
+            for directory in ("environment", "tests"):
+                _author_compose(path / directory / "docker-compose.yaml")
             if task.get("images") or platform:
                 # A private copy: the cached material is shared and never changed.
                 copy = self.out / "tasks" / str(index)

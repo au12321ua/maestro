@@ -113,9 +113,7 @@ class ArtifactArchives:
                     ).where(t.execution_attempts.c.trial_id.in_(trials.keys()))
                 ).mappings()
             }
-            query = select(t.artifacts).where(
-                t.artifacts.c.run_id == run_id, deleted.visible(t.artifacts.c.id, "artifact")
-            )
+            query = select(t.artifacts).where(t.artifacts.c.run_id == run_id)
             scope: dict = {"run_id": run_id}
             if attempt_id:
                 if attempt_id not in attempts:
@@ -139,6 +137,12 @@ class ArtifactArchives:
                     query.order_by(t.artifacts.c.trial_id, t.artifacts.c.relative_path)
                 ).mappings()
             ]
+            removed = deleted.states(conn, "artifact", [a["id"] for a in selected])
+            for item in selected:
+                if item["id"] in removed:
+                    # Recycling hides content before purge changes the artifact status.
+                    # Keep its receipt in missing, without opening it or counting its size.
+                    item["status"] = "deleted"
         size = sum(a["size_bytes"] or 0 for a in selected if a["status"] == "available")
         if size > self.max_bytes:
             raise MaestroError(
@@ -179,6 +183,12 @@ class ArtifactArchives:
         files, missing, warnings, used = [], [], [], set()
         with zipfile.ZipFile(pipe, "w", zipfile.ZIP_DEFLATED, allowZip64=True) as archive:
             for item in selected:
+                if item["status"] == "available":
+                    # Selection and streaming are separate: a file can enter the recycle
+                    # bin before we open it, while its stored bytes are still present.
+                    with self.db.read() as conn:
+                        if deleted.state(conn, "artifact", item["id"]):
+                            item["status"] = "deleted"
                 entry = {
                     "artifact_id": item["id"],
                     "trial_id": item["trial_id"],

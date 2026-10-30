@@ -79,6 +79,8 @@
 
 容器不挂载 Docker socket、数据库、主密钥或宿主目录，唯一例外是本试次的 agent / verifier / artifacts 输出目录（U-16）；附件与任务材料复制进容器。附件 bootstrap 在所属试次容器内各自安装，失败不影响其他试次或准入。平台给每个容器下发 CPU 与内存限制（辅助服务没有声明时用团队默认），不用 privileged。容器、网络、作者声明的卷（含独立验证器与辅助服务的）都带平台标签，取消或崩溃后按标签清理（[15](15-stack-harbor.md) 第 7 节）。日志与产物经 `security/redaction.py` 基本脱敏（已知秘密值、Maestro 令牌、认证头与键值、提供商 key 形态、URL 密码）。
 
+准备检查与 Runner 启动检查都拒绝作者 Compose 的宿主挂载及可间接访问宿主的卷驱动、`volumes_from`、configs / secrets、设备和 API socket；普通内部卷继续隔离使用（[02](02-datasets-preparation.md) 第 6 节）。
+
 已知限制：
 
 - Harness 与任务代码同容器，任务代码可能读到模型凭据（可信团队假设下接受）。

@@ -34,7 +34,7 @@ from maestro.db import schema as t
 from maestro.domain.setup_network import BUILT_IN, SetupNetwork
 from maestro.execution.attachments import AttachmentStore
 from maestro.execution.docker import DockerResources
-from maestro.execution.harbor import HarborExecutor
+from maestro.execution.harbor import PROTOCOL_VERSION, HarborExecutor
 from maestro.execution.materials import LocalTaskSource, TaskMaterials
 from maestro.execution.preparation import DockerEnvironment
 from maestro.services.instance import instance_id as read_instance_id
@@ -445,6 +445,99 @@ def test_a_killed_runner_leaves_no_separate_verifier_behind(settings, tmp_path):
             run = pat.get(f"/api/v1/runs/{accepted['run_id']}").json()["data"]
             assert run["cleanup_state"] == "complete"
             assert labelled(instance) == []
+
+
+@pytest.mark.parametrize("directory", ["environment", "tests"])
+@pytest.mark.parametrize("unsafe", ["host-bind", "replicas"])
+def test_the_runner_refuses_unsafe_compose_even_with_prepared_images(tmp_path, directory, unsafe):
+    """Model an older admission: the input already carries images and resource totals.
+    Neither a canary outside the task nor unaccounted replicas may reach Docker."""
+    task = tmp_path / "task"
+    shutil.copytree(TASKS / "oracle-pass", task)
+    canary = tmp_path / "canary"
+    canary.write_text("host canary; no secrets\n")
+    service = {"image": "ubuntu:22.04", "command": ["sleep", "infinity"]}
+    if unsafe == "host-bind":
+        service["volumes"] = [f"{canary}:/canary:ro"]
+    else:
+        service["deploy"] = {"replicas": 3}
+    (task / directory / "docker-compose.yaml").write_text(
+        json.dumps({"services": {"helper": service}})
+    )
+    instance = "test_" + uuid.uuid4().hex
+    spec = {
+        "protocol_version": PROTOCOL_VERSION,
+        "command": "execute",
+        "run_id": "run_test",
+        "output_dir": str(tmp_path / "output"),
+        "agent": {"name": "oracle"},
+        "tasks": [{
+            "task_key": "task", "path": str(task), "trial_ids": ["trial_test"],
+            "images": {"environment/main": "ubuntu:22.04"},
+        }],
+        "labels": {"io.maestro.instance_id": instance, "io.maestro.run_id": "run_test"},
+        "retry": {"max_retries": 0, "exclude_exceptions": [], "min_wait_sec": 0.1,
+                  "wait_multiplier": 1, "max_wait_sec": 0.1},
+        "n_concurrent_trials": 1,
+        "log_cap_bytes": 1024,
+        "heartbeat_sec": 1,
+        "tail_interval_sec": 0.1,
+        "artifact_limits": {"max_files": 10, "max_file_bytes": 1024, "max_total_bytes": 2048},
+    }  # fmt: skip
+    result = subprocess.run(
+        [str(RUNNER), "-I", "-m", "maestro_runner"],
+        input=json.dumps(spec), capture_output=True, text=True, check=False, timeout=60,
+    )  # fmt: skip
+    events = [json.loads(line) for line in result.stdout.splitlines()]
+    assert result.returncode == 4, (events, result.stderr)
+    assert events[-1]["payload"]["status"] == "rejected"
+    assert events[-1]["payload"]["code"] == "RUNNER_INPUT_INVALID"
+    assert not any(e["type"] == "started" for e in events)
+    assert labelled(instance) == []
+
+
+def test_resource_override_with_a_verifier_reusing_the_main_image(settings, tmp_path):
+    tasks = tmp_path / "tasks"
+    task = tasks / "oracle-pass"
+    shutil.copytree(TASKS / "oracle-pass", task)
+    config = task / "task.toml"
+    config.write_text(
+        config.read_text().replace("artifacts = []", 'artifacts = ["/app/answer"]')
+        + "\n[verifier.environment]\ncpus = 2\nmemory_mb = 2048\n"
+    )
+    for script in (task / "solution/solve.sh", task / "tests/test.sh"):
+        script.write_text(script.read_text().replace("#!/bin/bash\n", "#!/bin/bash\nsleep 8\n", 1))
+    with harbor(settings, tasks, "resource-override") as service, running(service) as client:
+        pat = create_pat(setup_admin(service, client))
+        accepted = submit(
+            pat, service.version_id, ["oracle-pass"], resources={"cpus": 8, "memory_mb": 8192}
+        )
+        instance = read_instance_id(service.db)
+
+        def limits_for(verifier):
+            containers = subprocess.run(
+                ["docker", "ps", "-q", "--filter", f"label=io.maestro.instance_id={instance}"],
+                capture_output=True, text=True, check=True,
+            ).stdout.split()  # fmt: skip
+            if not containers:
+                return None
+            details = json.loads(subprocess.run(
+                ["docker", "inspect", *containers], capture_output=True, text=True, check=True,
+            ).stdout)  # fmt: skip
+            for item in details:
+                project = item["Config"]["Labels"].get("com.docker.compose.project", "")
+                if ("__verifier__" in project) == verifier:
+                    limits = item["HostConfig"]
+                    return limits["NanoCpus"] / 10**9, limits["Memory"] // 2**20
+            return None
+
+        assert wait_for(lambda: limits_for(False)) == (6, 6144)
+        assert wait_for(lambda: limits_for(True)) == (2, 2048)
+        done = wait_operation(pat, accepted["operation_id"], timeout=120)
+        assert done["status"] == "succeeded", done
+        (trial,) = pat.get(f"/api/v1/runs/{accepted['run_id']}/trials").json()["data"]
+        assert trial["result"]["score"] == 1
+        assert labelled(instance) == []
 
 
 def test_live_steps_and_logs_then_cancel(harbor_service):

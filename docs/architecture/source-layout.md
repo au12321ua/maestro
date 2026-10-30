@@ -22,7 +22,7 @@
 
 ## Runner（`runner/`）
 
-单独的 uv 项目，锁定 Harbor 版本；由服务以 `python -I -m maestro_runner` 启动，经 stdin 收输入、stdout 的 JSON 行协议上报。`protocol.py` 在导入 Harbor 前接管 stdout；`job.py` 把一个运行作为一个 Harbor Job 执行，为每个环境目录写镜像钉定与平台标签的 Compose override 并在 Harbor 创建环境处补上（含独立验证器），上报步骤、日志与每次尝试的结果；`agents.py` 是模型 Harness 适配器与附件安装；`network.py` 做平台网络收紧；`hub.py` 是 Hub 目录命令（搜索、版本、解析、按 digest 下载并核对）。
+单独的 uv 项目，锁定 Harbor 版本；由服务以 `python -I -m maestro_runner` 启动，经 stdin 收输入、stdout 的 JSON 行协议上报。`protocol.py` 在导入 Harbor 前接管 stdout；`job.py` 把一个运行作为一个 Harbor Job 执行，为每个环境目录写镜像钉定与平台标签的 Compose override 并在 Harbor 创建环境处补上（含独立验证器），上报步骤、日志与每次尝试的结果；`compose.py` 在执行前复查作者 Compose 的挂载和单副本边界，与准备侧共用一组回归场景；`agents.py` 是模型 Harness 适配器与附件安装；`network.py` 做平台网络收紧；`hub.py` 是 Hub 目录命令（搜索、版本、解析、按 digest 下载并核对）。
 
 ## 契约、客户端与网页
 
