@@ -1,7 +1,8 @@
 # Checks for every push (docs/HANDOFF.md, 验证入口): lint, Markdown links, the pytest suite
 # without Docker, Hub or model requests (it includes the contract and SDK model drift
 # check), third-party licenses and the web build. A push to dev that passes them becomes a
-# prerelease, a v* tag on master a release (N-02); nothing is deployed.
+# prerelease, a v* tag on master a release (N-02), and the SDK goes to the Gitea Python
+# package registry with it (N-25); nothing is deployed.
 name: verify
 on:
   push:
@@ -13,7 +14,7 @@ on:
   pull_request:
     paths: ["**", "!**.md", "skills/**", "sdk/README.md"]
   workflow_dispatch:
-# Publishing needs write access. Only the last step receives the token; the job's
+# Publishing needs write access. Only the last two steps receive a token; the job's
 # artifact upload could not reach Gitea from the host runner (N-24), so the release is
 # published from the same job instead of a separate one.
 permissions:
@@ -117,14 +118,17 @@ jobs:
             previous="$(git describe --tags --abbrev=0 --match 'v*' HEAD^ 2>/dev/null || true)"
             git log --format='- %s (%h)' ${previous:+"$previous..HEAD"} > "$out/notes.md"
           else
-            uv run python tools/build_release.py --assets --out "$out/dist"
+            # The SDK wheel of a prerelease is <version>.dev<run number>: unique and increasing.
+            uv run python tools/build_release.py --assets --dev-number "${{ github.run_number }}" \
+              --out "$out/dist"
             git log -1 --format='%s%n%n%b' > "$out/notes.md"
           fi
           ls -l "$out/dist"
       - name: Publish to Gitea Releases
         if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref_type == 'tag') }}
-        # The only step that receives the write token; it runs no project code or
-        # dependencies, only the standard-library uploader on what was just checked.
+        # This step and the next are the only ones that receive a write token; they run no
+        # project code or dependencies, only standard-library uploaders on what was just
+        # checked.
         env:
           GITEA_API: ${{ github.server_url }}/api/v1
           GITEA_REPO: ${{ github.repository }}
@@ -139,4 +143,26 @@ jobs:
             build="$(basename "$out"/dist/maestro-*.tar.gz .tar.gz)"
             python3 -I tools/publish_release.py --dist "$out/dist" --notes "$out/notes.md" \
               --tag "dev-${sha:0:12}" --commit "$sha" --title "$build" --prerelease --keep 10
+          fi
+      - name: Publish the SDK to the package registry
+        if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref_type == 'tag') }}
+        # PACKAGE_TOKEN: a token with only the write:package scope from an account that may
+        # write the owner's packages (docs/guides/development-workflow.md).
+        env:
+          GITEA_URL: ${{ github.server_url }}
+          GITEA_OWNER: ${{ github.repository_owner }}
+          GITEA_TOKEN: ${{ secrets.PACKAGE_TOKEN }}
+        run: |
+          dist="$RUNNER_TEMP/release/dist"
+          if [ -z "$GITEA_TOKEN" ]; then
+            if [ "${{ github.ref_type }}" = tag ]; then
+              echo "the secret PACKAGE_TOKEN is not set, so the SDK cannot be published"; exit 1
+            fi
+            echo "::warning::the secret PACKAGE_TOKEN is not set; the SDK was not published"
+            exit 0
+          fi
+          if [ "${{ github.ref_type }}" = tag ]; then
+            python3 -I tools/publish_package.py --dist "$dist"
+          else
+            python3 -I tools/publish_package.py --dist "$dist" --keep 10
           fi

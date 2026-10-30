@@ -13,7 +13,16 @@ a = client.attachments.publish("my-tools", label="v2", parent=previous)
 - `.git` is left out by default (`exclude=`). Links and special files are refused. Nothing in the directory runs on upload.
 - `label` names the snapshot within its attachment and never moves. `parent` records the snapshot this one was made from.
 
-Then put the snapshot id in a configuration: `"attachments": [a.id]`.
+To publish a git repository whose root is the attachment root:
+
+```python
+a = client.attachments.publish_commit("path/to/repo", "HEAD", parent=previous)
+```
+
+- Only what the commit tracks is published, read from git objects: untracked and ignored files stay out, and executable bits come from git's file modes. Uncommitted changes are left out with a warning. Links and submodules are refused.
+- Both publish calls check that the snapshot's digest matches the files they sent.
+
+Then put the snapshot id in a configuration: `"attachments": [a.id]`. To make an attachment or improve one with experiments, read the `maestro-package` skill.
 
 ## Restore, inspect, compare
 

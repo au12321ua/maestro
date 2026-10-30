@@ -49,7 +49,7 @@ SDK 要求 api_version 为 v1 且所需功能开启，否则抛 UNSUPPORTED_CAPA
 
 关键约定：
 
-- 附件增量发布（[03](03-configuration-attachments.md) 第 6 节）：`POST /attachment-contents/missing` 问出缺哪些文件内容，逐个 `PUT /attachment-contents/{sha256}` 上传，再 `POST /attachments` 提交文件清单，同步返回快照；内容相同返回 200 与原快照。单个文件、整包 zip 与两份快照的文件差异分别在 `/attachments/{id}/files/{path}`、`/archive`、`/diff`。SDK 的 `attachments.publish(目录)` 与 `fetch(快照, 目录)` 都只传差异的文件。
+- 附件增量发布（[03](03-configuration-attachments.md) 第 6 节）：`POST /attachment-contents/missing` 问出缺哪些文件内容，逐个 `PUT /attachment-contents/{sha256}` 上传，再 `POST /attachments` 提交文件清单，同步返回快照；内容相同返回 200 与原快照。单个文件、整包 zip 与两份快照的文件差异分别在 `/attachments/{id}/files/{path}`、`/archive`、`/diff`。SDK 的 `attachments.publish(目录)`、`publish_commit(仓库, 提交)` 与 `fetch(快照, 目录)` 都只传差异的文件。
 - 日志也是产物，通过 `GET /artifacts/{id}/download` 读取，可带 offset / length 分段读（单段上限 1 MiB）。已结束运行的产物可按运行、任务、试次或尝试打成 zip（`GET /runs/{id}/artifacts/archive`，[07](07-artifacts-export.md) 第 5 节），SDK 为 `runs.download_archive`。
 - 修改后运行没有专门接口：`GET /runs/{id}/request` 取原请求，修改后重新解析，提交时带 source_run_id。
 - 维护（更新、备份、恢复）不在 HTTP API 中（[12](12-operations.md)）。
@@ -96,6 +96,15 @@ client.runs.download_artifacts(submitted.run_id, local_directory)
 - `operations.wait` 从 1 秒起带抖动放慢到 5 秒；超时抛 WaitTimeout，服务端继续执行，“暂无进度”不算失败。
 - 下载校验摘要；`download_artifacts` 列出跳过的过期 / 失败 / 已删产物及原因，拒绝越出目标目录的路径。
 - 类型区分 None、0、未知用量与已清理产物。
+- 发布附件后在本地按同一规则算出 `content_digest` 与返回的快照核对，不符抛 ContentMismatch。`publish_commit` 只读 git 对象中该提交跟踪的文件，仓库根目录就是附件根目录，可执行位取自文件模式，拒绝符号链接与子模块，工作目录有未提交的修改时警告；平台不记录提交（U-51）。
+
+### 给 Agent 的本地工具
+
+SDK 也是 Agent 的客户端（U-59、U-60）。平台保存别人要依赖的事实（快照、运行、比较与结论），Agent 的工作过程不规定格式，skill 只给建议。下列工具不连服务：
+
+- `maestro_sdk.skills.install(目录)`：把随 wheel 发布的 skill（仓库的 `skills/`）复制到 `.agents/skills/` 与 `.claude/skills/`，同名 skill 整个替换、其他 skill 不动，并在 `.maestro-sdk-version` 记下 SDK 版本。skill 因此与 SDK 同版本，升级 SDK 后重装即同步。
+- `maestro_sdk.workspace.init(目录)`：推荐的工作区，`AGENTS.md` 模板（服务地址、令牌文件位置、可花的预算、命名习惯、当前目标）、自由格式的 `notes/`、每个附件一个 git 仓库的 `attachments/`，以及忽略已安装 skill 与附件仓库的 `.gitignore`；已有文件不覆盖，重复调用只补缺并重装 skill。
+- skill：`maestro-sdk` 讲实验操作与诚实报告；`maestro-package` 讲从已有材料做附件、用附件 A/B 集合改进、在分析快照的结论里记下当前最优的附件（不靠标签），以及中断后只凭平台恢复进度。判断“更好”时建议不剔除失败、核对每个运行的已评分试次等于计划试次，否则说明证据不足；平台不另算一套口径，集合也不核对固定任务列表（U-60）。
 
 ## 8. 契约验收
 

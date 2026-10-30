@@ -1,7 +1,7 @@
 """Build a release package for maestroctl (12 sections 1-2).
 
     uv run python tools/build_release.py [--out dist] [--allow-dirty] [--assets]
-                                         [--expect-version 0.4.0]
+                                         [--expect-version 0.4.0] [--dev-number N]
 
 The package ``maestro-<build>.tar.gz`` holds one directory with ``maestroctl``, the
 service, Runner and SDK wheels, the locked requirements (with hashes) each environment
@@ -13,6 +13,11 @@ neither git nor Node; building the license list does need ``npm ci`` in ``fronte
 ``--assets`` also puts what a release publishes next to the package (N-02): the SDK
 wheel, the license list and ``SHA256SUMS`` over all of them. ``--expect-version`` refuses
 to build when the code's version differs, so a ``v0.4.0`` tag cannot publish 0.4.1.
+
+The SDK has the service's version. On ``dev`` that ends in ``.dev0``; ``--dev-number N``
+builds the SDK wheel as ``.devN`` instead (CI passes its run number), so each prerelease
+the package registry receives has its own, increasing version. Only the built wheel
+changes: ``sdk/pyproject.toml`` is restored right after the build.
 """
 
 import argparse
@@ -46,6 +51,21 @@ def wheel(project: Path, out: Path) -> Path:
     return built
 
 
+SDK_PYPROJECT = ROOT / "sdk/pyproject.toml"
+SDK_VERSION = re.compile(r'^version = "([^"]+)"$', re.MULTILINE)
+
+
+def sdk_wheel_as(version: str, out: Path) -> Path:
+    """Build the SDK wheel with ``version``, leaving ``sdk/pyproject.toml`` as it was."""
+    original = SDK_PYPROJECT.read_text()
+    stamped = SDK_VERSION.sub(f'version = "{version}"', original, count=1)
+    try:
+        SDK_PYPROJECT.write_text(stamped)
+        return wheel(ROOT / "sdk", out)
+    finally:
+        SDK_PYPROJECT.write_text(original)
+
+
 def requirements(project: Path, target: Path) -> None:
     text = sh(
         "uv",
@@ -68,6 +88,7 @@ def main(argv=None) -> int:
     parser.add_argument("--label", default="", help="appended to the build name (tests, rebuilds)")
     parser.add_argument("--assets", action="store_true", help="also write the release assets")
     parser.add_argument("--expect-version", help="fail unless the code has this version")
+    parser.add_argument("--dev-number", type=int, help="SDK wheel as .devN instead of .dev0")
     args = parser.parse_args(argv)
 
     dirty = bool(sh("git", "status", "--porcelain").strip())
@@ -84,6 +105,15 @@ def main(argv=None) -> int:
     if args.expect_version and args.expect_version != version:
         print(f"the code is version {version}, not {args.expect_version}", file=sys.stderr)
         return 1
+    sdk_version = SDK_VERSION.search(SDK_PYPROJECT.read_text())[1]
+    if sdk_version != version:
+        print(f"the SDK is version {sdk_version}, the service {version}", file=sys.stderr)
+        return 1
+    if args.dev_number is not None:
+        if not version.endswith(".dev0") or args.dev_number < 1:
+            print("--dev-number needs a .dev0 version and a number from 1", file=sys.stderr)
+            return 1
+        sdk_version = f"{version.removesuffix('.dev0')}.dev{args.dev_number}"
     harbor = re.search(r'"harbor==([^"]+)"', (ROOT / "runner/pyproject.toml").read_text())[1]
     build = f"{version}-{commit[:12]}" + ("-dirty" if dirty else "")
     if args.label:
@@ -110,7 +140,7 @@ def main(argv=None) -> int:
         requirements(ROOT, top / "server/requirements.txt")
         runner_wheel = wheel(ROOT / "runner", top / "runner")
         requirements(ROOT / "runner", top / "runner/requirements.txt")
-        sdk_wheel = wheel(ROOT / "sdk", top / "sdk")
+        sdk_wheel = sdk_wheel_as(sdk_version, top / "sdk")
         shutil.copy2(ROOT / "ops/maestroctl.py", top / "maestroctl")
         (top / "maestroctl").chmod(0o755)
         shutil.copy2(ROOT / "docs/guides/deployment.md", top / "INSTALL.md")
@@ -130,6 +160,7 @@ def main(argv=None) -> int:
         info = {
             "name": "maestro",
             "version": version,
+            "sdk_version": sdk_version,
             "build": build,
             "commit": commit,
             "dirty": dirty,

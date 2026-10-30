@@ -132,4 +132,4 @@ uv sync --locked --group dev
 uv run python tools/build_release.py      # 写出 dist/maestro-<版本>-<提交>.tar.gz
 ```
 
-包里有 `maestroctl`、服务 / Runner / SDK 的 wheel、带哈希的锁定依赖、本说明、`LICENSE`、`NOTICE`、第三方许可证清单 `THIRD_PARTY_LICENSES.md`，以及记录版本、提交、数据库结构版本、Harbor 版本和每个文件摘要的 `RELEASE.json`。网页已经编译进服务的 wheel，安装的机器不需要 git 或 Node。成员要用的 Python SDK 在包里的 `sdk/` 目录。
+包里有 `maestroctl`、服务 / Runner / SDK 的 wheel、带哈希的锁定依赖、本说明、`LICENSE`、`NOTICE`、第三方许可证清单 `THIRD_PARTY_LICENSES.md`，以及记录版本、提交、数据库结构版本、Harbor 版本和每个文件摘要的 `RELEASE.json`。网页已经编译进服务的 wheel，安装的机器不需要 git 或 Node。成员要用的 Python SDK 在包里的 `sdk/` 目录，也随每次发布推送到 Gitea 的 Python 包仓库，成员可以直接按版本安装（[SDK 说明](../../sdk/README.md)；推送令牌与读取权限见[开发流程](development-workflow.md)的“SDK 包仓库”）。

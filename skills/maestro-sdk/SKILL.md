@@ -10,8 +10,13 @@ Maestro runs Harbor experiments for a team. You reach it over HTTP with a PAT; y
 ## Setup
 
 ```bash
-pip install <maestro-repo>/sdk        # Python >= 3.10; depends only on httpx and pydantic
+# Python >= 3.10; depends only on httpx and pydantic. Use the service's version.
+uv pip install "maestro-sdk==<version>" --index maestro=https://<gitea>/api/packages/<owner>/pypi/simple
+python -c "import maestro_sdk.skills as s; s.install()"   # these skills, matching that SDK
 ```
+
+- Take the index and version from the workspace's `AGENTS.md` or ask. A private index reads a `read:package` token from `~/.netrc`; never put it on the command line.
+- `maestro_sdk.workspace.init(dir)` sets up a whole workspace (see the `maestro-package` skill).
 
 ```python
 from maestro_sdk import MaestroClient
@@ -63,7 +68,7 @@ Read the file that matches the task before acting on it:
 
 - [references/follow-up-runs.md](references/follow-up-runs.md): rerun a run, change a configuration and run it again, submit several configurations together, use plans, filter runs, export runs for analysis.
 - [references/comparing.md](references/comparing.md): compare runs, keep a collection, record a conclusion in a snapshot, and how to report comparison numbers.
-- [references/attachments.md](references/attachments.md): publish tools for the agent under test, restore a snapshot to edit it, see what changed.
+- [references/attachments.md](references/attachments.md): publish tools for the agent under test from a directory or a git commit, restore a snapshot to edit it, see what changed. To make or improve an attachment, use the `maestro-package` skill.
 - [references/errors.md](references/errors.md): the fields of `ApiError` and what the common error codes ask you to do.
 
 Every SDK method has a docstring; `help(client.runs.submit)` shows the arguments it takes.

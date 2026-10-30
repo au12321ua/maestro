@@ -154,6 +154,16 @@ UI 文案与纯样式变更不写低价值单元测试；优先验证会导致�
 
 覆盖：`test_attachments.py`（含 0.3.0 受理的运行仍能打开）、`test_sdk.py`、`test_migrations.py`（旧附件清空）；网页的文件夹发布、分支树、差异与下载由 `frontend/qa/smoke.spec.ts` 覆盖。
 
+### E2E-RUN-06 Agent 的工作区与从 git 提交发布
+
+前提：装有 SDK 的干净环境与 git；一个 experiment PAT。
+
+步骤：`workspace.init` 生成工作区 → 在 `attachments/<名称>/` 建 git 仓库并提交，留下未跟踪、被忽略与未提交的文件 → `publish_commit` → 提交改动后以它为父快照再发布 → 重复 `init`。
+
+预期：工作区有 `AGENTS.md`、`notes/`、`attachments/` 与两处 skill，skill 记下 SDK 版本；快照只含提交跟踪的文件，可执行位取自文件模式，摘要与本地计算一致，有未提交修改时警告；同一提交再发布返回原快照；符号链接、子模块与仓库子目录被拒绝；再次 `init` 不覆盖已有文件、整个替换旧 skill。真实模型下从本地 skill 目录做附件、冒烟确认安装与读取、做一轮改进并在分析快照里记下最优附件，属于手动演练，按当次授权与预算进行。
+
+覆盖：`test_sdk.py`。
+
 ## 6. 故事三：查询与导出
 
 ### E2E-OUT-01 SDK 查询与导出

@@ -6,11 +6,15 @@
 
 ## 安装与连接
 
-需要 Python 3.10 及以上。在本仓库里：
+需要 Python 3.10 及以上。SDK 随每次发布推送到 Gitea 的 Python 包仓库，按版本安装，选与服务相同的版本（下文 `<索引>` 是 `https://<Gitea 地址>/api/packages/<所有者>/pypi/simple`）：
 
 ```bash
-pip install ./sdk          # 或 uv pip install ./sdk
+uv add "maestro-sdk==0.4.0" --index maestro=<索引>             # uv 项目：maestro-sdk 只从这个索引装
+uv pip install "maestro-sdk==0.4.0" --index maestro=<索引>     # 已有的虚拟环境
+pip install "maestro-sdk==0.4.0" --extra-index-url <索引>       # pip 会同时查 PyPI，务必固定版本
 ```
+
+`dev` 的预发布版本是 `<版本>.dev<N>`（例如 `0.4.1.dev1234`），同样用 `==` 安装；服务装的是某个 `dev-<提交>` 预发布时，对应的 SDK 就是那个预发布附带的 wheel，版本也写在发布包 `RELEASE.json` 的 `sdk_version` 里。`"maestro-sdk>=0.4.1.dev0"` 取最新的预发布。包仓库不公开时，把只有 `read:package` 权限的 Gitea 令牌写进 `~/.netrc`（[开发流程](../docs/guides/development-workflow.md)的“SDK 包仓库”），不要放进命令或 `pyproject.toml`。在本仓库里也可以直接 `pip install ./sdk`。
 
 PAT 在网页“设置”页创建：`read` 只能读，`experiment` 还能提交、取消、重跑、发布附件和方案。令牌只显示一次，请放进文件或环境变量，不要写进代码或命令行参数。
 
@@ -95,8 +99,21 @@ except TransportError as lost:
 | 比较几个运行 | `client.comparisons.compare([run_a, run_b])`：条件核对、各运行汇总与逐任务对齐；外部原因的失败默认剔除，其余失败算 0 分，`exclude=[]` 不剔除 |
 | 集合 | `c = client.collections.create(name, "models", base_run_id=run_id, run_ids=[...])`；`client.runs.submit(cfg, name=..., collection_id=c.id)` 按集合填好固定字段并自动加入；`client.collections.compare(c.id)`、`client.collections.candidates(c.id)`（最近不在集合里的运行，`mismatches` 为空的可加入）、`client.collections.add_runs(c.id, [run_id])` |
 | 快照与结论 | `s = client.snapshots.create(name, collection_id=c.id)`（运行须已结束），`client.snapshots.add_note(s.id, "结论")` |
-| 附件 | `a = client.attachments.publish("path/to/dir", label="v2", parent=old)`（只上传服务端缺少的文件，内容相同返回原快照；跳过 `.git`），配置里写 `attachments: [a.id]`；`client.attachments.fetch(a.id, "dir")` 只下载有差异的文件，`diff(a.id)` 与父快照比较，`download(a.id, "a.zip")` 整包下载 |
+| 附件 | `a = client.attachments.publish("path/to/dir", label="v2", parent=old)`（只上传服务端缺少的文件，内容相同返回原快照；跳过 `.git`），或 `client.attachments.publish_commit("path/to/repo", "HEAD", parent=old)` 发布一个 git 提交跟踪的文件（仓库根目录就是附件根目录，可执行位取自 git 的文件模式，未提交的修改不发布并给出提醒），配置里写 `attachments: [a.id]`；`client.attachments.fetch(a.id, "dir")` 只下载有差异的文件，`diff(a.id)` 与父快照比较，`download(a.id, "a.zip")` 整包下载 |
 | 导出 | `e = client.exports.create([run_id])`、`client.operations.wait(e.operation_id)`、`client.exports.download(e.id, "export.zip")` |
+
+## 给 Agent 的工作区与 skill
+
+skill 打包在 SDK 里，与 SDK 同版本，不需要服务：
+
+```python
+import maestro_sdk.skills, maestro_sdk.workspace
+
+maestro_sdk.skills.install(".")          # 复制到 .agents/skills/ 与 .claude/skills/，记下 SDK 版本
+maestro_sdk.workspace.init("my-work")    # AGENTS.md 模板、notes/、attachments/、.gitignore，并安装 skill
+```
+
+`maestro-sdk` 讲提交、观察、比较与诚实报告结果；`maestro-package` 讲怎样把已有材料做成附件、用实验改进它、在平台上记下当前最优的附件，以及中断后怎样只凭平台接着做。工作区是推荐布局：`AGENTS.md` 写服务地址、令牌文件位置、可花的预算与命名习惯，`notes/` 的格式完全自由，`attachments/<名称>/` 每个附件一个 git 仓库。`init` 不覆盖已有文件，只补缺并重装 skill；升级 SDK 后再运行一次即可同步 skill。
 
 ## 错误
 
@@ -106,4 +123,4 @@ except TransportError as lost:
 
 `models.py` 与 `_contract.py` 由 `uv run python tools/generate_clients.py` 从服务的 OpenAPI 生成，不要手改；API 改了不重新生成，测试会失败。
 
-手写部分：`client.py` 是入口，`_transport.py` 负责认证、重试、翻页和下载，`resources/` 每组接口一个模块，`results.py` 放生成模型之外的返回类型。新增一组接口时加一个 `resources/` 模块，并在 `MaestroClient.__init__` 里挂上。
+手写部分：`client.py` 是入口，`skills.py` 与 `workspace.py` 是不连服务的本地工具（skill 来自仓库的 `skills/`，由 `pyproject.toml` 打进 wheel 的 `maestro_sdk/_skills/`，可编辑安装时直接读仓库），`templates/AGENTS.md` 是工作区模板，`_transport.py` 负责认证、重试、翻页和下载，`resources/` 每组接口一个模块，`results.py` 放生成模型之外的返回类型。新增一组接口时加一个 `resources/` 模块，并在 `MaestroClient.__init__` 里挂上。
