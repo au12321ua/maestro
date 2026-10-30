@@ -4,6 +4,7 @@ the Runner's per-directory overrides. Compose files are read by the Docker clien
 (nothing is started); the Runner parts run in the Runner's own environment."""
 
 import json
+import runpy
 import shutil
 import subprocess
 import textwrap
@@ -12,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from maestro.domain import limits
+from maestro.execution import compose
 from maestro.execution.materials import image_key, inspect_task, tree_digest
 from maestro.services import policy
 from maestro.services.configuration import Resolver
@@ -154,6 +156,89 @@ def test_what_cannot_be_prepared_is_named_without_values(tmp_path, compose, reas
     assert reason in definition["unsupported_reason"]
 
 
+# Both boundaries apply this policy: preparation alone cannot protect older admissions.
+RUNTIME_CHECKS = [
+    compose.check_runtime,
+    runpy.run_path(str(RUNNER / "src/maestro_runner/compose.py"))["check_runtime"],
+]
+UNSUPPORTED_RUNTIME = [
+    {"volumes": ["/host/canary:/canary:ro"]},
+    {"volumes": ["./canary:/canary"]},
+    {"volumes": ["${SOURCE:-data}:/canary"]},
+    {"volumes": [{"type": "bind", "source": "/host/canary", "target": "/canary"}]},
+    {"volumes_from": ["container:outside:ro"]},
+    {"configs": ["host_file"]},
+    {"secrets": ["host_file"]},
+    {"devices": ["/dev/sda:/dev/sda"]},
+    {"use_api_socket": True},
+    {"privileged": True},
+    {"scale": 3},
+    {"scale": "${REPLICAS:-1}"},
+    {"deploy": {"replicas": 3}},
+    {"deploy": {"replicas": "${REPLICAS:-1}"}},
+    {"deploy": {"mode": "global"}},
+]
+
+
+@pytest.mark.parametrize("check", RUNTIME_CHECKS, ids=["preparation", "runner"])
+@pytest.mark.parametrize("service", UNSUPPORTED_RUNTIME)
+@pytest.mark.parametrize("name", ["main", "helper"])
+def test_host_access_and_unaccounted_replicas_are_refused(check, service, name):
+    with pytest.raises(ValueError) as error:
+        check({"services": {name: service}, "volumes": {"data": {}}}, "tests/compose")
+    assert f"services.{name}" in str(error.value)
+    assert "/host/canary" not in str(error.value)
+
+
+@pytest.mark.parametrize("check", RUNTIME_CHECKS, ids=["preparation", "runner"])
+@pytest.mark.parametrize(
+    "volume",
+    [
+        {"driver_opts": {"type": "none", "o": "bind", "device": "/host"}},
+        {"driver": "host-driver"},
+        {"external": True},
+        {"name": "outside"},
+    ],
+)
+def test_volume_definitions_cannot_reach_the_host(check, volume):
+    with pytest.raises(ValueError):
+        check({"volumes": {"data": volume}}, "environment/compose")
+
+
+@pytest.mark.parametrize("check", RUNTIME_CHECKS, ids=["preparation", "runner"])
+def test_internal_volumes_and_a_fixed_single_replica_remain_supported(check):
+    check(
+        {
+            "services": {
+                "main": {
+                    "volumes": ["data:/data", "/scratch", {"type": "tmpfs", "target": "/ram"}],
+                    "scale": 1,
+                    "deploy": {"replicas": 1, "mode": "replicated"},
+                }
+            },
+            "volumes": {"data": {"driver": "local"}},
+        },
+        "environment/compose",
+    )
+
+
+@needs_compose
+@pytest.mark.parametrize("directory", ["environment", "tests"])
+@pytest.mark.parametrize("service", [UNSUPPORTED_RUNTIME[0], UNSUPPORTED_RUNTIME[12]])
+def test_inspection_checks_both_environment_directories(tmp_path, directory, service):
+    task = make_task(
+        tmp_path / "t",
+        '[verifier]\nenvironment_mode = "separate"\n',
+        files={
+            "tests/Dockerfile": "FROM ubuntu:22.04\n",
+            f"{directory}/docker-compose.yaml": json.dumps({"services": {"main": service}}),
+        },
+    )
+    definition = inspect(task)
+    assert definition["unsupported"]
+    assert f"{directory}/docker-compose.yaml services.main" in definition["unsupported_reason"]
+
+
 def test_the_verifier_s_own_image_is_pulled(tmp_path):
     task = make_task(
         tmp_path / "t",
@@ -262,10 +347,13 @@ sys.path.insert(0, sys.argv[1])
 from maestro_runner import job
 from harbor.environments.factory import EnvironmentFactory
 from harbor.models.task.config import TaskConfig
+from harbor.models.task.paths import TaskPaths
+from harbor.models.task.verifier_mode import resolve_verifier_environment_definition
 
 task = Path(sys.argv[2]); out = Path(sys.argv[3]); spec = json.loads(sys.argv[4])
 job._with_images(task, spec["task"], spec["overrides"])
 config = TaskConfig.model_validate_toml((task / "task.toml").read_text())
+definition = resolve_verifier_environment_definition(config, TaskPaths(task))
 pins = job._pin_overrides(task, spec["task"], {"io.maestro.run_id": "run_1"}, out / "pins")
 seen = []
 def original(cls, config, *args, **kwargs):
@@ -282,6 +370,10 @@ EnvironmentFactory.create_environment_from_config(EnvironmentConfig(), environme
     "cpus": config.environment.cpus,
     "memory_mb": config.environment.memory_mb,
     "verifier": config.verifier.environment.docker_image if config.verifier.environment else None,
+    "verifier_cpus": definition.config.cpus if definition else None,
+    "verifier_memory_mb": definition.config.memory_mb if definition else None,
+    "verifier_directory": definition.directory.name if definition else None,
+    "bundled_tests": definition.bundled_tests if definition else None,
     "files": {k: Path(v).read_text() for k, v in pins.items()},
     "seen": seen,
 }))
@@ -308,6 +400,7 @@ def probe(tmp_path, task: Path, spec: dict) -> dict:
 
 
 @needs_runner
+@needs_compose
 def test_the_runner_pins_every_image_per_directory(tmp_path):
     task = make_task(
         tmp_path / "t",
@@ -349,6 +442,44 @@ def test_the_runner_pins_every_image_per_directory(tmp_path):
     agent, verifier = result["seen"]
     assert agent[0].endswith("labels.yaml") and agent[1].endswith("environment.yaml")
     assert verifier[0].endswith("verifier-labels-0.yaml") and verifier[1].endswith("tests.yaml")
+
+
+@needs_runner
+@pytest.mark.parametrize("own_resources", [False, True])
+@pytest.mark.parametrize("own_image", [False, True])
+def test_resource_overrides_reach_main_and_preserve_the_verifier(
+    tmp_path, own_resources, own_image
+):
+    task = make_task(
+        tmp_path / "t",
+        "[environment]\ncpus = 1\nmemory_mb = 2048\n"
+        '[verifier]\nenvironment_mode = "separate"\n'
+        + ("[verifier.environment]\ncpus = 2\nmemory_mb = 3000\n" if own_resources else ""),
+    )
+    verifier_cpu, verifier_memory = (2, 3000) if own_resources else (1, 2048)
+    images = {"environment/main": "reg/main@" + DIGEST}
+    if own_image:
+        images["tests/main"] = "reg/verifier@" + DIGEST
+    found = probe(
+        tmp_path,
+        task,
+        {
+            "task": {
+                "images": images,
+                "environments": [
+                    {"role": "environment/main", "cpus": 1, "memory_mb": 2048},
+                    {"role": "verifier", "cpus": verifier_cpu, "memory_mb": verifier_memory},
+                ],
+            },
+            # An odd increment must not disappear when the verifier inherits resources.
+            "overrides": {"cpus": 8, "memory_mb": 8193},
+        },
+    )
+    assert found["cpus"] + found["verifier_cpus"] == 8
+    assert found["memory_mb"] + found["verifier_memory_mb"] == 8193
+    assert (found["verifier_cpus"], found["verifier_memory_mb"]) == (verifier_cpu, verifier_memory)
+    assert found["verifier_directory"] == ("tests" if own_image else "environment")
+    assert found["bundled_tests"] == own_image
 
 
 @needs_runner

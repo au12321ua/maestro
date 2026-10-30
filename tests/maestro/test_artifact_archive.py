@@ -5,6 +5,7 @@ import io
 import json
 import zipfile
 
+import pytest
 from sqlalchemy import update
 from support import create_pat, running, setup_admin, submit, wait_operation
 
@@ -120,3 +121,73 @@ def test_a_run_larger_than_the_limit_is_refused_before_streaming(service, versio
         response = admin.get(f"/api/v1/runs/{run_id}/artifacts/archive")
         assert response.status_code == 413
         assert response.json()["error"]["code"] == "ARCHIVE_TOO_LARGE"
+
+
+@pytest.mark.parametrize("purge", [False, True], ids=["recycled", "purged"])
+def test_deleted_files_remain_in_missing_at_every_level(service, version_id, purge, monkeypatch):
+    with running(service) as client:
+        admin = setup_admin(service, client)
+        run_id = finished_run(admin, version_id)
+        artifacts = admin.get(f"/api/v1/runs/{run_id}/artifacts").json()["data"]
+        chosen = artifacts[0]
+        trials = admin.get(f"/api/v1/runs/{run_id}/trials").json()["data"]
+        trial = next(t for t in trials if t["id"] == chosen["trial_id"])
+        entry = admin.delete(f"/api/v1/artifacts/{chosen['id']}", expect=200).json()["data"]
+        if purge:
+            admin.post(
+                f"/api/v1/admin/recycle-bin/{entry['id']}/purge",
+                json={"confirm_object_id": chosen["id"]},
+                expect=200,
+            )
+        # Soft deletion leaves the stored content available. It still must not be opened.
+        with service.db.read() as conn:
+            row = conn.execute(t.artifacts.select().where(t.artifacts.c.id == chosen["id"])).one()
+        assert row.status == ("deleted" if purge else "available")
+        original = service.artifact_archives.store.open
+
+        def checked(key):
+            assert key != row.storage_key, "deleted content was opened"
+            return original(key)
+
+        monkeypatch.setattr(service.artifact_archives.store, "open", checked)
+        base = f"/api/v1/runs/{run_id}/artifacts/archive"
+        for query in (
+            "",
+            f"?task_key={trial['task_key']}",
+            f"?trial_id={chosen['trial_id']}",
+            f"?attempt_id={chosen['attempt_id']}",
+        ):
+            _, _, manifest = unpack(admin.get(base + query, expect=200))
+            assert chosen["id"] not in {a["artifact_id"] for a in manifest["files"]}
+            assert (chosen["id"], "DELETED") in {
+                (a["artifact_id"], a["reason"]) for a in manifest["missing"]
+            }
+        # Deleted files do not consume the archive's size limit either.
+        with service.db.write() as conn:
+            conn.execute(
+                update(t.artifacts)
+                .where(t.artifacts.c.id == chosen["id"])
+                .values(size_bytes=10**12)
+            )
+        admin.get(base, expect=200)
+
+
+def test_a_file_recycled_after_selection_is_not_opened(service, version_id, monkeypatch):
+    with running(service) as client:
+        admin = setup_admin(service, client)
+        run_id = finished_run(admin, version_id)
+        artifacts = admin.get(f"/api/v1/runs/{run_id}/artifacts").json()["data"]
+        _, stream = service.artifact_archives.open(run_id)
+        for item in artifacts:
+            admin.delete(f"/api/v1/artifacts/{item['id']}", expect=200)
+
+        def no_content(key):
+            pytest.fail("recycled content was opened")
+
+        monkeypatch.setattr(service.artifact_archives.store, "open", no_content)
+        archive = zipfile.ZipFile(io.BytesIO(b"".join(stream)))
+        assert len(archive.namelist()) == 1
+        manifest = json.loads(archive.read(archive.namelist()[0]))
+        assert manifest["files"] == []
+        assert {a["artifact_id"] for a in manifest["missing"]} == {a["id"] for a in artifacts}
+        assert {a["reason"] for a in manifest["missing"]} == {"DELETED"}
