@@ -1,5 +1,6 @@
-"""Release tooling (N-02, N-16, N-25): the license rules, the SDK version stamp, and
-publishing to Gitea Releases and the Python package registry against fake APIs. Building a
+"""Release tooling (N-02, N-16, N-25, U-62): the license rules, the SDK version stamp,
+publishing to Gitea Releases and the Python package registry against fake APIs, and the
+package index for GitHub Pages. Building a
 real package runs in test_install.py (opt-in); the license list itself runs in CI."""
 
 import hashlib
@@ -30,6 +31,7 @@ licenses = _load("third_party_licenses")
 publish = _load("publish_release")
 package = _load("publish_package")
 build = _load("build_release")
+index = _load("package_index")
 
 
 @pytest.mark.parametrize(
@@ -332,3 +334,37 @@ def test_only_one_sdk_wheel_is_published(registry, tmp_path):
     with pytest.raises(SystemExit, match="exactly one SDK wheel"):
         package.main(["--dist", str(tmp_path)])
     assert registry["files"] == {}
+
+
+def test_the_github_index_links_every_release_with_its_digest(tmp_path):
+    wheels = tmp_path / "wheels"
+    for version in ("0.4.0", "0.3.1"):
+        (wheels / f"v{version}").mkdir(parents=True)
+        _sdk_wheel(wheels / f"v{version}", version, content=version.encode())
+        (wheels / f"v{version}" / "SHA256SUMS").write_text("other assets are ignored\n")
+    base = "https://github.com/o/maestro/releases/download/"
+    assert (
+        index.main(["--wheels", str(wheels), "--base-url", base, "--out", str(tmp_path / "site")])
+        == 0
+    )
+
+    page = (tmp_path / "site" / "simple" / "maestro-sdk" / "index.html").read_text()
+    for version in ("0.4.0", "0.3.1"):
+        name = f"maestro_sdk-{version}-py3-none-any.whl"
+        digest = hashlib.sha256((wheels / f"v{version}" / name).read_bytes()).hexdigest()
+        assert (
+            f'<a href="{base}v{version}/{name}#sha256={digest}" '
+            f'data-requires-python="&gt;=3.10">{name}</a>'
+        ) in page
+    assert 'href="maestro-sdk/"' in (tmp_path / "site" / "simple" / "index.html").read_text()
+
+
+def test_the_github_index_refuses_a_release_without_its_own_sdk(tmp_path):
+    out = ["--base-url", "https://x/releases/download", "--out", str(tmp_path / "site")]
+    (tmp_path / "v0.4.0").mkdir()
+    with pytest.raises(SystemExit, match="exactly one SDK wheel"):
+        index.main(["--wheels", str(tmp_path), *out])
+    _sdk_wheel(tmp_path / "v0.4.0", "0.4.1")
+    with pytest.raises(SystemExit, match="holds the SDK 0.4.1"):
+        index.main(["--wheels", str(tmp_path), *out])
+    assert not (tmp_path / "site").exists()
