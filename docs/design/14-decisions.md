@@ -71,7 +71,8 @@
 | U-59 | 2026-10-30 | N-25 换方向：附件改进不另做客户端框架。平台保存别人要依赖的事实（快照内容、运行结果、分析快照与结论），规则严格；Agent 的工作过程（笔记、推理、证据摘录、改进方法）自由，skill 只给建议，SDK 不规定格式、不做校验。git 只管附件本身，历史与经验放在 Agent 本地的工作区，做法类似 `maestro-site`。判断一条规则该不该有：它保护的是谁要依赖的哪个事实。SDK 与 skill 怎样让 Agent 用好 Maestro、推荐 Agent 有怎样的上下文环境，是产品要考虑的部分，N-25 因此改为“Agent 客户端” | 提案 N-25 |
 | U-60 | 2026-10-30 | N-25 确认并开始实现：SDK 发到包仓库不拆成单独提案，另开分支并行实现后合并；`bootstrap.sh` 让 Agent 按需编写，不给定死的模板；附件仓库放在工作区里，SDK 提供生成工作区骨架的函数；集合的固定任务列表暂时不做 | 提案 N-25 |
 | U-61 | 2026-10-30 | N-25 实现中：改进附件时不用标签标记版本（标签只能在第一次发布时给，事后补不上），只在平台上记录当前最优的附件：冻结比较的分析快照，在结论里写明哪个快照最优、为什么 | [10](10-api-sdk-cli.md) 第 7 节、`skills/maestro-package/` |
-| U-62 | 2026-10-30 | GitHub 上的 SDK 发到 GitHub Pages 上的静态包索引（PEP 503），链接指向各 Release 附带的 wheel，安装方式与 Gitea 包仓库相同；只有正式版本。没有选 PyPI（`maestro-sdk` 已被别人占用，换名与暂缓的 N-20 改名有关）和只用 Release 附件（没有索引，不能按版本解析）。根目录 README 写怎样快速起一个 Gitea 包仓库给 Agent 用 | [12](12-operations.md) 第 1 节、[开发流程](../guides/development-workflow.md)、`.github/workflows/release.yml` |
+| U-62 | 2026-10-30 | GitHub 上的 SDK 发到 GitHub Pages 上的静态包索引（PEP 503），链接指向各 Release 附带的 wheel，安装方式与 Gitea 包仓库相同；只有正式版本。没有选 PyPI（`maestro-sdk` 已被别人占用，换名与暂缓的 N-20 改名有关）和只用 Release 附件（没有索引，不能按版本解析）。对外地址 `https://au12321ua.github.io/maestro/simple` | [12](12-operations.md) 第 1 节、[开发流程](../guides/development-workflow.md)、`.github/workflows/release.yml` |
+| U-63 | 2026-10-30 | README 只写使用者需要的内容。Gitea（CI、预发布、包仓库）是开发细节，不主动出现在面向使用者的文档里（根目录 README、SDK 说明、skill、工作区模板、部署指南）；使用者从 GitHub Pages 的索引安装 SDK。从源码接入真实执行等开发步骤放在交接 | 根目录 README、`sdk/README.md`、`skills/`、[交接](../HANDOFF.md) |
 
 ### 冲突与结论
 

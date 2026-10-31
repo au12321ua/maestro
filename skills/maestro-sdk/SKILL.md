@@ -15,7 +15,7 @@ uv pip install "maestro-sdk==<version>" --index maestro=<index>      # index fro
 python -c "import maestro_sdk.skills as s; s.install()"   # these skills, matching that SDK
 ```
 
-- Take the index and version from the workspace's `AGENTS.md` or ask. A private index reads a `read:package` token from `~/.netrc`; never put it on the command line.
+- Take the index and version from the workspace's `AGENTS.md` or ask.
 - `maestro_sdk.workspace.init(dir)` sets up a whole workspace (see the `maestro-package` skill).
 
 ```python

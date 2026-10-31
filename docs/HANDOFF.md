@@ -54,6 +54,24 @@
 
 Playwright 测试需要一个全新的一次性 state：`maestro --config <tmp>/config.toml init` 记下初始化令牌，`maestro --config <tmp>/config.toml serve --port 8431 --demo-executor`，再在 `frontend/` 执行 `MAESTRO_SETUP_TOKEN=<令牌> npm run test:ui`（说明见 `qa/smoke.spec.ts` 开头）。同一个 state 只能跑一次，因为第一步是初始化管理员。
 
+### 本机用 Harbor 真实执行
+
+在根目录 README“开发试用”的实例上接入真实执行（Oracle 测试模式：执行任务自带的参考解法，不调用模型）。需要 Docker 和本机已有的 `ubuntu:22.04`；Harbor 装在单独的 Runner 环境里，服务本身不加载 Harbor：
+
+```bash
+(cd runner && uv sync --locked)                       # 锁定 Harbor 0.24.0
+echo "runner_python = \"$PWD/runner/.venv/bin/python\"" >> "$root/config.toml"
+# 准备好的镜像存在本机镜像仓库里（真实主机上由 maestroctl 运行）
+docker run -d --name maestro-dev-registry -p 127.0.0.1:8425:5000 \
+  -v "$root/data/registry:/var/lib/registry" -e REGISTRY_STORAGE_DELETE_ENABLED=true registry:3.0.0
+uv run maestro --config "$root/config.toml" dev-local-dataset oracle tests/maestro/fixtures/harbor-tasks
+uv run maestro --config "$root/config.toml" serve --port 8420
+```
+
+- `dev-local-dataset` 是开发用的隐藏命令：在服务停止时把本地任务目录当作数据源，走一遍与 Hub 相同的导入和首次准备（真实 Docker 构建，推入上面的仓库容器）。正式使用时由管理员在“数据集”页从 Hub 添加版本；私有数据集需要管理页的 `hub_token` 凭据。模型运行需要管理员先添加模型凭据、模型配置与 Harness 版本。
+- `cookie_secure = false` 只用于本机 HTTP；对外部署由反向代理提供 HTTPS，保持默认的 `true`。
+- 数据目录所在磁盘可用空间低于 20 GiB 或 15% 时不再受理新运行；小磁盘上调低 `config.toml` 的四个 `storage_*` 水位（键与默认值见 `src/maestro/config.py`）。
+
 ### 实例、打包与 CI
 
 - **实例**：`maestro --config <config.toml> <子命令>`，子命令见 `maestro --help`（`init`、`db upgrade`、`serve`、`backup`、`restore`、`activity`、`openapi`）；示例配置与试用步骤见根目录 README。

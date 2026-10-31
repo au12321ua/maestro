@@ -28,14 +28,11 @@ Then `sudo maestroctl status / logs / backup / update <package> / uninstall`.
 
 ## Use it from an agent
 
-An agent never logs in to the server. It needs the [Python SDK](sdk/README.md) (the agent skills ship inside it), a personal access token and a workspace. Install the SDK of the service's version from a package index:
-
-- this project's index on GitHub Pages, `https://<GitHub owner>.github.io/<repository>/simple` (formal releases), or
-- a Gitea package registry, `https://<gitea>/api/packages/<owner>/pypi/simple`. To start one: `docker run -d --name gitea -p 3000:3000 -v gitea-data:/data gitea/gitea:28.2.0`, finish the install page with the defaults (the first account is the admin), create a token with only package read/write access, and upload the wheel from the release: `UV_PUBLISH_PASSWORD="$(cat <token file>)" uv publish --username <user> --publish-url http://<host>:3000/api/packages/<user>/pypi maestro_sdk-<version>-py3-none-any.whl`.
+An agent never logs in to the server. It needs the [Python SDK](sdk/README.md) (the agent skills ship inside it), a personal access token and a workspace. Install the SDK of the service's version from this project's package index on GitHub Pages, `https://au12321ua.github.io/maestro/simple` (from 0.4.0 on). Without an index, install the wheel attached to the release: `uv pip install ./maestro_sdk-<version>-py3-none-any.whl`.
 
 ```bash
 mkdir my-work && cd my-work
-uv venv && uv pip install "maestro-sdk==<version>" --index maestro=<index>
+uv venv && uv pip install "maestro-sdk==<version>" --index maestro=https://au12321ua.github.io/maestro/simple
 .venv/bin/python -c "import maestro_sdk.workspace as w; w.init('.')"   # AGENTS.md, notes/, attachments/, skills
 ```
 
@@ -58,7 +55,7 @@ uv run maestro --config "$root/config.toml" init      # prints the one-time setu
 uv run maestro --config "$root/config.toml" serve --port 8420 --demo-executor
 ```
 
-Open `http://127.0.0.1:8420` and create the first admin with the setup token. `--demo-executor` uses a fake executor and a fake dataset source (add `demo/arith` on the Datasets page); its results are not real experiments. Running real Harbor tasks is described in the Chinese [README](README.md).
+Open `http://127.0.0.1:8420` and create the first admin with the setup token. `--demo-executor` uses a fake executor and a fake dataset source (add `demo/arith` on the Datasets page); its results are not real experiments.
 
 ## License
 

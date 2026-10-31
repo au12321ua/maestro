@@ -10,8 +10,7 @@
 
 | 包仓库 | `<索引>` | 内容 |
 | --- | --- | --- |
-| GitHub Pages | `https://<GitHub 所有者>.github.io/<仓库>/simple` | 正式版本（自 0.4.0 起） |
-| Gitea 包仓库 | `https://<Gitea 地址>/api/packages/<所有者>/pypi/simple` | 正式版本与 `dev` 预发布 |
+| GitHub Pages | `https://au12321ua.github.io/maestro/simple` | 自 0.4.0 起 |
 
 ```bash
 uv add "maestro-sdk==<版本>" --index maestro=<索引>             # uv 项目：maestro-sdk 只从这个索引装
@@ -19,14 +18,7 @@ uv pip install "maestro-sdk==<版本>" --index maestro=<索引>     # 已有的�
 pip install "maestro-sdk==<版本>" --extra-index-url <索引>       # pip 会同时查 PyPI，务必固定版本
 ```
 
-- **与服务对版本。** 服务装的是正式版本时，SDK 就是同一版本；装的是 `dev-<提交>` 预发布时，SDK 是那个预发布附带的 wheel，版本 `<版本>.dev<N>` 写在发布包 `RELEASE.json` 的 `sdk_version` 里，同样用 `==` 安装。
-- **不公开的包仓库。** 用自己的 Gitea 账号建一个只有 `read:package` 权限的令牌，写进 `~/.netrc`（`chmod 600`），pip 与 uv 都会读取。不要把令牌放进命令、`pyproject.toml` 或日志：
-
-  ```text
-  machine <Gitea 主机名>
-  login <Gitea 用户名>
-  password <令牌>
-  ```
+- **与服务对版本。** 服务装的是正式版本时，SDK 就是同一版本；装的是 `dev-<提交>` 预发布时，安装那个预发布附带的 wheel 文件（版本 `<版本>.dev<N>` 写在发布包 `RELEASE.json` 的 `sdk_version` 里）。
 
 - **没有包仓库时**直接装发布附带的 wheel：`uv pip install ./maestro_sdk-<版本>-py3-none-any.whl`；在本仓库里是 `pip install ./sdk`。
 
