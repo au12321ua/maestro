@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "maestro-sdk"
-version = "0.4.0.dev0"
+version = "0.4.0"
 description = "Python client for the Maestro team experiment service"
 requires-python = ">=3.10"
 license = "Apache-2.0"
