@@ -11,7 +11,7 @@ Maestro runs Harbor experiments for a team. You reach it over HTTP with a PAT; y
 
 ```bash
 # Python >= 3.10; depends only on httpx and pydantic. Use the service's version.
-uv pip install "maestro-sdk==<version>" --index maestro=https://<gitea>/api/packages/<owner>/pypi/simple
+uv pip install "maestro-sdk==<version>" --index maestro=<index>      # index from AGENTS.md
 python -c "import maestro_sdk.skills as s; s.install()"   # these skills, matching that SDK
 ```
 

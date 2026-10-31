@@ -19,7 +19,7 @@
 
 几条约定：
 
-- **代码能表达的细节不写进文档**：表字段、接口清单、默认值以 `src/maestro/db/schema.py`、`openapi/maestro-v1.json`、`src/maestro/config.py` 与 `/api/v1/capabilities` 为准。文档写为什么、有哪些不变量、各部分怎么配合。
+- **代码能表达的细节不写进文档**：表字段、接口清单、默认值以 `src/maestro/db/schema.py`、`openapi/maestro-v1.json`、`src/maestro/config.py`、团队策略初值 `src/maestro/domain/limits.py` 与 `src/maestro/services/policy.py`、`/api/v1/capabilities` 为准。文档写为什么、有哪些不变量、各部分怎么配合。
 - **编号保持稳定**：代码注释以“NN section M”引用本目录，文件编号与 `## N.` 节号不改；节内可以重写。需求、场景与决定的编号（DS-01、E2E-RUN-01、F-05、U-17、D-020……）也保持稳定。
 - **已知缺口**写在相关节的“已知限制”里；已规划的指向提案。
 - 实践中发现系统说明有误或有更好的做法：改代码的同时改系统说明；涉及用户边界或重要取舍的，先在决策记录登记。

@@ -16,8 +16,6 @@
 - [前端开发](../frontend/README.md)、[Python SDK](../sdk/README.md)。
 - 公开 API 的受控副本是 `openapi/maestro-v1.json`（运行中的服务在 `/api/v1/openapi.json`，离线用 `maestro openapi`）；网页类型与 SDK 模型从它生成。
 
-基线的 Web 服务指南、机器 API 文档、研究客户端 skill 与附件说明已删除，需要时查 `9ff43b5`。
-
 ## 部署
 
 - [部署与维护](guides/deployment.md)：用发布包与 `maestroctl` 安装、启停、备份恢复、更新和卸载（也作为发布包里的 `INSTALL.md`）。

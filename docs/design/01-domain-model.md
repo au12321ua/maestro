@@ -4,7 +4,7 @@
 
 ## 1. 统一术语
 
-“实验”只用于产品叙述，持久对象叫“运行”。“任务”只指数据集中的测试项目；Worker 领取的工作单元是一个运行（D-020，改变见 [N-13](../proposals/N-13-trial-granularity.md)）。
+“实验”只用于产品叙述，持久对象叫“运行”。“任务”只指数据集中的测试项目；Worker 领取的工作单元是一个运行（D-020；暂缓的按试次调度见 [N-13](../proposals/N-13-trial-granularity.md)）。
 
 | 对象 | 身份与职责 | 可变性 |
 | --- | --- | --- |
@@ -95,7 +95,7 @@ erDiagram
 - 产物记录只存存储键与相对路径，不返回宿主机路径。
 - 幂等记录按 主体 + 动作 + key 唯一；审计事件不含令牌、密码、凭据明文。
 
-其余表的用途：team_policies 保存团队策略修订，setup_networks 保存安装网络的版本（执行尝试的 setup_network_revision 指向其中一版），config_resolutions 保存配置解析结果（有效期内凭 resolution_id 提交），run_attachments 记录运行按顺序加载的附件快照，attachment_files 记录每份未物理删除的快照持有哪些文件内容（无人持有的内容才清除），attachment_uploads 是发布前上传、只供上传者使用且会过期的文件内容，artifact_pins 是导出等读取者的有期限 pin，exports 是导出任务，deletions 是回收站状态与删除回执，provider_limits 是提供商并发上限，instance 与 service_epochs 是实例标识与每次启动的代次（用于租约与对账）。
+表的全集见 `schema.py`。几张用途不显然的表：team_policies 保存团队策略修订，setup_networks 保存安装网络的版本（执行尝试的 setup_network_revision 指向其中一版），config_resolutions 保存配置解析结果（有效期内凭 resolution_id 提交），run_attachments 记录运行按顺序加载的附件快照，attachment_files 记录每份未物理删除的快照持有哪些文件内容（无人持有的内容才清除），attachment_uploads 是发布前上传、只供上传者使用且会过期的文件内容，artifact_pins 是导出等读取者的有期限 pin，exports 是导出任务，deletions 是回收站状态与删除回执，provider_limits 是提供商并发上限，instance 与 service_epochs 是实例标识与每次启动的代次（用于租约与对账）。
 
 ## 5. 状态与派生字段
 
@@ -108,7 +108,7 @@ erDiagram
 | 产物保存 | artifact_state | pending / saving / complete / partial / failed / expired |
 | 环境清理 | cleanup_state | pending / running / complete / failed / not_required |
 
-试次保存原始状态；运行级计数与结果完整度在查询时由试次状态计算，不缓存，也就不会有旧计数被当作受理或权限依据。scored 要求合法奖励且 reward_valid 为真；存在异常不必然否定评分，例如 Agent 超时后验证得到的奖励。运行 finished 只表示计划已终结，不意味着全部试次获分；API 另返回 completed、scored、failed、not_started 等计数。
+试次保存原始状态；运行级计数与结果完整度在查询时由试次状态计算，不缓存，也就不会有旧计数被当作受理或权限依据。scored 要求合法奖励且 reward_valid 为真；存在异常不必然否定评分，例如 Agent 超时后验证得到的奖励。运行 finished 只表示计划已终结，不意味着全部试次获分；API 另返回按试次状态的计数（`RunCounts`：计划、已终结、已评分、出错、未开始、取消、中断、进行中、排队）。
 
 任务可提交性由准入、固定内容可得性、必要配置及当前策略派生；本机 cache_state 不是准入条件。运行快照冻结准入 id / revision、准备方式和实际 spec_digest；缓存命中、位置和恢复进度作为运行观测另存，回收不改变 config_digest，内容检查证据与准备失败历史也不能反向改写快照。
 
@@ -132,7 +132,7 @@ SQLite 开启外键、WAL 与有限 busy_timeout（`src/maestro/db/engine.py`）
 
 结构迁移离线执行（`maestro db upgrade`，`maestroctl install / update` 会调用）。服务启动时比较数据库版本与程序的迁移头：不一致时就绪检查失败、不启动 Worker 与维护任务。不导入旧平台数据。备份与恢复见 [12](12-operations.md)。
 
-已知限制：只有一个迁移 `0001_initial_schema`；0.x 期间不承诺兼容，兼容承诺的起点见[提案索引](../proposals/README.md) N-17。
+迁移按序追加，0.3.0 起不再改写已有迁移（U-34）。已知限制：0.x 期间不承诺兼容，兼容承诺的起点见[提案索引](../proposals/README.md) N-17。
 
 ## 8. 模块验收
 

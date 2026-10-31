@@ -71,7 +71,7 @@
 
 准备规格由 `inspect_task` 生成，列出试次要启动的每个镜像；不含数据集版本 digest，不同版本中相同内容的任务共用缓存。缓存键是（`spec_digest`，`location_id`）。
 
-要准备的镜像（N-01）：
+要准备的镜像（U-54～U-56）：
 
 - **主环境**：有 `environment/Dockerfile` 的用可复现设置构建，作者给出 `docker_image` 的拉取。
 - **独立验证器**（`[verifier] environment_mode = "separate"` 或给了 `[verifier.environment]`），按 Harbor 的顺序：`[verifier.environment]` 给了镜像的拉取它；`tests/` 下有 `Dockerfile` 的从 `tests/` 构建；都没有的照主环境再起一份新容器，不需要另外的镜像。
@@ -116,7 +116,7 @@ stateDiagram-v2
 
 回收由管理员手动发起：先在事务中认领（标 stale），此后不再发 pin，再删本机镜像；有 pin、正在恢复或未就绪时拒绝。其他任务的缓存正持有或正在恢复的共用镜像不删。仓库里的镜像、准入与证据保留。磁盘低水位仍阻止新受理。
 
-服务启动时对账：上一进程的准备 Operation 标为中断，恢复中的缓存退回 stale / absent，等待者与 pin 作废，清掉临时标签，删除仓库之前的 `docker save` 原件目录（`data_dir/preparations`，U-54）；docker 客户端随服务退出，构建随之取消。准入不动；在途运行按 [05](05-scheduling-execution.md) 处理。
+服务启动时对账：上一进程的准备 Operation 标为中断，恢复中的缓存退回 stale / absent，等待者与 pin 作废，清掉临时标签，删除旧版遗留的准备目录（`data_dir/preparations`）；docker 客户端随服务退出，构建随之取消。准入不动；在途运行按 [05](05-scheduling-execution.md) 处理。
 
 准备方式改变时，数据库迁移把所有准入重置为待准备并删除旧缓存记录，不转换旧结果（U-54）；管理员重新首次准备，首次准备会先从本机材料重新检查尚未准入的任务，刷新任务定义与准备规格。
 

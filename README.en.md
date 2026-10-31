@@ -20,11 +20,26 @@ On a Linux host with systemd and Docker, from a release package (Releases: tagge
 
 ```bash
 sha256sum -c SHA256SUMS --ignore-missing
-tar xf maestro-<version>.tar.gz && cd maestro-<version>
+tar xf maestro-<version>-<commit>.tar.gz && cd maestro-<version>-<commit>
 sudo ./maestroctl install --uv "$(command -v uv)"   # prints the address and a one-time setup token
 ```
 
-Then `sudo maestroctl status / logs / backup / update <package> / uninstall`. Agents and scripts use the [Python SDK](sdk/README.md) (`pip install ./sdk`) with a personal access token created on the web page's Settings.
+Then `sudo maestroctl status / logs / backup / update <package> / uninstall`.
+
+## Use it from an agent
+
+An agent never logs in to the server. It needs the [Python SDK](sdk/README.md) (the agent skills ship inside it), a personal access token and a workspace. Install the SDK of the service's version from a package index:
+
+- this project's index on GitHub Pages, `https://<GitHub owner>.github.io/<repository>/simple` (formal releases), or
+- a Gitea package registry, `https://<gitea>/api/packages/<owner>/pypi/simple`. To start one: `docker run -d --name gitea -p 3000:3000 -v gitea-data:/data gitea/gitea:28.2.0`, finish the install page with the defaults (the first account is the admin), create a token with only package read/write access, and upload the wheel from the release: `UV_PUBLISH_PASSWORD="$(cat <token file>)" uv publish --username <user> --publish-url http://<host>:3000/api/packages/<user>/pypi maestro_sdk-<version>-py3-none-any.whl`.
+
+```bash
+mkdir my-work && cd my-work
+uv venv && uv pip install "maestro-sdk==<version>" --index maestro=<index>
+.venv/bin/python -c "import maestro_sdk.workspace as w; w.init('.')"   # AGENTS.md, notes/, attachments/, skills
+```
+
+Create a token with the `experiment` scope on the web page's Settings and keep it in a file outside the workspace. Fill in the service address, the token file, the budget and the current goal in `AGENTS.md`, then start the agent in that directory; the skills are in `.agents/skills/` and `.claude/skills/`.
 
 ## Try it from source
 

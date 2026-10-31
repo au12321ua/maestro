@@ -4,7 +4,7 @@
 
 ## 1. 使用方式
 
-本文列出验收场景（E2E-…、F-…）与需求编号的验收入口，并注明当前由哪些测试覆盖；没有自动化测试的标“未覆盖”。场景描述的是必须成立的行为，不记录某次运行的结果；实测记录按协作规则放在私有仓库 `maestro-site`（重写期间的在冻结的 `records/`）。
+本文列出验收场景（E2E-…、F-…）与需求编号的验收入口，并注明当前由哪些测试覆盖；没有自动化测试的标“未覆盖”。场景描述的是必须成立的行为，不记录某次运行的结果；实测记录按协作规则放在私有仓库 `maestro-site`。
 
 平台规则不依靠真实模型的偶然输出：端到端闭环优先用 Oracle 执行参考解法。测试夹具选择无需模型、无付费外部依赖的任务，显式设置 oracle；Oracle 结果标为测试模式。真实模型只做少量冒烟，验证凭据、模型参数和调用接入。
 
@@ -20,8 +20,9 @@ UI 文案与纯样式变更不写低价值单元测试；优先验证会导致�
 | 真实 Hub | 目录调用、失败分类、导入与首次准备 | `test_hub_live.py`，需 `MAESTRO_HUB_TESTS=1`；匿名读取公开数据集 |
 | 真实模型冒烟 | Terminus-2、OpenCode（1.x 与 2.x）、Codex、Claude Code 各一个试次 | `test_harbor_docker.py -k real_model`，需 `MAESTRO_MODEL_TESTS=1` 及模型地址、key 文件；Codex 与 Claude Code 另需各自的 Responses / Messages 地址，并在 setup 中真实安装（见交接）；会产生费用，须核对当前授权与预算 |
 | 安装运维 | 安装、更新、失败回退、备份恢复、卸载与清除 | `test_install.py`，需 `MAESTRO_INSTALL_TESTS=1`；用隐藏参数 `--test-root` 把布局放进临时目录，以 systemd 用户单元运行；规则部分在 `test_maestroctl.py`、`test_backup.py`，默认运行 |
-| 网页 | 关键路径冒烟 | `frontend/qa/smoke.spec.ts`（Playwright），需要全新的一次性 state 与 `serve --demo-executor`；按中文界面定位元素，最后一项以英文浏览器逐页确认没有残留中文、显示 AI 翻译说明，并能切回中文。语言文件的一致性与代码里没有写死文字由 `npm run check:i18n` 检查（CI） |
-| CI | lint、文档链接、默认 pytest（含契约与 SDK 模型漂移）、网页 lint / `check:api` / `check:i18n` / build、第三方许可证 | `.gitea/workflows/verify.yml`，每次改了 Markdown 以外内容的推送；pytest 并行，只传 PATH 与临时 HOME。`dev` 与版本 tag 通过后发布（[12](12-operations.md) 第 1 节）。真实 Docker、Hub、模型与安装测试不在 CI，手动运行 |
+| 发布工具 | 许可证规则、SDK 版本戳、Gitea Releases 与包仓库的上传、重跑与保留、GitHub Pages 的 SDK 索引 | `test_release_tools.py`（模拟接口），默认运行；真实发布只在 CI 中发生，发布后按第 9 节核对 |
+| 网页 | 关键路径冒烟 | `frontend/qa/smoke.spec.ts`（Playwright），需要全新的一次性 state 与 `serve --demo-executor`；按中文界面定位元素，另有一项以英文浏览器逐页确认没有残留中文、显示 AI 翻译说明，并能切回中文。语言文件的一致性与代码里没有写死文字由 `npm run check:i18n` 检查（CI） |
+| CI | lint、文档链接、默认 pytest（含契约与 SDK 模型漂移）、网页 lint / `check:api` / `check:i18n` / build、第三方许可证 | `.gitea/workflows/verify.yml`，触发条件与环境隔离见交接的验证入口；另核对 `src/maestro/static/` 与网页源码一致。`dev` 与版本 tag 通过后发布（[12](12-operations.md) 第 1 节）。真实 Docker、Hub、模型与安装测试不在 CI，手动运行 |
 
 隔离要求：验证使用独立 HOME、state 与主密钥，清除继承的真实凭据环境；不用已有团队 state 或真实凭据作随手测试。真实 Docker 测试前后建议对 `docker images`、`ps -a`、`network ls`、`volume ls` 留快照对比。
 
@@ -29,18 +30,18 @@ UI 文案与纯样式变更不写低价值单元测试；优先验证会导致�
 
 | 需求编号组 | 定义位置 | 主要验收 |
 | --- | --- | --- |
-| DS-01～DS-09 | [02](02-datasets-preparation.md) | E2E-DS-01～05、F-21～24 |
-| CFG-01～CFG-06 | [03](03-configuration-attachments.md) | E2E-RUN-01 / 04、F-11 / 19 / 25 |
+| DS-01～DS-09 | [02](02-datasets-preparation.md) | E2E-DS-01～06、F-21～24 |
+| CFG-01～CFG-06 | [03](03-configuration-attachments.md) | E2E-RUN-01 / 04～07、F-11 / 19 / 25 |
 | RUN-01～RUN-06 | [04](04-plans-submission.md) | E2E-RUN-01～04、F-01 / 21 / 23 / 26 |
 | EXE-01～EXE-06 | [05](05-scheduling-execution.md) | F-02～03、F-05 / 08 / 22 / 24 |
 | RES-01～RES-06 | [06](06-results-scoring.md) | F-04～07、F-23、E2E-OUT-01 |
-| ART-01～ART-06 | [07](07-artifacts-export.md) | E2E-OUT-01、F-09～12、F-21 / 24 |
+| ART-01～ART-06 | [07](07-artifacts-export.md) | E2E-OUT-01 / 04、F-09～12、F-21 / 24 |
 | ANA-01～ANA-06 | [08](08-collections-comparison.md) | E2E-OUT-02～03 |
 | IAM-01～IAM-06 | [09](09-identity-security.md) | E2E-DS-03、E2E-RUN-04、F-13 / 25、第 8 节 |
-| API-01～API-06 | [10](10-api-sdk-cli.md) | E2E-RUN-01～02、E2E-DS-04～05、F-20 |
-| OPS-01～OPS-07 | [12](12-operations.md) | 12 第 9 节、F-08、F-14～15 |
+| API-01～API-06 | [10](10-api-sdk-cli.md) | E2E-RUN-01～02 / 05～06、E2E-DS-04～05、F-20 |
+| OPS-01～OPS-07 | [12](12-operations.md) | 12 第 9 节、E2E-RUN-07、F-08、F-14～15、第 9 节的升级检查 |
 
-网页需求由 [11](11-web-ui.md) 的页面与流程承接上述业务编号，不另造与服务端不一致的规则。
+网页需求由 [11](11-web-ui.md) 的页面与流程承接上述业务编号，不另造与服务端不一致的规则；布局（长内容不撑宽页面、长任务名省略共同前缀）、中英文界面与各页的关键路径由 `frontend/qa/smoke.spec.ts` 覆盖。
 
 ## 4. 故事一：数据集添加与准备
 
@@ -164,11 +165,21 @@ UI 文案与纯样式变更不写低价值单元测试；优先验证会导致�
 
 覆盖：`test_sdk.py`。
 
+### E2E-RUN-07 安装网络与 Harness 版本
+
+前提：管理员网页登录；一个需要代理或包镜像源才能安装的环境。
+
+步骤：在“安装网络”保存代理、包镜像源与 Harness 安装时限 → 首次准备一个数据集并提交运行 → 修改安装网络后再提交 → 发布一个 Codex 或 Claude Code 的 Harness 版本，查看上游版本提示 → 用它跑一个试次。
+
+预期：准备与执行开始时读当前版本，执行尝试与镜像构建记下所用版本，修改只影响之后开始的工作、不需要重启；代理只给镜像构建参数与容器内的 setup，其他阶段拿不到；版本提示经安装网络查询，查不到时如实给出错误；发布固定确切的上游版本，运行带着这个版本；模型 key 只以文件进容器、只在 Agent 运行期间存在，Agent 阶段只能连到模型主机。
+
+覆盖：`test_setup_network.py`、`test_harness_upstream.py`、`test_runner_container_harnesses.py`；真实安装见第 2 节的真实模型冒烟。
+
 ## 6. 故事三：查询与导出
 
 ### E2E-OUT-01 SDK 查询与导出
 
-步骤：按版本、模型、时间筛选多个运行 → 批量读取 → 导出配置、摘要和产物 → 验证 manifest 与文件摘要。
+步骤：按版本、模型、时间筛选多个运行 → 按筛选分页读取 → 导出配置、摘要和产物 → 验证 manifest 与文件摘要。
 
 预期：每份结果准确对应运行 / 任务 / 试次，零分与未评分可区分；已过期和保存失败项在清单中有显式原因；未泄露凭据。
 
@@ -189,6 +200,14 @@ UI 文案与纯样式变更不写低价值单元测试；优先验证会导致�
 预期：快照的清单、规格与数值不变，证据显示“已删除 / 已彻底删除”；集合把回收站里的运行搁置、物理删除后移除并记入修改记录；结论只有作者能改；运行未结束时不能保存快照。
 
 覆盖：`test_collections.py`。
+
+### E2E-OUT-04 按层级打包下载产物
+
+步骤：在已结束的运行上分别下载整个运行、一个任务、一个试次、一次执行尝试的 zip → 与逐个下载的文件比较 → 让其中一些文件过期或进回收站后再下载 → 对未结束的运行与超过 `export_max_gb` 的范围请求打包。
+
+预期：四层 zip 的内容与单个下载一致，包末 `manifest.json` 列出缺失文件与原因；未结束的运行拒绝打包，超限在传输前拒绝；打包流式生成、不落盘；SDK 的 `runs.download_archive` 得到同样的包。
+
+覆盖：`test_artifact_archive.py`、`test_sdk.py`；网页的产物树与下载由 `frontend/qa/smoke.spec.ts` 覆盖。
 
 ## 7. 必须覆盖的故障场景
 
@@ -225,16 +244,21 @@ UI 文案与纯样式变更不写低价值单元测试；优先验证会导致�
 
 - 槽位、CPU、内存与提供商并发限制生效；放不下的运行在受理时拒绝，容器启动前不超额。覆盖：`test_capacity.py`、`test_batches.py`。
 - 执行与验证阶段经 Harbor 阶段策略只访问批准范围，不能直连任意外网、宿主管理面或云元数据；主机没有收紧能力时拒绝模型运行。覆盖：`test_network_capability.py`、`test_harbor_docker.py`。
-- 容器没有宿主目录（本试次输出目录除外）、Docker socket、主密钥或宿主数据库挂载；附件路径与文件传输不越界。覆盖：`test_attachments.py`、`test_harbor_docker.py`。共享构建与试次容器按同一主机总账限制 CPU / 内存：未覆盖。
+- 容器没有宿主目录（本试次输出目录除外）、Docker socket、主密钥或宿主数据库挂载；附件路径与文件传输不越界。覆盖：`test_attachments.py`、`test_harbor_docker.py`。共享构建不计入主机 CPU / 内存总账：未实现（N-22）。
 - 网页、SDK、导出及日志中常见凭据的基本脱敏。覆盖：`test_fix_identity_redaction.py`、`test_security.py`、`test_sdk.py`、`test_credential_visibility.py`。脱敏测试不证明能隔离恶意代码，可信团队前提不变。
 - 契约：CI 导出 OpenAPI，核对 SDK 模型与网页类型没有漂移；SDK 在未安装服务端与 Harbor 的环境中独立导入（`test_sdk.py`）；服务进程不导入 Harbor（`test_harbor_boundary.py`）。
 - 最大任务规模、元数据查询目标与磁盘阈值的压测：未覆盖。
 
 ## 9. 发布检查
 
-发布前：
+发布步骤见[开发流程](../guides/development-workflow.md)的“发布与运行版本”。发布前：
 
-- CI 通过（第 2 节）。正式版本：把代码版本改成正式版本号，合入 `master`，在 `master` 上打 `v<版本>` tag 并推送到 Gitea；CI 对 tag 再完整跑一次并发布。Gitea 上发布成功后，才把 `master` 与这个 tag 推到 GitHub（GitHub 不跑测试，U-42）。之后 `dev` 立即改成下一个 `.dev0`。
+- 候选提交的 CI 通过（第 2 节）。
 - 手动运行真实 Docker、真实 Hub 与安装运维测试并通过；模型接入另有一次真实模型冒烟（须有授权与预算）。
-- 第 4～8 节中标“未覆盖”或“部分”的项目，在发布说明中写明限制。
-- 未实现的能力在 `/capabilities` 的 `features` 中关闭（例如 `collections`），不靠文档宣称交付。
+- 升级检查：在已部署版本的一份数据副本上执行 `maestroctl update`，迁移成功、旧运行仍能打开；迁移带来的管理员操作（例如准入重置后要重新首次准备、旧附件被清空）写进发布说明。
+- 未实现的能力在 `/capabilities` 的 `features` 中关闭（例如主机没有网络收紧能力时的 `restricted_network`），不靠文档宣称交付。
+
+发布后：
+
+- 第 4～8 节中标“未覆盖”或“部分”的项目、升级时管理员要做的事，补写到 Gitea 与 GitHub 的 Release 说明里（CI 只自动列出提交）。
+- 核对两个包索引：在干净环境中分别从 Gitea 包仓库与 GitHub Pages 索引按版本安装 SDK，`maestro_sdk.workspace.init` 装上同版本的 skill。

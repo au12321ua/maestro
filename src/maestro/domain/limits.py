@@ -54,7 +54,7 @@ ATTACHMENT_MAX_BYTES = 1024 * 1024 * 1024
 ATTACHMENT_MAX_FILES = 10000
 ATTACHMENT_STAGED_MAX_BYTES = 2 * 1024 * 1024 * 1024
 ATTACHMENT_UPLOAD_HOURS = 24
-# Runs compared at once, and runs one collection holds (06 section 8).
+# Runs compared at once, and runs one collection holds (08 section 1).
 COMPARISON_MAX_RUNS = 50
 # Recent runs a collection offers to add, each checked against its fixed values.
 COLLECTION_CANDIDATES = 200

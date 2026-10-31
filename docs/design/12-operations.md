@@ -4,7 +4,7 @@
 
 ## 1. 安装布局与进程
 
-发布形式是压缩包（`tools/build_release.py` 生成），由包内只用系统 Python 标准库的 `maestroctl` 安装和维护（U-29）。包由 CI 生成并发布到 Gitea Releases：`dev` 每次通过 CI 后是一个带提交标识的预发布（保留最近 10 个），`master` 上的 `v<版本>` tag 是正式版本；GitHub Releases 只在推送 tag 时由同一个 tag 构建，不重复测试（U-42）。发布附 SDK wheel、第三方许可证清单与 `SHA256SUMS`，包内带 `LICENSE`、`NOTICE` 与同一份清单。同一个 SDK wheel 推送到仓库所有者在 Gitea 上的 Python 包仓库：正式版本与代码版本相同，`dev` 的预发布是 `<版本>.dev<CI 运行号>`（保留最近 10 个），使用者按版本安装（令牌与读取权限见[开发流程](../guides/development-workflow.md)的“SDK 包仓库”）。不自动部署：管理员下载包后执行 `maestroctl update`。布局是系统级的（U-13）：
+发布形式是压缩包（`tools/build_release.py` 生成），由包内只用系统 Python 标准库的 `maestroctl` 安装和维护（U-29）。包由 CI 生成并发布到 Gitea Releases：`dev` 每次通过 CI 后是一个带提交标识的预发布（保留最近 10 个），`master` 上的 `v<版本>` tag 是正式版本；GitHub Releases 只在推送 tag 时由同一个 tag 构建，不重复测试（U-42）。发布附 SDK wheel、第三方许可证清单与 `SHA256SUMS`，包内带 `LICENSE`、`NOTICE` 与同一份清单。同一个 SDK wheel 推送到仓库所有者在 Gitea 上的 Python 包仓库：正式版本与代码版本相同，`dev` 的预发布是 `<版本>.dev<CI 运行号>`（保留最近 10 个），使用者按版本安装（令牌与读取权限见[开发流程](../guides/development-workflow.md)的“SDK 包仓库”）；GitHub 没有 Python 包仓库，正式版本的 SDK 由 GitHub Pages 上的静态索引提供，链接指向 GitHub Release 里的 wheel（U-62）。不自动部署：管理员下载包后执行 `maestroctl update`。布局是系统级的（U-13）：
 
 ~~~text
 /opt/maestro/versions/<build>/      程序（服务 venv，网页在服务包内）、该版本的 maestroctl、RELEASE.json
@@ -66,7 +66,7 @@ journald                            服务标准输出 / 错误
 
 要点：
 
-- `config.toml` 的任何改动都要重启服务才生效。未知键、类型错误、越界与相互矛盾的值（例如单文件证据上限大于单次尝试总量、默认构建时限大于上限、静默时限小于 3 个心跳间隔）都会拒绝启动并指出是哪一项；合法但可能不是本意的值（例如导出上限高于停止派发水位）在启动日志中提醒；已不再使用的键（`setup_proxy`、`setup_no_proxy`）不拒绝启动，只被忽略并在启动日志中说明。
+- `config.toml` 的任何改动都要重启服务才生效。未知键、类型错误、越界与相互矛盾的值（例如单文件证据上限大于单次尝试总量、默认构建时限大于上限、静默时限小于 3 个心跳间隔）都会拒绝启动并指出是哪一项；合法但可能不是本意的值（例如导出上限高于停止派发水位）在启动日志中提醒；已不再使用的键（`config.py` 的 `RETIRED`，如 `setup_proxy`）不拒绝启动，只被忽略并在启动日志中说明。
 - `master_key_dir` 必须在 `data_dir` 之外：备份复制的是 `data_dir`，主密钥要单独保管。
 - `cookie_secure` 默认开启；纯 HTTP 访问时浏览器不回传会话 cookie，须关闭它或经 HTTPS 访问。
 - 管理页“安装网络”分区下方只读显示 `config.toml` 的生效值、已忽略的旧键，以及服务进程环境里是否有代理。
@@ -147,7 +147,7 @@ journald                            服务标准输出 / 错误
 
 ## 9. 验收
 
-- 安装、初始化、启停、日志、更新、失败回退、同机备份恢复、保留数据卸载与彻底删除：`tests/maestro/test_install.py`（需 `MAESTRO_INSTALL_TESTS=1`，在临时根目录以 systemd 用户单元运行）；布局、单元文件与删除边界：`tests/maestro/test_maestroctl.py`；备份集与恢复检查：`tests/maestro/test_backup.py`。
+- 安装、初始化、本机镜像仓库容器、启停、日志、更新、失败回退、同机备份恢复、保留数据卸载与彻底删除：`tests/maestro/test_install.py`（需 `MAESTRO_INSTALL_TESTS=1`，在临时根目录以 systemd 用户单元运行）；布局、单元文件与删除边界：`tests/maestro/test_maestroctl.py`；备份集与恢复检查：`tests/maestro/test_backup.py`。
 - 非正常终止后按规则标记中断、保留评分并清理本实例遗留容器：见 [13](13-testing-plan.md) 的 F-08。
 - 普通重启不更新版本。
 - 带在途工作的排空更新与异机恢复不在当前范围：前者暂缓（U-48），后者见 [N-21](../proposals/N-21-offhost-restore.md)。

@@ -51,7 +51,7 @@ Worker 在服务进程内，负责领取、租约、取消、资源和结果确�
 - **Runner 修订**是 Runner wheel 与其锁定依赖清单的摘要，Harbor 锁与 Runner 代码都不变的更新复用已装环境。版本目录的 `runner-env` 链接指向它，`runner_python` 配置为 `/opt/maestro/current/runner-env/venv/bin/python`，切换 `current` 即切换 Runner，不原地升级；不再被保留版本引用的 Runner 环境随旧版本回收。开发时 Runner 在仓库 `runner/` 下。
 - **发布清单** `RELEASE.json` 记录版本、提交、数据库迁移头、Harbor 版本、Runner 修订和每个文件的 SHA-256。执行器标识为 `harbor-0.24.0/<错误映射摘要>`（`src/maestro/execution/policy.py`），随运行记录。
 - **Hub 目录与下载**走 Runner 的 `hub` 命令（同时运行的数量受 `hub_runner_slots` 限制）；服务进程不为读 Hub 引入 Harbor 依赖。
-- **准备不经 Harbor**：服务进程直接调用 Docker CLI（`buildx build`、`pull`、`push`），把试次要启动的每个镜像存进本机镜像仓库（U-17、U-55），运行时由 Runner 交给 Harbor（第 6 节）。准入、缓存与共享恢复由平台管理（[02](02-datasets-preparation.md)）；准备进程是服务进程的子进程，随服务退出。
+- **准备不经 Harbor**：服务进程直接调用 Docker CLI（`buildx build`、`pull`、`push`），把试次要启动的每个镜像存进本机镜像仓库（U-55），运行时由 Runner 交给 Harbor（第 6 节）。准入、缓存与共享恢复由平台管理（[02](02-datasets-preparation.md)）；准备进程是服务进程的子进程，随服务退出。
 - **附件安装**在每个试次容器内由 Runner 的 Agent 包装层在 setup 阶段完成，不进入数据集的共享准备（[03](03-configuration-attachments.md)）。
 
 已知限制：没有 `compatibility.json` 兼容清单（协议、Harbor、schema 与异常映射的摘要），一个安装只有当前版本的 Runner 在用，不支持多个 Harbor 版本并存调度。
@@ -80,7 +80,7 @@ Worker 在服务进程内，负责领取、租约、取消、资源和结果确�
 
 - 任务列表为该运行的全部任务（每个任务一份私有副本，`task.toml` 写入主环境与独立验证器的准备好的镜像、各环境的 CPU 与内存、收紧后的网络策略）；`n_attempts` 为每任务计划试次数，所以一个运行内各任务的试次数必须相同；`n_concurrent_trials` 为运行并发。
 - 作者的 Compose 文件不改写（PyYAML 的 YAML 1.1 与 Compose 对 `yes`、`22:22` 等写法解读不同）。Runner 为每个环境目录（`environment/`，有独立验证器时还有 `tests/`）生成一份 override：把每个服务钉到本机仓库中的 digest、`pull_policy: never`、用 `!reset` 去掉作者的 `build:`（镜像缺失时 Compose 即使 `pull_policy: never` 也会构建；`!reset` 需要 Compose 2.24 以上）、给没有声明资源的辅助服务加团队默认上限（U-56），并给服务、网络、卷加平台标签。
-- Harbor 只把 Job 的 `extra_docker_compose` 交给 Agent 环境，创建独立验证环境时有意清空它（上游 PR #1676 的理由是判分不受运行时覆盖影响，#3193 只加了提示）。Runner 因此在 Harbor 创建环境的唯一入口 `EnvironmentFactory.create_environment_from_config` 处按 `environment_dir` 补上该目录的 override，独立验证环境另外补上平台标签；Harbor 自己的验证器挂载、网络策略与会话不变。没有这一步，验证容器既没有标签（被强杀后清理找不到它），也拿不到镜像钉定与资源上限。向上游提议一个只给验证环境的覆盖选项留到开发稳定后（私有仓库 `maestro-site` 的上游问题清单）。
+- Harbor 只把 Job 的 `extra_docker_compose` 交给 Agent 环境，创建独立验证环境时有意清空它（上游 PR #1676 的理由是判分不受运行时覆盖影响，#3193 只加了提示）。Runner 因此在 Harbor 创建环境的唯一入口 `EnvironmentFactory.create_environment_from_config` 处按 `environment_dir` 补上该目录的 override，独立验证环境另外补上平台标签；Harbor 自己的验证器挂载、网络策略与会话不变。没有这一步，验证容器既没有标签（被强杀后清理找不到它），也拿不到镜像钉定与资源上限。
 - `RetryConfig` 由平台错误策略推出并显式下发：最大重试次数、退避参数，以及不重试的异常名单（`exclude_exceptions`）；不使用 Harbor 默认名单，平台也不在外层再重试，避免两层相乘（U-15、D-006）。Harbor 内的每次重试在平台记为一次执行尝试。
 - 时限覆盖（Agent / 验证超时）与平台标签的 compose override 一并写入。资源覆盖是试次内所有容器的新总量，多出的部分写进主环境；独立验证器照主环境起新容器时两者设置相同，各得一半（[03](03-configuration-attachments.md) 第 3 节）。
 

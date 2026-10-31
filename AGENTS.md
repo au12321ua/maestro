@@ -40,7 +40,7 @@ Maestro 的系统说明在 [docs/design](docs/design/README.md)（只写现状�
 
 ## 运行与验证入口
 
-当前实现需要 Linux、Python 3.12–3.13、uv；实际执行另需 Docker/Compose、可用镜像及 Hub 数据集权限。依赖由 `pyproject.toml`、`uv.lock`、`frontend/package-lock.json` 记录。具体命令和隔离前提以[开发交接](docs/HANDOFF.md)为准，随重写调整。
+当前实现需要 Linux、Python 3.12–3.13、uv；实际执行另需 Docker/Compose、可用镜像及 Hub 数据集权限。依赖由 `pyproject.toml`、`uv.lock`、`frontend/package-lock.json` 记录。具体命令和隔离前提以[开发交接](docs/HANDOFF.md)为准。
 
 ## 工作原则
 

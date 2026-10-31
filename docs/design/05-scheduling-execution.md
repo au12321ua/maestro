@@ -40,13 +40,13 @@ Worker 循环（约 0.5 秒或被唤醒）先处理停止与到期、重试未�
 
 ### 已知限制
 
-- 预留在领取时整体占用，等待缓存恢复期间和运行末尾并发下降时都不释放（见 N-13）。
+- 预留在领取时整体占用，等待缓存恢复期间和运行末尾并发下降时都不释放（暂缓的按试次调度见 N-13）。
 - 缓存恢复的构建不计入主机 CPU / 内存，只受 `restore_slots` 限制。
 - 没有每成员 / PAT 的活动试次限制。
 
 ## 4. 运行与试次状态
 
-运行：queued → preparing → running → finalizing → finished / cancelled / interrupted。有试次进入执行或验证后为 running。未领取的运行被取消或到期时直接结束。finished 表示所有试次已有终态，即使全部失败；到期停止也是 finished（stop_reason=RUN_DEADLINE_EXCEEDED），用户或管理员取消为 cancelled，服务重启为 interrupted。运行的 Operation 在自然完成且有有效评分时 succeeded，否则 failed；这些状态不抹去已保存结果。
+运行：queued → preparing → running → finalizing → finished / cancelled / interrupted。有试次进入执行或验证后为 running。未领取的运行被取消或到期时直接结束。finished 表示所有试次已有终态，即使全部失败；到期停止也是 finished（stop_reason=RUN_DEADLINE_EXCEEDED），用户或管理员取消为 cancelled，服务重启为 interrupted。运行的 Operation：取消为 cancelled，中断为 interrupted，自然结束时有有效评分为 succeeded、没有为 failed；这些状态不抹去已保存结果。
 
 试次：queued → preparing → executing → verifying → scored / execution_error / not_started / cancelled / interrupted，reason_code 补充原因。执行器步骤到试次阶段的映射见 `STEPS`。产物与清理状态独立记录，不阻止试次终结。
 
