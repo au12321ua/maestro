@@ -552,7 +552,7 @@ class Worker:
                     .limit(1)
                 ).first()
                 if started is None and not run["stop_reason"]:
-                    # Nothing ever ran: the run keeps its place in the queue (05 section 8.5).
+                    # Nothing ever ran: the run keeps its place in the queue (05 section 8, item 2).
                     conn.execute(
                         update(t.runs)
                         .where(t.runs.c.id == run_id)

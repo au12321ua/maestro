@@ -10,11 +10,7 @@
 | `dev` | 下一阶段的集成分支；功能、修复和文档修改从这里开始。它不等于生产部署版本。 |
 | `feature/<topic>`、`fix/<topic>`、`docs/<topic>` | 单项工作的短期分支；改代码时每个成员或bot使用自己的工作树。 |
 
-上表与“发布与运行版本”是当前的常规流程。
-
 暂不常设 `release/*` 或 `hotfix/*` 分支。确有并行维护稳定版本或紧急发布需要时，再按当次任务确定流程；从发布版本修复的变更也应回到 `dev`，避免后续发布丢失修复。
-
-重写曾在长期分支 `feature/rewrite` 上进行，2026-10-24 以 `git merge -s ours dev`（`4bf8b2a`）记录两条历史的汇合后快进合入 `dev`，没有改写共享历史。之后的工作都从 `dev` 开始。
 
 ## 开始一项工作
 
@@ -29,11 +25,11 @@ cd ../harbor-helper-my-change
 git status --short --branch
 ```
 
-只改文档时，除非用户明确要求，不建工作树（U-52）：在自己的检出上从 `origin/dev` 新建分支即可（`git switch -c docs/my-change origin/dev`），合入后切回并删除分支。当前检出有未提交修改时先保留，不为切换分支清理或覆盖。
+只改文档时，除非用户明确要求，不建工作树（U-52）：在自己的检出上从 `origin/dev` 新建分支即可（`git switch -c docs/my-change origin/dev`），合入后切回并删除分支。
 
 后续修改、构建和验证都在这项工作的工作树内。前端构建会更新包内 `static/`，应与对应前端源码一起交付。测试须沿交接的独立HOME/state/凭据隔离要求执行，不能使用正式团队state作随手测试。
 
-提交前按影响范围完成必要检查，再推送自己的分支。检查命令和隔离前提以[开发交接](../HANDOFF.md)的验证入口为准；CI（`.gitea/workflows/verify.yml`）检查 lint、Markdown 链接、不用 Docker / Hub / 真实模型的 pytest（含 OpenAPI 契约与 SDK 模型漂移）、网页 lint、类型漂移与构建，以及第三方许可证。纯格式提交独立保存。
+提交前按影响范围完成必要检查，再推送自己的分支。检查命令、隔离前提与 CI 的检查范围以[开发交接](../HANDOFF.md)的验证入口为准。纯格式提交独立保存。
 
 ```bash
 git diff --check
@@ -63,7 +59,7 @@ git push -u origin feature/my-change
 
 CI 在推送和 PR 时运行，不覆盖真实 Docker、Hub 与模型测试，这些仍按交接另行执行。分支保护、必需检查和远端运行结果仍需在各仓库实时核对，配置文件不代表保护已经生效。
 
-只改 Markdown 文档的推送不跑 CI（U-37）：工作流用 `paths` 自动判断，不必再写 `[skip ci]`（U-43）。`skills/` 与 `sdk/README.md` 由测试核对，改了仍会触发；改了代码、配置、依赖锁文件、前端、测试或工作流也都会触发。跳过后 CI 不会检查链接，只改文档时提交前在本地运行 `python3 tools/check_doc_links.py` 和 `git diff --check`。推送后在 Actions 页确认出现了这次的运行：Gitea 对没有新提交的推送（例如强推回旧提交）不触发，2026-10-28 还见过一次新分支首推没有触发、原因未明；没有运行时在 Actions 页手动运行 `verify`（`workflow_dispatch`），或用 API `POST /repos/<仓库>/actions/workflows/verify.yml/dispatches`。
+只改 Markdown 文档的推送不跑 CI（U-37）：工作流用 `paths` 自动判断，不必再写 `[skip ci]`（U-43）。`skills/` 与 `sdk/README.md` 由测试核对，改了仍会触发；改了代码、配置、依赖锁文件、前端、测试或工作流也都会触发。跳过后 CI 不会检查链接，只改文档时提交前在本地运行 `python3 tools/check_doc_links.py` 和 `git diff --check`。推送后在 Actions 页确认出现了这次的运行：Gitea 对没有新提交的推送（例如强推回旧提交）不触发，新分支的首推偶尔也不触发、原因未明；没有运行时在 Actions 页手动运行 `verify`（`workflow_dispatch`），或用 API `POST /repos/<仓库>/actions/workflows/verify.yml/dispatches`。
 
 ## 资料与交付证据
 
@@ -71,7 +67,7 @@ Git 保留通用使用、API、架构、产品契约、发布规则和验收标�
 
 Agent 交付原始报告或 capture 路径时，负责人保存本地出处、固定提交、覆盖范围和未完成项，不要求将原件塞进 Git。公开说明只保留短的固定版本范围摘要，不链接私有档案，也不把历史失败或 PARTIAL 改成成功。测试文件属于可维护代码；单次执行的测试输出属于现场证据。
 
-提交前检查暂存路径，确认没有现场材料或秘密，并检查维护文档相对链接。旧现场目录 `docs/reference/acceptance/` 已忽略，不使用 `git add -f` 绕过；忽略规则不能发现其他目录或已经 tracked 的误入资料，仍须审阅暂存内容。
+提交前检查暂存路径，确认没有现场材料或秘密，并检查维护文档相对链接。不用 `git add -f` 绕过忽略规则；忽略规则发现不了其他目录或已经 tracked 的误入资料，仍须审阅暂存内容。
 
 ## 集成后的收尾
 
@@ -84,12 +80,12 @@ Agent 交付原始报告或 capture 路径时，负责人保存本地出处、�
 ## 发布与运行版本
 
 1. 选定 `dev` 的固定候选提交，完成该版本需要的验证；之后若候选内容变化，补验受影响的部分。
-2. 把代码版本从 `.dev0` 改成正式版本号，将已验收候选集成到 `master`，为最终发布提交创建不再移动的版本 tag（例如 `v0.4.0`），推送到 Gitea。CI 对 tag 再完整跑一次，核对 tag 在 `master` 上且等于代码版本，然后发布到 Gitea Releases，并把 SDK 以同一版本发到 Gitea 的 Python 包仓库（见下文“SDK 包仓库”）。tag、包版本、前端构建产物与依赖锁对应同一发布。
-3. Gitea 上发布成功后，再把 `master` 与这个 tag 推到 GitHub；GitHub 只从 tag 构建并发布，不跑测试（U-42）。随后在 `dev` 上把版本改成下一个 `.dev0`。
-4. 发布包内的 `RELEASE.json` 记录发布提交、构建标识与数据库结构版本；检查范围与迁移要求写在发布说明里（自动列出的提交之外由发布者补写）。正式服务从独立发布目录启动，固定到 commit/tag；不通过部署目录的日常编辑或自动拉取来跟随 `dev`。`dev` 的预发布只用于试用。
-5. 服务state和外置主密钥独立于发布物。上线前核活动任务、资源与所有写者，按当时版本的维护说明执行合适的升级和恢复步骤（重写后的运维见设计 [12](../design/12-operations.md)）。
+2. 把代码版本从 `.dev0` 改成正式版本号，将已验收候选集成到 `master`（`master` 是 `dev` 的祖先时快进合入），为最终发布提交创建不再移动的版本 tag（例如 `v0.4.0`），推送到 Gitea。CI 对 tag 再完整跑一次，核对 tag 在 `master` 上且等于代码版本，然后发布到 Gitea Releases，并把 SDK 以同一版本发到 Gitea 的 Python 包仓库（见下文“SDK 包仓库”）。tag、包版本、前端构建产物与依赖锁对应同一发布。
+3. Gitea 上发布成功后，再把 `master` 与这个 tag 推到 GitHub；GitHub 只从 tag 构建并发布 Release，再更新 GitHub Pages 上的 SDK 包索引，不跑测试（U-42、U-62，见下文“GitHub 上的 SDK 包索引”）。随后在 `dev` 上把版本改成下一个 `.dev0`。
+4. 发布包内的 `RELEASE.json` 记录发布提交、构建标识与数据库结构版本；CI 生成的发布说明只列出自上一个 tag 以来的提交；检查范围、未覆盖的限制与迁移要求由发布者在发布后到 Gitea 与 GitHub 的 Release 页补写。正式服务从独立发布目录启动，固定到 commit/tag；不通过部署目录的日常编辑或自动拉取来跟随 `dev`。`dev` 的预发布只用于试用。
+5. 服务state和外置主密钥独立于发布物。上线前核活动任务、资源与所有写者，按当时版本的维护说明执行合适的升级和恢复步骤（运维见设计 [12](../design/12-operations.md)）。
 
-数据库升级后的回退需要单独说明数据兼容或恢复路径；代码回退不代表state可以回退。旧备份不能覆盖后来新增的业务数据。现存已部署checkout在迁移到独立发布目录之前继续按现场保护说明维护，不能直接切分支或移动目录。
+数据库升级后的回退需要单独说明数据兼容或恢复路径；代码回退不代表state可以回退。旧备份不能覆盖后来新增的业务数据。
 
 ### SDK 包仓库
 
@@ -98,18 +94,12 @@ SDK（`maestro-sdk`）随每次发布推送到仓库所有者在 Gitea 上的 Py
 - **版本**：正式发布与代码版本相同（如 `0.4.0`）。`dev` 的每次预发布是 `<版本>.dev<CI 运行号>`，例如代码版本 `0.4.1.dev0`、运行号 1234 时为 `0.4.1.dev1234`：运行号只增不减，按 PEP 440 排在下一个正式版本之前；重跑同一次运行沿用原来的运行号。版本只写进 CI 构建出的 wheel，不提交；同一次预发布在 Releases 里附带的也是这个 wheel。包仓库不接受本地版本（`+…`），所以不用提交哈希作版本。
 - **保留**：`.devN` 版本只保留最近 10 个，由发包脚本在上传后删除更早的；正式版本从不删除。已发布的文件不会被替换：重跑时文件已在且 SHA-256 相同就跳过，不同就失败（wheel 是可复现构建，同一提交得到同样的文件）。
 - **推送令牌**：仓库 secret `PACKAGE_TOKEN`，只给 `write:package` 权限。所有者是组织时，令牌属于一个专用账号，该账号所在的团队对“软件包”有写权限；所有者是个人时只能用该个人的令牌。不用 job 自带的令牌，因为它能否写所有者的包取决于 Gitea 版本与配置。没有设置这个 secret 时，`dev` 的推送只给出警告、不发包，`v*` tag 的发布失败；补上 secret 后重跑即可，Release 与包都按上面的规则续上。
-- **读取**：所有者在 Gitea 上公开时，任何人可以匿名安装；不公开时，使用者用自己的 Gitea 账号建一个只有 `read:package` 权限的令牌，写进 `~/.netrc`（`chmod 600`），pip 与 uv 都会读取，令牌不出现在命令、项目文件和日志里：
+- **读取**：所有者在 Gitea 上公开时，任何人可以匿名安装；不公开时，使用者用只有 `read:package` 权限的令牌经 `~/.netrc` 读取（见 [SDK 说明](../../sdk/README.md#安装与连接)）。
 
-  ```text
-  machine <Gitea 主机名>
-  login <Gitea 用户名>
-  password <令牌>
-  ```
+### GitHub 上的 SDK 包索引
 
-## 项目状态与工作入口
+GitHub Packages 不支持 Python 包，PyPI 上的 `maestro-sdk` 已被别人占用，所以 GitHub 上的 SDK 由 GitHub Pages 上的静态索引提供（U-62）：`.github/workflows/release.yml` 发完 Release 后，下载所有正式 Release 附带的 SDK wheel，用 `tools/package_index.py` 写出 PEP 503 索引（链接指向 Release 里的文件并带 SHA-256），部署到 Pages。安装用的索引是 `https://<所有者>.github.io/<仓库>/simple`，与 Gitea 包仓库的用法相同；这里只有正式版本，`dev` 的预发布只在 Gitea 上。
 
-用户决定写入[决策记录](../design/14-decisions.md)第 0 节，下一步做什么见[提案索引](../proposals/README.md)，验收场景见[测试与验收](../design/13-testing-plan.md)。用户当前明确指令优先；提案在用户确认前不是实施授权。开始工作时核对决策记录、相关提案和本次明确任务。
-
-仓库保存产品契约、通用协作和发布规则；带日期、固定版本和覆盖边界的现场说明、报告及证据放私有仓库 `maestro-site`，本机 ignored `.local/` 只放草稿。实际源码行为以所查代码版本为准，运行身份和部署状态仍须在操作前实时核验。
-
-修改示例中的 `path/to/changed-file` 等参数时，替换为本次实际文件和主题。
+- **第一次发布前**在 GitHub 仓库的 Settings → Pages 把 Source 选为 “GitHub Actions”；没选时 Release 照常发布，`index` 这个 job 失败，选好后重跑这个 job 即可。私有仓库的 Pages 需要付费套餐。
+- 不需要令牌：job 用自带的 `GITHUB_TOKEN` 读 Release，用 Pages 的 OIDC 部署。
+- 索引每次从全部正式 Release 重建，所以旧版本一直可以安装；删除一个 Release 后，下一次发布的索引里就没有它了。第一个进索引的是 0.4.0；没有附带 SDK wheel 的 Release 跳过。

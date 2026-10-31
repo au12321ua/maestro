@@ -6,7 +6,7 @@
 
 Maestro 是自托管的 Agent 评测平台：在本机 Docker 中用 Harbor 执行“模型 × Harness × 数据集”的实验，固定配置与内容，保留评分与证据，供人和 Agent 通过网页与 SDK 提交、观察、比较和重跑。
 
-现在服务一个受邀的可信团队：成员只用浏览器或 SDK，不登录服务器，管理员的日常配置也在网页完成。按用户 2026-10-27 的决定（U-31），在内部使用之外同时尝试两个方向：作为**开源的自托管平台**供其他团队安装，以及用平台跑标准化评测并**公开评测结果**；相关工作见[提案索引](../proposals/README.md) N-16～N-20。不做多租户 SaaS：现有安全边界建立在成员互相信任上（第 3 节），改成多租户相当于重做产品。
+现在服务一个受邀的可信团队：成员只用浏览器或 SDK，不登录服务器，管理员的日常配置也在网页完成。在内部使用之外同时尝试两个方向（U-31）：作为**开源的自托管平台**供其他团队安装，以及用平台跑标准化评测并**公开评测结果**；相关工作见[提案索引](../proposals/README.md) N-17、N-19。不做多租户 SaaS：现有安全边界建立在成员互相信任上（第 3 节），改成多租户相当于重做产品。
 
 使用闭环：
 
@@ -38,7 +38,7 @@ Maestro 是自托管的 Agent 评测平台：在本机 Docker 中用 Harbor 执�
 | 模块 | 提供 | 不提供 |
 | --- | --- | --- |
 | 数据集（[02](02-datasets-preparation.md)） | Hub 搜索与导入、不可变版本、管理员首次准备与准入、局部可提交、运行内共享恢复；独立验证环境与 Compose 辅助服务的镜像由平台准备，存进本机镜像仓库、任务间共享 | Hub 之外的来源（N-19）；多步骤任务的步骤环境 |
-| 配置（[03](03-configuration-attachments.md)） | 团队模型配置与凭据、Harness（Terminus-2、OpenCode 1.x 与 2.x、Codex、Claude Code）与 Oracle 测试模式、附件、分层解析与内容快照 | 通用容器内 Harness 如 Codex、Claude Code（N-09）；个人模型 key |
+| 配置（[03](03-configuration-attachments.md)） | 团队模型配置与凭据、Harness（Terminus-2、OpenCode 1.x 与 2.x、Codex、Claude Code）与 Oracle 测试模式、附件、分层解析与内容快照 | 声明式 Harness 配置（N-19）；个人模型 key |
 | 提交（[04](04-plans-submission.md)） | 方案、单次与批次提交、幂等、PAT 额度、重跑与修改后运行、取消 | 实验矩阵生成；private 实验 |
 | 执行（[05](05-scheduling-execution.md)） | 按受理顺序领取（大运行不挡放得下的小运行）、资源准入、重启对账、环境清理 | 试次粒度调度（[N-13](../proposals/N-13-trial-granularity.md)）；公平调度；多机 Worker；GPU；金额或 token 预算 |
 | 结果（[06](06-results-scoring.md)、[07](07-artifacts-export.md)、[08](08-collections-comparison.md)） | 运行与任务结果、基本统计、日志、下载、批量导出、回收站；跨运行比较、集合与分析快照（[08](08-collections-comparison.md)） | 跨数据集版本的任务映射；显著性检验与 pass@k；公开发布页面 |
@@ -51,7 +51,7 @@ Maestro 是自托管的 Agent 评测平台：在本机 Docker 中用 Harbor 执�
 
 按约 15 人、活跃 2～3 人的团队设计：同时执行约 10 个试次，单试次通常 1 核、2 GB、产物不超过 100 MB，不需要独立的队列集群。并发受运行并发、主机槽位与 CPU / 内存、提供商并发共同约束（[05](05-scheduling-execution.md) 第 3 节）；上限在团队策略（管理员网页）与 `src/maestro/config.py` 中。一周 1000 个试次的产物约 100 GB，本机镜像仓库、准备缓存和导出包另计；主机还须为系统、数据库、出口控制 sidecar 和镜像构建留余量。
 
-已知限制：10 试次并行压测未做，列表与详情请求 p95 小于 1 秒只是目标；镜像构建的 CPU / 内存不计入主机容量（[02](02-datasets-preparation.md)）。
+已知限制：10 试次并行压测未做，列表与详情请求 p95 小于 1 秒只是目标；镜像构建的 CPU / 内存不计入主机容量（[02](02-datasets-preparation.md)，N-22）。
 
 ## 5. 架构与依赖方向
 

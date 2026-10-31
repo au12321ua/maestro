@@ -12,14 +12,7 @@ npm run check:api  # 检查生成的类型与契约一致（CI 也会检查）
 
 开发时 `npm run dev` 把 `/api` 与 `/health` 转发到 `127.0.0.1:8420`。契约变化后先在仓库根目录运行 `tools/generate_clients.py` 更新 `openapi/maestro-v1.json`，再运行 `gen:api`。请求函数按路径推断参数与返回类型，例如 `api.get("/runs/{run_id}", { path: { run_id } })`。
 
-页面（路由见 `src/App.tsx`）：
-
-- 未登录：初始化、登录、接受邀请与重置密码（`/invite#<token>`）。
-- `/` 工作台：能否受理、我的近期运行、团队近期结果、待处理事项。
-- `/runs`、`/runs/new`、`/runs/:runId`：运行列表（筛选、评分与覆盖、多选导出）；新建运行（方案、检查配置、批次草稿）；运行详情（摘要与状态卡，执行 / 结果汇总 / 配置快照 / 产物标签，`?tab=`、`?trial=`；取消、重跑、修改后运行、导出、删除）。
-- `/datasets`、`/attachments`、`/plans`、`/batches`、`/batches/:batchId`、`/exports`：数据集目录与导入、附件、实验方案、提交批次、导出。
-- `/settings`：改密、PAT（撤销与删除分开）、SDK 快速上手。
-- `/admin/<分区>`（仅管理员）：成员与邀请、凭据与主密钥、模型、Harness、团队策略、容量、数据集导入、回收站、审计、维护。
+页面与路由以 `src/App.tsx` 为准，管理页分区见 `src/pages/admin/sections.ts`；各页做什么见设计 [11](../docs/design/11-web-ui.md)。
 
 约定：
 

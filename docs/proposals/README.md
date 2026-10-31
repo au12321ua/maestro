@@ -15,13 +15,13 @@
 
 ## 索引
 
-2026-10-27 用户在 0.3.0 部署使用后提出，按优先级排列（U-30～U-33），2026-10-29 重新排过（U-57）。“已定”指用户已明确的选择，其余是建议。
+按 U-57 的优先级排列。“已定”指用户已明确的选择，其余是建议。
 
 ### 由用户测试后再推进
 
 | 编号 | 提案 | 状态 | 要点 |
 | --- | --- | --- | --- |
-| N-22 | 已知遗留 | 想法 | 共享构建不计入主机 CPU / 内存；10 试次并行压测未做；“停用但仍在使用的对象”未进待处理。用户亲自测试后再推进（U-57） |
+| N-22 | 已知遗留 | 想法 | 共享构建不计入主机 CPU / 内存；10 试次并行压测未做；“停用但仍在使用的对象”未进待处理；现场主机的存储驱动与镜像共用情况未核对。用户亲自测试后再推进（U-57） |
 
 ### 产品方向：开源的自托管平台与公开评测结果（U-31）
 
@@ -41,25 +41,26 @@
 - 公平调度：2～3 名活跃成员时意义不大。
 - [N-21 异机备份恢复](N-21-offhost-restore.md)：暂缓。
 - N-12 带排空的更新与维护模式：暂缓（U-48）。目前只有一名使用者，随时可以挑空闲时更新，不是卡点。成为卡点时先做最小版本：暂停派发（排队照常受理），`update` / `restart` 等在途运行结束后走现有流程再恢复派发；更新命令另需防 SSH 断线。
-- N-14 跨任务共享镜像：并入 N-01（U-54），已完成。
 - CLI 与 MCP（U-11）、事件流与 webhook：暂不提供。
 
 ### 已完成
 
-- N-25 Agent 客户端（U-59、U-60）：平台保存别人要依赖的事实，Agent 的工作过程自由、skill 只给建议；skill 打进 SDK wheel，`maestro_sdk.skills.install` 安装到 `.agents/skills/` 与 `.claude/skills/` 并记下 SDK 版本；`maestro_sdk.workspace.init` 生成推荐的工作区（`AGENTS.md` 模板、自由格式的 `notes/`、每个附件一个 git 仓库的 `attachments/`）；`attachments.publish_commit` 只发布 git 提交跟踪的文件，两种发布都核对摘要；新 skill `maestro-package` 讲附件的制作、改进与恢复，当前最优的附件记在分析快照的结论里、不靠标签；SDK 发布到 Gitea 包仓库。不做集合的固定任务列表与客户端另算的口径。取代独立的 rsi-workbench。结论并入 [10](../design/10-api-sdk-cli.md) 第 7 节、[03](../design/03-configuration-attachments.md) 第 6 节与 [13](../design/13-testing-plan.md) 的 E2E-RUN-06。
-- N-18 网页多语言（U-31、U-57、U-58）：界面文字全部移进 `frontend/src/locales/` 的中英文语言文件（`i18next`），按浏览器语言默认、可在侧边栏与登录页切换并存在浏览器本地；英文为 AI 翻译、未经人工复查，界面上注明；API 错误按 `code` 翻译标题；`npm run check:i18n` 进 CI，检查两种语言一致、代码里不写死文字；补了简短的英文 README。后端、SDK 与对外文档的英文版不在内（文档留给 N-19）。结论并入 [11](../design/11-web-ui.md) 第 1 节、[13](../design/13-testing-plan.md) 与交接。
-- N-24 CI 稳定（U-43、U-57）：本仓库一侧的时限、重试、可选代理 `CI_PROXY`、去掉重复检查、并行 pytest 与只改文档时跳过 CI 已合入；主机一侧由用户在 runner 主机上解决。CI 证据不再要求放 Actions artifacts，CI 的输出看 Actions 页的运行日志即可。
-- N-07 数据集版本操作（U-30、U-53）：数据集卡片上“检查上游更新”，按上游 digest 标出已导入、未导入与标签已移动的版本，预览与本地版本的任务差异后添加为新版本，也可直接填引用添加；新建运行页先选数据集再选版本，默认最近导入且可提交的版本；数据集页以 `?version=` 记住所选版本，运行详情与集合规格链接过去（原 N-22 的一项）。不做在已选配置或方案中切换版本：换版本仍清空任务与参数。只改网页，不改接口。结论并入 [02](../design/02-datasets-preparation.md) 第 3 节、[11](../design/11-web-ui.md) 第 1、2 节与 [13](../design/13-testing-plan.md) 的 E2E-DS-01。
-- N-05 产物按层级打包下载（U-30、U-53）：运行页的产物改为 任务 → 试次 → 执行尝试 → 相对路径的目录树；已结束的运行可把整个运行或任一层打成 zip，点击时流式生成、不落盘，受 `export_max_gb` 限制，包末的 `manifest.json` 列出缺失文件与原因；SDK 为 `runs.download_archive`。结论并入 [07](../design/07-artifacts-export.md) 第 5 节、[10](../design/10-api-sdk-cli.md) 与 [11](../design/11-web-ui.md) 第 3 节。
-- N-01 独立验证环境、Compose 辅助服务与本机镜像仓库（吸纳 N-14；U-54～U-56）：三种独立验证器镜像来源与 `environment/`、`tests/` 中 `main` 以外的 Compose 服务都由平台准备，执行时不构建不拉取；影响镜像的 Compose 变量按默认值冻结；准备结果是镜像清单，存进 `maestroctl` 以容器运行的本机镜像仓库，按 digest 拉回，相同定义在任务间只做一次，`registry-gc` 释放空间；Runner 按环境目录写 override 并在 Harbor 创建环境处补上（Harbor 有意不把 Job 的覆盖传给独立验证器，向上游提议留到开发稳定后）；试次资源为所有容器之和，未声明资源的辅助服务默认 1 CPU、1 GB；不兼容，迁移 0006 把所有任务重置为待准备。现场主机的存储驱动与镜像共用情况未核对。结论并入 [02](../design/02-datasets-preparation.md)，以及 [00](../design/00-overview.md)、[03](../design/03-configuration-attachments.md)、[05](../design/05-scheduling-execution.md)、[07](../design/07-artifacts-export.md)、[09](../design/09-identity-security.md)、[12](../design/12-operations.md)、[15](../design/15-stack-harbor.md) 与 [13](../design/13-testing-plan.md) 的 E2E-DS-06。
-- N-06 附件增量发布（0.4.0 核心功能；U-50、U-51，取代 U-49）：附件改为按内容寻址的快照，只上传服务端缺少的文件，版本号改为可选、不能改的标签，可指明父快照并分叉；SDK 按目录发布与取回（`fetch` 只下载差异），网页按文件夹发布、查看文件、文件级差异与整包下载；不再接受 tar / zip 包，不做服务端 Git 获取与 Git 来源记录；旧附件由迁移 0005 清空。结论并入 [03](../design/03-configuration-attachments.md) 第 6 节，以及 [01](../design/01-domain-model.md)、[07](../design/07-artifacts-export.md)、[08](../design/08-collections-comparison.md)、[10](../design/10-api-sdk-cli.md)、[11](../design/11-web-ui.md)、[12](../design/12-operations.md) 与 [13](../design/13-testing-plan.md) 的 E2E-RUN-05。
-- N-11 集合、比较与分析快照（0.4.0 主要功能；U-46、U-47）：临时比较自动核对哪些维度相同、哪些不同；按失败原因剔除外部失败，没剔除的算 0 分，剔除后没有有效试次的任务从所有运行一起去掉；集合建立时选场景，定下可变与固定的维度，只收符合的运行，规格不能改（复制成新集合），也能直接用来提交；排行榜与矩阵两种摆法；快照冻结整张表，结论由人或 Agent 另写；重跑不合并。结论并入 [08](../design/08-collections-comparison.md)，以及 [01](../design/01-domain-model.md)、[04](../design/04-plans-submission.md)、[09](../design/09-identity-security.md)、[10](../design/10-api-sdk-cli.md)、[11](../design/11-web-ui.md) 第 8 节与 [13](../design/13-testing-plan.md) 的 E2E-OUT-02、E2E-OUT-03。
-- N-03 网页布局（合并 N-04；U-45）：侧边栏导航（管理页分区并入，可收起，窄屏为抽屉）；长任务名有共同前缀时省略中间、悬停显示全名、可复制；网格格子可收窄，长日志与长路径不再撑宽页面；管理页与设置页表单统一为标签一列、输入框一列；执行页去掉产物列表，改为跳到按试次筛选的产物页。结论并入 [11](../design/11-web-ui.md) 第 1、3 节。
-- N-09 常规 Harness：Codex 与 Claude Code，以及上游版本提示（U-40、U-41）：抽出“容器内 Harness”包装层，Codex 与 Claude Code 的密钥以文件进容器；Harness 版本固定上游版本，发布表单经安装网络查 npm 给出版本提示；声明式配置（N-19）与升级 Harbor 另做。结论并入 [03](../design/03-configuration-attachments.md) 第 2 节、[09](../design/09-identity-security.md) 第 5 节、[15](../design/15-stack-harbor.md) 第 5、8 节等系统说明。
-- N-02 持续发布（U-42、U-43）：`dev` 每次通过 CI 后发 Gitea 预发布（`dev-<提交>`，保留最近 10 个），`master` 上的 `v*` tag 再完整跑一次后发正式版本；发布附 SDK wheel、第三方许可证清单与 `SHA256SUMS`；GitHub 只在推送 tag 时构建发布，不跑测试；不自动部署。`dev` 的版本号改为下一个版本的 `.dev0`。结论并入 [12](../design/12-operations.md) 第 1 节、[开发流程](../guides/development-workflow.md)“发布与运行版本”与交接。
-- N-16 开源许可证 Apache 2.0：补 `LICENSE`、`NOTICE`（版权人 The Maestro Authors），各项目配置写明许可证；`tools/third_party_licenses.py` 生成第三方许可证清单（网页打包的依赖附全文，Python 依赖只列名称、版本与许可证），允许列表以外的许可证让 CI 失败。
-- N-08 安装网络在管理页配置（合并原 N-10；U-38、U-39）：准备代理、包镜像源等安装变量与 Harness 安装时限放进管理页“安装网络”，按版本保存，准备与执行开始时读当前版本，执行尝试与镜像构建记下版本；`config.toml` 不再有准备代理；管理页只读显示部署配置；`maestroctl check` 报告 Docker 镜像源。结论并入 [12](../design/12-operations.md) 第 3 节等系统说明。
-- N-23 现场说明与证据进 Gitea 私有仓库（U-35、U-36）：私有仓库 `auua/maestro-site` 放各主机的现场说明与手动证据，CI 证据用 Actions artifacts；结论并入 `AGENTS.md`、交接与开发流程。
+结论都已并入系统说明，细节以系统说明与代码为准。
+
+- N-25 Agent 客户端（U-59～U-61）：skill 随 SDK 发布、推荐的工作区、从 git 提交发布附件、SDK 包仓库 → [10](../design/10-api-sdk-cli.md) 第 7 节、[03](../design/03-configuration-attachments.md) 第 6 节、E2E-RUN-06。
+- N-18 网页多语言（U-58）：中英文界面，英文为 AI 翻译、界面上注明 → [11](../design/11-web-ui.md) 第 1 节。
+- N-24 CI 稳定（U-43、U-57）：时限、重试、可选代理、并行 pytest、只改文档时跳过；主机一侧由用户解决 → [交接](../HANDOFF.md)。
+- N-07 数据集版本操作（U-30、U-53）：检查上游更新、预览差异后添加版本、先选数据集再选版本 → [02](../design/02-datasets-preparation.md) 第 3 节、E2E-DS-01。
+- N-05 产物按层级打包下载（U-30、U-53） → [07](../design/07-artifacts-export.md) 第 5 节、E2E-OUT-04。
+- N-01 独立验证环境、Compose 辅助服务与本机镜像仓库（吸纳 N-14；U-54～U-56） → [02](../design/02-datasets-preparation.md)、[15](../design/15-stack-harbor.md)、E2E-DS-06。
+- N-06 附件增量发布（U-50、U-51）：按内容寻址的快照、只传缺少的文件、父快照与分叉 → [03](../design/03-configuration-attachments.md) 第 6 节、E2E-RUN-05。
+- N-11 集合、比较与分析快照（U-46、U-47） → [08](../design/08-collections-comparison.md)、E2E-OUT-02～03。
+- N-03 网页布局（合并 N-04；U-45） → [11](../design/11-web-ui.md) 第 1、3 节。
+- N-09 Codex 与 Claude Code，以及上游版本提示（U-40、U-41） → [03](../design/03-configuration-attachments.md) 第 2 节、[09](../design/09-identity-security.md) 第 5 节、E2E-RUN-07。
+- N-02 持续发布（U-42、U-43、U-62）：`dev` 预发布、tag 正式发布、SDK 包仓库与 GitHub Pages 索引，不自动部署 → [12](../design/12-operations.md) 第 1 节、[开发流程](../guides/development-workflow.md)“发布与运行版本”。
+- N-16 开源许可证 Apache 2.0：`LICENSE`、`NOTICE`、第三方许可证清单与允许列表 → [12](../design/12-operations.md) 第 1 节。
+- N-08 安装网络在管理页配置（合并 N-10；U-38、U-39） → [12](../design/12-operations.md) 第 3 节、E2E-RUN-07。
+- N-23 现场说明与证据进 Gitea 私有仓库（U-35、U-36）：私有仓库 `auua/maestro-site`；CI 的输出看 Actions 运行日志（U-57） → `AGENTS.md`、[开发流程](../guides/development-workflow.md)“资料与交付证据”。
 
 ## 提案模板
 

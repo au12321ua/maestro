@@ -1,7 +1,8 @@
 # GitHub only receives master and its v* tags when a release is made, after the same
 # version was tested and published on Gitea (N-02, U-42). So this workflow runs no tests:
 # it rebuilds the package from the tag and publishes a GitHub Release with the same
-# assets. Gitea reads only .gitea/workflows and never runs this file.
+# assets, then rebuilds the SDK package index on GitHub Pages from the wheels of all
+# releases (U-62). Gitea reads only .gitea/workflows and never runs this file.
 name: release
 on:
   push:
@@ -44,3 +45,46 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --title "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md"
+  index:
+    # GitHub Packages has no Python registry, so the SDK index is a static PEP 503 page
+    # on GitHub Pages whose links point at the wheels in the releases. It is rebuilt from
+    # every formal release, so earlier versions stay installable. Pages must be set to
+    # deploy from GitHub Actions in the repository settings.
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}simple/
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Index of the SDK wheels in all releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          wheels="$RUNNER_TEMP/wheels"
+          gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases \
+              --limit 1000 --json tagName --jq '.[].tagName' | grep '^v' | while read -r tag; do
+            # Releases from before the SDK wheel was attached are skipped.
+            assets="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')"
+            if grep -q '^maestro_sdk-.*\.whl$' <<< "$assets"; then
+              gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
+                --pattern 'maestro_sdk-*.whl' --dir "$wheels/$tag"
+            fi
+          done
+          python3 -I tools/package_index.py --wheels "$wheels" --out "$RUNNER_TEMP/site" \
+            --base-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download"
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ runner.temp }}/site
+      - id: deploy
+        uses: actions/deploy-pages@v4

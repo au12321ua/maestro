@@ -29,12 +29,12 @@
 - [uv](https://docs.astral.sh/uv/)。Python 3.12 或 3.13：主机没有时 uv 会下载到 `/opt/maestro/python`。安装需要访问 PyPI，可经 `--proxy`。
 - 数据目录所在磁盘至少 20 GiB 可用，否则新运行会被拒绝（可在配置中调整）。
 
-发布包从仓库的 Releases 下载 `maestro-<版本>.tar.gz` 与 `SHA256SUMS`，用 `sha256sum -c SHA256SUMS --ignore-missing` 核对。正式版本来自 `master` 的版本 tag；名字带 `dev-` 的预发布由 `dev` 的每次推送自动生成，只用于试用，只保留最近 10 个。
+发布包从仓库的 Releases 下载 `maestro-<版本>-<提交>.tar.gz` 与 `SHA256SUMS`，用 `sha256sum -c SHA256SUMS --ignore-missing` 核对。正式版本来自 `master` 的版本 tag；名字带 `dev-` 的预发布由 `dev` 上每次通过 CI 的推送自动生成，只用于试用，只保留最近 10 个。
 
 先检查，不改动任何东西：
 
 ```bash
-tar xf maestro-<版本>.tar.gz && cd maestro-<版本>
+tar xf maestro-<版本>-<提交>.tar.gz && cd maestro-<版本>-<提交>
 sudo ./maestroctl check --uv "$(command -v uv)"
 ```
 
@@ -65,7 +65,7 @@ sudo ./maestroctl install --port 8420 --proxy http://<代理地址>:<端口> --u
 
 拉取镜像走 Docker 守护进程自己的代理设置。`check` 发现守护进程没有代理时只提醒，并报告守护进程配置的 registry 镜像源，不会替你修改全机的 Docker 配置；需要时用 `sudo systemctl edit docker` 加上 `HTTP_PROXY` / `HTTPS_PROXY` 后重启 Docker。
 
-配置项及其默认值见仓库 README 与[运维设计](../design/12-operations.md)第 3 节。修改 `/etc/maestro/config.toml` 后执行 `sudo maestroctl restart`。旧版本写入的 `setup_proxy`、`setup_no_proxy` 已不再使用：服务会忽略它们并在日志里提醒，请在网页的“安装网络”中重新填写，再从配置文件里删去。
+配置项、默认值与说明见仓库的 `src/maestro/config.py` 与[运维设计](../design/12-operations.md)第 3 节。修改 `/etc/maestro/config.toml` 后执行 `sudo maestroctl restart`。旧版本写入的 `setup_proxy`、`setup_no_proxy` 已不再使用：服务会忽略它们并在日志里提醒，请在网页的“安装网络”中重新填写，再从配置文件里删去。
 
 ## 日常维护
 
@@ -92,7 +92,7 @@ sudo maestroctl restore /var/backups/maestro/<时间> [--include-files]
 - 备份写在 `/var/backups/maestro/<时间>/`，服务可以继续运行。数据库通过 SQLite 的备份接口复制，不会漏掉还在 WAL 里的写入；`manifest.json` 最后写入，没有它就说明这份备份不完整。
 - **主密钥不在备份里**。清单写明数据库需要哪一代主密钥；请把 `/etc/maestro/secrets/` 另外妥善保存。恢复时如果对应的密钥不在，恢复会拒绝执行并说明原因；加 `--allow-missing-key` 可以照样恢复，但团队凭据都要重新填写。
 - 恢复会停止服务、替换数据库（带 `--include-files` 时一并替换业务文件，原来的文件改名放在旁边），按需迁移数据库后再启动。备份时正在执行的运行恢复后会标为中断。
-- 目前只支持恢复到同一台主机；换机器恢复、计划排空都属于下一阶段。
+- 只支持恢复到同一台主机。
 
 ## 更新
 
@@ -132,4 +132,4 @@ uv sync --locked --group dev
 uv run python tools/build_release.py      # 写出 dist/maestro-<版本>-<提交>.tar.gz
 ```
 
-包里有 `maestroctl`、服务 / Runner / SDK 的 wheel、带哈希的锁定依赖、本说明、`LICENSE`、`NOTICE`、第三方许可证清单 `THIRD_PARTY_LICENSES.md`，以及记录版本、提交、数据库结构版本、Harbor 版本和每个文件摘要的 `RELEASE.json`。网页已经编译进服务的 wheel，安装的机器不需要 git 或 Node。成员要用的 Python SDK 在包里的 `sdk/` 目录，也随每次发布推送到 Gitea 的 Python 包仓库，成员可以直接按版本安装（[SDK 说明](../../sdk/README.md)；推送令牌与读取权限见[开发流程](development-workflow.md)的“SDK 包仓库”）。
+包里有 `maestroctl`、服务 / Runner / SDK 的 wheel、带哈希的锁定依赖、本说明、`LICENSE`、`NOTICE`、第三方许可证清单 `THIRD_PARTY_LICENSES.md`，以及记录版本、提交、数据库结构版本、Harbor 版本和每个文件摘要的 `RELEASE.json`。网页已经编译进服务的 wheel，安装的机器不需要 git 或 Node。成员要用的 Python SDK 在包里的 `sdk/` 目录，正式版本另由包索引提供，成员与 Agent 可以直接按版本安装（见 [SDK 说明](../../sdk/README.md)）。

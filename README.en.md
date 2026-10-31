@@ -20,11 +20,23 @@ On a Linux host with systemd and Docker, from a release package (Releases: tagge
 
 ```bash
 sha256sum -c SHA256SUMS --ignore-missing
-tar xf maestro-<version>.tar.gz && cd maestro-<version>
+tar xf maestro-<version>-<commit>.tar.gz && cd maestro-<version>-<commit>
 sudo ./maestroctl install --uv "$(command -v uv)"   # prints the address and a one-time setup token
 ```
 
-Then `sudo maestroctl status / logs / backup / update <package> / uninstall`. Agents and scripts use the [Python SDK](sdk/README.md) (`pip install ./sdk`) with a personal access token created on the web page's Settings.
+Then `sudo maestroctl status / logs / backup / update <package> / uninstall`.
+
+## Use it from an agent
+
+An agent never logs in to the server. It needs the [Python SDK](sdk/README.md) (the agent skills ship inside it), a personal access token and a workspace. Install the SDK of the service's version from this project's package index on GitHub Pages, `https://au12321ua.github.io/maestro/simple` (from 0.4.0 on). Without an index, install the wheel attached to the release: `uv pip install ./maestro_sdk-<version>-py3-none-any.whl`.
+
+```bash
+mkdir my-work && cd my-work
+uv venv && uv pip install "maestro-sdk==<version>" --index maestro=https://au12321ua.github.io/maestro/simple
+.venv/bin/python -c "import maestro_sdk.workspace as w; w.init('.')"   # AGENTS.md, notes/, attachments/, skills
+```
+
+Create a token with the `experiment` scope on the web page's Settings and keep it in a file outside the workspace. Fill in the service address, the token file, the budget and the current goal in `AGENTS.md`, then start the agent in that directory; the skills are in `.agents/skills/` and `.claude/skills/`.
 
 ## Try it from source
 
@@ -43,7 +55,7 @@ uv run maestro --config "$root/config.toml" init      # prints the one-time setu
 uv run maestro --config "$root/config.toml" serve --port 8420 --demo-executor
 ```
 
-Open `http://127.0.0.1:8420` and create the first admin with the setup token. `--demo-executor` uses a fake executor and a fake dataset source (add `demo/arith` on the Datasets page); its results are not real experiments. Running real Harbor tasks is described in the Chinese [README](README.md).
+Open `http://127.0.0.1:8420` and create the first admin with the setup token. `--demo-executor` uses a fake executor and a fake dataset source (add `demo/arith` on the Datasets page); its results are not real experiments.
 
 ## License
 
