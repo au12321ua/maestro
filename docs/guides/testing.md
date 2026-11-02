@@ -42,6 +42,7 @@ Playwright 测试需要一个全新的一次性 state：`maestro --config <tmp>/
 
 ## 打包与 CI
 
-- **打包**：`uv run python tools/build_release.py`，参数与包的内容见脚本开头的说明；`ops/maestroctl.py` 的规则由 `tests/maestro/test_maestroctl.py` 覆盖。`tools/publish_release.py`（Gitea Releases）、`tools/publish_package.py`（Gitea 包仓库）与 `tools/package_index.py`（GitHub Pages 上的 SDK 索引）只用标准库，由 `tests/maestro/test_release_tools.py` 对着模拟接口测试。发布步骤见[打包与发布](releasing.md)。
-- **Gitea CI**（`.gitea/workflows/verify.yml`，在 `HH_RUNNER_LABEL` 指定的 runner 上）：每次推送运行本页“每次提交”的全部检查。只改 Markdown 的推送不跑（`skills/` 与 `sdk/README.md` 有测试核对，仍会触发；U-37、U-43），tag 总会跑。测试只传 PATH、临时 HOME 与 uv 的 Python 设置，不继承凭据或 `MAESTRO_*` 开关。下载依赖的步骤有单步时限、短超时和整步重试；仓库变量 `CI_PROXY` 非空时，只有下载依赖与打包的步骤走这个代理。
+- **打包**：`uv run python tools/build_release.py`，参数与包的内容见脚本开头的说明；`ops/maestroctl.py` 的规则由 `tests/maestro/test_maestroctl.py` 覆盖。`tools/publish_release.py`（Gitea/GitHub Releases）、`tools/publish_package.py`（Gitea 包仓库）与 `tools/package_index.py`（GitHub Pages 上的 SDK 索引）只用标准库，由 `tests/maestro/test_release_tools.py` 对着模拟接口测试；其中还覆盖准确 SHA 的检查资格、草稿续传、不可覆盖、可复现归档及并发 dev 收尾。`tools/release.py` 是维护者准备与续跑入口，`tools/version.py` 同步权威版本和生成物，`tools/validate_release.py` 在全新环境安装实际 wheel、核对版本、入口与网页。发布步骤见[打包与发布](releasing.md)。
+- **Gitea CI**（`.gitea/workflows/verify.yml`，在 `HH_RUNNER_LABEL` 指定的 runner 上）：每次推送运行本页“每次提交”的全部检查。只改 Markdown 的推送不跑（`skills/` 与 `sdk/README.md` 有测试核对，仍会触发；U-37、U-43），tag 总会触发，但只执行独立的发布任务：复用准确 SHA 已成功的完整检查，再构建并验证产物，不重跑源码测试。PR 不重复触发，新的合并 SHA 照常按 push 检查；手动运行 `verify` 可补验文档候选或缺失的自动运行。测试只传 PATH、临时 HOME 与 uv 的 Python 设置，不继承凭据或 `MAESTRO_*` 开关。下载依赖的步骤有单步时限、短超时和整步重试；仓库变量 `CI_PROXY` 非空时，只有下载依赖与打包的步骤走这个代理。
+- 检查与发布分别显示为 `verify`、`publish`，上传失败不会改变源码检查结果。发布门禁核对预期工作流、完整 SHA、任务与必需步骤实际成功；仅看整个运行的颜色不足以放行。直接 push 的结果是事后验证，分支保护需实时核对，不能由工作流推断。
 - CI 的输出看 Actions 页的运行日志，不要求存成 artifacts（U-57）。

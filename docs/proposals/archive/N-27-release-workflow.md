@@ -1,6 +1,6 @@
 # N-27 发布流程与 CI 分工
 
-状态：已确认，待实施 · 优先级：一 · 日期：2026-11-02 · 相关：U-66、U-67、[发布指南](../guides/releasing.md)、[开发验证](../guides/testing.md)、[部署运维](../design/12-operations.md)
+状态：已完成 · 优先级：一 · 日期：2026-11-02 · 相关：U-66、U-67、[发布指南](../../guides/releasing.md)、[开发验证](../../guides/testing.md)、[部署运维](../../design/12-operations.md)
 
 ## 问题
 
@@ -17,7 +17,7 @@
 - 所有分支 push 是代码检查入口，PR 使用对应提交的结果；正式 tag 验证最终提交已有成功检查，并检查实际发布物。此项取代 U-43 中 tag 重复跑完整 CI 的要求，GitHub 从 tag 重建、不重复测试的约定沿用。
 - 保留开发预览版、Gitea SDK 包仓库与 GitHub Pages 正式版索引。实现沿用现有构建工具与脚本，属于维护者发布工具，不增加产品 CLI 或 MCP 入口。
 
-本次只编写提案和记录决定；当前工作流与发布指南仍描述现有实现，实施时再同步改写。
+用户随后以“那继续，完成N-27”授权实施；实现与系统说明同步交付。
 
 ## 方案与取舍
 
@@ -107,7 +107,7 @@ Gitea 与 GitHub Release 先准备草稿，附件及说明齐全后再公开。S
 - 维护者工具：调整 `tools/build_release.py`、`tools/publish_release.py`、`tools/publish_package.py`、`tools/package_index.py`，提供统一准备与续跑入口；实际入口名称和内部拆分按实现确定。
 - 工作流：调整 `.gitea/workflows/verify.yml` 与 `.github/workflows/release.yml` 的触发、代码检查结果读取、构建验证和上传重试；实施时核对实际 Gitea 版本、检查名称与分支保护。
 - 版本与生成物：根与 SDK 的包声明、服务版本读取、依赖锁和生成契约随准备入口同步；网页中无用途的独立版本声明去除。公开 API 的业务行为、数据库结构与部署布局不变。
-- 文档：实施时改写[发布指南](../guides/releasing.md)、[开发验证](../guides/testing.md)、[协作规则](../guides/development-workflow.md)、[部署运维](../design/12-operations.md)与[开发交接](../HANDOFF.md)，说明当前真实入口与限制；用户安装说明有变化时同步 SDK 说明与 skill。
+- 文档：实施时改写[发布指南](../../guides/releasing.md)、[开发验证](../../guides/testing.md)、[协作规则](../../guides/development-workflow.md)、[部署运维](../../design/12-operations.md)与[开发交接](../../HANDOFF.md)，说明当前真实入口与限制；用户安装说明有变化时同步 SDK 说明与 skill。
 - 交付：本提案实施合入 dev 时将结论并入系统说明、标记完成并归档；实施证据写入提交与 PR。CI 输出保留在 Actions，现场材料按既有规则放私有仓库。
 
 ## 验收
@@ -135,4 +135,4 @@ Gitea 与 GitHub Release 先准备草稿，附件及说明齐全后再公开。S
 
 ## 结果
 
-待实施。当前已确认版本与 tag 策略、统一发布入口的范围以及 CI 分工；本轮仅形成提案、决策记录与索引。
+已实现统一准备、补验、状态与发布续跑入口，单一权威版本、独立检查与发布任务、准确 SHA 门禁、实际 wheel 安装验证、可复现归档和两端草稿续传。开发版本恢复为 `0.4.1.dev0`。实现与验证依据见同一合入 PR；未执行新的正式版本发布或服务器部署。

@@ -4,7 +4,8 @@
 
 ## 当前代码
 
-- 服务与 SDK 的声明版本均为 `0.4.0`，以各自的 `pyproject.toml` 为准；发布记录看 Git tag 与 Releases，实际运行版本由部署者记录在私有仓库 `auua/maestro-site`。
+- 根 `pyproject.toml` 的 `0.4.1.dev0` 是权威版本，服务读取安装元数据、SDK 包声明由 `tools/version.py` 同步；发布记录看 Git tag 与 Releases，实际运行版本由部署者记录在私有仓库 `auua/maestro-site`。
+- 维护者发布入口为 `tools/release.py`，根据固定 dev SHA 准备正式与下一开发版本、核对最终 SHA 检查、推进两端发布及 dev 收尾。正式 tag 与附件固定，失败按实际状态续跑；`verify` 与 `publish` 任务独立，部署单独进行，见[打包与发布](guides/releasing.md)。
 - 服务在 `src/maestro/`，独立 Runner 在 `runner/`，SDK 在 `sdk/`，随 SDK 发布的 Agent skill 在 `skills/`，安装工具在 `ops/maestroctl.py`；完整分工见[源码职责](architecture/source-layout.md)。
 - 不迁移旧系统的 state；第一个面向外部用户的版本之前不承诺向后兼容（U-31）。数据库结构变更从 0.3.0 起追加迁移（U-34）。
 - `fix/separate-verifier` 只作参考（U-32）；独立验证器与 Compose 辅助服务支持已经重新实现。

@@ -1,3 +1,4 @@
+# Branch pushes verify source; tags reuse that exact commit's verification.
 # Checks for every push: lint, Markdown links, the pytest suite
 # without Docker, Hub or model requests (it includes the contract and SDK model drift
 # check), third-party licenses and the web build. A push to dev that passes them becomes a
@@ -11,12 +12,8 @@ on:
     # Pushes that change only Markdown docs do not run. The SDK skill and
     # guide are checked by tests, so they still count. Tag pushes always run.
     paths: ["**", "!**.md", "skills/**", "sdk/README.md"]
-  pull_request:
-    paths: ["**", "!**.md", "skills/**", "sdk/README.md"]
   workflow_dispatch:
-# Publishing needs write access. Only the last two steps receive a token; the job's
-# artifact upload could not reach Gitea from the host runner, so the release is
-# published from the same job instead of a separate one.
+# Checks and publishing have independent results. Credentials are scoped to API steps.
 permissions:
   contents: write
 env:
@@ -30,16 +27,14 @@ env:
 jobs:
   verify:
     # Host runners must never execute an external fork's code.
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    if: ${{ github.ref_type != 'tag' }}
     runs-on: ${{ vars.HH_RUNNER_LABEL || 'ubuntu-latest' }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-          # A release checks that its tag is on master and lists the commits since the
-          # previous tag, so a tag push fetches all branches and history.
-          fetch-depth: ${{ github.ref_type == 'tag' && '0' || '1' }}
+          fetch-depth: 1
       - id: python
         uses: actions/setup-python@v5
         with:
@@ -71,6 +66,8 @@ jobs:
           uv run ruff format --check src/maestro tests/maestro runner/src tools sdk/src ops
       - name: Markdown links
         run: python tools/check_doc_links.py
+      - name: Versions
+        run: uv run python tools/version.py
       - name: Tests
         # Only PATH and the isolated HOME pass through, so no inherited credential or
         # MAESTRO_* switch (Docker, Hub, real model) reaches the suite.
@@ -102,67 +99,95 @@ jobs:
           fi
       - name: Third-party licenses are allowed
         run: uv run python tools/third_party_licenses.py
-      - name: Release assets
-        if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref_type == 'tag') }}
+  publish:
+    needs: verify
+    if: ${{ always() && github.event_name == 'push' && (github.ref_type == 'tag' || (github.ref == 'refs/heads/dev' && needs.verify.result == 'success')) }}
+    runs-on: ${{ vars.HH_RUNNER_LABEL || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    concurrency:
+      group: publish-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Verified release commit
+        if: ${{ github.ref_type == 'tag' }}
+        env:
+          GITEA_API: ${{ github.api_url }}
+          GITEA_REPO: ${{ github.repository }}
+          GITEA_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git merge-base --is-ancestor HEAD origin/master
+          test "$(git cat-file -t "$GITHUB_REF_NAME")" = tag
+          python3 -I tools/verify_commit.py --commit "$(git rev-parse HEAD)"
+      - id: python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Isolate build environment
+        run: |
+          mkdir -p "$RUNNER_TEMP/home"
+          echo "HOME=$RUNNER_TEMP/home" >> "$GITHUB_ENV"
+          echo "UV_PYTHON=${{ steps.python.outputs.python-path }}" >> "$GITHUB_ENV"
+          echo "UV_PYTHON_DOWNLOADS=never" >> "$GITHUB_ENV"
+          python -m pip install uv==0.13.5
+      - name: Build dependencies
+        timeout-minutes: 15
+        run: |
+          if [ -n "$CI_PROXY" ]; then export HTTPS_PROXY="$CI_PROXY" HTTP_PROXY="$CI_PROXY"; fi
+          for attempt in 1 2 3; do
+            uv sync --locked && (cd runner && uv sync --locked) && (cd frontend && npm ci --no-audit --no-fund --ignore-scripts) && break
+            if [ "$attempt" = 3 ]; then exit 1; fi
+          done
+      - name: Build and validate release assets
         timeout-minutes: 15
         run: |
           if [ -n "$CI_PROXY" ]; then export HTTPS_PROXY="$CI_PROXY" HTTP_PROXY="$CI_PROXY"; fi
           out="$RUNNER_TEMP/release"
           mkdir -p "$out/dist"
           if [ "${{ github.ref_type }}" = tag ]; then
-            # A release comes only from a tag on master whose name is the code's version.
-            if ! git merge-base --is-ancestor HEAD origin/master; then
-              echo "${{ github.ref_name }} is not on master"; exit 1
-            fi
-            uv run python tools/build_release.py --assets --expect-version "${GITHUB_REF_NAME#v}" --out "$out/dist"
-            previous="$(git describe --tags --abbrev=0 --match 'v*' HEAD^ 2>/dev/null || true)"
-            git log --format='- %s (%h)' ${previous:+"$previous..HEAD"} > "$out/notes.md"
+            version="${GITHUB_REF_NAME#v}"
+            uv run python tools/build_release.py --assets --expect-version "$version" --out "$out/dist"
+            python3 -I tools/validate_release.py --dist "$out/dist" --commit "$(git rev-parse HEAD)" --expect-version "$version"
+            cp "docs/releases/$GITHUB_REF_NAME.md" "$out/notes.md"
           else
-            # The SDK wheel of a prerelease is <version>.dev<run number>: unique and increasing.
-            uv run python tools/build_release.py --assets --dev-number "${{ github.run_number }}" \
-              --out "$out/dist"
-            git log -1 --format='%s%n%n%b' > "$out/notes.md"
-          fi
-          ls -l "$out/dist"
-      - name: Publish to Gitea Releases
-        if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref_type == 'tag') }}
-        # This step and the next are the only ones that receive a write token; they run no
-        # project code or dependencies, only standard-library uploaders on what was just
-        # checked.
-        env:
-          GITEA_API: ${{ github.server_url }}/api/v1
-          GITEA_REPO: ${{ github.repository }}
-          GITEA_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          out="$RUNNER_TEMP/release"
-          sha="${{ github.sha }}"
-          if [ "${{ github.ref_type }}" = tag ]; then
-            python3 -I tools/publish_release.py --dist "$out/dist" --notes "$out/notes.md" \
-              --tag "${{ github.ref_name }}" --commit "$sha"
-          else
-            build="$(basename "$out"/dist/maestro-*.tar.gz .tar.gz)"
-            python3 -I tools/publish_release.py --dist "$out/dist" --notes "$out/notes.md" \
-              --tag "dev-${sha:0:12}" --commit "$sha" --title "$build" --prerelease --keep 10
+            uv run python tools/build_release.py --assets --dev-number "${{ github.run_number }}" --out "$out/dist"
+            python3 -I tools/validate_release.py --dist "$out/dist" --commit "$(git rev-parse HEAD)"
+            git log -1 --format='%s (%h)' > "$out/notes.md"
           fi
       - name: Publish the SDK to the package registry
-        if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref_type == 'tag') }}
-        # PACKAGE_TOKEN: a token with only the write:package scope from an account that may
-        # write the owner's packages.
         env:
           GITEA_URL: ${{ github.server_url }}
           GITEA_OWNER: ${{ github.repository_owner }}
           GITEA_TOKEN: ${{ secrets.PACKAGE_TOKEN }}
         run: |
-          dist="$RUNNER_TEMP/release/dist"
           if [ -z "$GITEA_TOKEN" ]; then
             if [ "${{ github.ref_type }}" = tag ]; then
-              echo "the secret PACKAGE_TOKEN is not set, so the SDK cannot be published"; exit 1
+              echo "PACKAGE_TOKEN is required for a formal release"; exit 1
             fi
-            echo "::warning::the secret PACKAGE_TOKEN is not set; the SDK was not published"
+            echo "::warning::PACKAGE_TOKEN is missing; SDK preview was not published"
             exit 0
           fi
           if [ "${{ github.ref_type }}" = tag ]; then
-            python3 -I tools/publish_package.py --dist "$dist"
+            python3 -I tools/publish_package.py --dist "$RUNNER_TEMP/release/dist"
           else
-            python3 -I tools/publish_package.py --dist "$dist" --keep 10
+            python3 -I tools/publish_package.py --dist "$RUNNER_TEMP/release/dist" --keep 10
+          fi
+      - name: Publish Gitea Release
+        env:
+          GITEA_API: ${{ github.api_url }}
+          GITEA_REPO: ${{ github.repository }}
+          GITEA_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          out="$RUNNER_TEMP/release"
+          sha="$(git rev-parse HEAD)"
+          if [ "${{ github.ref_type }}" = tag ]; then
+            python3 -I tools/publish_release.py --dist "$out/dist" --notes "$out/notes.md" --tag "$GITHUB_REF_NAME" --commit "$sha"
+          else
+            python3 -I tools/publish_release.py --dist "$out/dist" --notes "$out/notes.md" --tag "dev-${sha:0:12}" --commit "$sha" --prerelease --keep 10
           fi

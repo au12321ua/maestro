@@ -4,7 +4,13 @@
 
 ## 1. 安装布局与进程
 
-发布形式是压缩包（`tools/build_release.py` 生成），由包内只用系统 Python 标准库的 `maestroctl` 安装和维护（U-29）。包由 CI 生成并发布到 Gitea Releases：`dev` 每次通过 CI 后是一个带提交标识的预发布（保留最近 10 个），`master` 上的 `v<版本>` tag 是正式版本；GitHub Releases 只在推送 tag 时由同一个 tag 构建，不重复测试（U-42）。发布附 SDK wheel、第三方许可证清单与 `SHA256SUMS`，包内带 `LICENSE`、`NOTICE` 与同一份清单。同一个 SDK wheel 推送到仓库所有者在 Gitea 上的 Python 包仓库：正式版本与代码版本相同，`dev` 的预发布是 `<版本>.dev<CI 运行号>`（保留最近 10 个），使用者按版本安装（令牌与读取权限见[发布指南](../guides/releasing.md)的“SDK 包仓库”）；GitHub 没有 Python 包仓库，正式版本的 SDK 由 GitHub Pages 上的静态索引提供，链接指向 GitHub Release 里的 wheel（U-62）。不自动部署：管理员下载包后执行 `maestroctl update`。布局是系统级的（U-13）：
+发布形式是压缩包（`tools/build_release.py` 生成），由包内只用系统 Python 标准库的 `maestroctl` 安装和维护（U-29）。根 `pyproject.toml` 是权威版本，服务运行时从安装元数据读取，SDK 包声明与契约由准备入口同步；Runner 独立版本不变。维护者用 `tools/release.py` 从固定 dev 提交准备正式候选、发布说明与下一开发版本，最终 SHA 完整检查后才快进 master 并创建固定附注 tag（U-66）。
+
+所有分支 push 检查源码，PR 复用对应提交结果；正式 tag 读取准确 SHA 的成功 `verify` 任务及必需步骤，独立 `publish` 任务构建和验证实际 wheel，上传失败不改变源码检查结论（U-67）。dev 通过后发 Gitea 预览，正式 tag 发 Gitea Release 与同版本 SDK 包；GitHub 从相同 tag 重建并验证 Release，再更新 Pages 正式 SDK 索引（U-42、U-62）。预览 Release 与 `.dev<CI运行号>` SDK 各留最近 10 个，正式版不清理。
+
+包附 SDK wheel、许可证清单与 `SHA256SUMS`，manifest 固定源码 SHA 与文件摘要；构建输入锁定、归档元数据规范化，同一输入可重建。发布先准备草稿，附件齐全后公开；缺失补传，同摘要跳过，异摘要或 tag 改指向则停止。两端附件、SDK 包仓库和 Pages 全部核对后，正式准备与下一开发版本一起推回 dev，保留并发提交。各渠道没有原子事务，入口按实际状态续跑，不把部分成功报告为完成。操作见[发布指南](../guides/releasing.md)。不自动部署：管理员下载包后执行 `maestroctl update`。
+
+布局是系统级的（U-13）：
 
 ~~~text
 /opt/maestro/versions/<build>/      程序（服务 venv，网页在服务包内）、该版本的 maestroctl、RELEASE.json

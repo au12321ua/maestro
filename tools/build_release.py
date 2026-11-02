@@ -21,15 +21,17 @@ changes: ``sdk/pyproject.toml`` is restored right after the build.
 """
 
 import argparse
+import gzip
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
 import sys
 import tarfile
 import tempfile
-from datetime import UTC, datetime
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -45,7 +47,17 @@ def sha256(path: Path) -> str:
 
 def wheel(project: Path, out: Path) -> Path:
     before = set(out.glob("*.whl"))
-    sh("uv", "build", "--wheel", "--quiet", "--out-dir", str(out), cwd=project)
+    sh(
+        "uv",
+        "build",
+        "--wheel",
+        "--quiet",
+        "--build-constraint",
+        str(ROOT / "tools/build-constraints.txt"),
+        "--out-dir",
+        str(out),
+        cwd=project,
+    )
     (out / ".gitignore").unlink(missing_ok=True)  # uv marks its output directories
     (built,) = set(out.glob("*.whl")) - before
     return built
@@ -81,6 +93,27 @@ def requirements(project: Path, target: Path) -> None:
     target.write_text(text)
 
 
+def reproducible_tar(top: Path, target: Path, epoch: int):
+    """Normalize gzip header and tar metadata, including directories and executable modes."""
+    with (
+        target.open("wb") as raw,
+        gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=epoch) as compressed,
+        tarfile.open(fileobj=compressed, mode="w", format=tarfile.PAX_FORMAT) as archive,
+    ):
+        for path in [top, *sorted(top.rglob("*"))]:
+            info = archive.gettarinfo(str(path), str(path.relative_to(top.parent)))
+            info.uid = info.gid = 0
+            info.uname = info.gname = ""
+            info.mtime = epoch
+            info.pax_headers = {}
+            info.mode = 0o755 if path.is_dir() or path.name == "maestroctl" else 0o644
+            if path.is_file():
+                with path.open("rb") as content:
+                    archive.addfile(info, content)
+            else:
+                archive.addfile(info)
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", default=str(ROOT / "dist"))
@@ -91,6 +124,10 @@ def main(argv=None) -> int:
     parser.add_argument("--dev-number", type=int, help="SDK wheel as .devN instead of .dev0")
     args = parser.parse_args(argv)
 
+    if args.expect_version and not re.fullmatch(
+        r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)", args.expect_version
+    ):
+        parser.error("--expect-version must be a canonical formal X.Y.Z version")
     dirty = bool(sh("git", "status", "--porcelain").strip())
     if dirty and not args.allow_dirty:
         print("the working tree has uncommitted changes; commit them first", file=sys.stderr)
@@ -99,9 +136,10 @@ def main(argv=None) -> int:
         print("src/maestro/static is empty: run 'npm run build' in frontend/", file=sys.stderr)
         return 1
     commit = sh("git", "rev-parse", "HEAD").strip()
-    version = re.search(r'__version__ = "([^"]+)"', (ROOT / "src/maestro/__init__.py").read_text())[
-        1
-    ]
+    version = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
+    # Wheels and archives use the source commit's time, never the retry's wall clock.
+    epoch = int(sh("git", "show", "-s", "--format=%ct", "HEAD").strip())
+    os.environ["SOURCE_DATE_EPOCH"] = str(max(epoch, 315532800))
     if args.expect_version and args.expect_version != version:
         print(f"the code is version {version}, not {args.expect_version}", file=sys.stderr)
         return 1
@@ -164,7 +202,6 @@ def main(argv=None) -> int:
             "build": build,
             "commit": commit,
             "dirty": dirty,
-            "built_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "schema_head": head,
             "harbor_version": harbor,
             "runner_revision": runner_revision,
@@ -173,8 +210,7 @@ def main(argv=None) -> int:
         }
         (top / "RELEASE.json").write_text(json.dumps(info, indent=2, sort_keys=True) + "\n")
         package = out / f"maestro-{build}.tar.gz"
-        with tarfile.open(package, "w:gz") as archive:
-            archive.add(top, arcname=top.name)
+        reproducible_tar(top, package, epoch)
         if args.assets:
             shutil.copy2(sdk_wheel, out / sdk_wheel.name)
             shutil.copy2(licenses, out / licenses.name)

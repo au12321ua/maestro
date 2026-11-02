@@ -12,7 +12,10 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    concurrency:
+      group: release-${{ github.ref }}
+      cancel-in-progress: false
+    timeout-minutes: 30
     permissions:
       contents: write
     steps:
@@ -35,16 +38,17 @@ jobs:
           (cd frontend && npm ci --no-audit --no-fund --ignore-scripts)
       - name: Build
         run: |
+          test "$(git cat-file -t "$GITHUB_REF_NAME")" = tag
           if ! git merge-base --is-ancestor HEAD origin/master; then
             echo "$GITHUB_REF_NAME is not on master"; exit 1
           fi
           uv run python tools/build_release.py --assets --expect-version "${GITHUB_REF_NAME#v}" --out dist
-          previous="$(git describe --tags --abbrev=0 --match 'v*' HEAD^ 2>/dev/null || true)"
-          git log --format='- %s (%h)' ${previous:+"$previous..HEAD"} > "$RUNNER_TEMP/notes.md"
+          python3 -I tools/validate_release.py --dist dist --commit "$(git rev-parse HEAD)" --expect-version "${GITHUB_REF_NAME#v}"
+          cp "docs/releases/$GITHUB_REF_NAME.md" "$RUNNER_TEMP/notes.md"
       - name: Publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --title "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md"
+        run: python3 -I tools/publish_release.py --github --dist dist --tag "$GITHUB_REF_NAME" --commit "$(git rev-parse HEAD)" --notes "$RUNNER_TEMP/notes.md"
   index:
     # GitHub Packages has no Python registry, so the SDK index is a static PEP 503 page
     # on GitHub Pages whose links point at the wheels in the releases. It is rebuilt from

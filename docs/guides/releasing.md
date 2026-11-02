@@ -2,35 +2,96 @@
 
 导航：[协作流程](development-workflow.md) · [开发验证](testing.md) · [部署维护](deployment.md)
 
-本页维护发布者的操作流程、版本规则与包仓库设置；使用者的安装和维护步骤见部署指南。
+维护者用 `tools/release.py` 准备、核查和续跑发布。用户只需说明“把 dev 的 `<commit>` 发布为 `<X.Y.Z>`”；Agent 负责下面的步骤及相应验收。发布不会更新服务器，部署单独执行。
 
-## 自动发布
+## 版本、tag 与发布物
 
-推送到 `dev` 且通过后，同一个 job 的最后两步把发布包发成 Gitea 预发布（tag `dev-<提交前 12 位>`，保留最近 10 个），把 SDK 发到 Gitea 的 Python 包仓库（`<版本>.dev<CI 运行号>`，保留最近 10 个）；`master` 上的 `v*` tag 再完整跑一遍，发成正式版本。写令牌只交给这两步（发 Release 用 job 自带的令牌，发包用仓库 secret `PACKAGE_TOKEN`），它们只运行标准库写的上传脚本。GitHub 上的 `.github/workflows/release.yml` 只在推送 tag 时从同一个 tag 构建、发 Release，再重建 Pages 上的 SDK 索引，不跑测试（U-42、U-62）。
+根 `pyproject.toml` 是唯一权威版本。服务运行时从安装元数据读取版本；SDK 的包声明由 `tools/version.py` 同步，CI 检查漂移，SDK 独立安装。该命令还更新锁文件、OpenAPI、SDK 模型与契约摘要、网页类型。摘要仍覆盖整个 OpenAPI，版本变化也需要生成。Runner 的版本独立，不跟随服务；网页没有独立产品版本。
 
-## 发布与运行版本
+`vX.Y.Z` 是指向最终发布提交的附注 tag，不会修改源码中的版本。正式源码必须已经是 `X.Y.Z`，完整检查也必须针对这一个 SHA。共享后 tag 固定，Release 与包仓库的同版本文件也固定：缺少的补传，摘要相同的跳过，摘要不同的停止；不通过删 tag 或替换附件修复内容错误，应发新版本。
 
-1. 选定 `dev` 的固定候选提交，完成该版本需要的验证；之后若候选内容变化，补验受影响的部分。
-2. 把代码版本从 `.dev0` 改成正式版本号，将已验收候选集成到 `master`（`master` 是 `dev` 的祖先时快进合入），为最终发布提交创建不再移动的版本 tag（例如 `v0.4.0`），推送到 Gitea。CI 对 tag 再完整跑一次，核对 tag 在 `master` 上且等于代码版本，然后发布到 Gitea Releases，并把 SDK 以同一版本发到 Gitea 的 Python 包仓库（见下文“SDK 包仓库”）。tag、包版本、前端构建产物与依赖锁对应同一发布。
-3. Gitea 上发布成功后，再把 `master` 与这个 tag 推到 GitHub；GitHub 只从 tag 构建并发布 Release，再更新 GitHub Pages 上的 SDK 包索引，不跑测试（U-42、U-62，见下文“GitHub 上的 SDK 包索引”）。随后在 `dev` 上把版本改成下一个 `.dev0`。
-4. 发布包内的 `RELEASE.json` 记录发布提交、构建标识与数据库结构版本；CI 生成的发布说明只列出自上一个 tag 以来的提交；检查范围、未覆盖的限制与迁移要求由发布者在发布后到 Gitea 与 GitHub 的 Release 页补写。正式服务从独立发布目录启动，固定到 commit/tag；不通过部署目录的日常编辑或自动拉取来跟随 `dev`。`dev` 的预发布只用于试用。
-5. 服务state和外置主密钥独立于发布物。上线前核活动任务、资源与所有写者，按当时版本的维护说明执行合适的升级和恢复步骤（运维见设计 [12](../design/12-operations.md)）。
+构建工具及其依赖由 `tools/build-constraints.txt` 固定，安装依赖由两个 `uv.lock` 与 `frontend/package-lock.json` 固定。wheel 使用提交时间，tar/gzip 按固定顺序、时间、权限与所有者归档；每次执行时间留在 Actions 中。`RELEASE.json` 保存源码 SHA、版本、数据库结构、Runner 修订和文件摘要。正式产物的构建环境是 Linux、Python 3.12、Node 24 与工作流固定的 uv；两端构建相同 tag 并核对附件摘要。
 
-数据库升级后的回退需要单独说明数据兼容或恢复路径；代码回退不代表state可以回退。旧备份不能覆盖后来新增的业务数据。
+## 准备可审阅的候选
 
-### SDK 包仓库
+先取得本次变更需要的验收和发布说明。说明应列出用户可见变化、破坏性变更、迁移要求、实际验证与未覆盖范围；在公开前完成，不能只留提交列表后再补写。源码 CI 不代表真实 Docker、Hub、模型、系统安装等验收全部完成。
 
-SDK（`maestro-sdk`）随每次发布推送到仓库所有者在 Gitea 上的 Python 包仓库：上传地址 `<Gitea 地址>/api/packages/<所有者>/pypi`，安装用的索引 `<Gitea 地址>/api/packages/<所有者>/pypi/simple`。使用者按版本安装，不需要本仓库的检出（安装命令见 [SDK 说明](../../sdk/README.md)）。
+从干净的开发检出执行，原工作区不切分支；路径按本次任务选择：
 
-- **版本**：正式发布与代码版本相同（如 `0.4.0`）。`dev` 的每次预发布是 `<版本>.dev<CI 运行号>`，例如代码版本 `0.4.1.dev0`、运行号 1234 时为 `0.4.1.dev1234`：运行号只增不减，按 PEP 440 排在下一个正式版本之前；重跑同一次运行沿用原来的运行号。版本只写进 CI 构建出的 wheel，不提交；同一次预发布在 Releases 里附带的也是这个 wheel。包仓库不接受本地版本（`+…`），所以不用提交哈希作版本。
-- **保留**：`.devN` 版本只保留最近 10 个，由发包脚本在上传后删除更早的；正式版本从不删除。已发布的文件不会被替换：重跑时文件已在且 SHA-256 相同就跳过，不同就失败（wheel 是可复现构建，同一提交得到同样的文件）。
-- **推送令牌**：仓库 secret `PACKAGE_TOKEN`，只给 `write:package` 权限。所有者是组织时，令牌属于一个专用账号，该账号所在的团队对“软件包”有写权限；所有者是个人时只能用该个人的令牌。不用 job 自带的令牌，因为它能否写所有者的包取决于 Gitea 版本与配置。没有设置这个 secret 时，`dev` 的推送只给出警告、不发包，`v*` tag 的发布失败；补上 secret 后重跑即可，Release 与包都按上面的规则续上。
-- **读取**：所有者在 Gitea 上公开时，任何人可以匿名安装；不公开时，使用者用只有 `read:package` 权限的令牌经 `~/.netrc` 读取（见 [SDK 说明](../../sdk/README.md#安装与连接)）。
+```bash
+git fetch origin
+python3 tools/release.py prepare --commit <完整dev提交> --version X.Y.Z \
+  --notes /tmp/release-notes.md --worktree /tmp/maestro-release-X.Y.Z
+```
 
-### GitHub 上的 SDK 包索引
+命令核对所选提交属于远端 dev、master 可以安全快进、两端没有已用 tag，然后创建两条短期分支及独立 worktree：
 
-GitHub Packages 不支持 Python 包，PyPI 上的 `maestro-sdk` 已被别人占用，所以 GitHub 上的 SDK 由 GitHub Pages 上的静态索引提供（U-62）：`.github/workflows/release.yml` 发完 Release 后，下载所有正式 Release 附带的 SDK wheel，用 `tools/package_index.py` 写出 PEP 503 索引（链接指向 Release 里的文件并带 SHA-256），部署到 Pages。安装用的索引是 `https://<所有者>.github.io/<仓库>/simple`，与 Gitea 包仓库的用法相同；这里只有正式版本，`dev` 的预发布只在 Gitea 上。
+| 分支 | 内容 |
+| --- | --- |
+| `release/vX.Y.Z` | 在所选业务提交上增加正式版本、生成物和已审阅说明 `docs/releases/vX.Y.Z.md`；这是需要验证和打 tag 的最终 SHA |
+| `release/vX.Y.Z-next` | 包含正式候选，再增加下一开发版本与生成物；worktree 停在这里，供提前审阅收尾差异 |
 
-- **第一次发布前**在 GitHub 仓库的 Settings → Pages 把 Source 选为 “GitHub Actions”；没选时 Release 照常发布，`index` 这个 job 失败，选好后重跑这个 job 即可。私有仓库的 Pages 需要付费套餐。
-- 不需要令牌：job 用自带的 `GITHUB_TOKEN` 读 Release，用 Pages 的 OIDC 部署。
-- 索引每次从全部正式 Release 重建，所以旧版本一直可以安装；删除一个 Release 后，下一次发布的索引里就没有它了。第一个进索引的是 0.4.0；没有附带 SDK wheel 的 Release 跳过。
+下一版本默认是下一补丁的 `.dev0`，可用 `--next-version X.Y.Z.dev0` 明确指定，必须晚于正式版本。所选业务 SHA 与正式候选 SHA 会同时输出，dev 后续推进不会暗中扩大候选。失败时保留 worktree；修复或核对现场后再操作，不重置已有文件。准备需要 uv、npm 及下载依赖的网络环境。
+
+审阅两个提交、发布说明和该次验收范围后，推送准备的分支：
+
+```bash
+git diff <业务SHA> release/vX.Y.Z
+git diff release/vX.Y.Z release/vX.Y.Z-next
+git push origin release/vX.Y.Z release/vX.Y.Z-next
+```
+
+分支 push 自动运行完整检查。若新分支没有触发运行、提交只有文档，或需要重新验证，在 Actions 页手动对候选分支运行 `verify`，也可执行下列补验入口。它不会发布正式包：
+
+```bash
+python3 tools/release.py verify --version X.Y.Z
+python3 tools/release.py status --version X.Y.Z
+```
+
+`verify/status/publish` 读取环境中的 `GITEA_API`（`<server>/api/v1`）、`GITEA_REPO`（`<owner>/<repo>`）、`GITEA_TOKEN`、`GITHUB_REPOSITORY` 与 `GH_TOKEN`。使用现有安全凭据来源注入，勿写入命令记录、说明或仓库。查询需读取 Actions、Release 和包仓库；补验与 `--retry` 还需调用 Actions dispatch/rerun。Git 推送沿用远端自己的身份。默认远端为 `origin`、`github`，可以通过命令参数指定。
+
+## 发布与续跑
+
+最终候选成功、差异与发布说明已经审阅，并完成本次其他验收后执行：
+
+```bash
+python3 tools/release.py publish --version X.Y.Z \
+  --finish-worktree /tmp/maestro-release-X.Y.Z-finish
+```
+
+入口按以下事实推进，缺一步都不报告完成：
+
+1. 从本仓库 `verify.yml` 的分支 push 或手动运行中，找到准确 SHA 的 `verify` 任务及所有必需检查步骤成功记录，打印原运行链接。旧 SHA、其他工作流、失败或跳过的检查不能代用；上传失败不影响独立的源码检查结论。
+2. 核对源码版本、下一开发版本、发布说明与两端 tag；用普通快进推送推进 Gitea master，再创建、推送附注 tag。master 并发变化无法安全快进时停止，不强推或额外引入其他改动。
+3. Gitea 的 tag 任务重新核对上述源码检查、tag 类型与 master 祖先关系，然后自行构建、校验 manifest/摘要，在临时 HOME 和全新环境中安装实际 wheel。检查服务、SDK 元数据、导入路径、必要入口、包内页面及 SDK 附件一致性，不操作已有 state。SDK 先发布到包仓库，Release 附件齐全后才公开草稿。
+4. 等 Gitea 成功后向 GitHub 推送相同 master 和 tag。GitHub 从同一 tag 重建、校验、通过草稿补齐 Release，再单独重建 Pages 索引，不重复源码测试。
+5. 核对两端附件实际下载摘要、SDK 包仓库和 Pages 索引的 wheel 摘要，再将正式准备及下一开发版本一起快进推到 dev。dev 有后续提交时，在 `--finish-worktree` 中合并保留它们；冲突保留现场，解决并提交后重跑。远端 dev 的头不会短暂停在正式版本。
+
+默认等待 30 分钟，`--timeout` 可调整。超时或网络失败后重复同一命令继续。上传或 Pages job 失败时先检查日志、修复环境/权限，再加 `--retry` 只重跑失败任务；源码检查不会因此重复。Pages 失败只补索引，dev 收尾失败只续收尾。状态来自 Git、Actions、Releases、包仓库与 Pages，无额外发布状态库。自定义 Pages 域名用 `--pages-url` 指定 SDK 项目索引页。
+
+若换机器续跑，先 fetch 两条准备分支及 tag；本地与远端准备分支不同会停止，须先核对。源码或正式文件确需修改时，应准备新候选、新版本。准备与收尾 worktree 和短期分支按协作流程核对后清理，不自动删除可能含冲突或草稿的目录。
+
+## CI 分工
+
+| 事件 | 检查与发布 |
+| --- | --- |
+| 任意分支 push | `verify` 完整检查；纯 Markdown 例外保留，`skills/` 与 `sdk/README.md` 仍检查 |
+| PR 创建/更新 | 不再触发另一轮测试，使用本仓库 head 提交的 push 结果；不在宿主 runner 自动执行外部 fork |
+| 合并产生新 SHA | 按 push 检查新提交；旧结果不能代用 |
+| dev 检查通过 | 独立 `publish` 任务构建、验证、上传预览版 |
+| v* tag | 跳过源码任务，`publish` 读取准确 SHA 的完整检查结果并验证实际交付物 |
+| 手动 verify | 完整检查明确候选，不自动发布 |
+
+直接 push 的检查发生在更新之后，失败不会撤销分支。实施时核实的 Gitea 1.27.1 未配置分支保护；合入前仍人工核对固定候选与最新目标，不能声称 CI 阻止了直接推送。需要改变保护规则时另行配置，并保留文档免检边界。发布任务按 ref 串行，构建环境独立初始化，不依赖跨任务 artifact 传输。同一 SHA 跨分支偶尔重复检查可以接受。
+
+## 开发预览与 SDK 包仓库
+
+dev 使用 `.dev0` 基础版本，Gitea Release 为 `dev-<SHA前12位>`；SDK 在构建时暂用 `.dev<CI运行号>`，例如 `0.4.1.dev1234`。重跑同一运行沿用原号，工作区声明会恢复，Release 附带的也是同一个 SDK wheel。预览 Release 和 `.devN` 包各保留最近 10 个；正式版不参与清理。
+
+SDK 上传地址是 `<Gitea>/api/packages/<所有者>/pypi`，读取索引是同路径下的 `/simple`。正式 SDK 版本与源码相同。仓库 secret `PACKAGE_TOKEN` 只给上传步骤，使用具有所有者包写权限、`write:package` scope 的账号；不假定 job token 能写所有者包。缺失时预览警告并跳过包上传，正式发布失败；补齐后重跑发布任务即可。读取私有包需要 `read:package` 权限。用户安装入口仍见 [SDK 说明](../../sdk/README.md)。
+
+## GitHub Pages 索引
+
+GitHub 不提供 Python 包仓库，`maestro-sdk` 的正式版通过 Pages 的 PEP 503 索引分发。`index` job 从全部公开正式 Release 下载 SDK wheel，生成带 SHA-256 的链接，地址为 `https://<所有者>.github.io/<仓库>/simple`。旧版本保留，早期没有 SDK wheel 的 Release 跳过，开发预览不进入索引。
+
+首次发布前在 GitHub Settings → Pages 将 Source 设为 GitHub Actions。Release 与 index 分成两个任务，Pages 失败不撤销 Release，可单独重跑 index；自带 `GITHUB_TOKEN` 读取 Release，OIDC 部署 Pages。发布后实际部署及数据库升级/恢复继续按[部署维护](deployment.md)执行，代码回退不代表 state 可以回退。

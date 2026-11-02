@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling>=1.27"]
+requires = ["hatchling==1.33.0"]
 build-backend = "hatchling.build"
 
 [project]
 name = "maestro-sdk"
-version = "0.4.0"
+version = "0.4.1.dev0"
 description = "Python client for the Maestro team experiment service"
 requires-python = ">=3.10"
 license = "Apache-2.0"

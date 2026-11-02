@@ -1,3 +1,5 @@
 """Maestro: a team experiment service built on Harbor."""
 
-__version__ = "0.4.0"
+from importlib.metadata import version
+
+__version__ = version("maestro")

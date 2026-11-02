@@ -22,9 +22,7 @@
 
 ### 已确认，待实施
 
-| 编号 | 提案 | 状态 | 要点 |
-| --- | --- | --- | --- |
-| N-27 | [发布流程与 CI 分工](N-27-release-workflow.md) | 已确认，待实施 | 源码决定版本、固定正式 tag；统一准备、验证、发布与收尾入口；所有分支 push 检查，PR 使用结果，tag 验证最终提交与产物；按阶段重试，不自动部署（U-66、U-67） |
+暂无。
 
 ### 由用户测试后再推进
 
@@ -64,6 +62,7 @@
 
 以下条目在归档规则生效前已删除正文，仅保留既有摘要。
 
+- [N-27 发布流程与 CI 分工](archive/N-27-release-workflow.md)（U-66、U-67）：统一准备与续跑、权威版本、push 检查、准确 SHA 发布门禁、固定产物与开发版本收尾 → [12](../design/12-operations.md)、[发布指南](../guides/releasing.md)。
 - N-25 Agent 客户端（U-59～U-61）：skill 随 SDK 发布、推荐的工作区、从 git 提交发布附件、SDK 包仓库 → [10](../design/10-api-sdk-cli.md) 第 7 节、[03](../design/03-configuration-attachments.md) 第 6 节、E2E-RUN-06。
 - N-18 网页多语言（U-58）：中英文界面，英文为 AI 翻译、界面上注明 → [11](../design/11-web-ui.md) 第 1 节。
 - N-24 CI 稳定（U-43、U-57）：时限、重试、可选代理、并行 pytest、只改文档时跳过；主机一侧由用户解决 → [开发验证](../guides/testing.md)。
