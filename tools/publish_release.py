@@ -35,6 +35,7 @@ class Gitea:
         self.base = f"{api.rstrip('/')}/repos/{repo}"
         self.token = token
         self.github = github
+        self.repo = repo
 
     def request(self, method, url, data=None, content_type=None, accept="application/json"):
         headers = {"Authorization": f"Bearer {self.token}", "Accept": accept}
@@ -86,7 +87,16 @@ class Gitea:
         if self.github:
             url = self.base + f"/releases/assets/{asset['id']}"
         else:
-            url = asset["browser_download_url"]
+            # Runners may use an internal API address while Gitea advertises its
+            # public ROOT_URL. Keep downloads on the configured server, preserving
+            # its own subpath, and accept only this repository's release route.
+            advertised = urllib.parse.urlsplit(asset["browser_download_url"])
+            prefix = f"/{urllib.parse.quote(self.repo, safe='/')}/releases/download/"
+            start = advertised.path.find(prefix)
+            if start < 0:
+                raise SystemExit("unexpected release download path")
+            server = self.base.split("/api/v1/repos/", 1)[0]
+            url = server + advertised.path[start:]
         # Only send credentials to the configured API's host. Redirects strip them too.
         if urllib.parse.urlsplit(url).netloc != urllib.parse.urlsplit(self.base).netloc:
             raise SystemExit("release download points outside the configured server")

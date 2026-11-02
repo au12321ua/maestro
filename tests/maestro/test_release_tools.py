@@ -108,6 +108,8 @@ class FakeGitea(BaseHTTPRequestHandler):
         s = self.state
         s["auth"].add(self.headers.get("Authorization"))
         path = self.path.removeprefix("/api/v1/repos/o/r")
+        if path.startswith("/o/r/releases/download/"):
+            path = path.removeprefix("/o/r")
         body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
         if method == "GET" and (m := re.fullmatch(r"/git/refs?/tags/(.+)", path)):
             sha = s["tags"].get(m[1])
@@ -122,7 +124,9 @@ class FakeGitea(BaseHTTPRequestHandler):
             data = json.loads(body)
             s["tags"][data["tag_name"]] = data["target"]
             return self._reply(201, {})
-        if method == "GET" and (m := re.fullmatch(r"/(?:download|releases/assets)/(\d+)", path)):
+        if method == "GET" and (
+            m := re.fullmatch(r"/(?:releases/download/[^/]+/|releases/assets/)(\d+)", path)
+        ):
             raw = s["contents"][int(m[1])]
             self.send_response(200)
             self.send_header("Content-Length", str(len(raw)))
@@ -171,7 +175,7 @@ class FakeGitea(BaseHTTPRequestHandler):
                 {
                     "id": asset_id,
                     "name": m[2],
-                    "browser_download_url": f"http://127.0.0.1:{self.server.server_port}/api/v1/repos/o/r/download/{asset_id}",
+                    "browser_download_url": f"https://public.example/o/r/releases/download/{release['tag_name']}/{asset_id}",
                 }
             )
             s["uploads"].append(m[2])
@@ -776,3 +780,28 @@ def test_dev_completion_never_pushes_a_formal_version(release_repo, tmp_path):
         release_tool.finish_dev(source, completion, args, repo)
     git("fetch", "origin")
     assert git("rev-parse", "origin/dev") == source
+
+
+def test_download_does_not_follow_an_unrelated_advertised_path():
+    client = publish.Gitea("https://internal.example/api/v1", "o/r", "secret")
+    with pytest.raises(SystemExit, match="unexpected release download path"):
+        client.asset_digest({"browser_download_url": "https://elsewhere.example/private"}, 1)
+
+
+def test_download_preserves_internal_server_subpath(monkeypatch):
+    import io
+
+    client = publish.Gitea("https://internal.example/gitea/api/v1", "o/r", "secret")
+    seen = []
+
+    def request(method, url, **kwargs):
+        seen.append(url)
+        return io.BytesIO(b"asset")
+
+    monkeypatch.setattr(client, "request", request)
+    result = client.asset_digest(
+        {"browser_download_url": "https://public.example/other/o/r/releases/download/v1/wheel.whl"},
+        1,
+    )
+    assert result == hashlib.sha256(b"asset").hexdigest()
+    assert seen == ["https://internal.example/gitea/o/r/releases/download/v1/wheel.whl"]
