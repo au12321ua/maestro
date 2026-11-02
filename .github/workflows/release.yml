@@ -32,7 +32,7 @@ jobs:
       - name: Environments for the package and the license list
         # The web pages are built and committed, so npm only provides the license texts.
         run: |
-          python -m pip install uv==0.13.5
+          python -m pip install uv==0.11.31
           uv sync --locked
           (cd runner && uv sync --locked)
           (cd frontend && npm ci --no-audit --no-fund --ignore-scripts)

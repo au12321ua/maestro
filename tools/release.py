@@ -404,7 +404,7 @@ def main(argv=None):
     else:
         git("fetch", args.remote)
         sha, completion = candidate_refs(args.version, args.remote)
-        client, mirror = clients()
+        client = Gitea(os.environ["GITEA_API"], os.environ["GITEA_REPO"], os.environ["GITEA_TOKEN"])
         if args.command == "verify":
             branch = branches(args.version)[0]
             if resolve(f"{args.remote}/{branch}") != sha:
@@ -414,6 +414,12 @@ def main(argv=None):
             client.call("POST", "/actions/workflows/verify.yml/dispatches", {"ref": branch})
             print(f"verification requested for {sha} on {branch}")
         else:
+            mirror = Gitea(
+                "https://api.github.com",
+                os.environ["GITHUB_REPOSITORY"],
+                os.environ["GH_TOKEN"],
+                github=True,
+            )
             tag = f"v{args.version}"
             print(
                 json.dumps(

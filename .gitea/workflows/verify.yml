@@ -50,7 +50,7 @@ jobs:
           echo "HOME=$RUNNER_TEMP/home" >> "$GITHUB_ENV"
           echo "UV_PYTHON=${{ steps.python.outputs.python-path }}" >> "$GITHUB_ENV"
           echo "UV_PYTHON_DOWNLOADS=never" >> "$GITHUB_ENV"
-          python -m pip install uv==0.13.5
+          python -m pip install uv==0.11.31
       - name: Service and Runner environments
         timeout-minutes: 15
         run: |
@@ -135,7 +135,7 @@ jobs:
           echo "HOME=$RUNNER_TEMP/home" >> "$GITHUB_ENV"
           echo "UV_PYTHON=${{ steps.python.outputs.python-path }}" >> "$GITHUB_ENV"
           echo "UV_PYTHON_DOWNLOADS=never" >> "$GITHUB_ENV"
-          python -m pip install uv==0.13.5
+          python -m pip install uv==0.11.31
       - name: Build dependencies
         timeout-minutes: 15
         run: |

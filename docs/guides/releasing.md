@@ -10,7 +10,7 @@
 
 `vX.Y.Z` 是指向最终发布提交的附注 tag，不会修改源码中的版本。正式源码必须已经是 `X.Y.Z`，完整检查也必须针对这一个 SHA。共享后 tag 固定，Release 与包仓库的同版本文件也固定：缺少的补传，摘要相同的跳过，摘要不同的停止；不通过删 tag 或替换附件修复内容错误，应发新版本。
 
-构建工具及其依赖由 `tools/build-constraints.txt` 固定，安装依赖由两个 `uv.lock` 与 `frontend/package-lock.json` 固定。wheel 使用提交时间，tar/gzip 按固定顺序、时间、权限与所有者归档；每次执行时间留在 Actions 中。`RELEASE.json` 保存源码 SHA、版本、数据库结构、Runner 修订和文件摘要。正式产物的构建环境是 Linux、Python 3.12、Node 24 与工作流固定的 uv；两端构建相同 tag 并核对附件摘要。
+构建工具及其依赖由 `tools/build-constraints.txt` 固定，安装依赖由两个 `uv.lock` 与 `frontend/package-lock.json` 固定。wheel 使用提交时间，tar/gzip 按固定顺序、时间、权限与所有者归档；每次执行时间留在 Actions 中。`RELEASE.json` 保存源码 SHA、版本、数据库结构、Runner 修订和文件摘要。正式产物的构建环境是 Linux、Python 3.12、Node 24 与uv 0.11.31；两端构建相同 tag 并核对附件摘要。
 
 ## 准备可审阅的候选
 
