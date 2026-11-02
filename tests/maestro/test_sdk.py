@@ -1,4 +1,4 @@
-"""The Python SDK (M7): the three stories walked by an agent through the SDK only.
+"""The Python SDK: the three stories walked by an agent through the SDK only.
 
 Each story test uses nothing but ``maestro_sdk`` with a PAT (the administrator's part of
 the precondition uses the web session, as in the scenarios). The SDK talks to the real
@@ -44,7 +44,7 @@ def sdk(api, http=None) -> MaestroClient:
     return MaestroClient("http://testserver", api.token, http=http or api.client)
 
 
-# --- story one: datasets (E2E-DS-03) ----------------------------------------------------
+# --- story one: datasets ----------------------------------------------------
 
 
 def test_story_one_agent_reads_the_catalog_and_runs_on_a_cold_cache(service, source):
@@ -67,7 +67,7 @@ def test_story_one_agent_reads_the_catalog_and_runs_on_a_cold_cache(service, sou
             assert listed.admission.state == "admitted" and listed.can_submit
             assert listed.local_preparation.cache_state == "stale"
             assert [s.kind for s in pat.catalog.sources()] == ["fake"]
-            # Searching the external source and administering are not SDK business (U-20).
+            # Searching the external source and administering are not SDK business.
             with pytest.raises(ApiError) as denied:
                 pat._call("GET", "dataset-search", params={"q": "solo", "source_kind": "fake"})
             assert denied.value.status == 403
@@ -87,7 +87,7 @@ def test_story_one_agent_reads_the_catalog_and_runs_on_a_cold_cache(service, sou
         assert preparation.cache_state == "ready" and preparation.pins == []
 
 
-# --- story two: runs (E2E-RUN-01) -------------------------------------------------------
+# --- story two: runs -------------------------------------------------------
 
 
 def test_story_two_agent_runs_a_complete_experiment(service, version_id, executor, tmp_path):
@@ -183,7 +183,7 @@ def test_client_timeout_does_not_cancel_the_run(service, version_id, executor):
         assert agent.operations.wait(submitted.operation_id, interval=0.02).status == "cancelled"
 
 
-# --- story three: query and export (E2E-OUT-01) ----------------------------------------
+# --- story three: query and export ----------------------------------------
 
 
 def test_story_three_agent_queries_and_exports(service, version_id, executor, tmp_path):
@@ -256,7 +256,7 @@ class LoseFirstAnswer(httpx.BaseTransport):
 
 
 def test_a_lost_answer_is_retried_under_the_same_key(service, version_id):
-    """E2E-RUN-02's lost response: one run, one unit of quota, the original answer."""
+    """A lost response: one run, one unit of quota, the original answer."""
     with running(service) as client:
         admin = setup_admin(service, client)
         pat = create_pat(admin, "experiment", run_limit=2)
@@ -635,7 +635,7 @@ def test_sdk_imports_without_the_service():
 
 
 def test_generated_contract_and_sdk_models_are_current():
-    """F-20: changing the API without regenerating fails here (web types: npm check:api)."""
+    """Changing the API without regenerating fails here (web types: npm check:api)."""
     result = subprocess.run(
         [sys.executable, str(ROOT / "tools" / "generate_clients.py"), "--check"],
         capture_output=True,

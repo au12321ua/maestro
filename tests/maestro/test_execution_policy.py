@@ -1,4 +1,4 @@
-"""Platform error policy and the Harbor 0.24.0 mapping (06 section 3, U-15)."""
+"""Platform error policy and the Harbor 0.24.0 mapping."""
 
 import pytest
 

@@ -9,7 +9,7 @@ from maestro_sdk.errors import BlockersPresent
 
 
 class Resolution(models.ConfigResolution):
-    """A configuration resolution with the check the design calls for (10 section 7)."""
+    """A resolved configuration with a guard against submission blockers."""
 
     def raise_for_blockers(self) -> Resolution:
         if self.blockers:

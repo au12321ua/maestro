@@ -1,4 +1,4 @@
-"""Build the static Python package index of the SDK for GitHub Pages (U-62). Standard
+"""Build the static Python package index of the SDK for GitHub Pages. Standard
 library only.
 
     python3 tools/package_index.py --wheels <dir> --base-url <url> --out <site>

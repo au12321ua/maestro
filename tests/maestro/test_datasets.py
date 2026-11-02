@@ -1,4 +1,4 @@
-"""Story one over HTTP with fake source and environment: E2E-DS-01 to DS-03."""
+"""Dataset import, partial admission and catalog access over HTTP with fake boundaries."""
 
 import uuid
 
@@ -84,7 +84,7 @@ def test_ds01_import_fixes_content_and_reimport_is_idempotent(service, source):
         datasets = member.get("/api/v1/datasets").json()["data"]
         assert [len(d["versions"]) for d in datasets] == [1]
 
-        # A moved tag is not silently replaced (F-11); confirming makes a new version.
+        # A moved tag is not silently replaced; confirming makes a new version.
         source.add("demo", "arith", "v1", ["add-01", "add-02", "mul-01"], revision="b")
         moved = import_dataset(admin)
         assert moved["status"] == "failed"

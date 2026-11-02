@@ -1,4 +1,4 @@
-"""06 sections 5-8: counts, coverage and statistics from trial records."""
+"""Counts, coverage and statistics from trial records."""
 
 import math
 

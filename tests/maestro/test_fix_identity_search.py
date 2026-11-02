@@ -1,7 +1,7 @@
 """Review fix: searching the external Hub is an administrator web-session action.
 
 Listing what is already in the platform stays readable by every signed-in caller;
-importing was always admin only (U-20).
+importing was always admin only.
 """
 
 import asyncio

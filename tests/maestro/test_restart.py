@@ -1,4 +1,4 @@
-"""Restart reconciliation (05 section 8) and Runner process identity."""
+"""Restart reconciliation and Runner process identity."""
 
 import asyncio
 import signal

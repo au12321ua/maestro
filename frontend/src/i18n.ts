@@ -1,4 +1,4 @@
-// Web UI languages (N-18). Every text shown in the interface lives in src/locales/<lang>/*.json;
+// Web UI languages. Every text shown in the interface lives in src/locales/<lang>/*.json;
 // components call t("<file>.<key>"). The language is fixed for the page's lifetime: switching
 // stores the choice and reloads, so labels computed at module load (lib/format.ts) are right.
 import i18next from "i18next";
@@ -82,7 +82,7 @@ function stored(): Language | null {
   }
 }
 
-/** The stored choice, else the browser's: Chinese for any zh-*, English otherwise (U-58). */
+/** The stored choice, else the browser's: Chinese for any zh-*, English otherwise. */
 function detect(): Language {
   const choice = stored();
   if (choice) return choice;

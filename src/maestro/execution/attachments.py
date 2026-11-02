@@ -1,8 +1,8 @@
-"""Attachment snapshots (03 section 6): file contents by SHA-256, snapshots as file lists.
+"""Attachment snapshots: file contents by SHA-256, snapshots as file lists.
 
 A snapshot is a list of files (path, SHA-256, executable bit) holding ``manifest.json`` at
 its root; ``bootstrap.sh`` at the root is the install script each trial runs in its own
-container (03 section 7). Clients upload only the contents the store lacks, then commit
+container. Clients upload only the contents the store lacks, then commit
 the list: an unchanged file is never sent twice.
 
 Each content lives once under ``blobs/<hex>``, whichever snapshots share it, and each
@@ -32,10 +32,10 @@ MANIFEST = "manifest.json"
 BOOTSTRAP = "bootstrap.sh"
 MANIFEST_MAX_BYTES = 64 * 1024
 EFFECTS = ("model_call", "agent_tools", "task_environment", "verifier", "scoring")
-# Packages that change verification or scoring form a different scoring contract
-# (03 section 6); P0 has no such contract, so they are refused at upload.
+# Packages that change verification or scoring form a different scoring contract;
+# none is available yet, so they are refused at upload.
 SUPPORTED_EFFECTS = ("model_call", "agent_tools", "task_environment")
-# Manifest fields of the design that P0 does not implement; refused rather than ignored.
+# Unsupported manifest fields are refused rather than ignored.
 UNSUPPORTED_FIELDS = ("parameter_schema", "entrypoints", "load_order_requirements")
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")
 LABEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}")
@@ -387,7 +387,7 @@ class AttachmentStore:
     def discard_partial(self) -> int:
         """At start, before any upload: uploads and removals left by a process that
         stopped mid-way, half-built directories, and package directories from before
-        snapshots (N-06), whose rows the 0005 migration removed."""
+        snapshots, whose rows the 0005 migration removed."""
         removed = 0
         for entry in self.root.iterdir() if self.root.is_dir() else []:
             stale = entry.name.startswith((".upload-", ".receive-", ".remove-", ".archive-"))

@@ -1,4 +1,4 @@
-// Experiment plans (04 section 1): saved configurations the team shares. The creator edits;
+// Experiment plans: saved configurations the team shares. The creator edits;
 // others copy to change; the creator or an administrator archives or deletes.
 import { useState } from "react";
 import { Link } from "react-router-dom";

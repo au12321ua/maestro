@@ -1,4 +1,4 @@
-"""Run result summaries read from trial records (06 section 5).
+"""Run result summaries read from trial records.
 
 One loader for the run list, the run page, the summary endpoint and exports, so
 they all report the same counts for the same records.

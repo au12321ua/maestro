@@ -1,4 +1,4 @@
-"""Accounts, one-time setup, invitations, web sessions and authentication (09).
+"""Accounts, one-time setup, invitations, web sessions and authentication.
 
 Only admin and member roles exist. The first administrator is created through a
 one-time setup token issued by ``maestro init``; afterwards the setup entry stays

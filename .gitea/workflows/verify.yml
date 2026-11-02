@@ -1,31 +1,31 @@
-# Checks for every push (docs/HANDOFF.md, 验证入口): lint, Markdown links, the pytest suite
+# Checks for every push: lint, Markdown links, the pytest suite
 # without Docker, Hub or model requests (it includes the contract and SDK model drift
 # check), third-party licenses and the web build. A push to dev that passes them becomes a
-# prerelease, a v* tag on master a release (N-02), and the SDK goes to the Gitea Python
-# package registry with it (N-25); nothing is deployed.
+# prerelease, a v* tag on master a release, and the SDK goes to the Gitea Python
+# package registry with it; nothing is deployed.
 name: verify
 on:
   push:
     branches: ["**"]
     tags: ["v*"]
-    # Pushes that change only Markdown docs do not run (U-37, U-43). The SDK skill and
+    # Pushes that change only Markdown docs do not run. The SDK skill and
     # guide are checked by tests, so they still count. Tag pushes always run.
     paths: ["**", "!**.md", "skills/**", "sdk/README.md"]
   pull_request:
     paths: ["**", "!**.md", "skills/**", "sdk/README.md"]
   workflow_dispatch:
 # Publishing needs write access. Only the last two steps receive a token; the job's
-# artifact upload could not reach Gitea from the host runner (N-24), so the release is
+# artifact upload could not reach Gitea from the host runner, so the release is
 # published from the same job instead of a separate one.
 permissions:
   contents: write
 env:
-  # Downloads that hang fail fast and are retried instead of using up the job (N-24).
+  # Downloads that hang fail fast and are retried instead of using up the job.
   UV_HTTP_TIMEOUT: "60"
   UV_HTTP_RETRIES: "5"
   npm_config_fetch_timeout: "60000"
   npm_config_fetch_retries: "5"
-  # Optional proxy for dependency downloads only (repository variable, N-24).
+  # Optional proxy for dependency downloads only (repository variable).
   CI_PROXY: ${{ vars.CI_PROXY }}
 jobs:
   verify:
@@ -147,7 +147,7 @@ jobs:
       - name: Publish the SDK to the package registry
         if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref_type == 'tag') }}
         # PACKAGE_TOKEN: a token with only the write:package scope from an account that may
-        # write the owner's packages (docs/guides/development-workflow.md).
+        # write the owner's packages.
         env:
           GITEA_URL: ${{ github.server_url }}
           GITEA_OWNER: ${{ github.repository_owner }}

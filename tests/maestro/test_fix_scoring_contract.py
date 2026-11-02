@@ -1,4 +1,4 @@
-"""Review fixes for 06 sections 2, 5 and 7: contracts the maths can honour, exact
+"""Scoring contracts: contracts the maths can honour, exact
 statistics, started-only usage counts and the planned = S + F + E + U identity."""
 
 import io
@@ -206,7 +206,7 @@ def test_usage_counts_only_trials_that_have_started():
     assert waiting["usage"] == {"known_trials": 0, "unknown_trials": 0, "known_totals": {}}
 
 
-# --- 4. the identities of 06 section 5/6 -----------------------------------------------
+# --- 4. accounting identities for terminal and active runs -----------------------------------------------
 
 STATES = [state.value for state in TrialState]
 

@@ -1,4 +1,4 @@
-"""Idempotency records scoped by principal + action + key (10 section 5, C1).
+"""Idempotency records scoped by principal + action + key.
 
 Callers look up and store inside the same write transaction that creates the
 resource, so a retried request either sees the stored response or does the work
@@ -61,7 +61,7 @@ def lookup(conn: Connection, principal_id: str, action: str, key: str, req_hash:
     if row is None:
         return None
     if row["expires_at"] <= clock.to_text(clock.now()):
-        # Expired keys may create new work (10 section 5); drop the old record.
+        # Expired keys may create new work; drop the old record.
         conn.execute(delete(t.idempotency_records).where(t.idempotency_records.c.id == row["id"]))
         return None
     if row["request_hash"] != req_hash:

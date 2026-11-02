@@ -1238,7 +1238,7 @@ async function healthProbe(path: string): Promise<Health | { error: string }> {
 }
 
 /**
- * 11 section 5: process alive, accepting runs and a specific run being blocked are separate.
+ * Process alive, accepting runs and a specific run being blocked are separate.
  * P0 has no update, drain, backup or restore here; those are not shown as buttons.
  */
 function MaintenanceTab() {

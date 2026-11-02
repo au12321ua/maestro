@@ -1,4 +1,4 @@
-"""P0 acceptance gaps (13 sections 4-7): F-02, F-03, F-07, F-21, F-23 / DS-05, F-26."""
+"""Acceptance races, cleanup failures, cache restoration and revoked admission."""
 
 import asyncio
 import shutil
@@ -186,7 +186,7 @@ def test_f21_rerun_after_cache_eviction_restores_by_digest(service, source, envi
 
 
 def content_gone(service, source, settings, client):
-    """A finished run, then its exact task content lost locally and upstream (DS-05)."""
+    """A finished run, then its exact task content lost locally and upstream."""
     admin, version_id, task = solo(service, source, client)
     member = invite_member(service, admin, "member")
     pat = create_pat(member, scope="experiment", run_limit=5)

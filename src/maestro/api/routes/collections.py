@@ -1,4 +1,4 @@
-"""Comparisons, collections and analysis snapshots (06 section 8).
+"""Comparisons, collections and analysis snapshots.
 
 Everyone reads and compares; members and experiment PATs keep collections up together,
 save snapshots and write notes; the creator or an administrator deletes.

@@ -1,4 +1,4 @@
-"""Business audit events (IAM-03). Written in the same transaction as the action.
+"""Business audit events. Written in the same transaction as the action.
 
 Never pass tokens, passwords or credential values in ``detail``.
 """

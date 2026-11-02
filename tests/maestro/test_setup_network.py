@@ -1,4 +1,4 @@
-"""The setup network (N-08): kept on the admin page as revisions, read when setup work
+"""The setup network: kept on the admin page as revisions, read when setup work
 starts. The proxy reaches the platform's image builds and setup in the task container
 (harness install, attachment scripts), its variables setup in the container only; the
 agent and the verifier get neither."""

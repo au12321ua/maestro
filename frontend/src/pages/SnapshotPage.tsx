@@ -1,4 +1,4 @@
-// A frozen comparison (06 section 8): its numbers never change; whether each run's files
+// A frozen comparison: its numbers never change; whether each run's files
 // still open is checked now. Notes are their authors', apart from the computed table.
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";

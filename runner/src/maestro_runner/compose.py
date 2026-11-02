@@ -13,7 +13,7 @@ COMPOSE_FILE = "docker-compose.yaml"
 
 
 def check_runtime(document: dict, where: str) -> None:
-    """Author mounts cannot reach the host (U-16); each service has one container.
+    """Author mounts cannot reach the host; each service has one container.
 
     Keep this policy in step with maestro.execution.compose.check_runtime: the service and
     Runner have independent dependencies, and the Runner also checks older admissions.

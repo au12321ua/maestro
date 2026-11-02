@@ -1,4 +1,4 @@
-"""Execution capacity (05 section 3, D-020): slots, CPU, memory and provider concurrency.
+"""Execution capacity: slots, CPU, memory and provider concurrency.
 
 A run reserves ``min(concurrency, trials) x per-trial resources`` as a whole when it
 is claimed and keeps the reservation until its resources are confirmed released, so

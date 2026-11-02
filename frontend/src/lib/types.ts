@@ -53,7 +53,7 @@ export type SourceVersionDetail = S["SourceVersionDetail"];
 export type ExecutionMode = S["ConfigRequest-Input"]["execution_mode"] & string;
 export type ParameterValue = string | S["CredentialRef"];
 
-/** A run configuration request (03) as sent: unset fields are inherited from the layer below. */
+/** A run configuration request as sent: unset fields are inherited from the layer below. */
 export type ConfigRequest = S["ConfigRequest-Input"];
 /** The same request as the service returns it (GET /runs/{run_id}/request). */
 export type ConfigRequestOutput = S["ConfigRequest-Output"];
@@ -85,7 +85,7 @@ export type HarnessAdapter = S["HarnessAdapter"];
 export type UpstreamVersions = S["UpstreamVersions"];
 
 export type AttachmentFile = S["AttachmentFile"];
-/** A published attachment snapshot (03 section 6); its content never changes. */
+/** A published attachment snapshot; its content never changes. */
 export type Attachment = S["Attachment"];
 export type AttachmentDiff = S["AttachmentDiff"];
 
@@ -127,7 +127,7 @@ export type PlanTemplate = S["PlanTemplate-Input"];
  *  run's request): the loosest shape, for filling the new-run form. */
 export type PartialRequest = S["PlanTemplate-Output"];
 
-/** Runs side by side (06 section 8), computed on demand; a snapshot holds a frozen one. */
+/** Runs side by side, computed on demand; a snapshot holds a frozen one. */
 export type Comparison = S["Comparison"];
 export type ComparedRunRow = S["ComparedRunRow"];
 export type ComparedTask = S["ComparedTask"];

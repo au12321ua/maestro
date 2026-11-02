@@ -1,4 +1,4 @@
-"""List the third-party licenses a release depends on (N-16).
+"""List the third-party licenses a release depends on.
 
     uv run python tools/third_party_licenses.py [--out THIRD_PARTY_LICENSES.md]
 

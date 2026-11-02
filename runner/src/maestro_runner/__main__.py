@@ -32,7 +32,7 @@ def _stop_with_parent() -> None:
 
 
 def hub_command(spec: dict) -> int:
-    """One catalog command; the answer is a single ``result`` event (02 section 4)."""
+    """One catalog command; the answer is a single ``result`` event."""
     from maestro_runner import hub
 
     command = hub.COMMANDS.get(spec.get("op"))
@@ -58,7 +58,7 @@ def hub_command(spec: dict) -> int:
 
 
 def probe_command() -> int:
-    """What the service checks before accepting a model run (M5 exit condition): the same
+    """What the service checks before accepting a model run (exit condition): the same
     test ``Execution`` applies before restricting a run's network, so acceptance and
     execution agree. Harbor's kernel check is optimistic when the kernel configuration
     cannot be read; the restriction itself is verified by the real-Docker tests."""

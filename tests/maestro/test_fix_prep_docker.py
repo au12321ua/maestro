@@ -1,6 +1,6 @@
 """Review fixes for the Docker preparation environment, against a fake docker client:
 failure classification, the author's build limit, the start-up sweeps and the local image
-registry (N-01). Nothing here starts Docker or a registry; real-Docker coverage stays in
+registry. Nothing here starts Docker or a registry; real-Docker coverage stays in
 test_harbor_docker.py (opt-in)."""
 
 import asyncio
@@ -383,7 +383,7 @@ def test_sweep_temporary_does_nothing_unbound_or_when_docker_fails(tmp_path, doc
 
 
 def test_sweep_legacy_removes_the_old_originals(tmp_path, environment):
-    """Originals from before the registry are not used again (U-54)."""
+    """Originals from before the registry are not used again."""
     assert environment.sweep_legacy() == []  # nothing there
     legacy = environment.legacy_dir
     legacy.mkdir()

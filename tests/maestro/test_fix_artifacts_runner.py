@@ -1,4 +1,4 @@
-"""Runner evidence handling under a hostile container (C-07 / U-16).
+"""Runner evidence handling under a hostile container.
 
 The trial's ``agent/`` and ``verifier/`` directories are mounted writable into the
 container, so a process in it can plant links and huge files there. The Runner must

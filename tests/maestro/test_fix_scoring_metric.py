@@ -1,4 +1,4 @@
-"""The confirmed scoring contract's metric selects the score (06 section 2).
+"""The confirmed scoring contract's metric selects the score.
 
 Before, the executor adapter always scored the ``reward`` key (or a lone value), so a
 contract naming ``accuracy`` labelled the summary accuracy while scoring something else.

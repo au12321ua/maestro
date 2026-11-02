@@ -1,4 +1,4 @@
-"""setup network revisions (N-08)
+"""setup network revisions
 
 Revision ID: 0002
 Revises: 0001

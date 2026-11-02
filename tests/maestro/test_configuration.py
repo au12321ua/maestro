@@ -1,5 +1,5 @@
-"""M5 configuration: team policy revisions, model configurations and harness versions,
-and the resolver shared by the resolution endpoint and run acceptance (03, 04)."""
+"""Configuration: team policy revisions, model configurations and harness versions,
+and the resolver shared by the resolution endpoint and run acceptance."""
 
 import uuid
 
@@ -244,7 +244,7 @@ def test_limits_block_instead_of_clamping_and_sources_explain_values(service, ve
             json={"values": {"agent_timeout_sec_max": 1500}, "expected_revision": 0},
             expect=200,
         )
-        # 03 section 3 example: an override over the team limit is an error, never 1500.
+        # An override over the team limit is an error, never 1500.
         over = resolve(admin, version_id, timeouts={"agent_sec": 1800})
         assert codes(over) == ["LIMIT_EXCEEDED"]
         assert over["blockers"][0]["path"] == "/timeouts/agent_sec"
@@ -265,7 +265,7 @@ def test_limits_block_instead_of_clamping_and_sources_explain_values(service, ve
             "revision": 1,
         }
         assert plain["effective_config"]["deviates_from_author_baseline"] is False
-        # Resources may be raised, never lowered below the author's (U-22).
+        # Resources may be raised, never lowered below the author's.
         more = resolve(admin, version_id, resources={"memory_mb": 4096})
         assert more["blockers"] == []
         assert {x["memory_mb"] for x in more["effective_config"]["tasks"]} == {4096}
@@ -284,8 +284,8 @@ def test_a_stale_or_expired_resolution_is_not_accepted(service, version_id):
         admin = setup_admin(service, client)
         pat = create_pat(admin, run_limit=5)
         before = resolve(pat, version_id)
-        # A new team default changes what the same request resolves to (CFG-06 seen
-        # from the other side: defaults apply to new resolutions only).
+        # A new team default changes what the same request resolves to;
+        # defaults apply to new resolutions only.
         admin.put(
             "/api/v1/admin/team-policy",
             json={"values": {"run_default_concurrency": 2}, "expected_revision": 0},
@@ -398,7 +398,7 @@ def test_snapshots_keep_their_model_revision_and_bind_the_credential(service, ve
         snapshot = run["snapshot"]
         assert snapshot["effective"]["model"]["model_id"] == "demo-model"
         assert snapshot["effective"]["model"]["revision"] == 1
-        # The member sees no binding (U-27); an administrator's session does.
+        # The member sees no binding; an administrator's session does.
         assert snapshot["provenance"]["credential_ids"] == []
         bound = admin.get(f"/api/v1/runs/{accepted['run_id']}").json()["data"]["snapshot"]
         assert bound["provenance"]["credential_ids"] == [model["credential_id"]]

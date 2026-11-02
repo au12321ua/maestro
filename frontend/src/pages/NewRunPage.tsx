@@ -113,7 +113,7 @@ interface DraftMember {
 }
 
 /** Blank means "inherit": the field is sent as null so the resolver takes the layer below. */
-// Which collection dimension each override field belongs to (06 section 8).
+// Which collection dimension each override field belongs to.
 const OVERRIDE_DIMENSION: Record<string, string> = {
   repetitions: "repetitions",
   agent_sec: "resources",

@@ -1,7 +1,7 @@
 """Model configurations, harness versions, the team policy and configuration resolution.
 
 Reading is open to every signed-in principal; changing is for administrators in a web
-session. Resolution is the step before submission that web and SDK share (03).
+session. Resolution is the step before submission that web and SDK share.
 """
 
 from fastapi import APIRouter, Depends, Request
@@ -71,7 +71,7 @@ def get_team_policy(request: Request, who: Principal = Depends(principal)):
 
 @router.get("/setup-network", response_model=Envelope[SetupNetwork])
 def get_setup_network(request: Request, who: Principal = Depends(principal)):
-    """The setup network in force (N-08): read when setup work starts."""
+    """The setup network in force: read when setup work starts."""
     return ok(request, maestro(request).setup_networks.get(who))
 
 

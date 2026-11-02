@@ -1,4 +1,4 @@
-// What a modified run changed from its source run (04 section 7): one row per changed
+// What a modified run changed from its source run: one row per changed
 // setting, the old value struck through before the new one. Attachments are compared by
 // name, so a new snapshot of the same attachment reads "name: label 1 → label 2".
 import { useState } from "react";

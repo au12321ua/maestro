@@ -1057,7 +1057,7 @@
       },
       "AuthorParameter": {
         "additionalProperties": false,
-        "description": "Author parameter contract (03): defaults, requirement, constraints.",
+        "description": "Author parameter contract: defaults, requirement, constraints.",
         "properties": {
           "default": {
             "anyOf": [
@@ -3673,7 +3673,7 @@
                 "type": "null"
               }
             ],
-            "description": "true: the values are not shown to you (U-27); otherwise absent",
+            "description": "true: the values are not shown to you; otherwise absent",
             "title": "Hidden"
           },
           "path": {
@@ -5145,7 +5145,7 @@
       },
       "EffectiveConfig": {
         "additionalProperties": false,
-        "description": "The fixed configuration of a run (03 section 5); ``config_digest`` is its digest.",
+        "description": "The fixed configuration of a run; ``config_digest`` is its digest.",
         "properties": {
           "attachments": {
             "description": "In load order",
@@ -5371,7 +5371,7 @@
                 "type": "null"
               }
             ],
-            "description": "The bound team credential; null: none. Left out for everyone but administrators' web sessions (U-27)",
+            "description": "The bound team credential; null: none. Left out for everyone but administrators' web sessions",
             "title": "Credential Id"
           },
           "endpoint": {
@@ -11516,7 +11516,7 @@
       },
       "PreparationImage": {
         "additionalProperties": false,
-        "description": "One image of a preparation, kept in the local image registry (N-01).",
+        "description": "One image of a preparation, kept in the local image registry.",
         "properties": {
           "digest": {
             "description": "Manifest digest in the local image registry",
@@ -13793,7 +13793,7 @@
       },
       "RunSource": {
         "additionalProperties": false,
-        "description": "Where a rerun or modified run came from (RUN-06).",
+        "description": "Where a rerun or modified run came from.",
         "properties": {
           "config_digest": {
             "title": "Config Digest",
@@ -13873,7 +13873,7 @@
       },
       "RunSummary": {
         "additionalProperties": false,
-        "description": "06 section 5. At a terminal run planned = scored + count_as_failure + excluded +\nunfinished; while running, active and queued make up the rest.",
+        "description": "At a terminal run planned = scored + count_as_failure + excluded +\nunfinished; while running, active and queued make up the rest.",
         "properties": {
           "active_trials": {
             "title": "Active Trials",
@@ -16907,7 +16907,7 @@
     },
     "/api/v1/admin/dataset-imports": {
       "post": {
-        "description": "Resolve a reference to a fixed digest, fetch and record the version (02 section 3).",
+        "description": "Resolve a reference to a fixed digest, fetch and record the version.",
         "operationId": "import_dataset",
         "requestBody": {
           "content": {
@@ -17044,7 +17044,7 @@
     },
     "/api/v1/admin/dataset-versions/{version_id}/scoring-contract": {
       "put": {
-        "description": "Confirm how this version is scored; new runs freeze it (06 section 2).",
+        "description": "Confirm how this version is scored; new runs freeze it.",
         "operationId": "scoring_contract",
         "parameters": [
           {
@@ -22486,7 +22486,7 @@
     },
     "/api/v1/runs/{run_id}/rerun": {
       "post": {
-        "description": "Same configuration (CFG-06): team defaults and the model revision of the source;\nthe current credential value. Refused when anything but the task set would differ.",
+        "description": "Same configuration: team defaults and the model revision of the source;\nthe current credential value. Refused when anything but the task set would differ.",
         "operationId": "rerun",
         "parameters": [
           {
@@ -22795,7 +22795,7 @@
     },
     "/api/v1/setup-network": {
       "get": {
-        "description": "The setup network in force (N-08): read when setup work starts.",
+        "description": "The setup network in force: read when setup work starts.",
         "operationId": "get_setup_network",
         "responses": {
           "200": {

@@ -100,7 +100,7 @@ class MaestroClient(Transport):
         self.close()
 
     def capabilities(self) -> models.Capabilities:
-        """Versions, features, limits and which channel may do what (API-01, API-06)."""
+        """Versions, features, limits and which channel may do what."""
         caps = self._get("capabilities", models.Capabilities)
         if caps.contract_digest != CONTRACT_DIGEST and not self._warned:
             self._warned = True

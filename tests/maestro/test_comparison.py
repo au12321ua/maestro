@@ -1,4 +1,4 @@
-"""Comparing runs (06 section 8): dimensions, failure groups, alignment and statistics,
+"""Comparing runs: dimensions, failure groups, alignment and statistics,
 as pure functions over snapshot views and trial records."""
 
 import pytest

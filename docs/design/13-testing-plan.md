@@ -1,6 +1,6 @@
 # 13 测试与验收
 
-导航：[总览](00-overview.md) · 依赖：全部模块 · 相关代码：`tests/maestro/`、`frontend/qa/`、`.gitea/workflows/verify.yml`；命令见[开发交接](../HANDOFF.md)的验证入口
+导航：[总览](00-overview.md) · 依赖：全部模块 · 相关代码：`tests/maestro/`、`frontend/qa/`、`.gitea/workflows/verify.yml`；命令见[开发验证](../guides/testing.md)
 
 ## 1. 使用方式
 
@@ -22,7 +22,7 @@ UI 文案与纯样式变更不写低价值单元测试；优先验证会导致�
 | 安装运维 | 安装、更新、失败回退、备份恢复、卸载与清除 | `test_install.py`，需 `MAESTRO_INSTALL_TESTS=1`；用隐藏参数 `--test-root` 把布局放进临时目录，以 systemd 用户单元运行；规则部分在 `test_maestroctl.py`、`test_backup.py`，默认运行 |
 | 发布工具 | 许可证规则、SDK 版本戳、Gitea Releases 与包仓库的上传、重跑与保留、GitHub Pages 的 SDK 索引 | `test_release_tools.py`（模拟接口），默认运行；真实发布只在 CI 中发生，发布后按第 9 节核对 |
 | 网页 | 关键路径冒烟 | `frontend/qa/smoke.spec.ts`（Playwright），需要全新的一次性 state 与 `serve --demo-executor`；按中文界面定位元素，另有一项以英文浏览器逐页确认没有残留中文、显示 AI 翻译说明，并能切回中文。语言文件的一致性与代码里没有写死文字由 `npm run check:i18n` 检查（CI） |
-| CI | lint、文档链接、默认 pytest（含契约与 SDK 模型漂移）、网页 lint / `check:api` / `check:i18n` / build、第三方许可证 | `.gitea/workflows/verify.yml`，触发条件与环境隔离见交接的验证入口；另核对 `src/maestro/static/` 与网页源码一致。`dev` 与版本 tag 通过后发布（[12](12-operations.md) 第 1 节）。真实 Docker、Hub、模型与安装测试不在 CI，手动运行 |
+| CI | lint、文档链接、默认 pytest（含契约与 SDK 模型漂移）、网页 lint / `check:api` / `check:i18n` / build、第三方许可证 | `.gitea/workflows/verify.yml`，触发条件与环境隔离见开发验证指南；另核对 `src/maestro/static/` 与网页源码一致。`dev` 与版本 tag 通过后发布（[12](12-operations.md) 第 1 节）。真实 Docker、Hub、模型与安装测试不在 CI，手动运行 |
 
 隔离要求：验证使用独立 HOME、state 与主密钥，清除继承的真实凭据环境；不用已有团队 state 或真实凭据作随手测试。真实 Docker 测试前后建议对 `docker images`、`ps -a`、`network ls`、`volume ls` 留快照对比。
 
@@ -251,7 +251,7 @@ UI 文案与纯样式变更不写低价值单元测试；优先验证会导致�
 
 ## 9. 发布检查
 
-发布步骤见[开发流程](../guides/development-workflow.md)的“发布与运行版本”。发布前：
+发布步骤见[打包与发布](../guides/releasing.md)。发布前：
 
 - 候选提交的 CI 通过（第 2 节）。
 - 手动运行真实 Docker、真实 Hub 与安装运维测试并通过；模型接入另有一次真实模型冒烟（须有授权与预算）。

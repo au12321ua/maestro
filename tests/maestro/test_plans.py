@@ -1,4 +1,4 @@
-"""M5 experiment plans (04 section 1, RUN-01): saved partial configurations, a layer
+"""Experiment plans: saved partial configurations, a layer
 between the team policy and the request, fixed per run by revision."""
 
 import uuid

@@ -1,4 +1,4 @@
-"""Runner process identity and process-group termination (05 sections 7-8).
+"""Runner process identity and process-group termination.
 
 A PID alone can be reused; the identity adds the kernel start time and boot id,
 so restart reconciliation only signals the process group it actually started.

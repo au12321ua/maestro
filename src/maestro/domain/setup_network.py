@@ -1,4 +1,4 @@
-"""The setup network (N-08): how setup work reaches the network on this deployment.
+"""The setup network: how setup work reaches the network on this deployment.
 
 An administrator keeps it on the admin page as numbered revisions; revision 0 (nothing
 set) is in force before the first save. Setup work reads the revision in force when it

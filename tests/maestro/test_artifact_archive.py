@@ -1,4 +1,4 @@
-"""Artifacts packed per run, task, trial or attempt and streamed on request (07 section 5)."""
+"""Artifacts packed per run, task, trial or attempt and streamed on request."""
 
 import hashlib
 import io

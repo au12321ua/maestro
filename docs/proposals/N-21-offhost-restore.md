@@ -1,6 +1,6 @@
 # N-21 异机备份恢复
 
-状态：想法 · 优先级：暂缓 · 2026-10-27 · 相关：[部署运维](../design/12-operations.md) 第 6 节、[数据集与准备](../design/02-datasets-preparation.md)、[测试与验收](../design/13-testing-plan.md)、U-17、U-29
+状态：暂缓 · 优先级：暂缓 · 2026-10-27 · 相关：[部署运维](../design/12-operations.md) 第 6 节、[数据集与准备](../design/02-datasets-preparation.md)、[测试与验收](../design/13-testing-plan.md)、U-17、U-29
 
 ## 问题
 

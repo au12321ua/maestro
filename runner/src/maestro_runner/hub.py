@@ -1,4 +1,4 @@
-"""Harbor Hub catalog commands: search, versions, describe, fetch (02 section 4).
+"""Harbor Hub catalog commands: search, versions, describe, fetch.
 
 One command per Runner process; the answer is a single ``result`` event. Failures
 are classified for the platform (auth / transient / not_found / mismatch /

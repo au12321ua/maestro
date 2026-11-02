@@ -1,4 +1,4 @@
-"""Label-based Docker cleanup (05 sections 7-8, EXE-06).
+"""Label-based Docker cleanup.
 
 Ending a Runner's process group does not stop what the Docker daemon runs for it.
 Every container, network, volume and built image of a run carries the platform labels, so

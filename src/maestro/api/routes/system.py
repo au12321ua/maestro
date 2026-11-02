@@ -1,4 +1,4 @@
-"""Health, readiness and capability discovery (10 section 3)."""
+"""Health, readiness and capability discovery."""
 
 from fastapi import APIRouter, Depends, Request
 

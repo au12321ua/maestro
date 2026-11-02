@@ -1,4 +1,4 @@
-"""Harnesses that run in the task container (OpenCode, Codex, Claude Code; N-09) call the
+"""Harnesses that run in the task container (OpenCode, Codex, Claude Code) call the
 model from there, so the agent phase may reach the model's host only, and the key is a
 file for the length of the agent run, never an argument, an environment variable or
 part of Harbor's config. Each installs the exact upstream version of its harness

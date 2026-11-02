@@ -1,6 +1,6 @@
-"""Run acceptance, queries and cancellation (04 sections 3 and 6).
+"""Run acceptance, queries and cancellation.
 
-A run is accepted from a configuration resolution (03): either one created before and
+A run is accepted from a configuration resolution: either one created before and
 confirmed by ``resolution_id``, or the same request given inline and resolved in the
 same call. The acceptance transaction: idempotency, principal and PAT re-check,
 admission and reference re-check, quota, then Run + snapshot + trials + work items +
@@ -124,7 +124,7 @@ def _check_run_fields(body: dict) -> dict:
 
 
 def _source_provenance(source: dict | None) -> dict | None:
-    """Where a rerun or modified run came from, and how it differs (RUN-06)."""
+    """Where a rerun or modified run came from, and how it differs."""
     if source is None:
         return None
     found = {
@@ -173,7 +173,7 @@ def public_run(
         allowed.append("cancel")
     if manage and row["state"] in RUN_TERMINAL and not deletions.get("run"):
         allowed.append("delete")
-    # New runs from this one belong to whoever starts them (U-08: reruns are the caller's).
+    # New runs from this one belong to whoever starts them (reruns are the caller's).
     experiment = principal is not None and (
         principal.channel != Channel.PAT or principal.pat_scope == PatScope.EXPERIMENT
     )
@@ -295,7 +295,7 @@ class Runs:
         self.resolver = resolver or Resolver(capacity)
         self.collections = Collections(db, self.resolver)
 
-    # --- resolution (03 section 4) -----------------------------------------------
+    # --- resolution -----------------------------------------------
 
     def resolve(self, principal: Principal, body: dict) -> dict:
         """Resolve and keep the result for confirmation; nothing is reserved. Readers may
@@ -433,7 +433,7 @@ class Runs:
         return self._accept(principal, ACTION_SUBMIT, key, req_hash, run, res, source)
 
     def _accept(self, principal, action, key, req_hash, run, res, source=None):
-        """The acceptance transaction shared by submissions and reruns (04 section 3)."""
+        """The acceptance transaction shared by submissions and reruns."""
         with self.db.write() as conn:
             stored = idempotency.lookup(
                 conn, principal.idempotency_principal, action, key, req_hash
@@ -465,7 +465,7 @@ class Runs:
             )
         return 202, response, False
 
-    # --- reruns and modified runs (04 section 7) ------------------------------------
+    # --- reruns and modified runs ------------------------------------
 
     def _source(self, conn: Connection, run_id: str) -> dict:
         """A run new work may start from: it exists and is not deleted."""
@@ -565,7 +565,7 @@ class Runs:
                     "did not finish",
                     409,
                 )
-            # A task with any trial not scored is rerun whole (04 section 7).
+            # A task with any trial not scored is rerun whole.
             chosen = {
                 task_id
                 for task_id, rows in tasks.items()
@@ -637,7 +637,7 @@ class Runs:
         if self.capacity:
             refuse_if_never_fits(conn, self.capacity, res.reservation)
 
-    # --- batches (04 section 4) -------------------------------------------------------
+    # --- batches -------------------------------------------------------
 
     def submit_batch(
         self, principal: Principal, idempotency_key: str, body: dict
@@ -848,7 +848,7 @@ class Runs:
 
     @staticmethod
     def _refuse_deleted_version(conn: Connection, version_id: str) -> None:
-        """Deleted datasets and versions cannot be newly referenced (07 section 8)."""
+        """Deleted datasets and versions cannot be newly referenced."""
         if deleted.version_state(conn, version_id):
             raise MaestroError(
                 "DATASET_VERSION_DELETED",
@@ -868,7 +868,7 @@ class Runs:
 
     @staticmethod
     def _recheck_tasks(conn: Connection, res: Resolution) -> None:
-        """Admission may be revoked between resolution and acceptance (F-26)."""
+        """Admission may be revoked between resolution and acceptance."""
         ids = [x["admission_id"] for x in res.tasks]
         current = {
             r["id"]: r
@@ -908,7 +908,7 @@ class Runs:
 
     @staticmethod
     def _charge_pat(conn: Connection, pat_id: str, runs: int = 1) -> None:
-        """One unit of quota per accepted run, all in one conditional update (F-01)."""
+        """One unit of quota per accepted run, all in one conditional update."""
         now = clock.to_text(clock.now())
         charged = conn.execute(
             update(t.pats)
@@ -1000,7 +1000,7 @@ class Runs:
         provenance = {
             "submitted_via": principal.channel.value,
             "resolution_id": run.get("resolution_id"),
-            # The normalized request, so the run can be reproduced or edited (04 section 7).
+            # The normalized request, so the run can be reproduced or edited.
             "request": res.request,
             "task_selection": res.request["task_selection"],
             "excluded_tasks": res.excluded,
@@ -1086,7 +1086,7 @@ class Runs:
             "snapshot_digest": snapshot_digest,
             "planned_trials": planned,
             "excluded_tasks": res.excluded,
-            # Observations only: not part of the configuration or its digest (10 section 4).
+            # Observations only: not part of the configuration or its digest.
             "cache_observations": res.cache_observations,
             "links": {"run": f"/api/v1/runs/{run_id}", "operation": f"/api/v1/operations/{op_id}"},
         }
@@ -1221,7 +1221,7 @@ class Runs:
         return items, next_cursor
 
     def summary(self, run_id: str) -> dict:
-        """06 section 5 for one run, with per-task statistics."""
+        """Summarize one run and each task using the frozen scoring contract."""
         with self.db.read() as conn:
             self._live_row(conn, run_id)
             return {"run_id": run_id, **results.summaries(conn, [run_id])[run_id]}
@@ -1476,7 +1476,7 @@ def _prefixed(prefix: str):
 
 
 def batch_progress(runs: list, planned_trials: int) -> dict:
-    """Member counts by lifecycle and trial outcome (04 section 4)."""
+    """Member counts by lifecycle and trial outcome."""
     states = [r["state"] for r in runs]
     return {
         "runs": len(runs),

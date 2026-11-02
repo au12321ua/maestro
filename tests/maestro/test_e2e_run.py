@@ -1,11 +1,11 @@
-"""E2E-RUN-01 with the fake executor: an agent uses only a PAT and the HTTP API.
+"""Full experiment flow with the fake executor: an agent uses only a PAT and the HTTP API.
 
 The administrator prepares a model configuration bound to a team credential and a
 harness version beforehand (as the scenario's precondition says). The agent then reads
 capabilities, the catalog, models and harnesses, resolves the configuration, checks the
 blockers, submits the resolution idempotently, polls the Operation, reads per-trial
 scores and attempts, and downloads an artifact with a digest check. The generated SDK
-(M7) is not yet part of the flow.
+ is not yet part of the flow.
 """
 
 import hashlib
@@ -127,7 +127,7 @@ def test_agent_runs_a_complete_experiment_with_only_a_pat(service, version_id, e
         assert accepted["config_digest"] == resolution["config_digest"]
         provenance = run["snapshot"]["provenance"]
         assert provenance["resolution_id"] == resolution["resolution_id"]
-        assert provenance["credential_ids"] == []  # a PAT never sees the binding (U-27)
+        assert provenance["credential_ids"] == []  # a PAT never sees the binding
         bound = admin.get(f"/api/v1/runs/{accepted['run_id']}").json()["data"]["snapshot"]
         assert bound["provenance"]["credential_ids"] == [credential_of(admin, model_id)]
         assert run["pat_id"] is not None

@@ -1,4 +1,4 @@
-"""Harbor Hub dataset source (02 section 4) through the Runner environment.
+"""Harbor Hub dataset source through the Runner environment.
 
 The service never imports Harbor: each catalog call starts the Runner with one
 ``hub`` command and reads a single ``result`` event. The team Hub key, when the

@@ -1,4 +1,4 @@
-"""Basic redaction (09 section 5): known secret values, Maestro tokens, common headers,
+"""Basic redaction: known secret values, Maestro tokens, common headers,
 key/value pairs (plain, JSON and Python-repr quoted), provider key shapes, URL passwords.
 
 This is best-effort for a trusted team; encoded or transformed secrets can escape.

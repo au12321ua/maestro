@@ -5,7 +5,7 @@
 
 The web client's types are generated from the same file in ``frontend/``
 (``npm run gen:api`` / ``npm run check:api``). Generated files are committed: a changed
-API that was not regenerated is a test failure, not a silent drift (13 F-20).
+API that was not regenerated is a test failure, not a silent drift.
 """
 
 import argparse

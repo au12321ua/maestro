@@ -35,7 +35,7 @@ interface Pending {
 }
 
 /**
- * 11 section 6: pending items are a query over business records, not a to-do list. An item
+ * Pending items are a query over business records, not a to-do list. An item
  * disappears when its source object changes; there is no "mark as done".
  */
 function pendingItems(me: Me, mine: Run[], team: Run[], datasets: Dataset[], ops: Operation[]) {

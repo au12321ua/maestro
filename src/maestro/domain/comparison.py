@@ -1,4 +1,4 @@
-"""Comparing runs side by side (06 section 8): dimensions, failure groups, alignment.
+"""Comparing runs side by side: dimensions, failure groups, alignment.
 
 Pure functions over what a run snapshot froze (its comparison view and scoring contract)
 and its trial records. Web pages, the API, the SDK and saved snapshots all call

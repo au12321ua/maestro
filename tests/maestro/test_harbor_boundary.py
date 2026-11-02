@@ -1,4 +1,4 @@
-"""The service never loads Harbor (15 section 11.1); the Runner owns that dependency."""
+"""The service never loads Harbor; the Runner owns that dependency."""
 
 import subprocess
 import sys

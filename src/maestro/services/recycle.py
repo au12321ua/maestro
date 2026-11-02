@@ -1,4 +1,4 @@
-"""Two-step deletion and the recycle bin (07 section 8, U-08 / U-19).
+"""Two-step deletion and the recycle bin.
 
 Deleting puts an object in the recycle bin: it leaves lists and selectors, cannot
 be newly referenced, and existing references still resolve and show "deleted".
@@ -118,7 +118,7 @@ class RunHandler(Handler):
         return row["owner_id"]
 
     def authorize(self, principal, row):
-        # Members may bin their own runs; the bin itself is administrators' (U-19).
+        # Members may bin their own runs; the bin itself is administrators'.
         require_manage_owned(principal, row["owner_id"])
 
     def check_delete(self, conn, principal, row):
@@ -258,7 +258,7 @@ def purge_versions(conn: Connection, version_ids: list[str], service: Recycle) -
         .values(manifest_json={})
     )
     # Preparation caches, their images and recoverable originals go with the last
-    # version that uses the same spec (U-19); shared content stays.
+    # version that uses the same spec; shared content stays.
     specs = sorted({x.spec_digest for x in tasks if x.spec_digest} - specs_used)
     preparations = conn.execute(
         select(
@@ -346,7 +346,7 @@ class CredentialHandler(Handler):
 
 def credential_users(conn: Connection, credential_id: str) -> list[str]:
     """Active runs whose snapshot binds this credential. Snapshots list bound
-    credentials under provenance ``credential_ids`` (model binding arrives in M5)."""
+    credentials under provenance ``credential_ids`` (model binding arrives in)."""
     rows = conn.execute(
         select(t.runs.c.id, t.run_snapshots.c.provenance_json)
         .join(t.run_snapshots, t.run_snapshots.c.run_id == t.runs.c.id)
@@ -391,7 +391,7 @@ class UserHandler(Handler):
         )
 
     def on_delete(self, conn, principal, row):
-        """Sessions and PATs stop working at once (U-19); so do the invitations the
+        """Sessions and PATs stop working at once; so do the invitations the
         account issued, which would otherwise create accounts in its name (an admin
         invitation among them) and the ones addressed to it (password resets)."""
         at = clock.to_text(clock.now())
@@ -1003,7 +1003,7 @@ class Recycle:
     def discard_preparations(self, outputs: list[tuple[str, dict]]) -> dict | None:
         """Local images and their registry copies; runs from a request thread after commit.
         A spec that a new import prepared again meanwhile has a live row: keep it, and
-        images another task still records stay (tasks share identical images, N-01).
+        images another task still records stay (tasks share identical images).
         Each preparation is tried on its own; the failures are logged and returned."""
         if self.environment is None or not outputs:
             return None

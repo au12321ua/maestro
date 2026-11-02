@@ -1,4 +1,4 @@
-"""Deletion state lookups shared by every service (07 section 8).
+"""Deletion state lookups shared by every service.
 
 A row in ``deletions`` means the object is in the recycle bin ('recycled') or its
 content is gone ('purged'). Lists and selectors hide both; direct references

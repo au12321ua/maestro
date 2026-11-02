@@ -1,4 +1,4 @@
-"""collections and analysis snapshots (N-11)
+"""collections and analysis snapshots
 
 Revision ID: 0004
 Revises: 0003

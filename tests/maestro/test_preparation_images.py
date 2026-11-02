@@ -1,4 +1,4 @@
-"""Every image a trial starts (N-01): inspection of a separate verifier and Compose
+"""Every image a trial starts: inspection of a separate verifier and Compose
 services, frozen variables, what cannot be prepared, the resources a trial reserves, and
 the Runner's per-directory overrides. Compose files are read by the Docker client
 (nothing is started); the Runner parts run in the Runner's own environment."""
@@ -299,7 +299,7 @@ def test_separate_verifiers_of_multi_step_tasks_are_unsupported(tmp_path):
 
 
 def test_identical_definitions_share_a_key_wherever_they_sit(tmp_path):
-    """Two tasks with the same environment files build one image (N-01)."""
+    """Two tasks with the same environment files build one image."""
     one = make_task(tmp_path / "one", files={"tests/test.sh": "echo one\n"})
     two = make_task(tmp_path / "two", files={"tests/test.sh": "echo two\n"})
     first = roles(inspect(one))["environment/main"]
@@ -484,7 +484,7 @@ def test_resource_overrides_reach_main_and_preserve_the_verifier(
 
 @needs_runner
 def test_harbor_still_creates_environments_where_the_runner_hooks_in():
-    """The verifier override rides on Harbor internals (15): fail loudly when they move."""
+    """The verifier override rides on Harbor internals: fail loudly when they move."""
     check = """
 import inspect
 from harbor.environments.factory import EnvironmentFactory

@@ -1,4 +1,4 @@
-"""The single error type crossing service and API layers (10 section 2)."""
+"""The single error type crossing service and API layers."""
 
 from dataclasses import dataclass, field
 

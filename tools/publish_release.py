@@ -1,4 +1,4 @@
-"""Publish release assets to Gitea Releases (N-02). Standard library only.
+"""Publish release assets to Gitea Releases. Standard library only.
 
     GITEA_API=<server>/api/v1 GITEA_REPO=<owner>/<repo> GITEA_TOKEN=<token> \\
     python3 tools/publish_release.py --dist <dir> --tag <tag> --commit <sha> \\

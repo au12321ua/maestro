@@ -1,4 +1,4 @@
-"""Batches: several runs accepted together, all or none (04 section 4)."""
+"""Batches: several runs accepted together, all or none."""
 
 from fastapi import APIRouter, Depends, Header, Request
 

@@ -1,4 +1,4 @@
-"""Task material cache, task inspection and the preparation spec (02 sections 3 and 6).
+"""Task material cache, task inspection and the preparation spec.
 
 Material is stored by its upstream content digest under ``<cache_dir>/tasks/<hex>``
 and checked against a second digest of the local files (``tree_digest``): the
@@ -8,7 +8,7 @@ Inspection reads ``task.toml`` and the author's Compose files without Harbor: wh
 platform needs before execution (resources of every environment, timeouts, author
 parameters) and the normalized preparation spec whose digest is the cache key. The spec
 lists every image a trial starts: the main environment, a separate verifier's own image
-and each Compose service besides ``main`` (N-01).
+and each Compose service besides ``main``.
 """
 
 import hashlib
@@ -39,16 +39,15 @@ DEFAULT_CPUS = 1
 DEFAULT_MEMORY_MB = 2048
 INSTRUCTION_CHARS = 4000
 # Default upper bound for a task's own build_timeout_sec (``build_timeout_max_sec`` in
-# config.toml). The design names no build limit (14 section 5), and Harbor's default is
-# 600 s; an hour covers large images while one build cannot hold a restore slot for longer.
+# config.toml). An hour covers large images while one build cannot hold a restore slot for longer.
 MAX_BUILD_TIMEOUT = 3600.0
 
 # How the platform prepares an environment. A change here is a new preparation
-# method and needs a new admission (02 section 5).
+# method and needs a new admission.
 PREPARATION_METHOD = {
     "adapter": "maestro-docker-prep/2",
     "environment_abi_version": "2",
-    # Reproducible build settings (M1 TECH-03): fixed timestamps, no provenance.
+    # Reproducible build settings: fixed timestamps, no provenance.
     "build": {"provenance": False, "source_date_epoch": 0, "rewrite_timestamp": True},
 }
 PREPARATION_METHOD_DIGEST = digest_json(PREPARATION_METHOD)
@@ -56,7 +55,7 @@ PREPARATION_METHOD_DIGEST = digest_json(PREPARATION_METHOD)
 
 def image_key(entry: dict) -> str:
     """The definition of one image, without where it sits in the task: two tasks with
-    identical files, options and method share the image (N-01)."""
+    identical files, options and method share the image."""
     fields = ("source", "reference", "definition_digest", "dockerfile", "args", "target")
     return digest_json({"method": PREPARATION_METHOD_DIGEST, **{k: entry.get(k) for k in fields}})
 
@@ -285,7 +284,7 @@ def _compose_variables(file: Path) -> list[tuple[str, bool, str]]:
 def _parameters(
     config: dict, task_dir: Path, frozen: set[str] = frozenset()
 ) -> tuple[list[dict], list[dict]]:
-    """Author parameters (03): environment-variable templates in task.toml and the
+    """Author parameters: environment-variable templates in task.toml and the
     variables of author compose files. Variables frozen into a prepared image (``frozen``:
     used only in ``image:`` or ``build:``) are not parameters: no value could change it."""
     found: dict[str, dict] = {}
@@ -392,7 +391,7 @@ def _resources(section: dict) -> dict:
 
 
 def _images(config: dict, task_dir: Path) -> tuple[list[dict], list[dict], set[str], dict]:
-    """Every image a trial of this task starts (N-01): (images, the containers besides
+    """Every image a trial of this task starts: (images, the containers besides
     the main one with their resources, Compose variables frozen into images, reasons the
     task cannot be prepared as {code: message})."""
     images: list[dict] = []
@@ -517,7 +516,7 @@ def inspect_task(
     material_digest: str,
     build_timeout_max: float = MAX_BUILD_TIMEOUT,
 ) -> dict:
-    """The task definition the platform stores (02 section 3 step 3). The build limit it
+    """The task definition the platform stores. The build limit it
     records is the task's own, capped at ``build_timeout_max``."""
     try:
         config = tomllib.loads((task_dir / "task.toml").read_text())
@@ -545,10 +544,10 @@ def inspect_task(
             "cpus": environment.get("cpus") or DEFAULT_CPUS,
             "memory_mb": environment.get("memory_mb") or DEFAULT_MEMORY_MB,
             "storage_mb": environment.get("storage_mb"),
-            # Author resource values are suggestions unless stated otherwise (02 section 3).
+            # Author resource values are suggestions unless stated otherwise.
             "constraint_strength": "unknown",
             # Every container a trial starts besides the main one, with the author's limits
-            # (None: the team default applies). A trial reserves their sum (U-54).
+            # (None: the team default applies). A trial reserves their sum.
             "environments": environments,
         },
         "timeouts": {
@@ -582,7 +581,7 @@ def inspect_task(
 
 def required_parameters(definition: dict) -> list[str]:
     """Author parameters a run configuration must give a value for: required, or
-    sensitive, and without a default (03). The resolver blocks a task until it has one."""
+    sensitive, and without a default. The resolver blocks a task until it has one."""
     return [
         p["name"]
         for p in definition.get("parameters") or []

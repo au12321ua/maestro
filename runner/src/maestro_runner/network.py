@@ -1,4 +1,4 @@
-"""Platform network tightening for model runs (U-18, M1 TECH-02).
+"""Platform network tightening for model runs.
 
 Harbor cannot tighten a task from the job (``extra_allowed_hosts`` only adds hosts and is
 ignored for public tasks), so the Runner rewrites a private copy of each task: each phase
@@ -6,7 +6,7 @@ takes the stricter of the author's and the platform's policy, allowlists interse
 the author's stricter choice is always kept. Setup keeps the author's baseline, so tools
 can be installed.
 
-Two gaps M1 found in Harbor 0.24.0 are closed by wrapping its (private, version-pinned)
+Two gaps in Harbor 0.24.0 are closed by wrapping its (private, version-pinned)
 policy switch: once a phase was restricted, a request to go back to public becomes
 no-network (Harbor reopens public between agent and verification and after
 verification); and TCP that was not redirected through the egress proxy is reset, which

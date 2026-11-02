@@ -1,4 +1,4 @@
-"""Backup sets on the same host (12 section 6, P0 subset) and the activity check that
+"""Backup sets on the same host (P0 subset) and the activity check that
 updates use to refuse stopping in-progress work."""
 
 import json

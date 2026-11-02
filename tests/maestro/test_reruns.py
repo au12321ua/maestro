@@ -1,4 +1,4 @@
-"""M5 reruns and modified runs (04 section 7, E2E-RUN-03): new runs from a source run's
+"""Reruns and modified runs: new runs from a source run's
 snapshot, never silently changed; modified runs record their differences."""
 
 import time
@@ -42,7 +42,7 @@ def snapshot(api, run_id) -> dict:
 
 
 def test_cancel_then_rerun_what_did_not_finish_then_modify(service, version_id, executor):
-    """E2E-RUN-03."""
+    """Rerun a selected task without changing the source run."""
     executor.script = {"add-02": ["hang"]}
     with running(service) as client:
         admin = setup_admin(service, client)

@@ -1,5 +1,4 @@
-"""Comparisons, collections and analysis snapshots through the API (06 section 8,
-E2E-OUT-02 and E2E-OUT-03 with the fake executor)."""
+"""Comparisons, collections and analysis snapshots through the API (and  with the fake executor)."""
 
 import uuid
 

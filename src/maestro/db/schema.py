@@ -1,4 +1,4 @@
-"""Logical data dictionary of 01 section 4 as SQLAlchemy Core tables.
+"""Logical data model as SQLAlchemy Core tables.
 
 Migrations are the source of truth for the deployed schema; this metadata must
 match the latest migration (checked by tests). Times are RFC 3339 text in UTC,
@@ -50,7 +50,7 @@ def _json(name, nullable=False):
     return Column(name, JSON, nullable=nullable)
 
 
-# --- Identity (09) -------------------------------------------------------------
+# --- Identity -------------------------------------------------------------
 
 users = Table(
     "users",
@@ -88,7 +88,7 @@ invitations = Table(
     CheckConstraint("role IN ('admin','member')", name="role"),
 )
 
-# Web sessions are not in 01's dictionary; 09 section 4 requires server-side
+# Web sessions keep server-side
 # revocation, so sessions are stored by token hash like PATs.
 sessions = Table(
     "sessions",
@@ -125,7 +125,7 @@ pats = Table(
     Index("ix_pats_owner", "owner_id", "created_at"),
 )
 
-# --- Credentials and master key (09 section 4) ---------------------------------
+# --- Credentials and master key ---------------------------------
 
 master_key_state = Table(
     "master_key_state",
@@ -158,7 +158,7 @@ credentials = Table(
     CheckConstraint("kind IN ('model_api_key','hub_token','generic_secret')", name="kind"),
 )
 
-# --- Catalog and preparation (02) ----------------------------------------------
+# --- Catalog and preparation ----------------------------------------------
 
 datasets = Table(
     "datasets",
@@ -204,7 +204,7 @@ tasks = Table(
     # Upstream content identity (Hub task digest) and the digest of the local files.
     Column("content_digest", String(80), nullable=False),
     Column("material_digest", String(80), nullable=False),
-    # Preparation spec of this task (02 section 6); the cache key with location_id.
+    # Preparation spec of this task; the cache key with location_id.
     Column("spec_digest", String(80), nullable=False),
     UniqueConstraint("dataset_version_id", "task_key"),
     Index("ix_tasks_spec", "spec_digest"),
@@ -303,9 +303,9 @@ preparation_pins = Table(
     UniqueConstraint("preparation_id", "holder_kind", "holder_id"),
 )
 
-# --- Configuration (03) ---------------------------------------------------------
+# --- Configuration ---------------------------------------------------------
 
-# Team policy (03 section 2, U-21): defaults and hard limits as numbered revisions. The
+# Team policy: defaults and hard limits as numbered revisions. The
 # newest revision is in force; runs record the revision their configuration used.
 team_policies = Table(
     "team_policies",
@@ -317,7 +317,7 @@ team_policies = Table(
     _time("created_at"),
 )
 
-# N-08: the setup network an administrator keeps, one row per revision.
+# The setup network an administrator keeps, one row per revision.
 setup_networks = Table(
     "setup_networks",
     metadata,
@@ -371,7 +371,7 @@ harness_versions = Table(
     Column("version", String(64), nullable=False),
     # Executor adapter that installs and drives this harness (e.g. Harbor's opencode).
     Column("agent", String(64), nullable=False),
-    # Exact version of the program the adapter installs in the task container (N-09);
+    # Exact version of the program the adapter installs in the task container;
     # null for an adapter that installs nothing (Terminus-2 comes with the executor).
     Column("upstream_version", String(64), nullable=True),
     Column("description", String(512), nullable=False),
@@ -386,7 +386,7 @@ harness_versions = Table(
     Index("ix_harness_versions_name_version", "name", "version"),
 )
 
-# An attachment snapshot (03 section 6): a fixed list of files, identified by its content
+# An attachment snapshot: a fixed list of files, identified by its content
 # digest. Publishing the same content again returns the snapshot not purged that holds
 # it; the label, when given, is unique per name among those not purged (both checked in
 # the publishing transaction, so a purged snapshot's receipt keeps its label). The
@@ -448,7 +448,7 @@ run_attachments = Table(
     Index("ix_run_attachments_version", "attachment_version_id"),
 )
 
-# A resolved configuration offered for confirmation (03 section 4). It reserves nothing;
+# A resolved configuration offered for confirmation. It reserves nothing;
 # acceptance resolves the stored request again and refuses when the result changed.
 config_resolutions = Table(
     "config_resolutions",
@@ -464,9 +464,9 @@ config_resolutions = Table(
     Index("ix_config_resolutions_expires", "expires_at"),
 )
 
-# --- Plans, submission and execution (04, 05) --------------------------------
+# --- Plans, submission and execution --------------------------------
 
-# A saved, partial configuration request (04 section 1). The creator edits it, the team
+# A saved, partial configuration request. The creator edits it, the team
 # reads and copies it; a run records the revision it used and keeps its own values.
 experiment_plans = Table(
     "experiment_plans",
@@ -500,7 +500,7 @@ idempotency_records = Table(
     Index("ix_idempotency_expires", "expires_at"),
 )
 
-# Runs accepted together, all or none (04 section 4); each member runs on its own.
+# Runs accepted together, all or none; each member runs on its own.
 submission_batches = Table(
     "submission_batches",
     metadata,
@@ -615,7 +615,7 @@ execution_attempts = Table(
     Column("phase", String(32), nullable=True),
     _json("steps_json", nullable=True),
     _json("executor_ref_json", nullable=True),
-    # The setup network revision a model run's setup was given (N-08); None for Oracle.
+    # The setup network revision a model run's setup was given; None for Oracle.
     Column("setup_network_revision", Integer, nullable=True),
     _time("started_at"),
     _time("ended_at", nullable=True),
@@ -640,7 +640,7 @@ preparation_waiters = Table(
     metadata,
     _id(),
     _ref("operation_id", "operations"),
-    # D-020: runs wait before their attempts exist; attempt_id is for trial-level work.
+    # Runs wait before their attempts exist; attempt_id is for trial-level work.
     _ref("attempt_id", "execution_attempts", nullable=True),
     # A waiter is a run, or the administrator's first-preparation Operation.
     _ref("run_id", "runs", nullable=True),
@@ -691,7 +691,7 @@ artifacts = Table(
     # Why content is not downloadable, e.g. STORAGE_CONTENT_MISSING or DELETED.
     Column("status_reason", String(64), nullable=True),
     _time("created_at"),
-    # Trial (or run) execution end + TTL; null until that end is known (07 section 2).
+    # Trial (or run) execution end + TTL; null until that end is known.
     _time("expires_at", nullable=True),
     Index("ix_artifacts_status_expires", "status", "expires_at"),
     Index("ix_artifacts_run", "run_id", "trial_id"),
@@ -735,7 +735,7 @@ exports = Table(
     CheckConstraint("state IN ('queued','building','ready','failed','expired')", name="state"),
 )
 
-# --- Collections and analysis snapshots (06 section 8) ------------------------------
+# --- Collections and analysis snapshots ------------------------------
 # A collection is a list of run references its members keep up; its specification (the
 # scenario, which dimensions may vary, the fixed values) never changes after creation.
 collections = Table(
@@ -822,7 +822,7 @@ snapshot_notes = Table(
     Index("ix_snapshot_notes_snapshot", "snapshot_id", "created_at"),
 )
 
-# --- Deletion (07 section 8, U-08 / U-19) ------------------------------------------
+# --- Deletion ------------------------------------------
 # One row per deleted object: 'recycled' hides it and blocks new references; 'purged'
 # means content and files are gone and the row is the deletion receipt. Restoring
 # removes the row; the audit log keeps the history.

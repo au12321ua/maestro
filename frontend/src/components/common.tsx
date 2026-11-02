@@ -132,7 +132,7 @@ export function JsonBlock({ value, summary }: { value: unknown; summary: string 
 }
 
 /** Inside a SettingsForm, fields are rows: a label column, then the control with its hint
- * and error below, so controls line up however long a label or hint is (U-45). */
+ * and error below, so controls line up however long a label or hint is. */
 const RowLayout = createContext(false);
 
 /** A settings form (administration and settings pages); short forms stay stacked. */
@@ -269,7 +269,7 @@ export function TextAreaField({
  * A long name (task key, artifact path, run name) on one line: cut to fit, the full name on
  * hover, with a copy button. Names sharing ``prefix`` with their list lose its middle, so the
  * part that tells them apart stays visible. ``wrap`` is for a name shown once (a title): it is
- * kept whole and may break anywhere (U-45).
+ * kept whole and may break anywhere.
  */
 export function LongName({
   value,

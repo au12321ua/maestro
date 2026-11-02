@@ -1,7 +1,7 @@
-"""Model configurations and harness versions (03 section 2).
+"""Model configurations and harness versions.
 
 Administrators keep both in a web session. A model configuration changes by revision;
-a run freezes the revision it used, so later changes never rewrite it (CFG-05). A
+a run freezes the revision it used, so later changes never rewrite it. A
 harness version is fixed once published; a change is a new version. Everyone may read
 both; only administrators see which credential a model configuration is bound to.
 """
@@ -194,7 +194,7 @@ class ModelConfigs:
         self.parameters = parameters or {}
         # Model configuration parameters each adapter passes on; one not listed: any.
         self.model_parameters = model_parameters or {}
-        # Adapters that install a program: name -> {"package", "tested"} (N-09).
+        # Adapters that install a program: name -> {"package", "tested"}.
         self.upstream = upstream or {}
         self.versions = versions
 
@@ -385,7 +385,7 @@ class ModelConfigs:
     def revise_model(
         self, principal: Principal, config_id: str, body: dict, expected_revision: int
     ) -> dict:
-        """A new revision replaces every field; accepted runs keep theirs (CFG-05)."""
+        """A new revision replaces every field; accepted runs keep theirs."""
         require_admin_session(principal)
         fields = _check_model(body)
         at = clock.to_text(clock.now())

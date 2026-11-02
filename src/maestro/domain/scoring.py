@@ -1,4 +1,4 @@
-"""Scoring contract and run summaries (06 sections 2, 5 and 7).
+"""Scoring contract and run summaries.
 
 Pure functions over trial records: web pages, the API and exports all call
 ``summarize`` so they report the same counts. Only trials in state ``scored``
@@ -127,7 +127,7 @@ _NOT_STARTED = {TrialState.QUEUED, TrialState.PREPARING, TrialState.NOT_STARTED}
 
 
 def _usage(trials: list[TrialRecord]) -> dict:
-    """Known totals plus how many started trials reported nothing (06 section 7)."""
+    """Known totals plus how many started trials reported nothing."""
     totals: dict[str, list[float]] = defaultdict(list)
     known = started = 0
     for trial in trials:
@@ -148,7 +148,7 @@ def _usage(trials: list[TrialRecord]) -> dict:
 
 def _bucket(trial: TrialRecord) -> str:
     """Every trial lands in exactly one bucket, so planned = scored + excluded + unfinished
-    + active + queued holds by construction (06 section 5). A trial recorded as scored
+    + active + queued holds by construction. A trial recorded as scored
     without a legal number is not a sample: it is excluded, never dropped."""
     state = trial.state
     if state == TrialState.SCORED:
@@ -165,7 +165,7 @@ def _bucket(trial: TrialRecord) -> str:
 def summarize(
     trials: list[TrialRecord], contract: dict, bench_task_count: int | None = None
 ) -> dict:
-    """06 section 5. At a terminal run planned = scored + count_as_failure + excluded +
+    """At a terminal run planned = scored + count_as_failure + excluded +
     unfinished; while running, active and queued trials make up the rest."""
     buckets: dict[str, list[TrialRecord]] = defaultdict(list)
     for trial in trials:
@@ -175,7 +175,7 @@ def summarize(
     has_pass_rule = bool(contract.get("passed"))
     passed_count = sum(1 for x in scored if passed(contract, x.raw_score)) if has_pass_rule else 0
     planned = len(trials)
-    count_as_failure = 0  # Non-default extension (06 section 1); not offered yet.
+    count_as_failure = 0  # Non-default extension; not offered yet.
 
     by_task: dict[str, list[TrialRecord]] = defaultdict(list)
     for trial in trials:

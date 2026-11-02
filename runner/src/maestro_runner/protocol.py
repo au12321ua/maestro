@@ -1,4 +1,4 @@
-"""Runner protocol stream (15 section 5). Import before Harbor.
+"""Runner protocol stream. Import before Harbor.
 
 Importing this module keeps a private duplicate of the original stdout for NDJSON
 events and points fd 1 at stderr, so Harbor, rich, docker compose and any child

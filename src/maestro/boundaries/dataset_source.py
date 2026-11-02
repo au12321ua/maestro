@@ -1,15 +1,15 @@
-"""Dataset source boundary (02 section 4): search, versions, a fixed version's tasks,
+"""Dataset source boundary: search, versions, a fixed version's tasks,
 and the exact content of one task.
 
 Sources map their failures to ``SourceError`` kinds. A timeout, 429, 5xx or missing
-download permission is never evidence that content is gone for good (02 section 4).
+download permission is never evidence that content is gone for good.
 """
 
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
-# Failure kinds every adapter maps to (02 section 4).
+# Failure kinds every adapter maps to.
 AUTH = "auth"  # missing or rejected credential; fix the credential, not the content
 TRANSIENT = "transient"  # network, rate limit, upstream error: retry later
 NOT_FOUND = "not_found"  # the fixed content is not offered (any more)

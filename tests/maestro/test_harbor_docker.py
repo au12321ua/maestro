@@ -1,4 +1,4 @@
-"""Real Harbor Runner and Docker, Oracle tasks only (M3 and M4 exit criteria).
+"""Real Harbor Runner and Docker, Oracle tasks only (and  exit criteria).
 
 Opt-in: ``MAESTRO_DOCKER_TESTS=1``. Needs Docker with buildx, a local ``ubuntu:22.04``
 image and the Runner environment (``uv sync --locked`` in ``runner/``, or
@@ -41,7 +41,7 @@ from maestro.services.instance import instance_id as read_instance_id
 
 ROOT = Path(__file__).resolve().parents[2]
 TASKS = Path(__file__).with_name("fixtures") / "harbor-tasks"
-# Separate verifiers of all three kinds and Compose services (N-01); the verifier with its
+# Separate verifiers of all three kinds and Compose services; the verifier with its
 # own named image is made by the test, which pushes that image to the test registry first.
 # Services pull ubuntu:22.04 by digest, so the host's own ubuntu:22.04 tag never moves.
 N01_TASKS = Path(__file__).with_name("fixtures") / "n01-tasks"
@@ -51,13 +51,13 @@ AGENT_TASKS = Path(__file__).with_name("fixtures") / "agent-tasks"
 # OpenCode tasks need Node and the pinned OpenCode in the image: build
 # ``maestro-test/ubuntu-opencode:22.04`` from fixtures/images/opencode once.
 OPENCODE_TASKS = Path(__file__).with_name("fixtures") / "opencode-tasks"
-# The same task on a plain image: a harness installed in setup (N-09).
+# The same task on a plain image: a harness installed in setup.
 HARNESS_TASKS = Path(__file__).with_name("fixtures") / "harness-tasks"
 RUNNER = Path(os.environ.get("MAESTRO_RUNNER_PYTHON", ROOT / "runner/.venv/bin/python"))
 # Optional: the deployment's setup proxy (e.g. http://172.17.0.1:7890), for hosts that need
 # one to build images and install attachments. Tests then also check its boundaries.
 SETUP_PROXY = os.environ.get("MAESTRO_TEST_SETUP_PROXY", "")
-# Stands in for the administrator's setup network revision (N-08).
+# Stands in for the administrator's setup network revision.
 # Install variables such as a package mirror: MAESTRO_TEST_SETUP_ENV='{"npm_config_registry": ...}'.
 SETUP_ENV = json.loads(os.environ.get("MAESTRO_TEST_SETUP_ENV") or "{}")
 SETUP_NETWORK = (
@@ -259,7 +259,7 @@ def preparation(api: Api, task: dict) -> dict:
 
 
 def test_prepared_image_is_kept_in_the_registry_and_restored_from_it(harbor_service):
-    """M4 and N-01 on the real host: the three Oracle tasks share one Dockerfile, so the
+    """Prepared images on a real Docker host: the three Oracle tasks share one Dockerfile, so the
     first preparation builds one image and keeps it in the registry; Harbor runs it
     without building or pulling; after eviction a run pulls exactly that image back, and
     when the registry lost it the reproducible build gives the same digest again."""
@@ -356,7 +356,7 @@ def created_containers(since: float, until: float) -> list[dict]:
 def test_separate_verifiers_and_compose_services_run_from_prepared_images(
     settings, tmp_path, request
 ):
-    """N-01 acceptance: the three kinds of separate verifier, Compose services pulled and
+    """Prepared images: the three kinds of separate verifier, Compose services pulled and
     built, a verifier-side service and a volume. Everything is prepared up front, nothing
     is built or pulled while the run executes, every container carries the platform
     labels (the separate verifier's too) and nothing labelled is left afterwards."""
@@ -414,7 +414,7 @@ def test_separate_verifiers_and_compose_services_run_from_prepared_images(
 
 def test_a_killed_runner_leaves_no_separate_verifier_behind(settings, tmp_path):
     """Harbor removes nothing when its process is killed; the platform finds the separate
-    verifier, its services, network and volume by their labels (05 section 7)."""
+    verifier, its services, network and volume by their labels."""
     tasks = tmp_path / "slow-verifier"
     shutil.copytree(N01_TASKS / "verifier-copy", tasks / "verifier-copy")
     test = tasks / "verifier-copy" / "tests" / "test.sh"
@@ -952,7 +952,7 @@ def agent_service(settings):
 
 def test_terminus_runs_with_the_container_offline(agent_service, monkeypatch):
     """Terminus-2 calls the model from the Runner, so the task container gets no network
-    while the agent works or the verifier runs (U-18), and the key never reaches a file.
+    while the agent works or the verifier runs, and the key never reaches a file.
     The model is a local stand-in, so nothing is spent. The same task is first run as
     Oracle, which keeps the author's (public) network: its probes must connect, so a
     closed probe in the model run means the platform policy closed it. Needs a host whose
@@ -1038,7 +1038,7 @@ def test_terminus_runs_with_the_container_offline(agent_service, monkeypatch):
             assert sidecars, "the egress-control sidecar never ran"
             paths = {a["relative_path"] for a in artifacts}
             assert "agent/trajectory.json" in paths
-            # The trajectory was followed live as readable steps (U-07).
+            # The trajectory was followed live as readable steps.
             live = download("agent/trajectory").decode()
             assert "$ echo ok > /app/answer" in live and "--- step" in live
             assert model.calls and set(model.calls) == {f"Bearer {model.KEY}"}
@@ -1083,7 +1083,7 @@ ALLOWED_HOST_MOUNTS = {
 
 
 def test_attachments_install_in_each_trial_container(agent_service, monkeypatch):
-    """E2E-RUN-04 / TECH-04: a member's PAT publishes packages and submits; each trial
+    """Attachment isolation: a member's PAT publishes packages and submits; each trial
     installs in its own container during setup (with the setup network), the agent and
     verifier phases are then offline, and a failing or slow install ends only its trials,
     as an attachment failure rather than a score. Uses the local scripted model."""

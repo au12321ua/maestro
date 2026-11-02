@@ -1,4 +1,4 @@
-"""Attachment snapshots (03 sections 2 and 6): members publish fixed file lists.
+"""Attachment snapshots: members publish fixed file lists.
 
 Any member or experiment PAT may publish; everyone may read and choose any enabled
 snapshot (results are team-wide). Publishing is incremental: the client asks which
@@ -8,7 +8,7 @@ existing snapshot; the optional label names it within its attachment and never m
 and the optional parent only records what it was made from (snapshots may branch). The
 owner or an administrator may disable a snapshot or put it in the recycle bin.
 Publishing never runs the package's script: installation only happens inside accepted
-runs (03 section 7).
+runs.
 """
 
 from __future__ import annotations

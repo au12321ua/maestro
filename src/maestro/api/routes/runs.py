@@ -145,7 +145,7 @@ def rerun(
     idempotency_key: str = Header(alias="Idempotency-Key"),
     who: Principal = Depends(principal),
 ):
-    """Same configuration (CFG-06): team defaults and the model revision of the source;
+    """Same configuration: team defaults and the model revision of the source;
     the current credential value. Refused when anything but the task set would differ."""
     service = maestro(request)
     if service.worker is None:

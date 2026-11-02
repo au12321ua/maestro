@@ -1,4 +1,4 @@
-"""Deployment configuration from ``config.toml`` (12 section 3).
+"""Deployment configuration from ``config.toml``.
 
 Business defaults, quotas and policies live in the database; this file only holds
 what must be known before the database opens.
@@ -16,9 +16,8 @@ DEFAULT_CONFIG = Path("/etc/maestro/config.toml")
 MIB = 1024**2
 GIB = 1024**3
 
-# Limits that depend on the machine and its disk: (minimum, maximum), integers only. The
-# defaults are the D-011 initial values (14 section 5). Team policies (PAT lifetime, run
-# size, retention, ...) are not here: they move to the database with M5.
+# Machine and disk tuning bounds: (minimum, maximum), integers only.
+# Team policies such as PAT limits, run size and retention live in the database.
 TUNING = {
     "artifact_max_files": (1, 10_000),
     "artifact_file_max_mb": (1, 4096),
@@ -37,7 +36,7 @@ TUNING = {
 # before the Runner counts as lost.
 HEARTBEATS_BEFORE_LOST = 3
 # Settings that moved elsewhere: still accepted so an older config.toml does not stop an
-# update, ignored, and named in the start log (U-39).
+# update, ignored, and named in the start log.
 RETIRED = {
     "setup_proxy": "the setup network is set on the admin page now",
     "setup_no_proxy": "the setup network is set on the admin page now",
@@ -83,16 +82,16 @@ class Settings:
     build_timeout_max_sec: int = 3600
     pull_timeout_sec: int = 1800
     push_timeout_sec: int = 1800
-    # The local image registry prepared images are kept in (N-01): ``host:port`` that the
+    # The local image registry prepared images are kept in: ``host:port`` that the
     # Docker daemon reaches over plain HTTP. ``maestroctl`` runs it as a container with its
     # data under ``data_dir/registry``.
     image_registry: str = "127.0.0.1:8425"
     restore_slots: int = 2
     # One-shot Runner processes for Hub searches and downloads that may run at once.
     hub_runner_slots: int = 4
-    # Largest batch export (07 section 6), checked against the selected files up front.
+    # Largest batch export, checked against the selected files up front.
     export_max_gb: int = 10
-    # Free space under data_dir (07 section 7, D-011 initial values; tune per disk):
+    # Free space under data_dir (initial values; tune per disk):
     # below either "accept" threshold new runs are refused, below either "dispatch"
     # threshold queued runs wait. Queries, cancellation and downloads keep working.
     storage_accept_min_free_gb: float = 20
@@ -116,12 +115,12 @@ class Settings:
 
     @property
     def registry_dir(self) -> Path:
-        """The local image registry's storage: prepared images are data, not cache (U-17)."""
+        """The local image registry's storage: prepared images are data, not cache."""
         return self.data_dir / "registry"
 
     @property
     def legacy_preparation_dir(self) -> Path:
-        """Where ``docker save`` originals were kept before the registry (N-01)."""
+        """Where ``docker save`` originals were kept before the registry."""
         return self.data_dir / "preparations"
 
     @property
@@ -185,7 +184,7 @@ class Settings:
         data = self.data_dir.resolve()
         keys = self.master_key_dir.resolve()
         if keys.is_relative_to(data) or data.is_relative_to(keys):
-            # Backups copy data_dir; the master key must travel separately (O-08).
+            # Backups copy data_dir; the master key must travel separately.
             raise MaestroError("CONFIG_INVALID", "master_key_dir must be outside data_dir", 500)
         if not re.fullmatch(r"[A-Za-z0-9.-]+:[0-9]{1,5}", self.image_registry):
             raise MaestroError("CONFIG_INVALID", "image_registry must be host:port", 500)

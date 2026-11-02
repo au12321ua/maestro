@@ -1,4 +1,4 @@
-// Administrator tabs for model configurations, harness versions and the team policy (03).
+// Administrator tabs for model configurations, harness versions and the team policy.
 import { useRef, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -400,7 +400,7 @@ function day(value: string | null | undefined): string {
   return value ? fmtTime(value).slice(0, 10) : "";
 }
 
-/** Versions to choose an upstream version from (N-09): the package's release tags and
+/** Versions to choose an upstream version from: the package's release tags and
  * recent releases, the version this Maestro was tested with, and what the team has. */
 function UpstreamHints({
   found,
