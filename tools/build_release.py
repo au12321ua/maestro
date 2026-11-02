@@ -38,7 +38,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def sh(*cmd, cwd=ROOT) -> str:
-    return subprocess.run(cmd, cwd=cwd, check=True, capture_output=True, text=True).stdout
+    return subprocess.run(cmd, cwd=cwd, check=True, stdout=subprocess.PIPE, text=True).stdout
 
 
 def sha256(path: Path) -> str:
