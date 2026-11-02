@@ -104,6 +104,8 @@ def validate(dist, commit, version=None):
                     "PATH",
                     "HTTPS_PROXY",
                     "HTTP_PROXY",
+                    "NO_PROXY",
+                    "UV_OFFLINE",
                     "UV_CACHE_DIR",
                     "UV_PYTHON",
                     "UV_PYTHON_DOWNLOADS",
