@@ -12,6 +12,7 @@ import re
 import subprocess
 import sys
 import time
+import tomllib
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -78,8 +79,6 @@ def prepare(args, root=ROOT):
         if git("ls-remote", "--tags", remote, f"refs/tags/v{args.version}", root=root):
             raise SystemExit(f"version {args.version} is already tagged on {remote}; resume it")
     for ref in (
-        candidate,
-        completion,
         f"refs/tags/v{args.version}",
         f"{args.remote}/{candidate}",
         f"{args.remote}/{completion}",
@@ -96,52 +95,103 @@ def prepare(args, root=ROOT):
     if tuple(map(int, next_version.removesuffix(".dev0").split("."))) <= formal_tuple:
         raise SystemExit("next development version must follow the formal version")
     worktree = args.worktree.resolve()
-    git("worktree", "add", "-b", candidate, str(worktree), source, root=root)
-    # Failure leaves the candidate worktree available for inspection, never resets it.
-    set_version(args.version, worktree)
-    notes = worktree / notes_path(args.version)
-    notes.parent.mkdir(parents=True, exist_ok=True)
-    notes.write_text(args.notes.read_text())
-    if not notes.read_text().strip():
-        raise SystemExit("release notes must be reviewed and nonempty")
-    git(
-        "add",
-        "--",
+    allowed = {
         "pyproject.toml",
         "sdk/pyproject.toml",
         "uv.lock",
-        "openapi",
-        "sdk/src",
+        "openapi/maestro-v1.json",
+        "sdk/src/maestro_sdk/models.py",
+        "sdk/src/maestro_sdk/_contract.py",
         "frontend/src/lib/schema.d.ts",
         notes_path(args.version),
-        root=worktree,
-    )
-    git(
-        "commit",
-        "-m",
-        f"Prepare release {args.version}\n\nRelease-source: {source}\nNext-development: {next_version}",
-        root=worktree,
-    )
-    final = resolve("HEAD", worktree)
-    git("switch", "-c", completion, root=worktree)
-    set_version(next_version, worktree)
-    git(
-        "add",
-        "--",
-        "pyproject.toml",
-        "sdk/pyproject.toml",
-        "uv.lock",
-        "openapi",
-        "sdk/src",
-        "frontend/src/lib/schema.d.ts",
-        root=worktree,
-    )
-    git(
-        "commit",
-        "-m",
-        f"Resume development at {next_version}\n\nRelease-candidate: {final}",
-        root=worktree,
-    )
+    }
+    note_text = args.notes.read_text()
+    if not note_text.strip():
+        raise SystemExit("release notes must be reviewed and nonempty")
+    if maybe_ref(candidate, root):
+        if not worktree.is_dir() or git(
+            "rev-parse", "--path-format=absolute", "--git-common-dir", root=worktree
+        ) != git("rev-parse", "--path-format=absolute", "--git-common-dir", root=root):
+            raise SystemExit(
+                "prepared branch exists; use its original worktree to resume preparation"
+            )
+        current_branch = git("symbolic-ref", "--short", "HEAD", root=worktree)
+        if current_branch not in (candidate, completion):
+            raise SystemExit(
+                "preparation worktree is on a different branch; inspect before resuming"
+            )
+        changed = set(git("diff", "--name-only", "HEAD", root=worktree).splitlines())
+        changed.update(
+            git("ls-files", "--others", "--exclude-standard", root=worktree).splitlines()
+        )
+        if changed - allowed:
+            raise SystemExit(
+                "preparation has unrelated changes; preserve and inspect them before resuming"
+            )
+    else:
+        if maybe_ref(completion, root):
+            raise SystemExit("completion exists without its candidate; inspect before resuming")
+        git("worktree", "add", "-b", candidate, str(worktree), source, root=root)
+    final = resolve(candidate, root)
+    if final == source:
+        if git("symbolic-ref", "--short", "HEAD", root=worktree) != candidate:
+            raise SystemExit("incomplete candidate is not checked out in the preparation worktree")
+        # Repeat only derived files after an interrupted dependency/generator operation.
+        set_version(args.version, worktree)
+        notes = worktree / notes_path(args.version)
+        notes.parent.mkdir(parents=True, exist_ok=True)
+        if notes.exists() and notes.read_text() != note_text:
+            raise SystemExit("prepared notes differ; inspect them instead of overwriting")
+        notes.write_text(note_text)
+        git("add", "--", *sorted(allowed), root=worktree)
+        git(
+            "commit",
+            "-m",
+            f"Prepare release {args.version}\n\nRelease-source: {source}\nNext-development: {next_version}",
+            root=worktree,
+        )
+        final = resolve("HEAD", worktree)
+    else:
+        message = git("show", "-s", "--format=%B", final, root=root)
+        if (
+            git("rev-parse", final + "^", root=root) != source
+            or f"Release-source: {source}" not in message
+            or f"Next-development: {next_version}" not in message
+            or tomllib.loads(git("show", f"{final}:pyproject.toml", root=root))["project"][
+                "version"
+            ]
+            != args.version
+            or git("show", f"{final}:{notes_path(args.version)}", root=root) != note_text.strip()
+        ):
+            raise SystemExit(
+                "existing candidate differs from the requested preparation; inspect before resuming"
+            )
+    if not maybe_ref(completion, root):
+        git("switch", "-c", completion, root=worktree)
+    if resolve(completion, root) == final:
+        if git("symbolic-ref", "--short", "HEAD", root=worktree) != completion:
+            raise SystemExit("resume next-version preparation from its original worktree")
+        set_version(next_version, worktree)
+        git("add", "--", *sorted(allowed - {notes_path(args.version)}), root=worktree)
+        git(
+            "commit",
+            "-m",
+            f"Resume development at {next_version}\n\nRelease-candidate: {final}",
+            root=worktree,
+        )
+    else:
+        complete = resolve(completion, root)
+        if (
+            git("rev-parse", complete + "^", root=root) != final
+            or f"Release-candidate: {final}"
+            not in git("show", "-s", "--format=%B", complete, root=root)
+            or tomllib.loads(git("show", f"{complete}:pyproject.toml", root=root))["project"][
+                "version"
+            ]
+            != next_version
+            or git("status", "--porcelain", root=worktree)
+        ):
+            raise SystemExit("prepared completion differs or has changes; inspect before resuming")
     print(
         json.dumps(
             {
@@ -149,7 +199,7 @@ def prepare(args, root=ROOT):
                 "candidate": final,
                 "version": args.version,
                 "next_version": next_version,
-                "completion": resolve("HEAD", worktree),
+                "completion": resolve(completion, root),
                 "worktree": str(worktree),
                 "review": f"git diff {source} {candidate}",
             },
@@ -295,8 +345,6 @@ def publish(args, root=ROOT):
         actual = client.tag_commit(tag)
         if actual and actual != sha:
             raise SystemExit(f"{tag} already points at {actual}, expected {sha}")
-    import tomllib
-
     following = tomllib.loads(git("show", f"{completion}:pyproject.toml", root=root))["project"][
         "version"
     ]

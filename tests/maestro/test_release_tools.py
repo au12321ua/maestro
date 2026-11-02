@@ -559,14 +559,21 @@ def release_repo(tmp_path):
     return repo, git
 
 
+@pytest.mark.parametrize("failed_version", ["0.4.1", "0.4.2.dev0"])
 def test_prepare_pins_scope_and_prepares_next_version_before_publishing(
-    release_repo, tmp_path, monkeypatch
+    release_repo, tmp_path, monkeypatch, failed_version
 ):
     repo, git = release_repo
     source = git("rev-parse", "HEAD")
 
+    failed = False
+
     def stamp(value, root):
+        nonlocal failed
         (root / "pyproject.toml").write_text(f'[project]\nversion = "{value}"\n')
+        if value == failed_version and not failed:
+            failed = True
+            raise RuntimeError("interrupted generation")
 
     monkeypatch.setattr(release_tool, "set_version", stamp)
     # The actual generator is tested by contract drift tests. Use a minimal repo here.
@@ -588,7 +595,10 @@ def test_prepare_pins_scope_and_prepares_next_version_before_publishing(
         notes=notes,
         worktree=tmp_path / "candidate",
     )
+    with pytest.raises(RuntimeError, match="interrupted"):
+        release_tool.prepare(args, repo)
     candidate = release_tool.prepare(args, repo)
+    assert release_tool.prepare(args, repo) == candidate  # Preparation can be resumed repeatedly.
     completion = git("rev-parse", "release/v0.4.1-next")
     assert candidate != source and completion != candidate
     assert 'version = "0.4.1"' in git("show", f"{candidate}:pyproject.toml")

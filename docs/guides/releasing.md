@@ -31,7 +31,7 @@ python3 tools/release.py prepare --commit <完整dev提交> --version X.Y.Z \
 | `release/vX.Y.Z` | 在所选业务提交上增加正式版本、生成物和已审阅说明 `docs/releases/vX.Y.Z.md`；这是需要验证和打 tag 的最终 SHA |
 | `release/vX.Y.Z-next` | 包含正式候选，再增加下一开发版本与生成物；worktree 停在这里，供提前审阅收尾差异 |
 
-下一版本默认是下一补丁的 `.dev0`，可用 `--next-version X.Y.Z.dev0` 明确指定，必须晚于正式版本。所选业务 SHA 与正式候选 SHA 会同时输出，dev 后续推进不会暗中扩大候选。失败时保留 worktree；修复或核对现场后再操作，不重置已有文件。准备需要 uv、npm 及下载依赖的网络环境。
+下一版本默认是下一补丁的 `.dev0`，可用 `--next-version X.Y.Z.dev0` 明确指定，必须晚于正式版本。所选业务 SHA 与正式候选 SHA 会同时输出，dev 后续推进不会暗中扩大候选。失败时保留 worktree；修复下载环境后重复相同 `prepare` 命令，依据已有提交继续生成。改变来源、下一版本、说明或出现范围外修改会停止，保留现场供核对，不重置已有文件。准备需要 uv、npm 及下载依赖的网络环境。
 
 审阅两个提交、发布说明和该次验收范围后，推送准备的分支：
 

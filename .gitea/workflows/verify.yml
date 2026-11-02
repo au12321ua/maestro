@@ -15,7 +15,8 @@ on:
   workflow_dispatch:
 # Checks and publishing have independent results. Credentials are scoped to API steps.
 permissions:
-  contents: write
+  contents: read
+  actions: read
 env:
   # Downloads that hang fail fast and are retried instead of using up the job.
   UV_HTTP_TIMEOUT: "60"
@@ -100,6 +101,9 @@ jobs:
       - name: Third-party licenses are allowed
         run: uv run python tools/third_party_licenses.py
   publish:
+    permissions:
+      contents: write
+      actions: read
     needs: verify
     if: ${{ always() && github.event_name == 'push' && (github.ref_type == 'tag' || (github.ref == 'refs/heads/dev' && needs.verify.result == 'success')) }}
     runs-on: ${{ vars.HH_RUNNER_LABEL || 'ubuntu-latest' }}
