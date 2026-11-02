@@ -751,3 +751,28 @@ def test_partial_publication_never_reports_complete_or_finishes_dev(
         release_tool.publish(args, tmp_path)
     assert finished == []
     assert any(p[0] == "github" for p in pushes) is (failed_stage != "gitea")
+
+
+def test_missing_tag_is_not_a_completed_release():
+    class Client:
+        def tag_commit(self, tag):
+            return None
+
+        def call(self, *args, **kwargs):
+            pytest.fail("a missing tag cannot qualify as a completed release")
+
+    assert release_tool.release_state(Client(), "v0.4.1", "a" * 40) is None
+
+
+def test_dev_completion_never_pushes_a_formal_version(release_repo, tmp_path):
+    repo, git = release_repo
+    source = git("rev-parse", "HEAD")
+    (repo / "pyproject.toml").write_text('[project]\nversion = "0.4.1"\n')
+    git("add", ".")
+    git("commit", "-m", "Incorrectly prepared development completion")
+    completion = git("rev-parse", "HEAD")
+    args = SimpleNamespace(remote="origin", version="0.4.1", finish_worktree=tmp_path / "finish")
+    with pytest.raises(SystemExit, match="development version"):
+        release_tool.finish_dev(source, completion, args, repo)
+    git("fetch", "origin")
+    assert git("rev-parse", "origin/dev") == source

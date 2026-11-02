@@ -240,6 +240,8 @@ def release_state(client, tag, sha):
     actual = client.tag_commit(tag)
     if actual and actual != sha:
         raise SystemExit(f"{tag} resolves to {actual}, expected {sha}; never move a shared tag")
+    if actual is None:
+        return None
     release = client.call("GET", "/releases/tags/" + tag, ok_missing=True)
     return release if release and not release["draft"] else None
 
@@ -302,10 +304,19 @@ def compare_channels(gitea, github, first, second):
     return wheel, gitea.asset_digest(left[wheel], first["id"])
 
 
+def require_development_head(sha, formal, root):
+    version = tomllib.loads(git("show", f"{sha}:pyproject.toml", root=root))["project"]["version"]
+    if not re.fullmatch(r"\d+\.\d+\.\d+\.dev0", version) or tuple(
+        map(int, version.removesuffix(".dev0").split("."))
+    ) <= tuple(map(int, formal.split("."))):
+        raise SystemExit("dev completion must end at a development version after the release")
+
+
 def finish_dev(candidate, completion, args, root=ROOT):
     git("fetch", args.remote, root=root)
     current = resolve(f"{args.remote}/dev", root)
     if ancestor(completion, current, root):
+        require_development_head(current, args.version, root)
         print(f"dev already includes next development version: {current}")
         return
     if ancestor(current, completion, root):
@@ -326,6 +337,7 @@ def finish_dev(candidate, completion, args, root=ROOT):
         if not ancestor(current, resolve("HEAD", path), root):
             git("merge", "--no-edit", current, root=path)
         final = resolve("HEAD", path)
+    require_development_head(final, args.version, root)
     # One fast-forward push contains both formal preparation and next-dev version.
     git("push", args.remote, f"{final}:refs/heads/dev", root=root)
     print(f"dev completed: {final}")
