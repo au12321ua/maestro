@@ -1,4 +1,4 @@
-"""Experiment plans: saved partial configurations (04 section 1).
+"""Experiment plans: saved partial configurations.
 
 Members and experiment PATs create plans; the creator edits; everyone reads and copies;
 the creator or an administrator archives or deletes.

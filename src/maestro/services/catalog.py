@@ -1,4 +1,4 @@
-"""Team-readable dataset catalog (02, 10 section 4).
+"""Team-readable dataset catalog.
 
 Admission, content availability and the local cache are reported separately;
 ``can_submit`` derives from admission, availability and required configuration,
@@ -162,7 +162,7 @@ def task_view(task, admission, availability: dict, preparation, location_id: str
             {k: v for k, v in x.items() if k != "hard_constraints"}
             for x in definition.get("parameters") or []
         ],
-        # Values a run must supply (03); not a blocker of the task itself.
+        # Values a run must supply; not a blocker of the task itself.
         "required_parameters": required_parameters(definition),
         "instruction": definition.get("instruction") or "",
         "can_submit": not blockers,
@@ -273,7 +273,7 @@ class Catalog:
                 "name": row["name"],
                 "first_preparation_operation_id": active,
                 "scoring_contract": scoring.contract_for(row["manifest_json"]),
-                # Deleted versions still resolve for runs that reference them (07 section 8).
+                # Deleted versions still resolve for runs that reference them.
                 "deletion": deleted.version_state(conn, version_id),
                 **self._counts(conn, version_id),
             }

@@ -1,4 +1,4 @@
-"""Acceptance transaction: idempotency, PAT quota, admission races (04 section 3, F-01, F-26)."""
+"""Acceptance transaction: idempotency, PAT quota, admission races."""
 
 import threading
 
@@ -121,7 +121,7 @@ def test_blocked_tasks_are_excluded_or_rejected_before_acceptance(service, versi
 
 
 def test_admission_revoked_between_expansion_and_acceptance(service, version_id, monkeypatch):
-    """F-26: the write transaction re-checks admission and charges nothing on failure."""
+    """The write transaction re-checks admission and charges nothing on failure."""
     original = Resolver.resolve
 
     def expand_then_revoke(self, conn, request):

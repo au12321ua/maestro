@@ -1,10 +1,10 @@
-"""Upstream versions of the programs harness adapters install (N-09).
+"""Upstream versions of the programs harness adapters install.
 
 Harness CLIs release every few days. An administrator publishing a harness version sees
 the release tags and recent releases of the adapter's npm package next to the version
 this Maestro was tested with, and a version that does not exist upstream is refused at
 publishing. The lookup goes through the setup network (its proxy and npm registry
-mirror, 12 section 3), so it works wherever installs work. When it fails, the form still
+mirror), so it works wherever installs work. When it fails, the form still
 takes a typed version and publishing does not depend on it.
 """
 

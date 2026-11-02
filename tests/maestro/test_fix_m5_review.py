@@ -1,4 +1,4 @@
-"""Regressions for the findings of the independent M5 review (2026-10-24)."""
+"""Regressions for configuration, submission, credential and network boundaries."""
 
 import json
 import subprocess

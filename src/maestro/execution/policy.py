@@ -1,4 +1,4 @@
-"""Platform error policy (06 section 3, U-15) and the Harbor 0.24.0 adapter mapping.
+"""Platform error policy and the Harbor 0.24.0 adapter mapping.
 
 The policy is the platform's and carries its own version; the adapter only names
 which Harbor exception types fall under which policy rule. Exception names are
@@ -31,7 +31,7 @@ RULES = {
     "provider_permanent": Rule("model_provider_failed", False, False, True),
     "provider_auth": Rule("model_provider_failed", False, False, False),
     "harbor_failed": Rule("harbor_failed", False, False, False),
-    # An attachment's install script failed or ran out of time (03 section 7): neither a
+    # An attachment's install script failed or ran out of time: neither a
     # model result nor a zero, and running it again in a clean container would not help.
     "attachment_failed": Rule("attachment_failed", False, False, False),
     "verifier_failed": Rule("verifier_failed", False, False, True),
@@ -106,7 +106,7 @@ MAPPING_ID = (
     + digest_json({"policy": POLICY_VERSION, "map": HARBOR_EXCEPTIONS})[7:19]
 )
 
-# D-011 initial values: at most 3 attempts, 5 s then 20 s back-off.
+# Retry defaults: at most 3 attempts, 5 s then 20 s back-off.
 MAX_RETRIES = 2
 RETRY_MIN_WAIT_SEC = 5.0
 RETRY_WAIT_MULTIPLIER = 4.0
@@ -114,7 +114,7 @@ RETRY_MAX_WAIT_SEC = 20.0
 
 
 def harbor_retry_config() -> dict:
-    """Job-internal retry settings handed to Harbor (D-020): everything is retried
+    """Job-internal retry settings handed to Harbor: everything is retried
     except what the platform policy says not to, which keeps unknown exceptions
     retryable like the ``unclassified`` rule. Harbor's own default list is not used."""
     return {
@@ -133,7 +133,7 @@ def legal_score(value) -> bool:
 
 
 def primary_score(rewards, metric_id: str = DEFAULT_METRIC_ID) -> float | None:
-    """The reward the run's scoring contract names (06 section 2). Harbor writes a lone
+    """The reward the run's scoring contract names. Harbor writes a lone
     unnamed verifier value as ``reward``, so only the default metric also accepts the
     only value; any other metric must be present by name."""
     if not isinstance(rewards, dict) or not rewards:

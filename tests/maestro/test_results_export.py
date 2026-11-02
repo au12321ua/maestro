@@ -1,4 +1,4 @@
-"""E2E-OUT-01 with the fake executor: query runs, read summaries, export and verify.
+"""Results with the fake executor: query runs, read summaries, export and verify.
 
 An agent with only a read PAT filters runs, reads their scoring, exports them and
 checks the package: a real zero, a missing score and an execution failure stay

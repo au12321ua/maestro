@@ -1,4 +1,4 @@
-"""Harbor executor: one Runner subprocess per run, speaking the Runner protocol (15 section 5).
+"""Harbor executor: one Runner subprocess per run, speaking the Runner protocol.
 
 The service never imports Harbor. The Runner lives in its own uv environment with
 the locked Harbor version; this adapter starts it in a new process group, feeds it
@@ -50,7 +50,7 @@ EVENT_TYPES = {
     "network_plan",
     "completed",
 }
-# Inherited by the Runner; nothing else, in particular no provider keys (09 section 5).
+# Inherited by the Runner; nothing else, in particular no provider keys.
 ENV_KEEP = (
     "PATH",
     "LANG",
@@ -87,7 +87,7 @@ def artifact_kind(relative_path: str) -> str:
 
 
 def _redacted(data: bytes, limit: int, secrets: tuple[str, ...] = ()) -> bytes:
-    """Logs and products are shown after basic redaction (U-10, 09 section 5).
+    """Logs and products are shown after basic redaction.
 
     Any file that reads as text is redacted, whatever its name: a NUL byte marks binary,
     which stays untouched. Bytes that are not valid UTF-8 (a stderr tail cut mid-character)
@@ -280,7 +280,7 @@ class HarborExecutor:
             HOME=str(home),
             TMPDIR=str(tmp),
             PYTHONDONTWRITEBYTECODE="1",
-            # LiteLLM would otherwise fetch a cost map from GitHub at import (M1).
+            # LiteLLM would otherwise fetch a cost map from GitHub at import.
             LITELLM_LOCAL_MODEL_COST_MAP="True",
         )
         return env
@@ -291,13 +291,13 @@ class HarborExecutor:
         if mode == "oracle":
             return {"name": "oracle"}
         if mode != "agent":
-            # Never let Harbor fall back to its default agent (15 section 6).
+            # Never let Harbor fall back to its default agent.
             raise ValueError(f"unsupported execution mode: {mode!r}")
         model, harness = effective["model"], effective["harness"]
         params = dict(harness["params"])
         version = harness.get("upstream_version")
         if version is None and harness["agent"] == "opencode":
-            # Accepted before OpenCode's version was part of the harness version (N-09).
+            # Accepted before OpenCode's version was part of the harness version.
             version = params.pop("version", None) or "1.18.35"
         agent = {
             "adapter": harness["agent"],
@@ -307,7 +307,7 @@ class HarborExecutor:
         return agent if version is None else {**agent, "version": version}
 
     def _network(self, spec: RunSpec) -> dict | None:
-        """Platform phase policy (U-18): model runs get the stricter of the author's and
+        """Platform phase policy: model runs get the stricter of the author's and
         this; Oracle is a test mode and keeps the author's settings. Verification never
         needs the model; the agent phase needs it only when the harness calls the model
         from inside the container."""
@@ -414,7 +414,7 @@ class HarborExecutor:
             return ExecutionReport(cleanup_complete=True)
         settings = {x["task_key"]: x for x in spec.effective_config.get("tasks") or []}
         for key, entry in tasks.items():
-            # Each container's share of the trial's resources (U-54); the Runner gives an
+            # Each container's share of the trial's resources; the Runner gives an
             # override's extra to the main environment.
             entry["environments"] = (settings.get(key) or {}).get("environments") or []
         harness = bool(spec.effective_config.get("harness"))
@@ -554,7 +554,7 @@ class HarborExecutor:
         await self._terminate(proc, graceful=True)
 
     async def _terminate(self, proc, graceful: bool) -> None:
-        """Cooperative SIGTERM, then SIGKILL after the grace period (15 section 7)."""
+        """Cooperative SIGTERM, then SIGKILL after the grace period."""
         if proc.returncode is not None:
             return
         if graceful:

@@ -1,4 +1,4 @@
-"""07 section 8 with U-19: two-step deletion, who may do what, and what survives."""
+"""Two-step deletion, who may do what, and what survives."""
 
 import uuid
 
@@ -63,7 +63,7 @@ def test_member_bins_own_run_admin_restores_and_purges(service, version_id, stor
         still = alice.get(f"/api/v1/runs/{run_id}", expect=200).json()["data"]
         assert still["deletion"]["state"] == "recycled"
         assert "delete" not in still["allowed_actions"]
-        # The bin is administrators' only (U-19).
+        # The bin is administrators' only.
         assert alice.get("/api/v1/admin/recycle-bin").status_code == 403
         assert alice.post(f"/api/v1/admin/recycle-bin/{entry['id']}/restore").status_code == 403
 
@@ -164,7 +164,7 @@ def test_credentials_in_use_disable_first_and_purge_frees_the_name(service, vers
         body = {"name": "openai", "kind": "model_api_key", "provider": "openai", "value": "sk-1"}
         cred = admin.post("/api/v1/admin/credentials", json=body, expect=201).json()["data"]
         run_id = submit(admin, version_id).json()["data"]["run_id"]
-        with service.db.write() as conn:  # M5 binds credentials through the snapshot
+        with service.db.write() as conn:  # Credentials are bound through the snapshot
             conn.execute(
                 update(t.run_snapshots)
                 .where(t.run_snapshots.c.run_id == run_id)
@@ -305,7 +305,7 @@ def test_purging_a_dataset_purges_its_versions_with_receipts(service, version_id
         assert receipt["label"] == "demo/arith@v1" and receipt["purged_at"]
         detail = admin.get(f"/api/v1/dataset-versions/{version_id}").json()["data"]
         assert detail["deletion"]["state"] == "purged"
-        # The run, its scores and files survive the dataset (U-08).
+        # The run, its scores and files survive the dataset.
         run = admin.get(f"/api/v1/runs/{run_id}").json()["data"]
         assert run["dataset_version_deletion"]["state"] == "purged"
         assert run["scoring"]["mean"] == 1.0
@@ -325,7 +325,7 @@ def test_files_of_a_binned_run_stay_readable_until_purged(service, version_id):
 def test_purging_a_version_reclaims_caches_except_shared_content(
     service, source, environment, settings
 ):
-    """U-19: purge takes the version's preparation caches, local images and registry
+    """Purge takes the version's preparation caches, local images and registry
     copies, and its task materials, but keeps what a remaining version still uses."""
     from test_datasets import import_and_prepare, tasks_by_key
 
@@ -354,7 +354,7 @@ def test_purging_a_version_reclaims_caches_except_shared_content(
 
 def test_imports_respect_the_recycle_bin(service, source):
     """A recycled version or dataset is restored, not imported again; after a purge
-    the same content can be added as a new version (M6 hand-over to M4)."""
+    the same content can be added as a new version (hand-over to)."""
     from test_datasets import import_and_prepare, import_dataset, tasks_by_key
 
     with running(service) as client:

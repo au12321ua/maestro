@@ -1,9 +1,9 @@
-"""Team policy revisions (03 section 2, U-21): defaults and hard limits.
+"""Team policy revisions: defaults and hard limits.
 
 Administrators change the policy in a web session; every change is a new revision and
 the newest is in force. Before the first change, revision 0 (the built-in values in
 ``domain.limits``) is in force. A run records the revision its configuration used, and
-tightening a limit never rewrites accepted runs (03 section 3 rule 7).
+tightening a limit never rewrites accepted runs.
 """
 
 from __future__ import annotations

@@ -147,7 +147,7 @@ export function label(map: Labels, value: string | null | undefined): [string, T
 
 const BLOCKER: Record<string, string> = t("common.blocker", { returnObjects: true });
 
-/** Run-configuration blockers and where values came from (03). */
+/** Run-configuration blockers and where values came from. */
 export const CONFIG_BLOCKER: Record<string, string> = t("common.configBlocker", { returnObjects: true });
 
 /** A snapshot's name in lists: its label, or the start of its content digest. */

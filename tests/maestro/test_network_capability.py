@@ -1,4 +1,4 @@
-"""Model runs need the host to restrict task networks (U-18, F-18). The service learns it
+"""Model runs need the host to restrict task networks. The service learns it
 from the Runner at start and refuses model runs at acceptance when the host cannot, so
 no quota is spent on a run the Runner would refuse; the Runner's own check stays last."""
 

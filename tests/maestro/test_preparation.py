@@ -1,4 +1,4 @@
-"""Shared cache restore, failures and races: E2E-DS-04, DS-05, F-05, F-21 to F-24."""
+"""Shared cache restoration, unavailable content, retries and concurrent waiters."""
 
 import asyncio
 import shutil
@@ -130,7 +130,7 @@ def test_f22_last_waiter_leaving_ends_the_restore(service, source, environment):
 
 
 def test_ds05_transient_restore_failures_are_retried_attempts(service, source, environment):
-    """F-05: each failed restore is an attempt; trials and admission do not change."""
+    """Each failed restore is an attempt; trials and admission do not change."""
     with running(service) as client:
         admin, version_id, task = solo(service, source, client)
         evict(admin, task)
@@ -299,7 +299,7 @@ def test_f24_a_superseded_restore_cannot_publish(service, source, environment, t
 
 
 def test_restart_during_restore_interrupts_it_and_keeps_admission(service, source, environment):
-    """F-24: what a killed process left (restoring cache, running Operation, waiter,
+    """What a killed process left (restoring cache, running Operation, waiter,
     pin) is reconciled on start; admission and its evidence stay."""
     with running(service) as client:
         admin, version_id, task = solo(service, source, client)
@@ -433,7 +433,7 @@ def test_eviction_is_refused_when_the_cache_is_no_longer_ready(service, source, 
 
 
 def test_tasks_with_an_identical_environment_share_one_image(service, source, environment):
-    """N-01: the second task reuses what the first built, also within one first
+    """The second task reuses what the first built, also within one first
     preparation, and both tasks record the same image."""
     files = FakeDatasetSource.task_files("demo", "twins", "same")
     other = {**files, "instruction.md": "Solve the other one\n"}

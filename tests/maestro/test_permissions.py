@@ -1,4 +1,4 @@
-"""09 section 3 matrix: PAT never reaches admin; ownership cannot be forged."""
+"""Permission matrix: PAT never reaches admin; ownership cannot be forged."""
 
 import pytest
 from support import create_pat, invite_member, running, setup_admin, submit
@@ -97,7 +97,7 @@ def test_owner_cannot_be_forged_through_request_fields(service, version_id):
 
 
 def admin_routes():
-    """Every administrator route: the /admin tree plus searching the external source (U-20).
+    """Every administrator route: the /admin tree plus searching the external source.
 
     Walks the routers the app includes (``routes.routers``), whose routes carry their
     router-level dependencies.

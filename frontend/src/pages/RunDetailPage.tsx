@@ -533,7 +533,7 @@ function ExecutionMode({ mode }: { mode: unknown }) {
 }
 
 /** The model and harness this run froze at acceptance; later edits do not change it. */
-/** What a modified run changed, or which tasks a rerun took and why (04 section 7). */
+/** What a modified run changed, or which tasks a rerun took and why. */
 function SourceDifferences({ snapshot }: { snapshot: RunDetail["snapshot"] }) {
   const source = snapshot.provenance.source as
     | {
@@ -733,7 +733,7 @@ function trialDuration(trial: Trial): string {
 }
 
 /**
- * The GitHub Actions-like execution page (U-07): trials on the left like jobs, the selected
+ * The GitHub Actions-like execution page: trials on the left like jobs, the selected
  * trial's attempts and steps on the right, each step expandable to its live log. The
  * selected trial is in the URL (?trial=) so a refresh or a shared link keeps it.
  */

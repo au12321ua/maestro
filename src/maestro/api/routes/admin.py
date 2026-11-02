@@ -202,7 +202,7 @@ def provider_limit(
     return ok(request, service.set_provider_limit(who, provider, body.max_concurrent_trials))
 
 
-# --- deletion (07 section 8) ------------------------------------------------------------
+# --- deletion ------------------------------------------------------------
 
 
 @router.delete("/members/{user_id}", response_model=Envelope[RecycleEntry])
@@ -259,12 +259,12 @@ def purge_entry(
     return ok(request, service.recycle.purge(who, entry_id, body.confirm_object_id))
 
 
-# --- datasets and preparation (02) -----------------------------------------------------
+# --- datasets and preparation -----------------------------------------------------
 
 
 @router.post("/dataset-imports", response_model=Envelope[Operation], status_code=202)
 def import_dataset(body: DatasetImport, request: Request, who: Principal = Depends(principal)):
-    """Resolve a reference to a fixed digest, fetch and record the version (02 section 3)."""
+    """Resolve a reference to a fixed digest, fetch and record the version."""
     return ok(request, maestro(request).datasets.request_import(who, body.model_dump()))
 
 
@@ -311,6 +311,6 @@ def scoring_contract(
     request: Request,
     who: Principal = Depends(principal),
 ):
-    """Confirm how this version is scored; new runs freeze it (06 section 2)."""
+    """Confirm how this version is scored; new runs freeze it."""
     service = maestro(request).datasets
     return ok(request, service.confirm_scoring_contract(who, version_id, body.model_dump()))

@@ -1,4 +1,4 @@
-"""Versioned schema migrations (01 section 7). Run offline, never implicitly on serve."""
+"""Versioned schema migrations. Run offline, never implicitly on serve."""
 
 from alembic import command
 from alembic.config import Config

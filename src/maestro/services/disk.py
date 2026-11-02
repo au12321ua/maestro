@@ -1,4 +1,4 @@
-"""Storage watermarks (07 section 7, F-10).
+"""Storage watermarks.
 
 Low free space first stops new runs from being accepted, then stops queued runs
 from starting. Running work finishes its bookkeeping; nothing unexpired is deleted

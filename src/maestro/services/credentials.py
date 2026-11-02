@@ -1,4 +1,4 @@
-"""Team credentials (09 section 4): write-only values bound by explicit reference.
+"""Team credentials: write-only values bound by explicit reference.
 
 Values are AES-GCM encrypted under the active master-key generation with the
 credential id and revision as associated data. No API returns a value or any
@@ -73,7 +73,7 @@ class Credentials:
             return [public_credential(r) for r in rows.mappings().all()]
 
     def directory(self, principal: Principal) -> list[dict]:
-        """Names of the team's usable credentials, for anyone signed in (U-23): a member
+        """Names of the team's usable credentials, for anyone signed in: a member
         or an agent needs them to reference a secret parameter. Never values or anything
         derived from them, and nothing about who made or changed them."""
         with self.db.read() as conn:
@@ -156,7 +156,7 @@ class Credentials:
 
     @classmethod
     def _live(cls, conn, cred_id):
-        """A deleted credential cannot be changed, enabled or used (07 section 8)."""
+        """A deleted credential cannot be changed, enabled or used."""
         row = cls._row(conn, cred_id)
         if deleted.state(conn, "credential", cred_id):
             raise MaestroError("CREDENTIAL_DELETED", "Credential was deleted", 409)

@@ -203,7 +203,7 @@ def _sha256(path: Path) -> str:
 
 def files_digest(files: list[dict]) -> str:
     """A snapshot's ``content_digest``: the canonical JSON of each file's path, SHA-256
-    and executable bit in path order, as the service computes it (03 section 6)."""
+    and executable bit in path order, as the service computes it."""
     listed = sorted([f["path"], f["sha256"], f["executable"]] for f in files)
     encoded = json.dumps(listed, separators=(",", ":"), ensure_ascii=False).encode()
     return "sha256:" + hashlib.sha256(encoded).hexdigest()

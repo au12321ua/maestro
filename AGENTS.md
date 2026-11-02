@@ -1,6 +1,10 @@
 # 项目工作入口
 
-Maestro 的系统说明在 [docs/design](docs/design/README.md)（只写现状），待实现的设计在[提案](docs/proposals/README.md)。先读[系统说明入口](docs/design/README.md)和[开发交接](docs/HANDOFF.md)，开发前再读[分支、协作与发布规则](docs/guides/development-workflow.md)，然后按当前任务读取相关模块和原始文件；启动时不必读完整个文档目录。
+Documentation level: L3
+Integration branch: dev
+Release branch: master
+
+Maestro 的文档导航在 [docs/README.md](docs/README.md)，架构在 [docs/architecture](docs/architecture/README.md)，系统行为与取舍在 [docs/design](docs/design/README.md)，待实现的设计在[提案](docs/proposals/README.md)。先读[系统说明入口](docs/design/README.md)和[开发交接](docs/HANDOFF.md)，开发前再读[分支与协作规则](docs/guides/development-workflow.md)，然后按当前任务读取相关模块和原始文件；启动时不必读完整个文档目录。
 
 小任务（可回滚，不改接口、数据结构、密钥、部署和验收标准，例如查问题、清理环境、改文档或配置）只读与当前任务直接相关的文件。但操作服务、state 或镜像前，仍须先读部署现场说明（私有仓库 `auua/maestro-site` 的 `hosts/` 中对应主机的文件）；“工作原则”中保护现场与秘密的要求同样适用。现场说明由部署者维护，不进入公开仓库。
 
@@ -14,7 +18,11 @@ Maestro 的系统说明在 [docs/design](docs/design/README.md)（只写现状�
 
 需求审计稿（`docs/design/requirements-review.md`）与重写期间的实施记录（`docs/design/records/`）已冻结，只作出处，不再修改或新增（U-33）。决策记录“冲突与结论”中尚未定论的条目，未经用户确认前不按任何一方擅自实现。
 
-增量的流程：写提案 → 用户确认 → 实现 → 在合入的同一个 PR 中把结论并入系统说明、删除提案文件、更新提案索引 → 实施证据写在提交说明与 PR 描述中。系统说明只描述现状，不追加“原设计 / 现状 / 阶段”式的分层注解，代码能表达的细节（字段、接口清单、默认值）以代码为准。
+增量的流程：写提案 → 用户确认 → 实现 → 在合入的同一个 PR 中把结论并入系统说明、把提案标记完成并移入 `docs/proposals/archive/`、更新提案索引 → 实施证据写在提交说明与 PR 描述中。取消或被取代的提案也归档并注明原因与替代项；暂缓的保留在提案目录并标明状态。既有 N 编号不复用，已删除的旧提案不恢复（U-64）。系统说明只描述现状，不追加“原设计 / 现状 / 阶段”式的分层注解，代码能表达的细节（字段、接口清单、默认值）以代码为准。
+
+只有用户明确决定才登记为 U 条目；新条目附用户原话或可追溯对话出处，旧条目不追补来源。保留旧条目正文与编号，替代决定追加新条目并在双方注明关系。Agent 的实现选择写入技术决定或提交说明，不能登记为用户约束。
+
+文档可以引用代码路径、符号与测试；代码注释和测试说明独立写清行为、原因与不变量，不引用文档路径、章节或内部决定、提案、验收编号。U、N 与验收场景号保留在文档、提交说明和 PR 中，文档章节可按内容重排；不新增引用检查器或引用注册表（U-65）。
 
 ## 目标与用户确认过的边界
 
@@ -34,13 +42,16 @@ Maestro 的系统说明在 [docs/design](docs/design/README.md)（只写现状�
 ## 按任务查阅
 
 - 下一步做什么：[提案索引](docs/proposals/README.md)。测试分层与验收场景：[测试与验收](docs/design/13-testing-plan.md)。各模块从[系统说明入口](docs/design/README.md)进入。
-- 代码分工：[源码职责](docs/architecture/source-layout.md)；公开 API 以服务导出的 OpenAPI 为准。已删除的基线服务、CLI 与机器 API 可查 `9ff43b5`。
+- 全局结构：[系统架构](docs/architecture/README.md)；代码分工：[源码职责](docs/architecture/source-layout.md)；公开 API 以服务导出的 OpenAPI 为准。已删除的基线服务、CLI 与机器 API 可查 `9ff43b5`。
+- 验证命令与隔离前提：[开发验证](docs/guides/testing.md)；版本与发包：[打包与发布](docs/guides/releasing.md)；安装维护：[部署指南](docs/guides/deployment.md)。
 - 部署现场以私有仓库 `auua/maestro-site`（Gitea；克隆与上手步骤见其 README）`hosts/` 中的现场说明为准；操作前实时核对身份与引用。
 - 废弃方案和重写前的旧实现可查 Git 历史，不成为新增约束。
 
 ## 运行与验证入口
 
-当前实现需要 Linux、Python 3.12–3.13、uv；实际执行另需 Docker/Compose、可用镜像及 Hub 数据集权限。依赖由 `pyproject.toml`、`uv.lock`、`frontend/package-lock.json` 记录。具体命令和隔离前提以[开发交接](docs/HANDOFF.md)为准。
+当前实现需要 Linux、Python 3.12–3.13、uv；实际执行另需 Docker/Compose、可用镜像及 Hub 数据集权限。依赖由 `pyproject.toml`、`uv.lock`、`frontend/package-lock.json` 记录。初始化运行 `uv sync --locked --group dev`；网页在 `frontend/` 执行 `npm ci`。Python 的检查入口为 `uv run ruff check src tests runner/src tools sdk/src ops` 与 `uv run pytest -q`；文档运行 `python3 tools/check_doc_links.py` 与 `git diff --check`。完整检查、开关与隔离前提以[开发验证](docs/guides/testing.md)为准。
+
+任务 worktree 通常从 `origin/dev` 建立：`git fetch origin` 后执行 `git worktree add -b feature/<topic> ../harbor-helper-<topic> origin/dev`；任务目录可按当前环境选择。只改文档时在干净且由自己使用的检出上执行 `git switch -c docs/<topic> origin/dev`。合入 `dev` 后，核对任务树的未提交、未跟踪和 ignored 内容及服务引用，再精确执行 `git worktree remove <任务目录>` 和 `git branch -d <任务分支>`；无法证明安全时保留并说明原因。推送、发布、合入 `master`、打 tag 和删除远端分支在用户授权范围内执行。
 
 ## 工作原则
 

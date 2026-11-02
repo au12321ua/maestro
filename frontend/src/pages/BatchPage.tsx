@@ -1,4 +1,4 @@
-// Batches (04 section 4): runs accepted together; each runs and ends on its own.
+// Batches: runs accepted together; each runs and ends on its own.
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";

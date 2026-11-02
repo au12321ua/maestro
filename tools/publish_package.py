@@ -1,4 +1,4 @@
-"""Publish the SDK wheel to the Gitea Python package registry (N-25). Standard library only.
+"""Publish the SDK wheel to the Gitea Python package registry. Standard library only.
 
     GITEA_URL=<server> GITEA_OWNER=<owner> GITEA_TOKEN=<token> \\
     python3 tools/publish_package.py --dist <dir> [--keep 10]

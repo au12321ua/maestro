@@ -1,4 +1,4 @@
-"""SQLite engine with WAL, foreign keys and bounded busy waits (01 section 6).
+"""SQLite engine with WAL, foreign keys and bounded busy waits.
 
 Every unit of work opens its own short transaction. ``write()`` takes the
 database write lock up front (``BEGIN IMMEDIATE``) so read-then-write checks such

@@ -1,8 +1,8 @@
-"""Run environment boundary: task preparation and the local preparation cache (02).
+"""Run environment boundary: task preparation and the local preparation cache.
 
 The platform owns preparation: an environment builds or pulls every image a task's
 trials start (the main environment, a separate verifier, Compose services) without
-running an agent, keeps each in the local image registry by content (N-01), and later
+running an agent, keeps each in the local image registry by content, and later
 brings exactly those images back. Business code keeps admission, availability and
 cache state; the environment only reports what happened, classified by
 ``PreparationError``.
@@ -16,7 +16,7 @@ from typing import Protocol
 from maestro.core.digests import digest_json
 from maestro.domain.setup_network import BUILT_IN, SetupNetwork
 
-# PreparationError kinds (06 section 3, platform preparation errors). Only TRANSIENT is
+# PreparationError kinds (platform preparation errors). Only TRANSIENT is
 # retried; a cause that is not known to be transient is never retried.
 TRANSIENT = "transient"  # network, registry or daemon trouble; the content may still exist
 AUTH = "auth"  # registry or source refused access; cannot tell "gone" from "denied"
@@ -41,12 +41,12 @@ class PreparationSpec:
     task_dir: Path
     """Verified local task material (read only)."""
     spec: dict = field(default_factory=dict)
-    """The normalized spec the digest covers (02 section 6)."""
+    """The normalized spec the digest covers."""
     setup_network: SetupNetwork = BUILT_IN
-    """In force when this preparation started (N-08); builds use its proxy."""
+    """In force when this preparation started; builds use its proxy."""
     known: Mapping[str, "PreparedImage"] = field(default_factory=dict)
     """Images already recorded by definition key: an identical definition is reused,
-    not built again (N-01)."""
+    not built again."""
 
 
 @dataclass(frozen=True)
@@ -93,7 +93,7 @@ class PreparedOutput:
     @property
     def content_id(self) -> str:
         """The images as one content identity: what availability is recorded for and a
-        restore must reproduce (02 section 5)."""
+        restore must reproduce."""
         return digest_json(sorted([i.role, i.digest] for i in self.images))
 
     def refs(self) -> dict[str, str]:
@@ -145,10 +145,10 @@ class Environment(Protocol):
 
     async def evict(self, expected: PreparedOutput, keep: frozenset[str] = frozenset()) -> None:
         """Remove the local images, except the digests in ``keep`` (another task uses
-        them); the registry copies stay (U-17)."""
+        them); the registry copies stay."""
         ...
 
     async def discard(self, expected: PreparedOutput, keep: frozenset[str] = frozenset()) -> None:
-        """The dataset version is purged (U-19): remove the local images and the registry
+        """The dataset version is purged: remove the local images and the registry
         copies, except the digests in ``keep`` that other preparations still record."""
         ...

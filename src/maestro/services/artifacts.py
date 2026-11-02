@@ -1,4 +1,4 @@
-"""Artifact index, bounded reads, retention and index/file reconciliation (07).
+"""Artifact index, bounded reads, retention and index/file reconciliation.
 
 Raw artifacts expire a fixed TTL after their trial's execution ended (run-level
 artifacts: after the run finished). The index row, digest and status stay as
@@ -52,7 +52,7 @@ def public_artifact(row) -> dict:
 
 
 def expiry_after(conn: Connection, ended_at: str | None) -> str | None:
-    """TTL of the team policy in force when the file's owner ended (07 section 2)."""
+    """TTL of the team policy in force when the file's owner ended."""
     if ended_at is None:
         return None
     days = policy.current(conn).artifact_ttl_days
@@ -60,7 +60,7 @@ def expiry_after(conn: Connection, ended_at: str | None) -> str | None:
 
 
 def expiry_for(conn: Connection, run_id: str, trial_id: str | None) -> str | None:
-    """For a file stored now: a late upload does not restart the TTL (07 section 2)."""
+    """For a file stored now: a late upload does not restart the TTL."""
     if trial_id:
         ended = conn.execute(
             select(t.trials.c.execution_terminal_at).where(t.trials.c.id == trial_id)
@@ -303,7 +303,7 @@ class Artifacts:
         return {"removed": removed, "failed": failed}
 
     def reconcile(self) -> dict:
-        """At start, before any run executes (F-09): an indexed file that is missing
+        """At start, before any run executes: an indexed file that is missing
         becomes unavailable; a published file nobody indexes is an orphan and goes.
 
         The mark is not permanent: a start while the artifact volume was absent marks

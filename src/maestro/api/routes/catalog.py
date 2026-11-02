@@ -1,4 +1,4 @@
-"""Dataset sources and the team-readable catalog (02, 10 section 4).
+"""Dataset sources and the team-readable catalog.
 
 Every authenticated caller may read the datasets, versions, tasks and caches already
 in the platform. Searching the external source uses the team Hub credential, so it

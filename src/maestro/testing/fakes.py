@@ -1,4 +1,4 @@
-"""Fakes for the four boundaries (C4). Used by tests and local demonstrations only."""
+"""Fakes for the four boundaries. Used by tests and local demonstrations only."""
 
 import asyncio
 import hashlib
@@ -78,7 +78,7 @@ class FakeDatasetSource:
         revision: str = "",
         files: dict[str, dict[str, str]] | None = None,
     ) -> SourceVersion:
-        """``revision`` changes every task's content: the same ref then moves (F-11)."""
+        """``revision`` changes every task's content: the same ref then moves."""
         tasks = []
         for key in task_keys:
             content = (files or {}).get(key) or self.task_files(namespace, name, key, revision)
@@ -167,7 +167,7 @@ class FakeExecutor:
     A dict entry is a verifier's rewards, scored like Harbor's by the run's metric
     (``RunSpec.metric_id``). A ``"hang"`` entry blocks until cancellation. Retries
     happen when an outcome recommends it and attempts remain, mirroring Job-internal
-    retries (D-020). Cleanup and reconciliation calls are recorded instead of
+    retries. Cleanup and reconciliation calls are recorded instead of
     touching Docker.
     """
 

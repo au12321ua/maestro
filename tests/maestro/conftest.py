@@ -18,7 +18,7 @@ from maestro.testing.fakes import (
     MemoryArtifactStore,
 )
 
-# The registry ``maestroctl`` runs for prepared images (N-01), without its digest pin.
+# The registry ``maestroctl`` runs for prepared images, without its digest pin.
 REGISTRY_IMAGE = "registry:3.0.0"
 
 

@@ -1,4 +1,4 @@
-"""Comparisons, collections and analysis snapshots (06 section 8, 01, 04 section 7).
+"""Comparisons, collections and analysis snapshots (section 7).
 
 A comparison is computed on demand from run snapshots and trial records and is never
 stored. A collection is a list of run references the team keeps up; its specification
@@ -961,7 +961,7 @@ class Collections:
                 for r in rows
             ]
 
-    # --- submitting from a collection (04 section 7) --------------------------------------
+    # --- submitting from a collection --------------------------------------
 
     def apply(self, conn: Connection, body: dict) -> tuple[dict, dict | None]:
         """The request with the collection's fixed fields where the body has none, and

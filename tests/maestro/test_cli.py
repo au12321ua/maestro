@@ -40,7 +40,7 @@ def test_openapi_export(tmp_path):
     assert cli.main(["openapi", "--output", str(target)]) == 0
     spec = json.loads(target.read_text())
     assert spec["info"]["title"] == "Maestro API"
-    # The export is deterministic, so CI can diff it against a committed copy (F-20).
+    # The export is deterministic, so CI can diff it against a committed copy.
     again = tmp_path / "again.json"
     cli.main(["openapi", "--output", str(again)])
     assert again.read_text() == target.read_text()

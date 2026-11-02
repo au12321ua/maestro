@@ -1,5 +1,5 @@
 // Published attachments, one block per attachment name with its snapshots as a tree of
-// what was made from what (03 section 6): oldest at the top, a straight run of versions
+// what was made from what: oldest at the top, a straight run of versions
 // in one line, and an indent only where a snapshot has been built on more than once. Once
 // the block is open, each snapshot says how many files it changed from its parent.
 // Opening a snapshot lists its files and compares it with another snapshot of the name.

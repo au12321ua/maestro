@@ -1,4 +1,4 @@
-"""U-27: members never learn which credential a model is bound to; U-28: secret author
+"""Members never learn which credential a model is bound to; secret author
 parameters take generic secrets only, never a model API key."""
 
 from support import create_pat, invite_member, running, setup_admin, submit

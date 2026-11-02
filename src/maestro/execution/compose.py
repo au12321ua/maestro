@@ -1,9 +1,9 @@
 """The images an author Compose file needs, read without the daemon or the host's
-environment (02 section 6).
+environment.
 
 ``docker compose config --no-interpolate`` parses the file; variables stay as written.
 What decides an image's content (``image:`` and ``build:``) is frozen at the defaults the
-author wrote, so members never change it (U-54). A variable there without a usable
+author wrote, so members never change it. A variable there without a usable
 default, or one that looks like a secret, cannot be prepared.
 """
 
@@ -33,7 +33,7 @@ class ComposeUnsupported(ValueError):
 
 
 def check_runtime(document: dict, where: str) -> None:
-    """Author mounts cannot reach the host (U-16); each service has one container.
+    """Author mounts cannot reach the host; each service has one container.
 
     Keep this policy in step with maestro_runner.compose.check_runtime: the service and
     Runner have independent dependencies, and the Runner also checks older admissions.

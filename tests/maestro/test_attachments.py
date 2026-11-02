@@ -1,4 +1,4 @@
-"""Attachment snapshots (03 sections 6-7, N-06): published file by file with only the
+"""Attachment snapshots: published file by file with only the
 missing contents uploaded, identified by content, checked on commit, resolved in load
 order into run configurations, and kept out of new runs once deleted."""
 

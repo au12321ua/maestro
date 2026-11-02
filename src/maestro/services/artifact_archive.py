@@ -1,5 +1,4 @@
-"""A run's artifacts, or one task's, trial's or attempt's, as a zip streamed on request
-(07 section 5).
+"""A run's artifacts, or one task's, trial's or attempt's, as a zip streamed on request.
 
 Only for runs that have ended, so the selection does not grow while it is sent. Nothing
 is written to disk first and no read pin is taken: a file reclaimed or deleted while

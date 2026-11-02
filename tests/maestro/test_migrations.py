@@ -55,7 +55,7 @@ def test_foreign_keys_enforced(tmp_path):
 
 
 def test_opencode_versions_move_into_the_harness_version(tmp_path):
-    """0003 (N-09): the version OpenCode installs leaves the parameters and becomes the
+    """0003: the version OpenCode installs leaves the parameters and becomes the
     harness version's upstream version; what each version installed does not change."""
     from sqlalchemy import select, text
 
@@ -105,7 +105,7 @@ def test_opencode_versions_move_into_the_harness_version(tmp_path):
 
 
 def test_attachments_from_before_snapshots_are_removed(tmp_path):
-    """0005 (N-06, U-50): old attachment versions and their recycle bin entries go; the
+    """0005: old attachment versions and their recycle bin entries go; the
     rest of the recycle bin stays, and the new tables start empty."""
     from sqlalchemy import func, select, text
 
@@ -169,7 +169,7 @@ def test_the_last_admission_reset_names_the_current_preparation_method():
 
 
 def test_upgrading_resets_admissions_and_drops_old_preparations(tmp_path):
-    """U-54: nothing from single-image preparations is converted."""
+    """Single-image preparations are invalidated instead of converted to manifests."""
     from maestro.execution.materials import PREPARATION_METHOD_DIGEST
 
     db = Database.open(tmp_path / "app.db")

@@ -1,5 +1,5 @@
-// Language choice (N-18): stored in this browser, applied by reloading. The English text is
-// AI-translated and unreviewed, and says so while it is shown (U-58).
+// Language choice: stored in this browser, applied by reloading. The English text is
+// AI-translated and unreviewed, and says so while it is shown.
 import { Languages } from "lucide-react";
 import { LANGUAGES, language, setLanguage, t, type Language } from "@/i18n";
 import { cn } from "@/lib/utils";

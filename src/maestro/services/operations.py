@@ -1,4 +1,4 @@
-"""Unified long-running Operation records (10 section 6, C2).
+"""Unified long-running Operation records.
 
 An Operation tracks work; it never replaces the business object, grants write
 permission, or offers a resource-agnostic cancel.

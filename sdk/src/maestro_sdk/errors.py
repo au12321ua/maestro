@@ -14,7 +14,7 @@ class ContractDriftWarning(UserWarning):
 
 
 class ApiError(MaestroError):
-    """The service answered with its structured error (10 section 2).
+    """The service answered with its structured error.
 
     ``retryable`` says whether the same business request may succeed later; it never
     means "submit again with a new idempotency key".

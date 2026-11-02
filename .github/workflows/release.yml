@@ -1,8 +1,8 @@
 # GitHub only receives master and its v* tags when a release is made, after the same
-# version was tested and published on Gitea (N-02, U-42). So this workflow runs no tests:
+# version was tested and published on Gitea. So this workflow runs no tests:
 # it rebuilds the package from the tag and publishes a GitHub Release with the same
 # assets, then rebuilds the SDK package index on GitHub Pages from the wheels of all
-# releases (U-62). Gitea reads only .gitea/workflows and never runs this file.
+# releases. Gitea reads only .gitea/workflows and never runs this file.
 name: release
 on:
   push:

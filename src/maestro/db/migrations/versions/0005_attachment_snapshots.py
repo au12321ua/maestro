@@ -1,6 +1,6 @@
-"""attachment snapshots by content, uploaded file by file (N-06)
+"""attachment snapshots by content, uploaded file by file
 
-Existing attachments are removed, not converted (U-50): their rows, the runs' links to
+Existing attachments are removed, not converted: their rows, the runs' links to
 them and their recycle bin entries. Runs keep what their snapshot recorded; a rerun of
 one that loaded an attachment is refused. The old package directories under
 ``attachments/`` are removed at the next start.
@@ -78,4 +78,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    raise NotImplementedError("attachments from before N-06 are not restored")
+    raise NotImplementedError("attachments from before content-addressed snapshots are not restored")

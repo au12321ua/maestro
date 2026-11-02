@@ -1,4 +1,4 @@
-"""Real Harbor Hub through the Runner, anonymous and public data only (M4).
+"""Real Harbor Hub through the Runner, anonymous and public data only.
 
 Opt-in: ``MAESTRO_HUB_TESTS=1`` with network access to the Hub (proxy variables are
 passed to the Runner). The import test also needs Docker with buildx: the public

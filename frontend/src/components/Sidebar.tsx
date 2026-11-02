@@ -1,4 +1,4 @@
-// The navigation sidebar (U-45): groups of pages, the administration sections under "管理",
+// The navigation sidebar: groups of pages, the administration sections under "管理",
 // the system state and the user at the bottom. It folds to icons on wide screens and is a
 // drawer on narrow ones.
 import { useState, type ReactNode } from "react";

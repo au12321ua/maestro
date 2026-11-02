@@ -19,7 +19,7 @@ const AVAILABILITY: Record<string, [string, Tone]> = {
 };
 
 /** Admission, content availability, local cache, can_submit and reasons for one task row.
- * The three facts are separate: a cold cache never blocks submission (02 section 5). */
+ * The three facts are separate: a cold cache never blocks submission. */
 export function TaskStatusCells({ task }: { task: Task }) {
   const [availability, tone] = AVAILABILITY[task.content.availability] ?? [
     task.content.availability,

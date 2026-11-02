@@ -1,4 +1,4 @@
-"""The public contract types what it returns (13 F-20, 10 section 8).
+"""The public contract types what it returns.
 
 Web types and SDK models are generated from the OpenAPI document, so a field the service
 declares as free-form JSON is a field neither client can check. Only values that are

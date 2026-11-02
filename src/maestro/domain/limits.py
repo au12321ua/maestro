@@ -1,6 +1,6 @@
-"""Built-in values of the team policy (D-011 initial values) and structural constants.
+"""Built-in team policy defaults and structural constants.
 
-The team policy (U-21: PAT, run size, retention, login limits ...) lives in the database
+The team policy (PAT, run size, retention, login limits) lives in the database
 as numbered revisions edited by administrators (``maestro.services.policy``). The values
 below are revision 0, in force until an administrator saves the first revision; services
 read the policy in force, not these names.
@@ -26,7 +26,7 @@ RUN_DEFAULT_CONCURRENCY = 4
 RUN_MAX_CONCURRENCY = 10
 TRIAL_CPUS_MAX = 16
 TRIAL_MEMORY_MB_MAX = 64 * 1024
-# A Compose service or verifier container without its own limits (U-56).
+# A Compose service or verifier container without its own limits.
 SERVICE_CPUS_DEFAULT = 1
 SERVICE_MEMORY_MB_DEFAULT = 1024
 AGENT_TIMEOUT_SEC_MAX = 24 * 3600
@@ -47,14 +47,14 @@ PAGE_DEFAULT = 50
 PAGE_MAX = 200
 EXPORT_PIN_MINUTES = 60
 RESOLUTION_MINUTES = 10
-# Attachment snapshots (03 section 6): one uploaded file, a whole snapshot, the uploads one
+# Attachment snapshots: one uploaded file, a whole snapshot, the uploads one
 # user may hold before publishing, and how long an upload waits for its snapshot.
 ATTACHMENT_FILE_MAX_BYTES = 256 * 1024 * 1024
 ATTACHMENT_MAX_BYTES = 1024 * 1024 * 1024
 ATTACHMENT_MAX_FILES = 10000
 ATTACHMENT_STAGED_MAX_BYTES = 2 * 1024 * 1024 * 1024
 ATTACHMENT_UPLOAD_HOURS = 24
-# Runs compared at once, and runs one collection holds (08 section 1).
+# Runs compared at once, and runs one collection holds.
 COMPARISON_MAX_RUNS = 50
 # Recent runs a collection offers to add, each checked against its fixed values.
 COLLECTION_CANDIDATES = 200

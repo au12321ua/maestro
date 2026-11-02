@@ -1,4 +1,4 @@
-"""Independent state dimensions (01 section 5, 05 section 4, 06 section 3).
+"""Independent state dimensions (section 4).
 
 Trial states are the stored source; run-level summaries are derived with the
 versioned rule below and never used for authorization or acceptance.
@@ -148,7 +148,7 @@ def result_completeness(counts: dict[str, int]) -> ResultCompleteness:
 
 
 def display_phase(counts: dict[str, int], states: list[str]) -> RunState:
-    """'Running once any trial executes; preparing if only preparation' (05 section 4)."""
+    """'Running once any trial executes; preparing if only preparation'."""
     present = set(states)
     if present & {TrialState.EXECUTING, TrialState.VERIFYING}:
         return RunState.RUNNING
@@ -166,7 +166,7 @@ def terminal_run_state(counts: dict[str, int], stop_reason: str | None) -> RunSt
 
 
 def operation_status_for(run_state: RunState, counts: dict[str, int]) -> OperationStatus:
-    """Natural completion with any valid result succeeds; all errors fail (05 section 4)."""
+    """Natural completion with any valid result succeeds; all errors fail."""
     if run_state == RunState.CANCELLED:
         return OperationStatus.CANCELLED
     if run_state == RunState.INTERRUPTED:

@@ -1,4 +1,4 @@
-"""Personal access tokens (09 section 2).
+"""Personal access tokens.
 
 Created, listed and revoked only by their owner in a web session. The raw value
 is returned once; only its digest and a short display prefix are stored.
@@ -110,7 +110,7 @@ class Pats:
             return [public_pat(r) for r in rows.mappings().all()]
 
     def revoke(self, principal: Principal, pat_id: str) -> dict:
-        """Revocation blocks later calls; accepted runs continue (09 section 2)."""
+        """Revocation blocks later calls; accepted runs continue."""
         require_web_session(principal)
         with self.db.write() as conn:
             row = (

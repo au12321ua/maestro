@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""maestroctl: install and look after one Maestro instance on a Linux host (12).
+"""maestroctl: install and look after one Maestro instance on a Linux host.
 
 It runs with the host's ``python3`` and the standard library only, because it has to
 work before any Maestro environment exists. A release package carries its own copy
 next to the wheels it installs; the installed copy is linked as
 ``/usr/local/sbin/maestroctl`` and always belongs to the current version.
 
-Layout (12 section 1, U-13 / U-29): the program under ``/opt/maestro`` (root owned,
+Layout: the program under ``/opt/maestro`` (root owned,
 read-only to the service), configuration and the master key under ``/etc/maestro``, data
 under ``/var/lib/maestro``, cache under ``/var/cache/maestro``, backups under
 ``/var/backups/maestro``. The service runs as the ``maestro`` system account, which is
-put in the group of the system Docker socket (U-29: that group is root-equivalent).
+put in the group of the system Docker socket (that group is root-equivalent).
 
 ``--test-root`` (hidden) places the whole layout under a scratch directory, runs as the
 calling user and registers a systemd *user* unit instead, so the installer can be
@@ -45,14 +45,14 @@ DEFAULT_PORT = 8420
 READY_TIMEOUT = 180
 KEEP_VERSIONS = 2
 LABEL_INSTANCE = "io.maestro.instance_id"
-# The local image registry prepared images are kept in (N-01, U-56): the official image,
+# The local image registry prepared images are kept in: the official image,
 # pinned, run by Docker. Deleting manifests is allowed so purged versions free space.
 REGISTRY_IMAGE = (
     "registry:3.0.0@sha256:6c5666b861f3505b116bb9aa9b25175e71210414bd010d92035ff64018f9457e"
 )
 REGISTRY_CONFIG = "/etc/distribution/config.yml"
 DEFAULT_REGISTRY = "127.0.0.1:8425"
-# Compose overrides use !reset to drop an author's build (02 section 6).
+# Compose overrides use !reset to drop an author's build.
 COMPOSE_MIN = (2, 24)
 RELEASE_FILE = "RELEASE.json"
 COMPLETE = ".complete"
@@ -583,7 +583,7 @@ def render_unit(layout: Layout) -> str:
         "Restart=on-failure",
         "RestartSec=5",
         # Runners get SIGTERM with the service and stop their Harbor jobs; the next start
-        # reconciles anything left by label (05 sections 7-8).
+        # reconciles anything left by label.
         "TimeoutStopSec=120",
         "UMask=0077",
     ]
@@ -631,7 +631,7 @@ def probe(layout: Layout) -> dict | None:
 
 
 def wait_ready(host: Host, timeout: float) -> dict:
-    """Ready means reconciled and serving (12 section 4); a unit that failed ends the wait."""
+    """Ready means reconciled and serving; a unit that failed ends the wait."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         state = probe(host.layout)

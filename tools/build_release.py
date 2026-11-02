@@ -1,4 +1,4 @@
-"""Build a release package for maestroctl (12 sections 1-2).
+"""Build a release package for maestroctl.
 
     uv run python tools/build_release.py [--out dist] [--allow-dirty] [--assets]
                                          [--expect-version 0.4.0] [--dev-number N]
@@ -10,7 +10,7 @@ installs from, ``INSTALL.md``, ``LICENSE``, ``NOTICE``, ``THIRD_PARTY_LICENSES.m
 every file). The web pages ship inside the service wheel, so the installing host needs
 neither git nor Node; building the license list does need ``npm ci`` in ``frontend/``.
 
-``--assets`` also puts what a release publishes next to the package (N-02): the SDK
+``--assets`` also puts what a release publishes next to the package: the SDK
 wheel, the license list and ``SHA256SUMS`` over all of them. ``--expect-version`` refuses
 to build when the code's version differs, so a ``v0.4.0`` tag cannot publish 0.4.1.
 

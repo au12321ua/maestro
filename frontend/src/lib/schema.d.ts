@@ -152,7 +152,7 @@ export interface paths {
         put?: never;
         /**
          * Import Dataset
-         * @description Resolve a reference to a fixed digest, fetch and record the version (02 section 3).
+         * @description Resolve a reference to a fixed digest, fetch and record the version.
          */
         post: operations["import_dataset"];
         delete?: never;
@@ -208,7 +208,7 @@ export interface paths {
         get?: never;
         /**
          * Scoring Contract
-         * @description Confirm how this version is scored; new runs freeze it (06 section 2).
+         * @description Confirm how this version is scored; new runs freeze it.
          */
         put: operations["scoring_contract"];
         post?: never;
@@ -1956,7 +1956,7 @@ export interface paths {
         put?: never;
         /**
          * Rerun
-         * @description Same configuration (CFG-06): team defaults and the model revision of the source;
+         * @description Same configuration: team defaults and the model revision of the source;
          *     the current credential value. Refused when anything but the task set would differ.
          */
         post: operations["rerun"];
@@ -2049,7 +2049,7 @@ export interface paths {
         };
         /**
          * Get Setup Network
-         * @description The setup network in force (N-08): read when setup work starts.
+         * @description The setup network in force: read when setup work starts.
          */
         get: operations["get_setup_network"];
         put?: never;
@@ -2498,7 +2498,7 @@ export interface components {
         };
         /**
          * AuthorParameter
-         * @description Author parameter contract (03): defaults, requirement, constraints.
+         * @description Author parameter contract: defaults, requirement, constraints.
          */
         AuthorParameter: {
             /** Default */
@@ -3311,7 +3311,7 @@ export interface components {
             before: components["schemas"]["JsonValue"];
             /**
              * Hidden
-             * @description true: the values are not shown to you (U-27); otherwise absent
+             * @description true: the values are not shown to you; otherwise absent
              */
             hidden?: boolean | null;
             /**
@@ -3849,7 +3849,7 @@ export interface components {
         };
         /**
          * EffectiveConfig
-         * @description The fixed configuration of a run (03 section 5); ``config_digest`` is its digest.
+         * @description The fixed configuration of a run; ``config_digest`` is its digest.
          */
         EffectiveConfig: {
             /**
@@ -3925,7 +3925,7 @@ export interface components {
             config_id: string;
             /**
              * Credential Id
-             * @description The bound team credential; null: none. Left out for everyone but administrators' web sessions (U-27)
+             * @description The bound team credential; null: none. Left out for everyone but administrators' web sessions
              */
             credential_id?: string | null;
             /** Endpoint */
@@ -5827,7 +5827,7 @@ export interface components {
         };
         /**
          * PreparationImage
-         * @description One image of a preparation, kept in the local image registry (N-01).
+         * @description One image of a preparation, kept in the local image registry.
          */
         PreparationImage: {
             /**
@@ -6558,7 +6558,7 @@ export interface components {
         };
         /**
          * RunSource
-         * @description Where a rerun or modified run came from (RUN-06).
+         * @description Where a rerun or modified run came from.
          */
         RunSource: {
             /** Config Digest */
@@ -6588,7 +6588,7 @@ export interface components {
         };
         /**
          * RunSummary
-         * @description 06 section 5. At a terminal run planned = scored + count_as_failure + excluded +
+         * @description At a terminal run planned = scored + count_as_failure + excluded +
          *     unfinished; while running, active and queued make up the rest.
          */
         RunSummary: {

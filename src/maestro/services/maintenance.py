@@ -1,5 +1,5 @@
 """Background upkeep that runs with or without an executor: export builds, artifact
-retention and export expiry (07 sections 6 and 7), expired attachment uploads, plus
+retention and export expiry, expired attachment uploads, plus
 start-up reconciliation."""
 
 import asyncio

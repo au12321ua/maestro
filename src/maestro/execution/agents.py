@@ -1,4 +1,4 @@
-"""Model protocols and harness adapters shared by configuration and executors (03 section 2).
+"""Model protocols and harness adapters shared by configuration and executors.
 
 A model configuration says how a model is called: the protocol (wire format), the
 endpoint and the model id. A harness version is the program that drives the model
@@ -18,7 +18,7 @@ PROTOCOLS = {
 
 PARAM_TYPES = {"string", "integer", "number", "boolean"}
 # The program a harness version installs is pinned exactly: a run must install the same
-# one again (N-09). Not "latest", a tag or a range.
+# one again. Not "latest", a tag or a range.
 UPSTREAM_VERSION = re.compile(r"\d+(\.\d+){1,3}([-+][0-9A-Za-z.-]+)?")
 
 # Generation-length settings look like secrets by name but are not (dev ``reject_secrets``).
@@ -73,7 +73,7 @@ def endpoint_problem(endpoint) -> str | None:
         return "INVALID"
     if url.scheme not in {"http", "https"} or not url.hostname:
         return "SCHEME"
-    # Credentials or parameters in the URL would be shown to everyone (03 section 2).
+    # Credentials or parameters in the URL would be shown to everyone.
     if url.username or url.password or url.query or url.fragment or url.params:
         return "CREDENTIALS_IN_URL"
     if _SECRET_VALUE.search(url.path):

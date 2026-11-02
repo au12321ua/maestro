@@ -1,9 +1,9 @@
-"""Experiment plans (04 section 1, RUN-01): saved partial configuration requests.
+"""Experiment plans: saved partial configuration requests.
 
 The creator edits a plan (each change is a new revision); everyone reads and copies it;
 the creator or an administrator archives it, which only stops new use. A request names
 a plan with ``plan_id``: its own fields win, the plan fills in the rest, and the fields
-the plan supplied are reported with the plan as their source (03 section 3: author ->
+the plan supplied are reported with the plan as their source (author ->
 team -> plan -> override). A run records the plan revision and keeps its own values, so
 later edits change nothing for it.
 """

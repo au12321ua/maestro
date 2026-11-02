@@ -1,5 +1,5 @@
-"""07 sections 2-7: expiry from execution end, reclaiming with read pins, bounded
-reads, index/file reconciliation (F-09, F-12) and storage watermarks (F-10)."""
+"""Artifact retention: expiry from execution end, reclaiming with read pins, bounded
+reads, index/file reconciliation and storage watermarks."""
 
 import asyncio
 import logging
@@ -163,7 +163,7 @@ def test_bounded_reads_for_log_paging(local, settings):
 
 
 def test_reconcile_marks_missing_and_removes_orphans(local, settings):
-    """F-09: after a crash no index row claims a missing file, no file lacks a row."""
+    """After a crash no index row claims a missing file, no file lacks a row."""
     service, owner, version = local
     run_id = run(service, owner, version)
     artifact = service.artifacts.for_run(run_id)[0]
@@ -248,7 +248,7 @@ def test_reconcile_does_not_readopt_files_that_changed_or_other_failures(local, 
 
 
 def test_storage_watermarks_pause_acceptance_then_dispatch(local, settings):
-    """F-10: low space refuses new runs, then holds queued ones; queries and cancel work."""
+    """Low space refuses new runs, then holds queued ones; queries and cancel work."""
     service, owner, version = local
     free = {"bytes": 100 * GIB}
     watch = DiskWatch(

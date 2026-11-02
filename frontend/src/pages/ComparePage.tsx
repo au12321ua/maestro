@@ -1,4 +1,4 @@
-// An ad-hoc comparison (06 section 8): any runs side by side, settings kept in the address
+// An ad-hoc comparison: any runs side by side, settings kept in the address
 // so a link shows the same table. From here it can become a collection or a snapshot.
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";

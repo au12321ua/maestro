@@ -424,7 +424,7 @@ class RequiredPreparation(Model):
 
 
 class AuthorParameter(Model):
-    """Author parameter contract (03): defaults, requirement, constraints."""
+    """Author parameter contract: defaults, requirement, constraints."""
 
     name: str
     default: str | None
@@ -496,7 +496,7 @@ class PreparationPin(Model):
 
 
 class PreparationImage(Model):
-    """One image of a preparation, kept in the local image registry (N-01)."""
+    """One image of a preparation, kept in the local image registry."""
 
     role: str = Field(description="<directory>/<service>, e.g. environment/main, tests/main")
     digest: str = Field(description="Manifest digest in the local image registry")
@@ -618,7 +618,7 @@ class TimeoutOverrides(Sparse):
 
 
 class RunConfigFields(Model):
-    """A run configuration request (03). Unset fields are inherited: author values for
+    """A run configuration request. Unset fields are inherited: author values for
     task resources, timeouts and parameters, the team policy for the rest."""
 
     plan_id: str | None = Field(
@@ -892,7 +892,7 @@ class EffectiveModel(Model):
     credential_id: str | None = Field(
         None,
         description="The bound team credential; null: none. Left out for everyone but "
-        "administrators' web sessions (U-27)",
+        "administrators' web sessions",
     )
 
     @model_serializer(mode="wrap")
@@ -925,7 +925,7 @@ class EffectiveAttachment(Model):
     @classmethod
     def _legacy_version(cls, data):
         """A run accepted before attachment snapshots (0.3.0) recorded the attachment's
-        ``version``, which the label replaced (N-06). Show it as the label; the stored
+        ``version``, which the label replaced. Show it as the label; the stored
         snapshot and the digests over it stay as they were."""
         if isinstance(data, dict) and "version" in data and "label" not in data:
             data = {**data, "label": data["version"]}
@@ -954,7 +954,7 @@ class EffectiveOverrides(Sparse):
 
 
 class EffectiveConfig(Model):
-    """The fixed configuration of a run (03 section 5); ``config_digest`` is its digest."""
+    """The fixed configuration of a run; ``config_digest`` is its digest."""
 
     dataset: EffectiveDataset
     execution_mode: Literal["agent", "oracle"]
@@ -1374,7 +1374,7 @@ class ConfigDifference(Model):
     before: JsonValue
     after: JsonValue
     hidden: bool | None = Field(
-        None, description="true: the values are not shown to you (U-27); otherwise absent"
+        None, description="true: the values are not shown to you; otherwise absent"
     )
 
     @model_serializer(mode="wrap")
@@ -1383,7 +1383,7 @@ class ConfigDifference(Model):
 
 
 class RunSource(Sparse):
-    """Where a rerun or modified run came from (RUN-06)."""
+    """Where a rerun or modified run came from."""
 
     run_id: str
     relation: Literal["rerun", "modified"]
@@ -1452,7 +1452,7 @@ class UsageSummary(Model):
 
 
 class RunSummary(Model):
-    """06 section 5. At a terminal run planned = scored + count_as_failure + excluded +
+    """At a terminal run planned = scored + count_as_failure + excluded +
     unfinished; while running, active and queued make up the rest."""
 
     run_id: str
@@ -1632,7 +1632,7 @@ class Export(Model):
     links: dict[str, str]
 
 
-# --- comparisons, collections and analysis snapshots (06 section 8) -------------------
+# --- comparisons, collections and analysis snapshots -------------------
 
 Dimension = Literal[
     "dataset",
@@ -2347,7 +2347,7 @@ class SystemStatus(Health):
     detail: SystemDetail
 
 
-# --- batches (04 section 4) ------------------------------------------------------
+# --- batches ------------------------------------------------------
 
 
 class BatchCreate(Model):

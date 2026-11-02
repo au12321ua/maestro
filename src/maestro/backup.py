@@ -1,4 +1,4 @@
-"""Backups of one instance on the same host (12 section 6; drain and other hosts are P1).
+"""Backups of one instance on the same host (drain and other hosts are P1).
 
 A backup set is a directory: a consistent SQLite snapshot taken with the backup API (the
 live database is never copied file by file, which would miss its WAL), a copy of the

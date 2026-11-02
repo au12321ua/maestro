@@ -1,9 +1,9 @@
-"""Dataset sources and administration (02, 09 section 3).
+"""Dataset sources and administration.
 
 Listing the source kinds is open to every authenticated caller. Searching a source
 uses the team Hub credential, and adding versions, first preparation and its retry,
 cache eviction and admission revocation change the platform: all of them need an
-administrator's web session (U-20). Reading what is already imported is in
+administrator's web session. Reading what is already imported is in
 ``services.catalog``. The long work runs as
 Operations on the worker loop (``services.preparation``); these methods only
 validate, record and return the Operation.
@@ -283,7 +283,7 @@ class Datasets:
             return operations.public(found.one())
 
     def confirm_scoring_contract(self, principal: Principal, version_id: str, body: dict) -> dict:
-        """The administrator confirms how this version is scored (06 section 2). New runs
+        """The administrator confirms how this version is scored. New runs
         freeze it in their snapshot; accepted runs keep the contract they started with."""
         require_admin_session(principal)
         contract = {
@@ -352,7 +352,7 @@ class Datasets:
     def revoke_admission(
         self, principal: Principal, admission_id: str, reason: str, expected_revision: int
     ) -> dict:
-        """Explicit safety stop (02 section 5); runs already accepted keep their snapshot."""
+        """Explicit safety stop; runs already accepted keep their snapshot."""
         require_admin_session(principal)
         if not isinstance(reason, str) or not 1 <= len(reason.strip()) <= 512:
             raise MaestroError(

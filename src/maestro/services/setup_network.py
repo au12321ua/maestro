@@ -1,4 +1,4 @@
-"""Setup network revisions (N-08; ``maestro.domain.setup_network`` says what they hold).
+"""Setup network revisions (``maestro.domain.setup_network`` says what they hold).
 
 Administrators save a whole new revision in a web session; the newest is in force.
 Every signed-in principal may read every revision: attempts and preparations name the

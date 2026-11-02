@@ -181,7 +181,7 @@ class AuthInfo(BaseModel):
 
 class AuthorParameter(BaseModel):
     """
-    Author parameter contract (03): defaults, requirement, constraints.
+    Author parameter contract: defaults, requirement, constraints.
     """
 
     model_config = ConfigDict(
@@ -1184,7 +1184,7 @@ class PolicySetting(BaseModel):
 
 class PreparationImage(BaseModel):
     """
-    One image of a preparation, kept in the local image registry (N-01).
+    One image of a preparation, kept in the local image registry.
     """
 
     model_config = ConfigDict(
@@ -2101,7 +2101,7 @@ class ConfigDifference(BaseModel):
     before: JsonValue
     hidden: Annotated[
         bool | None,
-        Field(description="true: the values are not shown to you (U-27); otherwise absent"),
+        Field(description="true: the values are not shown to you; otherwise absent"),
     ] = None
     path: Annotated[str, Field(description="JSON pointer into the effective configuration")]
 
@@ -2282,7 +2282,7 @@ class EffectiveModel(BaseModel):
     credential_id: Annotated[
         str | None,
         Field(
-            description="The bound team credential; null: none. Left out for everyone but administrators' web sessions (U-27)"
+            description="The bound team credential; null: none. Left out for everyone but administrators' web sessions"
         ),
     ] = None
     endpoint: str
@@ -3109,7 +3109,7 @@ class RunPolicy(BaseModel):
 
 class RunSource(BaseModel):
     """
-    Where a rerun or modified run came from (RUN-06).
+    Where a rerun or modified run came from.
     """
 
     model_config = ConfigDict(
@@ -3129,7 +3129,7 @@ class RunSource(BaseModel):
 
 class RunSummary(BaseModel):
     """
-    06 section 5. At a terminal run planned = scored + count_as_failure + excluded +
+    At a terminal run planned = scored + count_as_failure + excluded +
     unfinished; while running, active and queued make up the rest.
     """
 
@@ -3491,7 +3491,7 @@ class DatasetImportOperation(BaseModel):
 
 class EffectiveConfig(BaseModel):
     """
-    The fixed configuration of a run (03 section 5); ``config_digest`` is its digest.
+    The fixed configuration of a run; ``config_digest`` is its digest.
     """
 
     model_config = ConfigDict(

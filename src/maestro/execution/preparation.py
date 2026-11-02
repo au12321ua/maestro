@@ -1,4 +1,4 @@
-"""Docker preparation environment (02 sections 5-8, M1 TECH-03, U-17, N-01).
+"""Docker preparation environment.
 
 The platform prepares every image a task's trials start itself, without Harbor and
 without an agent: a reproducible ``buildx`` build of a directory, or a pull of the
@@ -282,7 +282,7 @@ class DockerEnvironment:
         timeout = build_timeout(spec.spec.get("build_timeout_sec"), self.build_timeout_max)
         # The setup network's proxy as Docker's predefined proxy build arguments: RUN steps
         # can download through it, and Docker keeps them out of the image's history and the
-        # build cache. Its other variables are not passed (N-08).
+        # build cache. Its other variables are not passed.
         network = spec.setup_network
         proxy_args = [
             arg
@@ -404,7 +404,7 @@ class DockerEnvironment:
             async with self._lock(image.key):
                 if not await self._fetch(ref, progress):
                     # The registry lost it: obtain the fixed content again, but only an
-                    # identical image may be published (02 section 5).
+                    # identical image may be published.
                     entry = entries.get(image.role)
                     if entry is None or image_key(entry) != image.key:
                         raise PreparationError(
@@ -440,7 +440,7 @@ class DockerEnvironment:
 
     async def discard(self, expected: PreparedOutput, keep: frozenset[str] = frozenset()) -> None:
         """Local images and registry manifests go; the registry's garbage collection frees
-        the layers no remaining manifest uses (12)."""
+        the layers no remaining manifest uses."""
         await self.evict(expected, keep)
         for image in expected.images:
             if image.digest not in keep:
@@ -462,7 +462,7 @@ class DockerEnvironment:
 
     def sweep_legacy(self) -> list[str]:
         """Remove what the archive-based preparation left (``docker save`` originals): the
-        registry holds every image now, and older preparations are prepared again (U-54)."""
+        registry holds every image now, and older preparations are prepared again."""
         if self.legacy_dir is None or not self.legacy_dir.is_dir():
             return []
         removed = sorted(path.name for path in self.legacy_dir.iterdir())

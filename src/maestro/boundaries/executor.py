@@ -1,6 +1,6 @@
 """Experiment executor boundary.
 
-Per D-020 one call executes a whole run (Harbor: one Job). The executor reports
+One call executes a whole run (Harbor: one Job). The executor reports
 per-trial attempts, steps, results and artifacts through ``ExecutionSink``;
 the platform owns trial state, scoring decisions, retry policy and leases.
 """
@@ -14,13 +14,13 @@ from maestro.domain.setup_network import BUILT_IN, SetupNetwork
 # The platform default scoring contract's metric (domain.scoring.DEFAULT_CONTRACT).
 DEFAULT_METRIC_ID = "reward"
 
-# Steps an attempt reports, and the trial phase each one implies (05 section 4).
+# Steps an attempt reports, and the trial phase each one implies.
 # Collection has no upstream event in Harbor 0.24.0: it spans agent end to verification.
 STEPS = {
-    # Platform cache restore before the executor starts (02 section 7); never from Harbor.
+    # Platform cache restore before the executor starts; never from Harbor.
     "cache": "preparing",
     "environment": "preparing",
-    # Attachments copied in and installed during agent setup (03 section 7).
+    # Attachments copied in and installed during agent setup.
     "installing": "preparing",
     "agent": "executing",
     "collecting": "executing",
@@ -38,7 +38,7 @@ class TrialSpec:
     material_digest: str = ""
     task_id: str = ""
     prepared_images: dict[str, str] | None = None
-    """Images prepared by the platform (02, N-01), ``<directory>/<service>`` -> local ref;
+    """Images prepared by the platform, ``<directory>/<service>`` -> local ref;
     the executor must not build or pull any of them."""
 
 
@@ -51,20 +51,20 @@ class RunSpec:
     deadline_at: str
     labels: dict[str, str] = field(default_factory=dict)
     metric_id: str = DEFAULT_METRIC_ID
-    """The reward the run's frozen scoring contract scores by (06 section 2); the executor
+    """The reward the run's frozen scoring contract scores by; the executor
     maps its raw reward for ``raw_score`` from this key and reports the rest as metrics."""
     secrets: dict[str, str] = field(default_factory=dict, repr=False)
-    """Credential values read at execution (03 section 5: the current value of the bound
+    """Credential values read at execution (the current value of the bound
     credential): ``model_api_key`` and ``param:<NAME>`` for secret author parameters.
     Never persisted, logged or put in configuration."""
     setup_network: SetupNetwork = BUILT_IN
-    """Read when execution starts (N-08): proxy and variables for a model run's setup
+    """Read when execution starts: proxy and variables for a model run's setup
     (harness install, attachment scripts) and the harness's setup time limit."""
 
 
 @dataclass(frozen=True)
 class AttemptOutcome:
-    """Executor-native outcome mapped to platform policy fields (06 section 3)."""
+    """Executor-native outcome mapped to platform policy fields."""
 
     raw_score: float | None
     reward_valid: bool
@@ -78,7 +78,7 @@ class AttemptOutcome:
     usage: dict | None = None
     actual_model: dict | None = None
     detail: dict | None = None
-    """Platform error detail, e.g. expected_digest of unavailable content (06 section 3)."""
+    """Platform error detail, e.g. expected_digest of unavailable content."""
 
 
 class ExecutionSink(Protocol):
@@ -128,7 +128,7 @@ class ExecutionReport:
 
 @dataclass(frozen=True)
 class Leftover:
-    """A run an earlier service process left claimed (05 section 8)."""
+    """A run an earlier service process left claimed."""
 
     run_id: str
     labels: dict[str, str]
@@ -138,18 +138,18 @@ class Leftover:
 class Executor(Protocol):
     executor_id: str
     harness_adapters: dict[str, tuple[str, ...]]
-    """Harness adapters this executor runs, each with the model protocols it can call
-    (03 section 2). Oracle is the test mode and needs no adapter."""
+    """Harness adapters and the model protocols each can call.
+    Oracle is the test mode and needs no adapter."""
     harness_parameters: dict[str, frozenset[str]]
     """Parameters each adapter accepts; a harness version may only declare these. An
     adapter missing here accepts any (test doubles)."""
     harness_model_parameters: dict[str, frozenset[str]]
     """Model configuration parameters each adapter can pass on; one missing takes any."""
     harness_upstream: dict[str, dict[str, str]]
-    """Adapters that install a program at a harness version's upstream version (N-09):
+    """Adapters that install a program at a harness version's upstream version:
     ``{"package": npm package, "tested": version smoke-tested with a real model}``."""
     network_restriction: bool | None
-    """Whether this host can restrict task networks, which every model run needs (U-18):
+    """Whether this host can restrict task networks, which every model run needs:
     None until probed. When False, model runs are refused at acceptance."""
 
     async def probe(self) -> None:

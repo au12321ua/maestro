@@ -1,4 +1,4 @@
-"""M5 batches (04 section 4, E2E-RUN-02): several runs accepted all or none, PAT quota
+"""Batches: several runs accepted all or none, PAT quota
 charged per run in the same transaction, members run and end on their own."""
 
 import uuid
@@ -42,7 +42,7 @@ def counts(service) -> dict:
 
 
 def test_lost_responses_concurrent_batches_and_quota(service, version_id):
-    """E2E-RUN-02."""
+    """Retrying the same batch request preserves run identities and quota."""
     with running(service, run_worker=False) as client:
         admin = setup_admin(service, client)
         member = invite_member(service, admin, "member")

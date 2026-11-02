@@ -1,4 +1,4 @@
-// Words and helpers for comparisons, collections and snapshots (06 section 8).
+// Words and helpers for comparisons, collections and snapshots.
 import { t } from "@/i18n";
 import type {
   ComparedRunRow,

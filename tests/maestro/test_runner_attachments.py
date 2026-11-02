@@ -1,4 +1,4 @@
-"""The Runner's attachment installer (03 section 7) without Docker.
+"""The Runner's attachment installer without Docker.
 
 A stand-in environment runs the installer's real shell commands on the host, with the
 container paths mapped into a temporary directory, so copying, the file-by-file check,

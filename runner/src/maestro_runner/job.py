@@ -1,10 +1,10 @@
-"""Execute one platform run as one Harbor Job (D-020) and report it over the protocol.
+"""Execute one platform run as one Harbor Job and report it over the protocol.
 
 Harbor's trial hooks give real-time phases; per-attempt evidence is archived in the
-END hook because Harbor deletes a failed attempt's directory before an in-job retry
-(M1, V-12). Live logs come from the trial directories Docker mounts on the host.
+END hook because Harbor deletes a failed attempt's directory before an in-job retry.
+Live logs come from the trial directories Docker mounts on the host.
 
-Those mounted directories are writable from inside the container (C-07 / U-16), so
+Those mounted directories are writable from inside the container, so
 everything under them is untrusted: links are never followed (a link could point at any
 host file), only regular files are read, and the size limits apply while copying.
 """
@@ -26,7 +26,7 @@ from maestro_runner import agents, compose, network, protocol
 from maestro_runner.protocol import emit
 
 # Harbor hook -> platform step. Collection has no hook: it is the span between
-# agent end and verification start (M1).
+# agent end and verification start.
 STEPS = {
     "environment-start": "environment",
     "agent-start": "agent",
@@ -42,7 +42,7 @@ LOG_SUFFIXES = (".txt", ".log")
 MAX_LISTED_SKIPS = 200
 MESSAGE_LIMIT = 4000
 # Agents that keep an ATIF trajectory (Terminus-2 rewrites it after every turn) are
-# followed live by turning new steps into readable log text (U-07).
+# followed live by turning new steps into readable log text.
 TRAJECTORY = "agent/trajectory.json"
 # Harnesses in the container stream JSON events to these files; they are shown as
 # readable text instead (see EVENT_RENDERERS below for which harness writes which).
@@ -217,7 +217,7 @@ def _labels_override(
     """Platform labels on the main service, its network, the egress-control sidecar when
     the network is restricted, and (when Harbor builds it) its image.
 
-    Cleanup after a killed Runner finds every resource by these labels (05 section 7).
+    Cleanup after a killed Runner finds every resource by these labels.
     Prepared images are never pulled: a missing one must fail, not reach a registry.
     """
     body = "".join(f"      {key}: {value}\n" for key, value in sorted(labels.items()))
@@ -243,7 +243,7 @@ def _builds_image(task_dir: Path) -> bool:
 
 def _with_images(copy: Path, task: dict, overrides: dict) -> None:
     """Point the task copy at the platform-prepared images, so Harbor neither builds nor
-    pulls them (M1 TECH-03, N-01), and give the main environment what an override adds.
+    pulls them, and give the main environment what an override adds.
 
     Only ``task.toml`` changes, through Harbor's own model; the author's Compose files are
     pinned by an override per environment directory instead (``_pin_overrides``).
@@ -269,7 +269,7 @@ def _with_images(copy: Path, task: dict, overrides: dict) -> None:
         if config.verifier.environment is None:
             config.verifier.environment = config.environment.model_copy(deep=True)
         config.verifier.environment.docker_image = images["tests/main"]
-    # The trial's resources are the sum over its containers (U-54); an override is a new
+    # The trial's resources are the sum over its containers; an override is a new
     # total and its extra goes to the main environment. The verifier keeps its own or
     # inherited baseline, regardless of where its image comes from.
     environments = task.get("environments") or []
@@ -317,9 +317,8 @@ def _pin_overrides(path: Path, task: dict, labels: dict, out: Path) -> dict[str,
 
     Each override pins every service to its prepared image and never pulls, drops the
     author's ``build`` (Compose builds a missing image even with ``pull_policy: never``;
-    ``!reset`` needs Compose 2.24), gives a service without limits the team default
-    (U-56), and labels services, networks and volumes for cleanup after a killed Runner
-    (05 section 7).
+    ``!reset`` needs Compose 2.24), gives a service without limits the team default,
+    and labels services, networks and volumes for cleanup after a killed Runner.
     """
     images = task["images"]
     limits = {e["role"]: e for e in task.get("environments") or [] if e.get("default")}
@@ -536,7 +535,7 @@ class Execution:
         self.retry = spec["retry"]
         self.limits = spec["artifact_limits"]
         self.cancelling = False
-        # Harbor trial name -> platform trial id; retries keep the trial name (V-12).
+        # Harbor trial name -> platform trial id; retries keep the trial name.
         self.bound: dict[str, str] = {}
         self.unbound: dict[str, list[str]] = {}
         self.task_by_path: dict[str, str] = {}
@@ -638,7 +637,7 @@ class Execution:
             except (agents.InputError, KeyError) as error:
                 raise Rejected("RUNNER_INPUT_INVALID", f"agent: {error}") from None
         elif agent.get("name") != "oracle":
-            # Harbor's default agent is oracle; never fall back to it implicitly (15 section 6).
+            # Harbor's default agent is oracle; never fall back to it implicitly.
             raise Rejected("RUNNER_INPUT_INVALID", "agent must be explicit")
         agent = {**agent, "override_timeout_sec": overrides.get("agent_timeout_sec")}
         # The harness's own install and attachment scripts run in setup, with the

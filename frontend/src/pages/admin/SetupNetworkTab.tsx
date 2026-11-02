@@ -1,4 +1,4 @@
-// Administrator tab for the setup network (N-08) and the read-only deployment settings.
+// Administrator tab for the setup network and the read-only deployment settings.
 import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";

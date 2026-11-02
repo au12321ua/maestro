@@ -71,7 +71,7 @@ export function SettingsPage() {
   );
 }
 
-/** How an agent or script uses this service with a PAT (10 section 7). */
+/** How an agent or script uses this service with a PAT. */
 function SdkCard() {
   const example = `from maestro_sdk import MaestroClient
 

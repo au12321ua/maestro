@@ -1,4 +1,4 @@
-"""Attachment snapshots: members and experiment PATs publish, everyone reads (03 section 6).
+"""Attachment snapshots: members and experiment PATs publish, everyone reads.
 
 Publishing is incremental: ask which contents are missing, upload each as the raw
 request body under its SHA-256, then commit the file list. The web page and the SDK

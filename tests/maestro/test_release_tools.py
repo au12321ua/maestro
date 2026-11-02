@@ -1,4 +1,4 @@
-"""Release tooling (N-02, N-16, N-25, U-62): the license rules, the SDK version stamp,
+"""Release tooling: the license rules, the SDK version stamp,
 publishing to Gitea Releases and the Python package registry against fake APIs, and the
 package index for GitHub Pages. Building a
 real package runs in test_install.py (opt-in); the license list itself runs in CI."""

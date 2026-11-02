@@ -1,4 +1,4 @@
-"""Authenticated principals and the permission matrix of 09 section 3.
+"""Authenticated principals and role, channel and ownership permissions.
 
 Effective permission = user role ∩ PAT scope ∩ allowed action ∩ ownership.
 Administrative actions also require ``auth_channel == web_session``.

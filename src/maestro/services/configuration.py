@@ -1,4 +1,4 @@
-"""Configuration resolution (03 sections 3-5, CFG-01..06).
+"""Configuration resolution.
 
 One resolver serves the resolution endpoint and run acceptance, so the web page and
 the SDK see the same effective configuration, field sources and blockers. Layers, in
@@ -7,7 +7,7 @@ request's overrides; then author constraints, team hard limits and type checks. 
 are never clamped: a value over a limit is a blocker, not a silent change.
 
 The resolution describes; it reserves nothing. Cache observations and the restore plan
-are reported next to the configuration but stay out of its digest (03 section 4).
+are reported next to the configuration but stay out of its digest.
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ EXECUTION_MODES = ("agent", "oracle")
 PARAMETER_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,127}")
 PARAMETER_VALUE_MAX = 4096
 # Secret author parameters take generic secrets only: a model API key goes to the
-# platform's own model calls, never into a task container (U-28).
+# platform's own model calls, never into a task container.
 PARAMETER_KINDS = ("generic_secret",)
 
 
@@ -160,7 +160,7 @@ def check_request(body: dict) -> dict:
         if not isinstance(harness_id, str):
             errors.append(FieldError("/harness_version_id", "REQUIRED"))
     elif execution_mode == "oracle" and (model_id or harness_id or harness_params):
-        # Oracle runs the task's reference solution; it never calls a model (15 section 6).
+        # Oracle runs the task's reference solution; it never calls a model.
         errors.append(FieldError("/execution_mode", "ORACLE_HAS_NO_MODEL"))
     attachments = body.get("attachments") or []
     if (
@@ -171,7 +171,7 @@ def check_request(body: dict) -> dict:
         errors.append(FieldError("/attachments", "INVALID", "distinct attachment snapshot ids"))
         attachments = []
     elif attachments and execution_mode == "oracle":
-        # Attachments are installed by the harness wrapper around a model agent (03 section 7).
+        # Attachments are installed by the harness wrapper around a model agent.
         errors.append(FieldError("/attachments", "ORACLE_HAS_NO_ATTACHMENTS"))
     if not isinstance(harness_params, dict):
         errors.append(FieldError("/harness_params", "TYPE"))
@@ -230,7 +230,7 @@ def check_request(body: dict) -> dict:
         "model_revision": model_revision if execution_mode == "agent" else None,
         "harness_version_id": harness_id if execution_mode == "agent" else None,
         "harness_params": dict(sorted(harness_params.items())),
-        # In load order: the order is part of the configuration (03 section 7).
+        # In load order: the order is part of the configuration.
         "attachments": attachments,
         "repetitions": body.get("repetitions"),
         "concurrency": body.get("concurrency"),
@@ -315,7 +315,7 @@ class Resolution:
 
 
 def comparison_view(effective: dict) -> dict:
-    """What decides whether two runs are comparable (03 section 5): content, preparation
+    """What decides whether two runs are comparable: content, preparation
     method, model and harness content, resources, metric and repetitions. Run identity,
     references to rows, credentials, task subsets and scheduling are left out."""
     view = {
@@ -373,7 +373,7 @@ def differences(old: dict | None, new: dict | None, path: str = "") -> list[dict
 
 
 def hide_model_credential(data):
-    """A copy without the model's bound credential (U-27): members see that a model has a
+    """A copy without the model's bound credential: members see that a model has a
     usable key, not which one. Digests are computed before, over the full configuration;
     credential references the member chose for author parameters stay."""
     found: set[str] = set()
@@ -420,7 +420,7 @@ def request_input(request: dict) -> dict:
 
 
 def pinned_request(request: dict, effective: dict) -> dict:
-    """The request that resolves to ``effective`` again (03 section 5, CFG-06): fields the
+    """The request that resolves to ``effective`` again: fields the
     team policy filled in are pinned to the values the run used, and so is the model
     revision, so later team defaults or model revisions change nothing. Author values
     stay inherited: they come from the same immutable dataset version."""
@@ -575,7 +575,7 @@ class Resolver:
         if request["execution_mode"] != "agent":
             return
         if self.network_of() is False:
-            # Every model run restricts its task network (U-18); refusing here keeps the
+            # Every model run restricts its task network; refusing here keeps the
             # quota untouched instead of failing when the Runner starts.
             res.blockers.append(
                 Blocker(
@@ -777,7 +777,7 @@ class Resolver:
 
     def _attachments(self, conn: Connection, team, request, effective, res: Resolution) -> None:
         """Ordered packages, each compatible with the harness; two packages may not claim
-        the same name, tool or environment variable (03 section 7: no "last one wins")."""
+        the same name, tool or environment variable (no "last one wins")."""
         ids = request["attachments"]
         effective["attachments"] = []
         effective["bootstrap_timeout_sec"] = None
@@ -1011,7 +1011,7 @@ class Resolver:
     def environments(definition: dict, team) -> list[dict]:
         """Every container a trial starts, with its CPUs and memory: the main environment,
         then a separate verifier and the Compose services; the team default fills in
-        where the author gave no limit (U-54, U-56)."""
+        where the author gave no limit."""
         resources = definition.get("resources") or {}
         found = [
             {
@@ -1036,7 +1036,7 @@ class Resolver:
     @staticmethod
     def _task_settings(definition: dict, overrides: dict, team) -> dict:
         """A trial's resources are the sum over its containers, reserved together even
-        though a separate verifier starts after the agent's environment stops (U-54). An
+        though a separate verifier starts after the agent's environment stops. An
         override is a new total; what it adds goes to the main environment."""
         timeouts = definition.get("timeouts") or {}
         environments = Resolver.environments(definition, team)
@@ -1153,7 +1153,7 @@ class Resolver:
             return found[0]["code"] if found else None
 
         def why(task_id: str, label: str) -> str:
-            # A refusal names the exact content it waits for (02 section 8, E2E-DS-05):
+            # A refusal names the exact content it waits for:
             # field errors are all a refused submission carries.
             digest = next(
                 (b["expected_digest"] for b in blocked[task_id] if b.get("expected_digest")),
@@ -1244,7 +1244,7 @@ class Resolver:
                     {"path": path, "value": value, "tasks_lower": lower, "tasks_higher": higher}
                 )
             if lower and name in {"cpus", "memory_mb"}:
-                # CPU and memory never go below what the author asked for (U-22).
+                # CPU and memory never go below what the author asked for.
                 res.blockers.append(
                     Blocker(
                         "BELOW_AUTHOR_RESOURCES",
@@ -1299,7 +1299,7 @@ class Resolver:
 
     @staticmethod
     def recheck(conn: Connection, res: Resolution) -> list[str]:
-        """Inside the acceptance transaction: what changed since resolving (F-26)."""
+        """Inside the acceptance transaction: what changed since resolving."""
         changed = []
         if policy.current(conn).revision != res.references.get("team_policy"):
             changed.append("/team_policy")

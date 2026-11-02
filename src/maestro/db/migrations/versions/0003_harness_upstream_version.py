@@ -1,4 +1,4 @@
-"""harness upstream version (N-09)
+"""harness upstream version
 
 The version OpenCode installs moves from a harness parameter (``version``, defaulting to
 1.18.35 in the Runner) into the harness version itself; members no longer choose it per

@@ -1,4 +1,4 @@
-"""Batch export of runs as one ZIP with a manifest (07 section 6).
+"""Batch export of runs as one ZIP with a manifest.
 
 Accepting an export creates an Operation; the maintenance loop builds it. Files
 included are read-pinned for at most ``EXPORT_PIN_MINUTES`` so retention cannot

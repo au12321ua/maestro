@@ -1,4 +1,4 @@
-// Collections (06 section 8): run lists the team keeps up, each with a specification fixed
+// Collections: run lists the team keeps up, each with a specification fixed
 // at creation; and the snapshots that froze a comparison.
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";

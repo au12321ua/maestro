@@ -1,4 +1,4 @@
-"""Model harness adapters: platform agent input -> Harbor ``AgentConfig`` (03 section 2).
+"""Model harness adapters: platform agent input -> Harbor ``AgentConfig``.
 
 Credentials never travel through Harbor's configuration: Harbor writes the job and trial
 configuration (including agent kwargs) into the trial directory, which becomes evidence.
@@ -20,11 +20,11 @@ container means. OpenCode reads the file through its config, Claude Code through
 Each is installed in setup with npm, with the deployment's setup network (proxy, package
 mirrors) when it has one, at the exact upstream version of the harness version.
 
-Attachments (03 section 7) are installed by the same agent class during agent setup,
+Attachments are installed by the same agent class during agent setup,
 before the agent's own setup: each package is copied into this trial's container with
 Harbor's file transfer (no host directory is mounted), compared file by file with the
 published content, and its ``bootstrap.sh`` runs under a time limit enforced inside the
-container (Harbor's exec timeout only stops the local client, M1). Setup runs as the
+container (Harbor's exec timeout only stops the local client). Setup runs as the
 task's agent user with the environment's setup network; the agent and verification
 phases switch to the platform's restrictions afterwards, so nothing can be fetched late.
 A failure ends this trial only.
@@ -68,7 +68,7 @@ TERMINUS_PARAMETERS = {
     "interleaved_thinking",
 }
 # Harnesses installed in the task container: the npm package of each, and the version
-# this Runner was last smoke-tested with against a real model (N-09; the service shows
+# this Runner was last smoke-tested with against a real model (the service shows
 # it next to upstream versions). A run always names an exact version, never "latest":
 # it must be reproducible from its snapshot.
 PACKAGES = {
@@ -258,7 +258,7 @@ async def install(agent, environment) -> None:
                 "target": target,
                 "user": None if user is None else str(user),
                 # Whether the deployment's setup proxy was offered; the revision of the
-                # setup network is on the attempt (N-08).
+                # setup network is on the attempt.
                 "proxy": "HTTP_PROXY" in INSTALL["env"],
                 "status": "copying",
             }
@@ -567,7 +567,7 @@ def _claude_code():
     from harbor.agents.installed.node_install import nvm_node_install_snippet
 
     class MaestroClaudeCode(_container_harness(ClaudeCode)):
-        """Claude Code installed from npm everywhere (U-41), so the setup network's
+        """Claude Code installed from npm everywhere, so the setup network's
         package mirror applies; Harbor uses the official download site on glibc, which
         only a proxy reaches. The key is read by ``apiKeyHelper``."""
 

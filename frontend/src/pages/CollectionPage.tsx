@@ -1,4 +1,4 @@
-// One collection (06 section 8): its fixed specification, the comparison of its runs with
+// One collection: its fixed specification, the comparison of its runs with
 // the settings the team keeps, its members and history, and snapshots of it.
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";

@@ -1,16 +1,16 @@
-"""Preparation coordinator (02 sections 3-8): imports, first preparation, shared cache
+"""Preparation coordinator: imports, first preparation, shared cache
 restore, eviction and restart reconciliation.
 
 All of it runs on the worker's event loop, so join / leave / publish decisions are
 serialized; every decision is also a short write transaction that re-checks the
-records it depends on (01 section 6.5).
+records it depends on.
 
 Cache key is (spec_digest, location_id). One restore Operation per key and
 generation holds the lease; waiters (runs, or the admin's first-preparation
 Operation) join it, leave it independently, and receive a pin when it publishes.
 A late or superseded restore cannot publish: publication checks the row's
 generation and active Operation. Each restore Operation tries once; retries belong
-to the waiting trials' attempts (06 section 4).
+to the waiting trials' attempts.
 """
 
 from __future__ import annotations
@@ -60,7 +60,7 @@ PIN_HOURS = 48
 RESTORE_SLOTS = 2
 EVICTION_POLL = 0.1
 
-# Platform preparation error codes (06 section 3).
+# Platform preparation error codes.
 CODES = {
     env.TRANSIENT: "PREPARATION_RESTORE_FAILED",
     env.AUTH: "PREPARATION_RESTORE_FAILED",
@@ -179,7 +179,7 @@ def load_context(conn: Connection, task_id: str) -> TaskContext:
     )
     definition = row["definition_json"]
     # A revoked admission is an explicit stop for new work; runs accepted earlier keep
-    # the snapshot and its recorded output (02 section 5).
+    # the snapshot and its recorded output.
     admission = (
         conn.execute(
             select(t.task_admissions.c.evidence_json)
@@ -226,7 +226,7 @@ def recorded_outputs(conn: Connection, exclude_task_ids=()) -> list[PreparedOutp
 
 def in_use(conn: Connection, exclude: str) -> frozenset[str]:
     """Image digests another cache needs locally now: pinned, or being restored. Tasks
-    share identical images (N-01), so evicting one task must not pull them from under
+    share identical images, so evicting one task must not pull them from under
     another."""
     busy = select(t.preparations.c.output_json).where(
         t.preparations.c.id != exclude,
@@ -242,14 +242,14 @@ def in_use(conn: Connection, exclude: str) -> frozenset[str]:
 
 
 def known_images(conn: Connection) -> dict[str, env.PreparedImage]:
-    """Recorded images by definition key, so an identical definition is reused (N-01)."""
+    """Recorded images by definition key, so an identical definition is reused."""
     return {image.key: image for output in recorded_outputs(conn) for image in output.images}
 
 
 def set_availability(
     conn: Connection, digest: str, resource_kind: str, availability: str, evidence: dict
 ) -> None:
-    """Content availability per digest and resource (02 section 5). Callers decide
+    """Content availability per digest and resource. Callers decide
     when evidence is strong enough; a timeout never makes content unavailable."""
     at = _now()
     row = (
@@ -317,7 +317,7 @@ class Preparer:
     # --- lifecycle ------------------------------------------------------------------
 
     def start_epoch(self, epoch: str, instance_id: str) -> dict:
-        """Preparation work of an earlier process is over (02 section 8): its
+        """Preparation work of an earlier process is over: its
         Operations are interrupted, restoring caches fall back, waiters and pins of
         that process are dropped. Admission and its evidence are untouched."""
         self.epoch = epoch
@@ -522,7 +522,7 @@ class Preparer:
             await asyncio.to_thread(shutil.rmtree, staging, True)
 
     async def _import(self, op_id: str, op) -> None:
-        """Resolve, fetch and inspect a fixed version, then record it (02 section 3).
+        """Resolve, fetch and inspect a fixed version, then record it.
         The version is written in one transaction after every task is in place."""
         request = op["progress_json"]["request"]
         source = self.sources.get(request["source_kind"])
@@ -645,7 +645,7 @@ class Preparer:
     async def _reverify(self, version_id, version, source, credential, op_id) -> None:
         """Importing a known version again re-checks task content marked unavailable:
         the Hub cannot tell deleted from no longer visible, so an administrator can
-        bring it back once the same digest is offered again (02 section 5)."""
+        bring it back once the same digest is offered again."""
         with self.db.read() as conn:
             lost = conn.execute(
                 select(t.tasks.c.content_digest, t.tasks.c.material_digest)
@@ -843,7 +843,7 @@ class Preparer:
             )
 
     async def _first(self, op_id: str, op) -> None:
-        """Admin first preparation and its retry: admission per task (02 section 5)."""
+        """Admin first preparation and its retry: admission per task."""
         task_ids = op["progress_json"]["task_ids"]
         results: dict[str, dict] = {}
 
@@ -909,7 +909,7 @@ class Preparer:
 
     async def _reinspect(self, ctx: TaskContext) -> tuple[TaskContext, dict]:
         """Inspect a task that is not admitted yet again from its material: how the
-        platform prepares may have changed since the import (U-54). An admitted task keeps
+        platform prepares may have changed since the import. An admitted task keeps
         what it was admitted with."""
         with self.db.read() as conn:
             recorded = conn.execute(
@@ -1012,7 +1012,7 @@ class Preparer:
         return {"state": "first_failed", "error": error}
 
     async def _evict(self, op_id: str, op) -> None:
-        """Remove a local image; the original and every admission stay (02 section 8)."""
+        """Remove a local image; the original and every admission stay."""
         preparation_id = op["resource_id"]
         with self.db.write() as conn:
             row = (
@@ -1358,7 +1358,7 @@ class Preparer:
         operations.advance(conn, op_id, progress={**op, "waiters": waiting})
 
     def _leave(self, op_id: str, holder_kind: str, holder_id: str) -> None:
-        """A waiter leaves; the last one to leave ends the restore (02 section 7.4)."""
+        """A waiter leaves; the last one to leave ends the restore."""
         columns = self._holder_columns(holder_kind, holder_id)
         with self.db.write() as conn:
             conn.execute(
@@ -1452,7 +1452,7 @@ class Preparer:
         if path is not None:
             return path
         # Upstream may have dropped it; only a fetch that fails for content reasons
-        # (not found / different) makes it unavailable (02 section 5).
+        # (not found / different) makes it unavailable.
         await progress("downloading")
         source = self.sources.get(ctx.source_kind)
         if source is None:
@@ -1514,7 +1514,7 @@ class Preparer:
         )
 
     def _publish(self, active: _Active, ctx: TaskContext, output: PreparedOutput) -> None:
-        """Atomically: ready + output, pins handed to every current waiter (02 section 7.5)."""
+        """Atomically: ready + output, pins handed to every current waiter."""
         at = _now()
         with self.db.write() as conn:
             if not self._current(conn, active):

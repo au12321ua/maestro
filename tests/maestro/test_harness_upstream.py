@@ -1,4 +1,4 @@
-"""Harness versions pin the program their adapter installs (N-09): the upstream version is
+"""Harness versions pin the program their adapter installs: the upstream version is
 part of the version's content, checked against the package registry when it answers, and
 the publishing form gets the registry's release tags and recent releases through the
 setup network. Adapters that pass on only some model parameters refuse the others."""

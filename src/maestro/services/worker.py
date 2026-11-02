@@ -1,9 +1,9 @@
-"""In-process run-level worker (05, D-020) driving the executor boundary.
+"""In-process run-level worker driving the executor boundary.
 
 The worker is the single scheduling coordinator: it claims queued runs in FIFO order
 when capacity allows, holds a per-run lease, commits executor events in short
 lease-checked transactions, enforces cancellation and deadlines, and on start
-reconciles whatever an earlier process left behind (05 section 8).
+reconciles whatever an earlier process left behind.
 """
 
 import asyncio
@@ -94,7 +94,7 @@ class _Cancel:
 
 
 def trial_outcome(outcome: AttemptOutcome) -> tuple[TrialState, str | None]:
-    """Scored needs a legal number and reward_valid (06 section 1); 0 is a real score."""
+    """Scored needs a legal number and reward_valid; 0 is a real score."""
     if outcome.reward_valid and legal_score(outcome.raw_score):
         return TrialState.SCORED, outcome.failure_cause
     return TrialState.EXECUTION_ERROR, outcome.failure_cause or "verifier_failed"
@@ -115,7 +115,7 @@ class RunSink:
         self.run_id = run_id
         self.lease = lease
         self.attempt_ids: dict[tuple[str, int], str] = {}
-        # The setup network revision the executor's attempts are given (N-08).
+        # The setup network revision the executor's attempts are given.
         self.setup_network_revision: int | None = None
         # Attempts the platform recorded itself (failed cache restores) before the
         # executor started; executor attempt numbers continue after them.
@@ -360,7 +360,7 @@ class RunSink:
                 # terminal state stays as evidence on the attempt only.
                 return
             if not final:
-                # Retry: the attempt ends, the trial returns to queued (05 section 4).
+                # Retry: the attempt ends, the trial returns to queued.
                 self._move(conn, trial, TrialState.QUEUED, phase="retry_wait")
                 refresh_operation(conn, self.run_id)
                 return
@@ -421,7 +421,7 @@ class RunSink:
             refresh_operation(conn, self.run_id)
 
     def mark_waiting(self, trial_ids: list[str], phase: str | None) -> None:
-        """Queued trials of a task whose cache is being restored show it (02 section 7)."""
+        """Queued trials of a task whose cache is being restored show it."""
         with self.db.write() as conn:
             self._check_run(conn)
             conn.execute(
@@ -432,7 +432,7 @@ class RunSink:
             refresh_operation(conn, self.run_id)
 
     async def preparation_failed(self, trial_id: str, error: dict, final: bool) -> None:
-        """A failed cache restore is an attempt of each waiting trial (06 section 3)."""
+        """A failed cache restore is an attempt of each waiting trial."""
         await self.attempt_started(trial_id, 1, {"runner_id": "platform-preparation"})
         await self.phase_changed(trial_id, 1, "cache")
         await self.attempt_finished(
@@ -488,7 +488,7 @@ class Worker:
         self.credentials = credentials
         if preparer is not None:
             preparer.wake = self.wake
-        # Back-off between failed cache restores of one task (D-011, 06 section 4).
+        # Back-off between failed cache restores of one task.
         self.retry_waits = (RETRY_MIN_WAIT_SEC, RETRY_WAIT_MULTIPLIER, RETRY_MAX_WAIT_SEC)
         self.poll_seconds = poll_seconds
         self.cleanup_retry_seconds = cleanup_retry_seconds
@@ -511,7 +511,7 @@ class Worker:
     # --- lifecycle -------------------------------------------------------------
 
     def start_epoch(self) -> dict:
-        """Close out runs an earlier process left claimed (05 section 8) before any claim.
+        """Close out runs an earlier process left claimed before any claim.
 
         Database part only; ``recover`` then stops leftover Runners and cleans by label.
         """
@@ -552,7 +552,7 @@ class Worker:
                     .limit(1)
                 ).first()
                 if started is None and not run["stop_reason"]:
-                    # Nothing ever ran: the run keeps its place in the queue (05 section 8, item 2).
+                    # Nothing ever ran: the run keeps its place in the queue.
                     conn.execute(
                         update(t.runs)
                         .where(t.runs.c.id == run_id)
@@ -809,7 +809,7 @@ class Worker:
 
     def _claim(self):
         """First queued run that fits current capacity; later small runs may pass a
-        large one that does not fit yet (05 section 3). Waiting runs show why."""
+        large one that does not fit yet. Waiting runs show why."""
         lease = secrets.token_urlsafe(24)
         if self.disk and not self.disk.dispatching():
             with self.db.write() as conn:
@@ -919,7 +919,7 @@ class Worker:
 
     @staticmethod
     def _reservation(conn, run_id: str, concurrency: int) -> dict:
-        """From the snapshot: each task's effective resources, as resolved (03)."""
+        """From the snapshot: each task's effective resources, as resolved."""
         trial_count = conn.execute(
             select(func.count()).select_from(t.trials).where(t.trials.c.run_id == run_id)
         ).scalar()
@@ -943,7 +943,7 @@ class Worker:
             if self.preparer is not None:
                 spec = await self._prepare(spec, sink, cancel)
             if spec.trials and not cancel.cancelled:
-                # Read now, not at acceptance: a replaced mirror reaches queued runs (N-08).
+                # Read now, not at acceptance: a replaced mirror reaches queued runs.
                 with self.db.read() as conn:
                     spec = replace(spec, setup_network=setup_network.current(conn))
                 if spec.effective_config.get("harness"):
@@ -964,7 +964,7 @@ class Worker:
             cleanup, failure = CleanupState.COMPLETE, "CREDENTIAL_UNAVAILABLE"
         except asyncio.CancelledError:
             # Service shutdown: leave the run claimed; the next start reconciles it
-            # as interrupted (05 section 8) instead of inventing an outcome here.
+            # as interrupted instead of inventing an outcome here.
             close = False
             raise
         except Exception:
@@ -979,7 +979,7 @@ class Worker:
 
     def _secrets(self, spec: RunSpec) -> dict[str, str]:
         """Values of the credentials the snapshot binds, read now: a run uses the current
-        value of its credential (03 section 5), never one copied at acceptance."""
+        value of its credential, never one copied at acceptance."""
         effective = spec.effective_config
         wanted = {}
         if (effective.get("model") or {}).get("credential_id"):
@@ -1000,7 +1000,7 @@ class Worker:
         return secrets
 
     async def _prepare(self, spec: RunSpec, sink: RunSink, cancel: _Cancel) -> RunSpec:
-        """D-020: before the run's executor starts, every task's prepared image is
+        """Before the run's executor starts, every task's prepared image is
         pinned, restoring it when the cache is cold. Restores are shared with other
         runs; a failed restore is an attempt of each trial of that task, retried with
         back-off only for transient causes; other tasks of the run go ahead."""

@@ -1,4 +1,4 @@
-// Attachment snapshots (03 sections 6-7, N-06): members publish a folder, uploading only
+// Attachment snapshots: members publish a folder, uploading only
 // the files the service lacks; each snapshot is fixed and named by its content. Each
 // trial of a model run installs the chosen ones in its own container before the agent.
 import { useMemo, useRef, useState } from "react";
