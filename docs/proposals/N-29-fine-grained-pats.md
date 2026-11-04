@@ -1,6 +1,6 @@
 # N-29 细粒度 PAT
 
-状态：设计中 · 优先级：一（N-28 依赖） · 2026-11-03 · 相关：[09](../design/09-identity-security.md)、[02](../design/02-datasets-preparation.md)、U-20、U-27、U-69、[N-28](N-28-datasets-and-evaluation-split.md)
+状态：已确认 · 优先级：一（N-28 依赖） · 2026-11-03 · 相关：[09](../design/09-identity-security.md)、[02](../design/02-datasets-preparation.md)、U-20、U-27、U-69、[N-28](N-28-datasets-and-evaluation-split.md)
 
 ## 问题
 
