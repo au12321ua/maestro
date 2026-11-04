@@ -93,9 +93,9 @@ def _apply(section, author, platform: dict | None) -> dict:
 
 
 def unrouted_services(task_dir: Path) -> list[str]:
-    """Services of the author's compose files that set their own networks: the agent's
-    environment and a separate verifier's under ``tests/``. Harbor routes only services
-    without them through the egress sidecar, so these would stay open."""
+    """Services whose own network settings bypass Harbor's egress sidecar, in both the
+    agent environment and a separate verifier's ``tests/``. An explicit ``none`` mode
+    without a ``networks`` field is already disconnected and needs no routing."""
     import yaml
 
     found = []
@@ -115,7 +115,9 @@ def unrouted_services(task_dir: Path) -> list[str]:
         found += [
             f"{prefix}{name}"
             for name, config in services.items()
-            if isinstance(config, dict) and ("network_mode" in config or "networks" in config)
+            if isinstance(config, dict)
+            and ("network_mode" in config or "networks" in config)
+            and not (config.get("network_mode") == "none" and "networks" not in config)
         ]
     return sorted(found)
 
