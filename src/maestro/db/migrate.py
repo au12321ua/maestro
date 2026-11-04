@@ -31,9 +31,23 @@ def current(db: Database) -> str | None:
 def upgrade(db: Database, target: str = "head") -> None:
     config = _config()
     with db.engine.connect() as connection:
-        config.attributes["connection"] = connection
-        command.upgrade(config, target)
-        connection.commit()
+        # SQLite batch migrations replace tables, including parents still referenced by
+        # historical rows. PRAGMA foreign_keys must change before BEGIN, so use the
+        # DBAPI cursor directly rather than triggering SQLAlchemy's begin listener.
+        cursor = connection.connection.driver_connection.cursor()
+        try:
+            cursor.execute("PRAGMA foreign_keys=OFF")
+            config.attributes["connection"] = connection
+            command.upgrade(config, target)
+            broken = connection.exec_driver_sql("PRAGMA foreign_key_check").fetchmany(5)
+            if broken:
+                raise RuntimeError(f"migration would leave broken foreign keys: {broken}")
+            connection.commit()
+        finally:
+            # Roll back before restoring enforcement, also on failed DDL or validation.
+            connection.rollback()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
 
 
 def revision(db: Database, message: str) -> None:
