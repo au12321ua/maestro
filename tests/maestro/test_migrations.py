@@ -1,5 +1,6 @@
 import json
 
+import pytest
 from alembic.autogenerate import compare_metadata
 from alembic.runtime.migration import MigrationContext
 from sqlalchemy import inspect
@@ -264,8 +265,7 @@ def test_upgrading_resets_admissions_and_drops_old_preparations(tmp_path):
 
 
 def test_existing_tokens_keep_what_their_scope_allowed(tmp_path):
-    """0007: a read token gets no extra permissions, an experiment token the experiment
-    permission, so tokens issued before keep working unchanged."""
+    """Existing token identities and historical references survive the permissions upgrade."""
     from sqlalchemy import select, text
 
     from maestro.db import schema as t
@@ -289,7 +289,82 @@ def test_existing_tokens_keep_what_their_scope_allowed(tmp_path):
                 ),
                 {"id": pat_id, "scope": scope},
             )
+            conn.execute(
+                t.operations.insert().values(
+                    id=f"op_{pat_id}",
+                    kind="run",
+                    owner_id="usr_1",
+                    pat_id=pat_id,
+                    status="succeeded",
+                    progress_json={},
+                    revision=1,
+                    created_at="x",
+                    updated_at="x",
+                )
+            )
+            conn.execute(
+                t.config_resolutions.insert().values(
+                    id=f"res_{pat_id}",
+                    owner_id="usr_1",
+                    pat_id=pat_id,
+                    request_json={},
+                    result_json={},
+                    created_at="x",
+                    expires_at="x",
+                )
+            )
+        references = {
+            table.name: conn.execute(select(table).order_by(table.c.id)).mappings().all()
+            for table in (t.operations, t.config_resolutions)
+        }
     migrate.upgrade(db)
     with db.read() as conn:
         rows = dict(conn.execute(select(t.pats.c.id, t.pats.c.permissions_json)).all())
+        for table in (t.operations, t.config_resolutions):
+            assert (
+                conn.execute(select(table).order_by(table.c.id)).mappings().all()
+                == references[table.name]
+            )
+        assert conn.exec_driver_sql("PRAGMA foreign_key_check").all() == []
+        assert conn.exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
+        identities = conn.exec_driver_sql(
+            "SELECT id, token_hash, token_prefix, accepted_runs FROM pats ORDER BY id"
+        ).all()
     assert rows == {"pat_r": [], "pat_e": ["experiment"]}
+    assert identities == [("pat_e", "pat_e", "p", 0), ("pat_r", "pat_r", "p", 0)]
+
+
+@pytest.mark.parametrize("failure", ["exception", "broken_reference"])
+def test_failed_upgrade_rolls_back_and_restores_foreign_keys(tmp_path, monkeypatch, failure):
+    """Neither failed DDL nor orphaned rows may survive a migration attempt."""
+    from maestro.db import schema as t
+
+    db = Database.open(tmp_path / "app.db")
+    migrate.upgrade(db, "0006")
+
+    def fail(config, target):
+        conn = config.attributes["connection"]
+        conn.exec_driver_sql("CREATE TABLE migration_canary (id INTEGER PRIMARY KEY)")
+        if failure == "exception":
+            raise RuntimeError("migration failed")
+        conn.execute(
+            t.operations.insert().values(
+                id="op_orphan",
+                kind="run",
+                pat_id="pat_missing",
+                status="succeeded",
+                progress_json={},
+                revision=1,
+                created_at="x",
+                updated_at="x",
+            )
+        )
+
+    monkeypatch.setattr(migrate.command, "upgrade", fail)
+    with pytest.raises(RuntimeError, match="migration failed|foreign key"):
+        migrate.upgrade(db)
+    assert migrate.current(db) == "0006"
+    with db.read() as conn:
+        assert "migration_canary" not in inspect(conn).get_table_names()
+        assert conn.exec_driver_sql("SELECT count(*) FROM operations").scalar() == 0
+        assert conn.exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
