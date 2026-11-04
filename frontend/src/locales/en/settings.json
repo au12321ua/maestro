@@ -15,7 +15,7 @@
     "description": "Use the PAT created above to submit and watch experiments with the Python SDK; every experiment action available on the web can be done with the SDK. The server does not offer the package for download yet, so install it from the repository. Keep the token in an environment variable, not in code.",
     "repo": "maestro repo",
     "exampleRunName": "baseline",
-    "scopes": "A read PAT can query, resolve configurations and download; submitting and rerunning need an experiment PAT. A client wait timing out does not cancel the run on the server.",
+    "scopes": "A read-only PAT can query, resolve configurations and download; submitting and rerunning need the experiment permission. A client wait timing out does not cancel the run on the server.",
     "skill": "To let an Agent act for you, load the skill <code>{{path}}</code> from the repository and provide the address and token through the environment variables MAESTRO_URL and MAESTRO_TOKEN_FILE."
   },
   "password": {
@@ -30,12 +30,9 @@
   },
   "pat": {
     "title": "Personal access tokens (PAT)",
-    "description": "For the SDK and scripts. read can only read; experiment can also submit and cancel your own runs. A PAT never has admin rights. The run limit counts accepted runs.",
+    "description": "For the SDK and scripts. Every token can read team data; tick further permissions as needed, up to your account's role. Creating and revoking tokens, members, credentials and the master key, and permanent deletion stay on the web. The run limit counts accepted runs.",
     "issued": "New token \"{{name}}\"",
     "name": "Name",
-    "scope": "Scope",
-    "scopeExperiment": "experiment (submit and read)",
-    "scopeRead": "read (read only)",
     "days": "Valid for (days)",
     "daysHint_one": "At most {{count}} day",
     "daysHint_other": "At most {{count}} days",
@@ -48,7 +45,7 @@
     "loadFailed": "Could not load tokens",
     "empty": "No tokens yet.",
     "prefix": "Prefix",
-    "scopeColumn": "Scope",
+    "scopeColumn": "Permissions",
     "runsColumn": "Runs (used / limit)",
     "expires": "Expires",
     "lastUsed": "Last used",
@@ -61,6 +58,21 @@
     "deleteConfirmActive": "Delete access token \"{{name}}\"? It stops working immediately and is removed from the list (an admin can restore the record from the recycle bin).",
     "deleteConfirm": "Delete access token \"{{name}}\"? It is removed from the list (an admin can restore the record from the recycle bin).",
     "deleted": "Deleted",
-    "deleteFailed": "Delete failed: {{error}}"
+    "deleteFailed": "Delete failed: {{error}}",
+    "permissions": "Permissions",
+    "permissionsHint": "Every token can read; the boxes below grant more.",
+    "presetRead": "Read only",
+    "presetExperiment": "Experiment (default)",
+    "readOnly": "read only",
+    "adminBadge": "admin",
+    "adminWarning": "This token carries administrator permissions: whoever gets hold of it can do those administrative actions. It is valid for at most {{count}} days; tick only what you need and revoke it when done.",
+    "permission": {
+      "experiment": "Submit, rerun and cancel your runs; manage your plans, attachments, collections and snapshots",
+      "datasets": "Search and import datasets, first preparation and retries, revoke admissions, evict caches, scoring contracts, bin datasets",
+      "models": "Model configurations and harness versions (cannot bind credentials)",
+      "operations": "Team policy, capacity, install network, deployment view",
+      "override": "Cancel and bin other members' runs and objects, see their exports",
+      "audit": "Read audit events and the recycle bin listing"
+    }
   }
 }

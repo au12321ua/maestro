@@ -82,8 +82,8 @@ def invite_member(service, admin: Api, username: str, role="member") -> Api:
     return Api(other, csrf=response.json()["data"]["csrf_token"])
 
 
-def create_pat(api: Api, scope="experiment", run_limit=None) -> Api:
-    body = {"name": f"pat-{uuid.uuid4().hex[:6]}", "scope": scope}
+def create_pat(api: Api, permissions=("experiment",), run_limit=None) -> Api:
+    body = {"name": f"pat-{uuid.uuid4().hex[:6]}", "permissions": list(permissions)}
     if run_limit is not None:
         body["run_limit"] = run_limit
     issued = api.post("/api/v1/me/pats", json=body, expect=201).json()["data"]

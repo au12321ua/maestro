@@ -20,9 +20,29 @@ class UserStatus(StrEnum):
     DISABLED = "disabled"
 
 
-class PatScope(StrEnum):
-    READ = "read"
-    EXPERIMENT = "experiment"
+class PatPermission(StrEnum):
+    """What a PAT may do beyond reading team data, which every PAT may.
+
+    A PAT's effective permissions are those it was granted that its owner's role allows.
+    """
+
+    EXPERIMENT = "experiment"  # own plans, attachments, runs, batches, collections
+    DATASETS = "datasets"  # search, import, first preparation, admissions, caches
+    MODELS = "models"  # model configurations and harness versions
+    OPERATIONS = "operations"  # team policy, capacity, install network, deployment view
+    OVERRIDE = "override"  # act on other members' objects: cancel, bin, see exports
+    AUDIT = "audit"  # audit events and the recycle bin listing
+
+
+ADMIN_PERMISSIONS = frozenset(
+    {
+        PatPermission.DATASETS,
+        PatPermission.MODELS,
+        PatPermission.OPERATIONS,
+        PatPermission.OVERRIDE,
+        PatPermission.AUDIT,
+    }
+)
 
 
 class RunState(StrEnum):

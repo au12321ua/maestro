@@ -233,7 +233,7 @@ def test_members_publish_snapshots_uploading_only_what_is_missing(service):
         admin = setup_admin(service, client)
         member = invite_member(service, admin, "member")
         pat = create_pat(member)
-        reader = create_pat(member, scope="read")
+        reader = create_pat(member, permissions=())
         assert publish(reader, package()).status_code == 403
         assert upload(reader, b"x").status_code == 403
         uploaded = []
@@ -344,7 +344,7 @@ def test_uploads_are_checked_limited_and_expire(service, monkeypatch):
 def test_reading_files_archives_and_differences(service):
     with running(service, run_worker=False) as client:
         admin = setup_admin(service, client)
-        reader = create_pat(admin, scope="read")
+        reader = create_pat(admin, permissions=())
         first = attach(admin, label="v1")
         second = publish(
             admin,

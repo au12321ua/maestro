@@ -54,7 +54,7 @@ def test_ds04_cold_cache_is_restored_once_for_concurrent_runs(service, source, e
         admission = task["admission"]
         evict(admin, task)
         member = invite_member(service, admin, "member")
-        pat = create_pat(member, scope="experiment", run_limit=5)
+        pat = create_pat(member, permissions=("experiment",), run_limit=5)
         environment.gate = asyncio.Event()
         environment.started.clear()
         web_run = submit(member, version_id).json()["data"]
@@ -185,7 +185,7 @@ def test_ds05_exact_content_gone_blocks_new_runs_with_expected_digest(
     with running(service) as client:
         admin, version_id, task = solo(service, source, client)
         member = invite_member(service, admin, "member")
-        pat = create_pat(member, scope="experiment", run_limit=5)
+        pat = create_pat(member, permissions=("experiment",), run_limit=5)
         accepted = submit(pat, version_id).json()["data"]
         wait_run(pat, accepted["run_id"])
         evict(admin, task)

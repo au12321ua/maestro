@@ -43,7 +43,7 @@ def test_ds01_import_fixes_content_and_reimport_is_idempotent(service, source):
     with running(service) as client:
         admin = setup_admin(service, client)
         member = invite_member(service, admin, "member")
-        reader = create_pat(member, scope="read")
+        reader = create_pat(member, permissions=())
 
         found = admin.get("/api/v1/dataset-search?q=demo&source_kind=fake").json()["data"]
         assert {"namespace": "demo", "name": "arith", "visibility": "public"} in found
@@ -182,9 +182,9 @@ def test_ds03_sdk_reads_but_cannot_administer(service, source):
         (task,) = tasks_by_key(admin, version_id).values()
         evict(admin, task)
         member = invite_member(service, admin, "member")
-        reader = create_pat(member, scope="read")
-        experimenter = create_pat(member, scope="experiment", run_limit=5)
-        admin_pat = create_pat(admin, scope="experiment")
+        reader = create_pat(member, permissions=())
+        experimenter = create_pat(member, permissions=("experiment",), run_limit=5)
+        admin_pat = create_pat(admin, permissions=("experiment",))
 
         for pat in (reader, experimenter):
             assert pat.get("/api/v1/dataset-search?q=solo&source_kind=fake").status_code == 403
@@ -199,7 +199,8 @@ def test_ds03_sdk_reads_but_cannot_administer(service, source):
             body = {"source_kind": "fake", "namespace": "demo", "name": "solo", "ref": "v1"}
             denied = pat.post("/api/v1/admin/dataset-imports", json=body)
             assert denied.status_code == 403
-            assert denied.json()["error"]["code"] == "ADMIN_SESSION_REQUIRED"
+            # Members' tokens are capped by role; the admin's lacks the datasets permission.
+            assert denied.json()["error"]["code"] in {"FORBIDDEN", "PAT_PERMISSION_INSUFFICIENT"}
             denied = pat.post(f"/api/v1/admin/dataset-versions/{version_id}/preparations", json={})
             assert denied.status_code == 403
             prep = task["local_preparation"]["id"]
@@ -207,7 +208,7 @@ def test_ds03_sdk_reads_but_cannot_administer(service, source):
 
         refused = submit(reader, version_id)
         assert refused.status_code == 403
-        assert refused.json()["error"]["code"] == "PAT_SCOPE_INSUFFICIENT"
+        assert refused.json()["error"]["code"] == "PAT_PERMISSION_INSUFFICIENT"
         accepted = submit(experimenter, version_id).json()["data"]
         run = wait_run(experimenter, accepted["run_id"])
         assert run["counts"]["scored"] == 1  # restored inside the run, no admin step

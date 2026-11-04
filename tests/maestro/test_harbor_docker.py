@@ -657,7 +657,7 @@ def test_service_killed_mid_run_is_reconciled_on_restart(tmp_path):
         ).json()["data"]["csrf_token"]
         token = web.post(
             "/api/v1/me/pats",
-            json={"name": "agent", "scope": "experiment"},
+            json={"name": "agent", "permissions": ["experiment"]},
             headers={"X-CSRF-Token": csrf},
         ).json()["data"]["token"]
         pat = Api(httpx.Client(base_url=base), token=token)

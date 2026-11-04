@@ -94,7 +94,7 @@ def test_team_policy_revisions_take_effect_for_new_work_only(service, version_id
             "message": "repetitions 2 is over the team limit 1",
             "limit": 1,
         }
-        token = member.post("/api/v1/me/pats", json={"name": "x", "scope": "read"}, expect=201)
+        token = member.post("/api/v1/me/pats", json={"name": "x", "permissions": []}, expect=201)
         assert token.json()["data"]["run_limit"] == 7
         caps = client.get("/api/v1/capabilities").json()["data"]
         assert caps["team_policy_revision"] == 1 and caps["limits"]["repetitions_max"] == 1
@@ -215,7 +215,7 @@ def test_web_and_pat_resolve_to_the_same_configuration(service, version_id):
         admin = setup_admin(service, client)
         model_id, harness_id = prepare_model(admin)
         member = invite_member(service, admin, "member")
-        reader = create_pat(member, scope="read")
+        reader = create_pat(member, permissions=())
         body = agent_body(model_id, harness_id, repetitions=3, concurrency=2)
         web = resolve(member, version_id, **body)
         sdk = resolve(reader, version_id, **body)
@@ -233,7 +233,7 @@ def test_web_and_pat_resolve_to_the_same_configuration(service, version_id):
             json={"name": "x", "resolution_id": sdk["resolution_id"]},
             headers={"Idempotency-Key": uuid.uuid4().hex},
         )
-        assert error(refused) == (403, "PAT_SCOPE_INSUFFICIENT")
+        assert error(refused) == (403, "PAT_PERMISSION_INSUFFICIENT")
 
 
 def test_limits_block_instead_of_clamping_and_sources_explain_values(service, version_id):
@@ -568,7 +568,7 @@ def test_everyone_sees_usable_credential_names_but_never_values(service):
     with running(service, run_worker=False) as client:
         admin = setup_admin(service, client)
         member = invite_member(service, admin, "member")
-        reader = create_pat(member, scope="read")
+        reader = create_pat(member, permissions=())
         for name in ("grader", "spare"):
             admin.post(
                 "/api/v1/admin/credentials",

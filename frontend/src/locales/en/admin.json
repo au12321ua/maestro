@@ -183,7 +183,7 @@
   },
   "datasetImports": {
     "title": "Dataset imports and first preparation",
-    "description": "Searching sources, adding versions and retrying first preparation all happen on the <link>Datasets</link> page (admin web sessions only). Below are the recent import and first preparation operations.",
+    "description": "Searching sources, adding versions and retrying first preparation all happen on the <link>Datasets</link> page (administrators; also an administrator token with the datasets permission). Below are the recent import and first preparation operations.",
     "empty": "No datasets imported yet.",
     "operation": "Operation",
     "status": "Status",

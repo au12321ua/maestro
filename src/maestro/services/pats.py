@@ -2,6 +2,8 @@
 
 Created, listed and revoked only by their owner in a web session. The raw value
 is returned once; only its digest and a short display prefix are stored.
+Every token may read team data; ``permissions`` grant more, within the owner's role.
+Tokens with administrator permissions live shorter (``pat_admin_max_days``).
 ``accepted_runs`` changes only inside the run acceptance transaction.
 """
 
@@ -12,7 +14,7 @@ from maestro.core.errors import FieldError, MaestroError, not_found
 from maestro.core.ids import new_id
 from maestro.db import schema as t
 from maestro.db.engine import Database
-from maestro.domain.states import PatScope
+from maestro.domain.states import ADMIN_PERMISSIONS, PatPermission, Role
 from maestro.security import tokens
 from maestro.services import audit, deleted, policy
 from maestro.services.principal import Principal, require_web_session
@@ -29,7 +31,7 @@ def public_pat(row) -> dict:
     return {
         "id": row["id"],
         "name": row["name"],
-        "scope": row["scope"],
+        "permissions": sorted(row["permissions_json"]),
         "token_prefix": row["token_prefix"],
         "state": state,
         "expires_at": row["expires_at"],
@@ -52,19 +54,30 @@ class Pats:
         self,
         principal: Principal,
         name: str,
-        scope: PatScope,
+        permissions: list[PatPermission],
         expires_in_days: int | None,
         run_limit: int | None,
     ) -> dict:
         require_web_session(principal)
         team = self.policies.current()
-        days = team.pat_default_days if expires_in_days is None else expires_in_days
+        granted = frozenset(permissions)
+        administrative = bool(granted & ADMIN_PERMISSIONS)
+        max_days = team.pat_admin_max_days if administrative else team.pat_max_days
+        days = min(team.pat_default_days, max_days) if expires_in_days is None else expires_in_days
         run_limit = team.pat_default_run_limit if run_limit is None else run_limit
         errors = []
         if not isinstance(name, str) or not 1 <= len(name.strip()) <= 128:
             errors.append(FieldError("/name", "LENGTH", "1-128 characters"))
-        if not 1 <= days <= team.pat_max_days:
-            errors.append(FieldError("/expires_in_days", "LIMIT_EXCEEDED", limit=team.pat_max_days))
+        if administrative and principal.role != Role.ADMIN:
+            errors.append(
+                FieldError(
+                    "/permissions",
+                    "ROLE_EXCEEDED",
+                    "administrator permissions need an administrator account",
+                )
+            )
+        if not 1 <= days <= max_days:
+            errors.append(FieldError("/expires_in_days", "LIMIT_EXCEEDED", limit=max_days))
         if not 0 <= run_limit <= team.pat_max_run_limit:
             errors.append(FieldError("/run_limit", "LIMIT_EXCEEDED", limit=team.pat_max_run_limit))
         if errors:
@@ -80,7 +93,7 @@ class Pats:
                     name=name.strip(),
                     token_hash=tokens.digest("pat", token),
                     token_prefix=token[: tokens.PAT_DISPLAY_PREFIX],
-                    scope=scope,
+                    permissions_json=sorted(granted),
                     expires_at=clock.to_text(now + clock.timedelta(days=days)),
                     run_limit=run_limit,
                     accepted_runs=0,
@@ -94,7 +107,11 @@ class Pats:
                 "pat.create",
                 object_type="pat",
                 object_id=pat_id,
-                detail={"scope": scope.value, "expires_in_days": days, "run_limit": run_limit},
+                detail={
+                    "permissions": sorted(granted),
+                    "expires_in_days": days,
+                    "run_limit": run_limit,
+                },
             )
             row = conn.execute(select(t.pats).where(t.pats.c.id == pat_id)).mappings().one()
         return {**public_pat(row), "token": token}

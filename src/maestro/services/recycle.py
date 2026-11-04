@@ -24,7 +24,7 @@ from maestro.core.errors import MaestroError, not_found
 from maestro.core.ids import new_id
 from maestro.db import schema as t
 from maestro.db.engine import Database
-from maestro.domain.states import RUN_TERMINAL, Role, UserStatus
+from maestro.domain.states import RUN_TERMINAL, PatPermission, Role, UserStatus
 from maestro.execution.attachments import display
 from maestro.services import audit, deleted, pagination
 from maestro.services.attachments import release_contents
@@ -32,6 +32,7 @@ from maestro.services.collections import drop_purged_run
 from maestro.services.preparation import recorded_outputs
 from maestro.services.principal import (
     Principal,
+    require_admin,
     require_admin_session,
     require_manage_owned,
     require_web_session,
@@ -88,8 +89,15 @@ class Handler:
     def owner(self, row) -> str | None:
         return None
 
+    # Administration objects need the permission of their area. Without one (members,
+    # credentials) binning stays with administrator web sessions.
+    permission: PatPermission | None = None
+
     def authorize(self, principal: Principal, row) -> None:
-        require_admin_session(principal)
+        if self.permission is None:
+            require_admin_session(principal)
+        else:
+            require_admin(principal, self.permission)
 
     def check_delete(self, conn: Connection, principal: Principal, row) -> None:
         pass
@@ -166,6 +174,7 @@ class RunHandler(Handler):
 
 class ArtifactHandler(Handler):
     object_type = "artifact"
+    permission = PatPermission.OVERRIDE
     table = t.artifacts
 
     def label(self, conn, row):
@@ -198,6 +207,7 @@ def _versions_in_use(conn: Connection, version_ids: list[str]) -> list[str]:
 
 class DatasetVersionHandler(Handler):
     object_type = "dataset_version"
+    permission = PatPermission.DATASETS
     table = t.dataset_versions
 
     def label(self, conn, row):
@@ -287,6 +297,7 @@ def purge_versions(conn: Connection, version_ids: list[str], service: Recycle) -
 
 class DatasetHandler(Handler):
     object_type = "dataset"
+    permission = PatPermission.DATASETS
     table = t.datasets
 
     def label(self, conn, row):
@@ -491,6 +502,7 @@ class ModelConfigHandler(Handler):
     """Accepted runs keep a copy of what they used; deleting stops new choices."""
 
     object_type = "model_config"
+    permission = PatPermission.MODELS
     table = t.model_configs
 
     def label(self, conn, row):
@@ -519,6 +531,7 @@ class ModelConfigHandler(Handler):
 
 class HarnessHandler(Handler):
     object_type = "harness_version"
+    permission = PatPermission.MODELS
     table = t.harness_versions
 
     def label(self, conn, row):
@@ -788,7 +801,7 @@ class Recycle:
         cursor: str | None,
         limit: int | None,
     ):
-        require_admin_session(principal)
+        require_admin(principal, PatPermission.AUDIT)
         if state not in {deleted.RECYCLED, deleted.PURGED}:
             raise MaestroError("INVALID_STATE", "state must be recycled or purged", 400)
         limit = pagination.check_limit(limit)

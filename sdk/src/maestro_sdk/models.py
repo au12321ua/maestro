@@ -13,14 +13,17 @@ from pydantic import BaseModel, ConfigDict, Field, RootModel
 
 class ActionRule(BaseModel):
     """
-    Who may do an action: a web session (of an admin when ``role`` says so) and PATs
-    of the listed scopes.
+    Who may do an action: a web session (of an admin when ``role`` says so) and, when
+    ``pat`` is true, a PAT holding ``pat_permission`` (any PAT when it is null).
     """
 
     model_config = ConfigDict(
         extra="allow",
     )
-    pat_scopes: list[Literal["read", "experiment"]]
+    pat: bool
+    pat_permission: (
+        Literal["experiment", "datasets", "models", "operations", "override", "audit"] | None
+    )
     role: Literal["admin", "member"] | None
     web_session: bool
 
@@ -858,11 +861,13 @@ class IssuedPat(BaseModel):
     id: str
     last_used_at: str | None
     name: str
+    permissions: list[
+        Literal["experiment", "datasets", "models", "operations", "override", "audit"]
+    ]
     remaining_runs: int
     revision: int
     revoked_at: str | None
     run_limit: int
-    scope: Literal["read", "experiment"]
     state: Literal["active", "revoked", "expired"]
     token: Annotated[str, Field(description="Shown once; store it securely")]
     token_prefix: str
@@ -924,7 +929,12 @@ class Me(BaseModel):
     display_name: str
     id: str
     pat_id: str | None
-    pat_scope: Literal["read", "experiment"] | None
+    pat_permissions: Annotated[
+        list[Literal["experiment", "datasets", "models", "operations", "override", "audit"]] | None,
+        Field(
+            description="Permissions of the calling PAT (every PAT may read); null for a web session"
+        ),
+    ]
     revision: int
     role: Literal["admin", "member"]
     status: Literal["active", "disabled"]
@@ -1110,11 +1120,13 @@ class Pat(BaseModel):
     id: str
     last_used_at: str | None
     name: str
+    permissions: list[
+        Literal["experiment", "datasets", "models", "operations", "override", "audit"]
+    ]
     remaining_runs: int
     revision: int
     revoked_at: str | None
     run_limit: int
-    scope: Literal["read", "experiment"]
     state: Literal["active", "revoked", "expired"]
     token_prefix: str
 
@@ -1125,8 +1137,13 @@ class PatCreate(BaseModel):
     )
     expires_in_days: int | None = None
     name: str
+    permissions: Annotated[
+        list[Literal["experiment", "datasets", "models", "operations", "override", "audit"]] | None,
+        Field(
+            description="Granted beyond reading; administrator permissions need an administrator account and shorten the longest validity (pat_admin_max_days)"
+        ),
+    ] = None
     run_limit: int | None = None
-    scope: Literal["read", "experiment"]
 
 
 class PatQuota(BaseModel):

@@ -24,7 +24,7 @@ def test_only_an_administrator_session_sees_the_model_credential(service, versio
         bound = admin.get(f"/api/v1/model-configs/{model_id}", expect=200).json()["data"]
         bound = bound["credential_id"]
         member = invite_member(service, admin, "member")
-        admin_pat = create_pat(admin, "experiment")
+        admin_pat = create_pat(admin, ("experiment",))
 
         shown = resolve(admin, version_id, **agent_body(model_id, harness_id))
         assert shown["effective_config"]["model"]["credential_id"] == bound

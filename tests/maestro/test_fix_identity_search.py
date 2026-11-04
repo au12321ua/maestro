@@ -23,7 +23,7 @@ READABLE = ["/api/v1/datasets", "/api/v1/dataset-sources"]
 
 
 @pytest.mark.parametrize("path", SEARCHES)
-def test_only_an_admin_session_may_search_the_hub(service, path):
+def test_only_admins_with_the_datasets_permission_may_search_the_hub(service, path):
     with running(service, run_worker=False) as client:
         admin = setup_admin(service, client)
         member = invite_member(service, admin, "alice")
@@ -31,16 +31,18 @@ def test_only_an_admin_session_may_search_the_hub(service, path):
         assert anonymous.get(path).status_code == 401
         denied = member.get(path)
         assert denied.status_code == 403 and denied.json()["error"]["code"] == "FORBIDDEN"
-        for pat in (
-            create_pat(member, "read"),
-            create_pat(member, "experiment"),
-            create_pat(admin, "read"),
-            create_pat(admin, "experiment"),
+        for pat, code in (
+            (create_pat(member, ()), "FORBIDDEN"),
+            (create_pat(member, ("experiment",)), "FORBIDDEN"),
+            (create_pat(admin, ()), "PAT_PERMISSION_INSUFFICIENT"),
+            (create_pat(admin, ("experiment", "models")), "PAT_PERMISSION_INSUFFICIENT"),
         ):
             refused = pat.get(path)
             assert refused.status_code == 403, refused.text
-            assert refused.json()["error"]["code"] == "ADMIN_SESSION_REQUIRED"
+            assert refused.json()["error"]["code"] == code
         assert admin.get(path).status_code == 200
+        # An administrator's token granted the datasets permission searches like the web.
+        assert create_pat(admin, ("datasets",)).get(path).status_code == 200
 
 
 @pytest.mark.parametrize("path", READABLE)
@@ -48,7 +50,7 @@ def test_listing_what_the_platform_already_has_stays_open(service, path):
     with running(service, run_worker=False) as client:
         admin = setup_admin(service, client)
         member = invite_member(service, admin, "alice")
-        for caller in (member, create_pat(member, "read"), create_pat(admin, "experiment")):
+        for caller in (member, create_pat(member, ()), create_pat(admin, ("experiment",))):
             assert caller.get(path).status_code == 200
 
 

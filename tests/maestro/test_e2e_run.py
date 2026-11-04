@@ -65,11 +65,11 @@ def test_agent_runs_a_complete_experiment_with_only_a_pat(service, version_id, e
     executor.script = {"add-02": [scored(0.0)]}
     with running(service) as client:
         admin = setup_admin(service, client)
-        agent = create_pat(admin, "experiment", run_limit=3)
+        agent = create_pat(admin, ("experiment",), run_limit=3)
 
         caps = agent.get("/api/v1/capabilities", expect=200).json()["data"]
         assert caps["features"]["execution"] is True
-        assert caps["actions"]["runs.submit"]["pat_scopes"] == ["experiment"]
+        assert caps["actions"]["runs.submit"]["pat_permission"] == "experiment"
 
         datasets = agent.get("/api/v1/datasets", expect=200).json()["data"]
         version = datasets[0]["versions"][0]

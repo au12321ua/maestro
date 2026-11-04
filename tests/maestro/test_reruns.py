@@ -111,7 +111,7 @@ def test_cancel_then_rerun_what_did_not_finish_then_modify(service, version_id, 
         assert [d["path"] for d in changes] == ["/attachments", "/bootstrap_timeout_sec"]
         # Each new run charged one; the source run counted once when it was accepted.
         pats = member.get("/api/v1/me/pats").json()["data"]
-        assert next(p for p in pats if p["scope"] == "experiment")["accepted_runs"] == 3
+        assert next(p for p in pats if p["permissions"] == ["experiment"])["accepted_runs"] == 3
 
 
 def test_a_rerun_keeps_the_source_configuration_or_refuses(service, version_id):
@@ -188,9 +188,9 @@ def test_rerun_needs_experiment_rights_and_a_live_source(service, version_id):
     with running(service, run_worker=False) as client:
         admin = setup_admin(service, client)
         member = invite_member(service, admin, "member")
-        reader = create_pat(member, scope="read")
+        reader = create_pat(member, permissions=())
         source = submit(admin, version_id).json()["data"]
-        assert error(rerun(reader, source["run_id"])) == (403, "PAT_SCOPE_INSUFFICIENT")
+        assert error(rerun(reader, source["run_id"])) == (403, "PAT_PERMISSION_INSUFFICIENT")
         # Unfinished work can only be rerun once the source ended.
         refused = rerun(member, source["run_id"], task_selection={"mode": "unfinished"})
         assert error(refused) == (409, "RUN_NOT_FINISHED")

@@ -128,7 +128,7 @@ def _hidden_from(row, principal: Principal | None) -> bool:
         principal is not None
         and row["kind"] in PRIVATE_KINDS
         and row["owner_id"] != principal.user_id
-        and not principal.is_admin_session
+        and not principal.can_override
     )
 
 
@@ -157,7 +157,7 @@ class Operations:
         limit = pagination.check_limit(limit)
         filters = {"kind": kind, "owner_id": owner_id}
         query = select(t.operations)
-        if principal is not None and not principal.is_admin_session:
+        if principal is not None and not principal.can_override:
             query = query.where(
                 or_(
                     t.operations.c.kind.not_in(PRIVATE_KINDS),

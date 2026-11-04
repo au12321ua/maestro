@@ -31,7 +31,7 @@ from maestro.domain import limits
 from maestro.domain.states import OperationStatus
 from maestro.execution.policy import MAPPING_ID, POLICY_VERSION
 from maestro.services import audit, deleted, operations, pagination, policy
-from maestro.services.principal import Principal, require_admin_session
+from maestro.services.principal import Principal
 
 log = logging.getLogger(__name__)
 SCHEMA_VERSION = 1
@@ -207,11 +207,8 @@ class Exports:
         return row
 
     def _visible(self, principal: Principal, row) -> None:
-        if row["owner_id"] != principal.user_id:
-            try:
-                require_admin_session(principal)
-            except MaestroError:
-                raise not_found("Export") from None
+        if row["owner_id"] != principal.user_id and not principal.can_override:
+            raise not_found("Export")
 
     def get(self, principal: Principal, export_id: str) -> dict:
         with self.db.read() as conn:

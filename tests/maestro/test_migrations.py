@@ -261,3 +261,35 @@ def test_upgrading_resets_admissions_and_drops_old_preparations(tmp_path):
             ("task_2", PREPARATION_METHOD_DIGEST, "revoked", 4, {}),
         ]
         assert conn.exec_driver_sql("SELECT count(*) FROM preparations").scalar() == 0
+
+
+def test_existing_tokens_keep_what_their_scope_allowed(tmp_path):
+    """0007: a read token gets no extra permissions, an experiment token the experiment
+    permission, so tokens issued before keep working unchanged."""
+    from sqlalchemy import select, text
+
+    from maestro.db import schema as t
+
+    db = Database.open(tmp_path / "app.db")
+    migrate.upgrade(db, "0006")
+    with db.write() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO users (id, username, display_name, role, status, password_hash, "
+                "revision, created_at, updated_at) "
+                "VALUES ('usr_1', 'a', 'a', 'admin', 'active', 'x', 1, 'x', 'x')"
+            )
+        )
+        for pat_id, scope in (("pat_r", "read"), ("pat_e", "experiment")):
+            conn.execute(
+                text(
+                    "INSERT INTO pats (id, owner_id, name, token_hash, token_prefix, scope, "
+                    "expires_at, run_limit, accepted_runs, revision, created_at) VALUES "
+                    "(:id, 'usr_1', :id, :id, 'p', :scope, 'x', 1, 0, 1, 'x')"
+                ),
+                {"id": pat_id, "scope": scope},
+            )
+    migrate.upgrade(db)
+    with db.read() as conn:
+        rows = dict(conn.execute(select(t.pats.c.id, t.pats.c.permissions_json)).all())
+    assert rows == {"pat_r": [], "pat_e": ["experiment"]}

@@ -16,8 +16,9 @@ from maestro.db import schema as t
 from maestro.db.engine import Database
 from maestro.domain import setup_network
 from maestro.domain.setup_network import BUILT_IN, NOTE_MAX, SetupNetwork
+from maestro.domain.states import PatPermission
 from maestro.services import audit
-from maestro.services.principal import Principal, require_admin_session
+from maestro.services.principal import Principal, require_admin
 
 
 def _value(network: SetupNetwork) -> dict:
@@ -92,7 +93,7 @@ class SetupNetworks:
     def update(self, principal: Principal, value: dict, note: str, expected_revision: int) -> dict:
         """Save a new revision. ``expected_revision`` is the one the administrator
         edited, so two editors cannot overwrite each other silently."""
-        require_admin_session(principal)
+        require_admin(principal, PatPermission.OPERATIONS)
         if not isinstance(note, str) or len(note) > NOTE_MAX:
             raise MaestroError(
                 "SETUP_NETWORK_INVALID",

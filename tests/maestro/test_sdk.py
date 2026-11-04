@@ -55,8 +55,8 @@ def test_story_one_agent_reads_the_catalog_and_runs_on_a_cold_cache(service, sou
         (task,) = tasks_by_key(admin, version_id).values()
         evict(admin, task)
         member = invite_member(service, admin, "member")
-        reader = sdk(create_pat(member, scope="read"))
-        agent = sdk(create_pat(member, scope="experiment", run_limit=5))
+        reader = sdk(create_pat(member, permissions=()))
+        agent = sdk(create_pat(member, permissions=("experiment",), run_limit=5))
 
         for pat in (reader, agent):
             (dataset,) = pat.catalog.datasets()
@@ -73,12 +73,12 @@ def test_story_one_agent_reads_the_catalog_and_runs_on_a_cold_cache(service, sou
             assert denied.value.status == 403
             with pytest.raises(ApiError) as denied:
                 pat._call("POST", f"admin/dataset-versions/{version_id}/preparations", json={})
-            assert denied.value.code == "ADMIN_SESSION_REQUIRED"
+            assert denied.value.code == "FORBIDDEN"  # a member's token, capped by role
 
         config = {"dataset_version_id": version_id, "execution_mode": "oracle"}
         with pytest.raises(ApiError) as refused:
             reader.runs.submit(config, name="read-only")
-        assert refused.value.code == "PAT_SCOPE_INSUFFICIENT"
+        assert refused.value.code == "PAT_PERMISSION_INSUFFICIENT"
 
         submitted = agent.runs.submit(config, name="cold cache")
         assert agent.operations.wait(submitted.operation_id, interval=0.02).status == "succeeded"
@@ -95,13 +95,14 @@ def test_story_two_agent_runs_a_complete_experiment(service, version_id, executo
     with running(service) as client:
         admin = setup_admin(service, client)
         model_id, harness_id = prepare_model(admin)
-        agent = sdk(create_pat(admin, "experiment", run_limit=3))
+        agent = sdk(create_pat(admin, ("experiment",), run_limit=3))
 
         caps = agent.require("runs", "execution", "configuration_resolution")
-        assert caps.actions["runs.submit"].pat_scopes == ["experiment"]
+        assert caps.actions["runs.submit"].pat_permission == "experiment"
         caps = agent.require("collections", "comparisons", "analysis_snapshots")
-        assert caps.actions["collections.create"].pat_scopes == ["experiment"]
-        assert caps.actions["comparisons.read"].pat_scopes == ["read", "experiment"]
+        assert caps.actions["collections.create"].pat_permission == "experiment"
+        read = caps.actions["comparisons.read"]
+        assert read.pat and read.pat_permission is None  # every token may read
         with pytest.raises(UnsupportedCapability):
             agent.require("unknown_feature")
 
@@ -172,7 +173,7 @@ def test_client_timeout_does_not_cancel_the_run(service, version_id, executor):
     executor.script = {"add-01": ["hang"]}
     with running(service) as client:
         admin = setup_admin(service, client)
-        agent = sdk(create_pat(admin, "experiment"))
+        agent = sdk(create_pat(admin, ("experiment",)))
         config = {"dataset_version_id": version_id, "execution_mode": "oracle"}
         submitted = agent.runs.submit(config, name="slow")
         with pytest.raises(WaitTimeout) as timeout:
@@ -195,8 +196,8 @@ def test_story_three_agent_queries_and_exports(service, version_id, executor, tm
     with running(service) as client:
         admin = setup_admin(service, client)
         alice = invite_member(service, admin, "alice")
-        agent = sdk(create_pat(alice, "experiment"))
-        reader = sdk(create_pat(admin, "read"))
+        agent = sdk(create_pat(alice, ("experiment",)))
+        reader = sdk(create_pat(admin, ()))
         start = clock.to_text(clock.now())
         config = {"dataset_version_id": version_id, "execution_mode": "oracle"}
         mixed = agent.runs.submit(config, name="mixed")
@@ -259,7 +260,7 @@ def test_a_lost_answer_is_retried_under_the_same_key(service, version_id):
     """A lost response: one run, one unit of quota, the original answer."""
     with running(service) as client:
         admin = setup_admin(service, client)
-        pat = create_pat(admin, "experiment", run_limit=2)
+        pat = create_pat(admin, ("experiment",), run_limit=2)
         transport = LoseFirstAnswer(pat.client._transport, "POST", "/api/v1/runs")
         http = httpx.Client(base_url="http://testserver", transport=transport)
         agent = sdk(pat, http=http)
@@ -310,7 +311,7 @@ def test_attachments_publish_fetch_and_compare_directories(service, tmp_path):
     (package / "bin" / "run.sh").chmod(0o755)
     with running(service) as client:
         admin = setup_admin(service, client)
-        agent = sdk(create_pat(admin, "experiment"))
+        agent = sdk(create_pat(admin, ("experiment",)))
         published = agent.attachments.publish(package, label="v1")
         assert published.name == "helper" and published.label == "v1"
         assert [f.path for f in published.files] == ["bin/run.sh", "manifest.json"]
@@ -418,7 +419,7 @@ def test_attachments_publish_what_a_commit_tracks(service, tmp_path):
     (repository / "untracked.txt").write_text("not committed")
     with running(service) as client:
         admin = setup_admin(service, client)
-        agent = sdk(create_pat(admin, "experiment"))
+        agent = sdk(create_pat(admin, ("experiment",)))
         with pytest.warns(UserWarning, match="uncommitted changes"):
             v0 = agent.attachments.publish_commit(repository, label="v0")  # labels still work
         files = {f.path: f.executable for f in v0.files}

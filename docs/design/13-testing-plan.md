@@ -69,11 +69,11 @@ UI 文案与纯样式变更不写低价值单元测试；优先验证会导致�
 
 ### E2E-DS-03 SDK 发现与管理边界
 
-前提：管理员已完成添加，提供 read PAT 和管理员创建的 experiment PAT。
+前提：管理员已完成添加，提供只读 PAT 和管理员创建的、只带 experiment 权限的 PAT。
 
 步骤：SDK 读取已添加的数据集、版本 / 参数 / 准入 / 内容 / 缓存状态；尝试检索外部来源（U-20）、添加版本与手动重试首次准备。
 
-预期：读取成功且结构化；两个 PAT 的管理请求均被拒绝。experiment PAT 可正常提交并触发运行内恢复；read PAT 不能提交，也不能以恢复接口绕过权限。
+预期：读取成功且结构化；两个 PAT 的管理请求均被拒绝（没有 `datasets` 权限）。experiment PAT 可正常提交并触发运行内恢复；只读 PAT 不能提交，也不能以恢复接口绕过权限。
 
 覆盖：`test_datasets.py`、`test_sdk.py`、`test_permissions.py`。
 

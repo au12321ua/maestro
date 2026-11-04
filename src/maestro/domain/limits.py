@@ -13,6 +13,7 @@ set in ``config.toml`` (``maestro.config``). Capabilities report both kinds as i
 # --- team policy, revision 0 -----------------------------------------------------------
 PAT_DEFAULT_DAYS = 30
 PAT_MAX_DAYS = 365
+PAT_ADMIN_MAX_DAYS = 30
 PAT_DEFAULT_RUN_LIMIT = 1000
 PAT_MAX_RUN_LIMIT = 1000
 INVITATION_HOURS = 72

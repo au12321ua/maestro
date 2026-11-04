@@ -1,7 +1,13 @@
 import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -17,7 +23,6 @@ import {
   Loading,
   OneTimeSecret,
   PageTitle,
-  SelectField,
   SettingsForm,
   StatusPill,
   TextField,
@@ -25,7 +30,7 @@ import {
 import { ApiError, api, errorText } from "@/lib/api";
 import { PAT_STATE, fmtTime, label } from "@/lib/format";
 import { limit, useLoad, useSession } from "@/lib/hooks";
-import type { IssuedPat, Pat, Scope } from "@/lib/types";
+import type { IssuedPat, Pat, Permission } from "@/lib/types";
 import { Trans, t } from "@/i18n";
 
 export function SettingsPage() {
@@ -35,32 +40,50 @@ export function SettingsPage() {
       <PageTitle title={t("common.nav.settings")} />
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">{t("settings.account.title")}</CardTitle>
+          <CardTitle className="text-base">
+            {t("settings.account.title")}
+          </CardTitle>
         </CardHeader>
         <CardContent className="grid gap-2 text-sm sm:grid-cols-3">
           <div>
-            <div className="text-xs text-muted-foreground">{t("settings.account.username")}</div>
+            <div className="text-xs text-muted-foreground">
+              {t("settings.account.username")}
+            </div>
             {me.username}
           </div>
           <div>
-            <div className="text-xs text-muted-foreground">{t("settings.account.displayName")}</div>
+            <div className="text-xs text-muted-foreground">
+              {t("settings.account.displayName")}
+            </div>
             {me.display_name || "—"}
           </div>
           <div>
-            <div className="text-xs text-muted-foreground">{t("settings.account.role")}</div>
-            {me.role === "admin" ? t("common.app.admin") : t("common.app.member")}
+            <div className="text-xs text-muted-foreground">
+              {t("settings.account.role")}
+            </div>
+            {me.role === "admin"
+              ? t("common.app.admin")
+              : t("common.app.member")}
           </div>
           <div>
-            <div className="text-xs text-muted-foreground">{t("settings.account.userId")}</div>
+            <div className="text-xs text-muted-foreground">
+              {t("settings.account.userId")}
+            </div>
             <code className="text-xs">{me.id}</code>
           </div>
           <div>
-            <div className="text-xs text-muted-foreground">{t("settings.account.createdAt")}</div>
+            <div className="text-xs text-muted-foreground">
+              {t("settings.account.createdAt")}
+            </div>
             {fmtTime(me.created_at)}
           </div>
           <div>
-            <div className="text-xs text-muted-foreground">{t("settings.account.status")}</div>
-            {me.status === "active" ? t("settings.account.active") : t("settings.account.disabled")}
+            <div className="text-xs text-muted-foreground">
+              {t("settings.account.status")}
+            </div>
+            {me.status === "active"
+              ? t("settings.account.active")
+              : t("settings.account.disabled")}
           </div>
         </CardContent>
       </Card>
@@ -129,7 +152,9 @@ function PasswordCard() {
     setBusy(true);
     setError(undefined);
     try {
-      await api.post("/me/password", { body: { current_password: current, new_password: next } });
+      await api.post("/me/password", {
+        body: { current_password: current, new_password: next },
+      });
       toast.success(t("settings.password.changed"));
       setCurrent("");
       setNext("");
@@ -140,12 +165,15 @@ function PasswordCard() {
       setBusy(false);
     }
   };
-  const field = (name: string) => (error instanceof ApiError ? error.field(name) : undefined);
+  const field = (name: string) =>
+    error instanceof ApiError ? error.field(name) : undefined;
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">{t("settings.password.title")}</CardTitle>
+        <CardTitle className="text-base">
+          {t("settings.password.title")}
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <SettingsForm onSubmit={submit}>
@@ -181,7 +209,9 @@ function PasswordCard() {
           <ErrorAlert error={error} title={t("settings.password.failed")} />
           <FormActions>
             <Button type="submit" disabled={busy}>
-              {busy ? t("settings.password.submitting") : t("settings.password.title")}
+              {busy
+                ? t("settings.password.submitting")
+                : t("settings.password.title")}
             </Button>
           </FormActions>
         </SettingsForm>
@@ -190,15 +220,33 @@ function PasswordCard() {
   );
 }
 
+const MEMBER_PERMISSIONS: Permission[] = ["experiment"];
+const ADMIN_PERMISSIONS: Permission[] = [
+  "datasets",
+  "models",
+  "operations",
+  "override",
+  "audit",
+];
+
 function PatCard() {
-  const { capabilities } = useSession();
+  const { capabilities, me } = useSession();
   const pats = useLoad(async () => (await api.get("/me/pats")).data);
   const defaultDays = limit(capabilities, "pat_default_days", 30);
-  const maxDays = limit(capabilities, "pat_max_days", 365);
+  const ordinaryMaxDays = limit(capabilities, "pat_max_days", 365);
+  const adminMaxDays = limit(capabilities, "pat_admin_max_days", 30);
   const defaultRuns = limit(capabilities, "pat_default_run_limit", 1000);
   const maxRuns = limit(capabilities, "pat_max_run_limit", 1000);
   const [name, setName] = useState("");
-  const [scope, setScope] = useState<Scope>("experiment");
+  const [permissions, setPermissions] = useState<Permission[]>(["experiment"]);
+  const administrative = permissions.some((p) => ADMIN_PERMISSIONS.includes(p));
+  const maxDays = administrative ? adminMaxDays : ordinaryMaxDays;
+  const offered =
+    me.role === "admin"
+      ? [...MEMBER_PERMISSIONS, ...ADMIN_PERMISSIONS]
+      : MEMBER_PERMISSIONS;
+  const toggle = (p: Permission, on: boolean) =>
+    setPermissions((now) => (on ? [...now, p] : now.filter((x) => x !== p)));
   const [days, setDays] = useState(String(defaultDays));
   const [runs, setRuns] = useState(String(defaultRuns));
   const [issued, setIssued] = useState<IssuedPat | null>(null);
@@ -213,7 +261,7 @@ function PatCard() {
       const res = await api.post("/me/pats", {
         body: {
           name,
-          scope,
+          permissions,
           expires_in_days: days ? Number(days) : null,
           run_limit: runs ? Number(runs) : null,
         },
@@ -229,7 +277,8 @@ function PatCard() {
   };
 
   const revoke = async (pat: Pat) => {
-    if (!window.confirm(t("settings.pat.revokeConfirm", { name: pat.name }))) return;
+    if (!window.confirm(t("settings.pat.revokeConfirm", { name: pat.name })))
+      return;
     try {
       await api.post("/me/pats/{pat_id}/revoke", { path: { pat_id: pat.id } });
       toast.success(t("settings.pat.revoked"));
@@ -241,7 +290,9 @@ function PatCard() {
 
   const remove = async (pat: Pat) => {
     const question =
-      pat.state === "active" ? "settings.pat.deleteConfirmActive" : "settings.pat.deleteConfirm";
+      pat.state === "active"
+        ? "settings.pat.deleteConfirmActive"
+        : "settings.pat.deleteConfirm";
     if (!window.confirm(t(question, { name: pat.name }))) return;
     try {
       await api.del("/me/pats/{pat_id}", { path: { pat_id: pat.id } });
@@ -251,7 +302,8 @@ function PatCard() {
       toast.error(t("settings.pat.deleteFailed", { error: errorText(err) }));
     }
   };
-  const field = (n: string) => (error instanceof ApiError ? error.field(n) : undefined);
+  const field = (n: string) =>
+    error instanceof ApiError ? error.field(n) : undefined;
 
   return (
     <Card>
@@ -276,16 +328,63 @@ function PatCard() {
             error={field("name")}
             required
           />
-          <SelectField
-            id="pat-scope"
-            label={t("settings.pat.scope")}
-            value={scope}
-            onChange={(e) => setScope(e.target.value as Scope)}
-            error={field("scope")}
-          >
-            <option value="experiment">{t("settings.pat.scopeExperiment")}</option>
-            <option value="read">{t("settings.pat.scopeRead")}</option>
-          </SelectField>
+          <fieldset className="grid gap-2 text-sm">
+            <legend className="mb-1 font-medium">
+              {t("settings.pat.permissions")}
+            </legend>
+            <div className="text-xs text-muted-foreground">
+              {t("settings.pat.permissionsHint")}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setPermissions([])}
+              >
+                {t("settings.pat.presetRead")}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setPermissions(["experiment"])}
+              >
+                {t("settings.pat.presetExperiment")}
+              </Button>
+            </div>
+            {offered.map((p) => (
+              <label key={p} className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={permissions.includes(p)}
+                  onChange={(e) => toggle(p, e.target.checked)}
+                />
+                <span>
+                  <code>{p}</code>
+                  {ADMIN_PERMISSIONS.includes(p) && (
+                    <span className="ml-1 text-xs text-amber-700 dark:text-amber-400">
+                      {t("settings.pat.adminBadge")}
+                    </span>
+                  )}
+                  <span className="block text-xs text-muted-foreground">
+                    {t(`settings.pat.permission.${p}`)}
+                  </span>
+                </span>
+              </label>
+            ))}
+            {field("permissions") && (
+              <div className="text-xs text-destructive">
+                {field("permissions")}
+              </div>
+            )}
+            {administrative && (
+              <div className="rounded border border-amber-500/50 bg-amber-500/10 p-2 text-xs">
+                {t("settings.pat.adminWarning", { count: adminMaxDays })}
+              </div>
+            )}
+          </fieldset>
           <TextField
             id="pat-days"
             label={t("settings.pat.days")}
@@ -317,7 +416,9 @@ function PatCard() {
         <ErrorAlert error={error} title={t("settings.pat.createFailed")} />
         <ErrorAlert error={pats.error} title={t("settings.pat.loadFailed")} />
         {pats.loading && !pats.data && <Loading />}
-        {pats.data && pats.data.length === 0 && <EmptyNote>{t("settings.pat.empty")}</EmptyNote>}
+        {pats.data && pats.data.length === 0 && (
+          <EmptyNote>{t("settings.pat.empty")}</EmptyNote>
+        )}
         {pats.data && pats.data.length > 0 && (
           <div className="rounded-md border">
             <Table>
@@ -337,26 +438,53 @@ function PatCard() {
                 {pats.data.map((pat) => (
                   <TableRow key={pat.id}>
                     <TableCell>{pat.name}</TableCell>
-                    <TableCell className="font-mono text-xs">{pat.token_prefix}…</TableCell>
-                    <TableCell>{pat.scope}</TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {pat.token_prefix}…
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {pat.permissions.length === 0
+                        ? t("settings.pat.readOnly")
+                        : pat.permissions.join(", ")}
+                      {pat.permissions.some((p) =>
+                        ADMIN_PERMISSIONS.includes(p),
+                      ) && (
+                        <span className="ml-1 text-amber-700 dark:text-amber-400">
+                          {t("settings.pat.adminBadge")}
+                        </span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <StatusPill value={label(PAT_STATE, pat.state)} />
                     </TableCell>
                     <TableCell className="tabular-nums">
                       {pat.accepted_runs} / {pat.run_limit}
                       <span className="ml-1 text-xs text-muted-foreground">
-                        {t("settings.pat.remaining", { count: pat.remaining_runs })}
+                        {t("settings.pat.remaining", {
+                          count: pat.remaining_runs,
+                        })}
                       </span>
                     </TableCell>
-                    <TableCell className="text-xs">{fmtTime(pat.expires_at)}</TableCell>
-                    <TableCell className="text-xs">{fmtTime(pat.last_used_at)}</TableCell>
+                    <TableCell className="text-xs">
+                      {fmtTime(pat.expires_at)}
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {fmtTime(pat.last_used_at)}
+                    </TableCell>
                     <TableCell className="flex justify-end gap-2">
                       {pat.state === "active" && (
-                        <Button size="sm" variant="outline" onClick={() => void revoke(pat)}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void revoke(pat)}
+                        >
                           {t("settings.pat.revoke")}
                         </Button>
                       )}
-                      <Button size="sm" variant="outline" onClick={() => void remove(pat)}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void remove(pat)}
+                      >
                         {t("settings.pat.delete")}
                       </Button>
                     </TableCell>

@@ -14,8 +14,8 @@ Other SDK errors: `TransportError` (no answer; see "Lost answers and retries" in
 
 | Code | Meaning |
 | --- | --- |
-| `PAT_SCOPE_INSUFFICIENT` | A read PAT tried to write. |
-| `ADMIN_SESSION_REQUIRED` | Administration happens only in the web UI; ask an administrator. |
+| `PAT_PERMISSION_INSUFFICIENT` | The token lacks the permission the action needs (for example `experiment` to submit); ask its owner for a token that has it. |
+| `ADMIN_SESSION_REQUIRED` | This administration (tokens, members, credentials, permanent deletion) happens only in the web UI; ask an administrator. |
 | `CONFIG_RESOLUTION_STALE` (409) | The team defaults or the model changed; resolve again. |
 | `RERUN_CONFIG_CHANGED` | Use a modified run instead. |
 | `EXECUTION_UNAVAILABLE` (503) | The service cannot run anything right now. |

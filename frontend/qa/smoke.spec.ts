@@ -168,6 +168,12 @@ test("setup, run, PAT, admin and invitation flow", async ({ page, browser }) => 
   await nav(page, "设置").click();
   await expect(page.getByTestId("sdk-card")).toContainText("MaestroClient");
   await page.getByLabel("名称").fill("smoke pat");
+  // An administrator may tick administrator permissions; the form warns and shortens validity.
+  await page.getByRole("checkbox", { name: /datasets/ }).check();
+  await expect(page.getByText("这个令牌带管理员权限")).toBeVisible();
+  await page.screenshot({ path: `${shots}/settings-pat-admin.png`, fullPage: true });
+  await page.getByRole("button", { name: "实验（默认）" }).click();
+  await expect(page.getByText("这个令牌带管理员权限")).toHaveCount(0);
   await page.getByRole("button", { name: "创建令牌" }).click();
   await expect(page.getByText("只显示一次")).toBeVisible();
   await expect(page.getByTestId("one-time-secret")).toBeVisible();
@@ -251,7 +257,7 @@ const meta = { request_id: "req_test" };
 const me = {
   id: "usr_1", username: "u", display_name: "U", role: "member", status: "active",
   revision: 1, created_at: "2026-10-22T00:00:00Z", disabled_at: null,
-  auth_channel: "web_session", pat_id: null, pat_scope: null,
+  auth_channel: "web_session", pat_id: null, pat_permissions: null,
 };
 const run = {
   id: "run_x", name: "fixture run", owner_id: "usr_2",

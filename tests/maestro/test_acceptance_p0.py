@@ -167,7 +167,7 @@ def test_f21_rerun_after_cache_eviction_restores_by_digest(service, source, envi
     with running(service) as client:
         admin, version_id, task = solo(service, source, client)
         member = invite_member(service, admin, "member")
-        pat = create_pat(member, scope="experiment", run_limit=5)
+        pat = create_pat(member, permissions=("experiment",), run_limit=5)
         first = submit(pat, version_id).json()["data"]
         assert wait_run(pat, first["run_id"])["counts"]["scored"] == 1
         evict(admin, task)
@@ -189,7 +189,7 @@ def content_gone(service, source, settings, client):
     """A finished run, then its exact task content lost locally and upstream."""
     admin, version_id, task = solo(service, source, client)
     member = invite_member(service, admin, "member")
-    pat = create_pat(member, scope="experiment", run_limit=5)
+    pat = create_pat(member, permissions=("experiment",), run_limit=5)
     accepted = submit(pat, version_id).json()["data"]
     wait_run(pat, accepted["run_id"])
     evict(admin, task)

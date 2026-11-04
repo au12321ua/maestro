@@ -20,7 +20,7 @@ from maestro.core.ids import new_id
 from maestro.db import schema as t
 from maestro.db.engine import Database
 from maestro.domain import limits
-from maestro.domain.states import PatScope, Role, UserStatus
+from maestro.domain.states import PatPermission, Role, UserStatus
 from maestro.security import passwords, tokens
 from maestro.services import audit, deleted, policy
 from maestro.services.principal import Channel, Principal, require_admin_session
@@ -702,7 +702,7 @@ class Accounts:
             role=Role(row["role"]),
             channel=Channel.PAT,
             pat_id=row["id"],
-            pat_scope=PatScope(row["scope"]),
+            pat_permissions=frozenset(PatPermission(x) for x in row["permissions_json"]),
         )
 
     @staticmethod
@@ -718,5 +718,7 @@ class Accounts:
             **user,
             "auth_channel": principal.channel.value,
             "pat_id": principal.pat_id,
-            "pat_scope": principal.pat_scope.value if principal.pat_scope else None,
+            "pat_permissions": (
+                sorted(principal.pat_permissions) if principal.channel == Channel.PAT else None
+            ),
         }

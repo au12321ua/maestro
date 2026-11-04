@@ -34,7 +34,7 @@ from maestro.domain.comparison import (
     nonconforming,
 )
 from maestro.domain.scoring import contract_for, snapshot_contract
-from maestro.domain.states import RUN_TERMINAL
+from maestro.domain.states import RUN_TERMINAL, PatPermission
 from maestro.services import audit, deleted
 from maestro.services.configuration import (
     Blocker,
@@ -47,7 +47,6 @@ from maestro.services.configuration import (
 )
 from maestro.services.plans import Plans, merge
 from maestro.services.principal import (
-    Channel,
     Principal,
     can_manage_owned,
     require_experiment,
@@ -222,7 +221,7 @@ def _run_ids(raw, path: str = "/run_ids") -> list[str]:
 
 
 def _experiment(principal: Principal) -> bool:
-    return principal.channel != Channel.PAT or principal.pat_scope == "experiment"
+    return principal.has(PatPermission.EXPERIMENT)
 
 
 # --- loading runs ------------------------------------------------------------------------

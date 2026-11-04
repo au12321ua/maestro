@@ -25,8 +25,8 @@ def test_an_admin_reset_revokes_the_users_pats_and_sessions(service):
     with running(service, run_worker=False) as client:
         admin = setup_admin(service, client)
         alice = invite_member(service, admin, "alice")
-        pats = [create_pat(alice, "experiment"), create_pat(alice, "read")]
-        other = create_pat(admin, "experiment")
+        pats = [create_pat(alice, ("experiment",)), create_pat(alice, ())]
+        other = create_pat(admin, ("experiment",))
         user = alice.get("/api/v1/me").json()["data"]
         assert all(p.get("/api/v1/me").status_code == 200 for p in pats)
 
@@ -58,7 +58,7 @@ def test_a_self_service_password_change_keeps_pats_and_ends_other_sessions(servi
     with running(service, run_worker=False) as client:
         admin = setup_admin(service, client)
         alice = invite_member(service, admin, "alice")
-        pat = create_pat(alice, "experiment")
+        pat = create_pat(alice, ("experiment",))
         elsewhere = TestClient(client.app)
         elsewhere.post("/api/v1/session", json={"username": "alice", "password": PASSWORD})
         assert elsewhere.get("/api/v1/me").status_code == 200

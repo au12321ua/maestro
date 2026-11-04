@@ -26,7 +26,7 @@ from maestro.api.models import (
     SetupRequest,
     SetupStatus,
 )
-from maestro.domain.states import PatScope
+from maestro.domain.states import PatPermission
 from maestro.security import tokens
 from maestro.services.principal import Principal
 
@@ -38,7 +38,7 @@ def session_info(request: Request, token: str, me: dict) -> dict:
 
 
 def _me(user: dict) -> dict:
-    return {**user, "auth_channel": "web_session", "pat_id": None, "pat_scope": None}
+    return {**user, "auth_channel": "web_session", "pat_id": None, "pat_permissions": None}
 
 
 @router.get("/setup", response_model=Envelope[SetupStatus], tags=["setup"])
@@ -117,7 +117,11 @@ def list_pats(request: Request, who: Principal = Depends(principal)):
 @router.post("/me/pats", response_model=Envelope[IssuedPat], status_code=201, tags=["me"])
 def create_pat(body: PatCreate, request: Request, who: Principal = Depends(principal)):
     pat = maestro(request).pats.create(
-        who, body.name, PatScope(body.scope), body.expires_in_days, body.run_limit
+        who,
+        body.name,
+        [PatPermission(x) for x in body.permissions],
+        body.expires_in_days,
+        body.run_limit,
     )
     return ok(request, pat)
 

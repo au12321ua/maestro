@@ -24,7 +24,7 @@ client = MaestroClient.from_env()      # MAESTRO_URL plus MAESTRO_TOKEN or MAEST
 ```
 
 - Never print, log, commit or pass the token on a command line. Read it from the environment or a file.
-- `read` PATs can only read. `experiment` PATs can also submit, cancel, rerun, and publish attachments and plans.
+- Every PAT can read. A PAT with the `experiment` permission can also submit, cancel, rerun, and publish attachments and plans. Administrators may grant their own tokens administrator permissions (`datasets`, `models`, `operations`, `override`, `audit`); `GET /me` lists what the current token holds.
 - The client ignores proxy environment variables unless you pass `trust_env=True`.
 
 ## Workflow

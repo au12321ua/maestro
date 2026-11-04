@@ -50,7 +50,7 @@ def test_member_bins_own_run_admin_restores_and_purges(service, version_id, stor
         assert "delete" in run["allowed_actions"]
 
         assert bob.delete(f"/api/v1/runs/{run_id}").status_code == 403
-        reader = create_pat(alice, "read")
+        reader = create_pat(alice, ())
         assert reader.delete(f"/api/v1/runs/{run_id}").status_code == 403
         entry = alice.delete(f"/api/v1/runs/{run_id}", expect=200).json()["data"]
         assert entry["state"] == "recycled" and entry["label"] == "baseline"
@@ -105,7 +105,7 @@ def test_active_runs_cannot_be_deleted(service, version_id):
 def test_experiment_pat_may_bin_own_run(service, version_id):
     with running(service) as client:
         admin = setup_admin(service, client)
-        agent = create_pat(admin, "experiment")
+        agent = create_pat(admin, ("experiment",))
         run_id = finished_run(agent, version_id)
         agent.delete(f"/api/v1/runs/{run_id}", expect=200)
         assert agent.get("/api/v1/admin/recycle-bin").status_code == 403
@@ -209,7 +209,7 @@ def test_account_deletion_rules_and_history(service, version_id):
         assert self_delete.json()["error"]["code"] == "CANNOT_DELETE_SELF"
         alice = invite_member(service, admin, "alice")
         alice_id = alice.get("/api/v1/me").json()["data"]["id"]
-        token = create_pat(alice, "experiment")
+        token = create_pat(alice, ("experiment",))
         run_id = submit(alice, version_id).json()["data"]["run_id"]
         busy = admin.delete(f"/api/v1/admin/members/{alice_id}")
         assert busy.json()["error"]["code"] == "ACCOUNT_HAS_ACTIVE_RUNS"
@@ -266,7 +266,7 @@ def test_only_admins_delete_artifacts_and_other_peoples_pats(service, version_id
             ).scalar()
         assert status == "deleted"
 
-        token = create_pat(alice, "read")
+        token = create_pat(alice, ())
         pat_id = alice.get("/api/v1/me/pats").json()["data"][0]["id"]
         bob = invite_member(service, admin, "bob")
         assert bob.delete(f"/api/v1/admin/pats/{pat_id}").status_code == 403

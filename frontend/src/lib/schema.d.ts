@@ -2154,12 +2154,14 @@ export interface components {
     schemas: {
         /**
          * ActionRule
-         * @description Who may do an action: a web session (of an admin when ``role`` says so) and PATs
-         *     of the listed scopes.
+         * @description Who may do an action: a web session (of an admin when ``role`` says so) and, when
+         *     ``pat`` is true, a PAT holding ``pat_permission`` (any PAT when it is null).
          */
         ActionRule: {
-            /** Pat Scopes */
-            pat_scopes: ("read" | "experiment")[];
+            /** Pat */
+            pat: boolean;
+            /** Pat Permission */
+            pat_permission: ("experiment" | "datasets" | "models" | "operations" | "override" | "audit") | null;
             /** Role */
             role: ("admin" | "member") | null;
             /** Web Session */
@@ -5092,6 +5094,8 @@ export interface components {
             last_used_at: string | null;
             /** Name */
             name: string;
+            /** Permissions */
+            permissions: ("experiment" | "datasets" | "models" | "operations" | "override" | "audit")[];
             /** Remaining Runs */
             remaining_runs: number;
             /** Revision */
@@ -5100,11 +5104,6 @@ export interface components {
             revoked_at: string | null;
             /** Run Limit */
             run_limit: number;
-            /**
-             * Scope
-             * @enum {string}
-             */
-            scope: "read" | "experiment";
             /**
              * State
              * @enum {string}
@@ -5235,8 +5234,11 @@ export interface components {
             id: string;
             /** Pat Id */
             pat_id: string | null;
-            /** Pat Scope */
-            pat_scope: ("read" | "experiment") | null;
+            /**
+             * Pat Permissions
+             * @description Permissions of the calling PAT (every PAT may read); null for a web session
+             */
+            pat_permissions: ("experiment" | "datasets" | "models" | "operations" | "override" | "audit")[] | null;
             /** Revision */
             revision: number;
             /**
@@ -5572,6 +5574,8 @@ export interface components {
             last_used_at: string | null;
             /** Name */
             name: string;
+            /** Permissions */
+            permissions: ("experiment" | "datasets" | "models" | "operations" | "override" | "audit")[];
             /** Remaining Runs */
             remaining_runs: number;
             /** Revision */
@@ -5580,11 +5584,6 @@ export interface components {
             revoked_at: string | null;
             /** Run Limit */
             run_limit: number;
-            /**
-             * Scope
-             * @enum {string}
-             */
-            scope: "read" | "experiment";
             /**
              * State
              * @enum {string}
@@ -5599,13 +5598,13 @@ export interface components {
             expires_in_days?: number | null;
             /** Name */
             name: string;
+            /**
+             * Permissions
+             * @description Granted beyond reading; administrator permissions need an administrator account and shorten the longest validity (pat_admin_max_days)
+             */
+            permissions?: ("experiment" | "datasets" | "models" | "operations" | "override" | "audit")[];
             /** Run Limit */
             run_limit?: number | null;
-            /**
-             * Scope
-             * @enum {string}
-             */
-            scope: "read" | "experiment";
         };
         /** PatQuota */
         PatQuota: {

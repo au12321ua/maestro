@@ -17,6 +17,7 @@ from maestro.core.errors import FieldError, MaestroError, not_found
 from maestro.db import schema as t
 from maestro.db.engine import Database
 from maestro.domain import scoring
+from maestro.domain.states import PatPermission
 from maestro.services import audit, deleted, operations
 from maestro.services.preparation import (
     KIND_EVICT,
@@ -24,7 +25,7 @@ from maestro.services.preparation import (
     create_first,
     first_in_progress,
 )
-from maestro.services.principal import Principal, require_admin_session
+from maestro.services.principal import Principal, require_admin
 
 # Contract fields whose only supported value is the platform default's.
 _FIXED_RULES = ("task_aggregation", "bench_aggregation", "count_as_failure")
@@ -97,7 +98,7 @@ class Datasets:
     async def search(
         self, principal: Principal, kind: str, query: str, credential_id: str | None
     ) -> list[dict]:
-        require_admin_session(principal)
+        require_admin(principal, PatPermission.DATASETS)
         if not 1 <= len(query.strip()) <= 128:
             raise MaestroError(
                 "CONFIG_VALIDATION_FAILED",
@@ -113,7 +114,7 @@ class Datasets:
     async def versions(
         self, principal: Principal, kind: str, namespace: str, name: str, credential_id: str | None
     ):
-        require_admin_session(principal)
+        require_admin(principal, PatPermission.DATASETS)
         try:
             return await self._source(kind).list_versions(
                 namespace, name, self._value(credential_id)
@@ -131,7 +132,7 @@ class Datasets:
         credential_id: str | None,
     ) -> dict:
         """Preview of a fixed version: digest and task list, nothing is recorded."""
-        require_admin_session(principal)
+        require_admin(principal, PatPermission.DATASETS)
         try:
             version = await self._source(kind).describe(
                 namespace, name, ref, self._value(credential_id)
@@ -166,7 +167,7 @@ class Datasets:
     # --- administration ---------------------------------------------------------------
 
     def request_import(self, principal: Principal, body: dict) -> dict:
-        require_admin_session(principal)
+        require_admin(principal, PatPermission.DATASETS)
         kind = body.get("source_kind") or "hub"
         self._source(kind)
         errors = []
@@ -211,7 +212,7 @@ class Datasets:
         self, principal: Principal, version_id: str, task_ids: list[str] | None
     ) -> dict:
         """First preparation, or a retry of the tasks whose first preparation failed."""
-        require_admin_session(principal)
+        require_admin(principal, PatPermission.DATASETS)
         with self.db.write() as conn:
             if not conn.execute(
                 select(t.dataset_versions.c.id).where(t.dataset_versions.c.id == version_id)
@@ -254,7 +255,7 @@ class Datasets:
             return operations.public(row.one())
 
     def request_eviction(self, principal: Principal, preparation_id: str) -> dict:
-        require_admin_session(principal)
+        require_admin(principal, PatPermission.DATASETS)
         with self.db.write() as conn:
             row = conn.execute(
                 select(t.preparations.c.cache_state).where(t.preparations.c.id == preparation_id)
@@ -285,7 +286,7 @@ class Datasets:
     def confirm_scoring_contract(self, principal: Principal, version_id: str, body: dict) -> dict:
         """The administrator confirms how this version is scored. New runs
         freeze it in their snapshot; accepted runs keep the contract they started with."""
-        require_admin_session(principal)
+        require_admin(principal, PatPermission.DATASETS)
         contract = {
             "metric_id": body.get("metric_id", "reward"),
             "name": body.get("name", "Reward"),
@@ -353,7 +354,7 @@ class Datasets:
         self, principal: Principal, admission_id: str, reason: str, expected_revision: int
     ) -> dict:
         """Explicit safety stop; runs already accepted keep their snapshot."""
-        require_admin_session(principal)
+        require_admin(principal, PatPermission.DATASETS)
         if not isinstance(reason, str) or not 1 <= len(reason.strip()) <= 512:
             raise MaestroError(
                 "CONFIG_VALIDATION_FAILED",

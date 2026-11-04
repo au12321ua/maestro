@@ -7,7 +7,7 @@ needs an administrator's web session like the rest of ``admin``.
 
 from fastapi import APIRouter, Depends, Request
 
-from maestro.api.deps import admin_session, maestro, ok, principal
+from maestro.api.deps import admin, maestro, ok, principal
 from maestro.api.models import (
     Dataset,
     DatasetSource,
@@ -19,10 +19,11 @@ from maestro.api.models import (
     SourceVersionDetail,
     Task,
 )
+from maestro.domain.states import PatPermission
 from maestro.services.principal import Principal
 
 router = APIRouter(prefix="/api/v1", tags=["catalog"])
-ADMIN = [Depends(admin_session)]
+ADMIN = [Depends(admin(PatPermission.DATASETS))]
 
 
 @router.get("/dataset-sources", response_model=Envelope[list[DatasetSource]])

@@ -14,10 +14,10 @@ from sqlalchemy import Connection, delete, or_, select
 from maestro.core import clock
 from maestro.core.errors import FieldError, MaestroError
 from maestro.db import schema as t
-from maestro.domain.states import CleanupState
+from maestro.domain.states import CleanupState, PatPermission
 from maestro.execution.materials import DEFAULT_CPUS, DEFAULT_MEMORY_MB
 from maestro.services import audit
-from maestro.services.principal import Principal, require_admin_session
+from maestro.services.principal import Principal, require_admin
 
 PROVIDER_MAX = 1000
 
@@ -146,7 +146,7 @@ class Capacity:
         self.host = host
 
     def overview(self, principal: Principal) -> dict:
-        require_admin_session(principal)
+        require_admin(principal, PatPermission.OPERATIONS)
         with self.db.read() as conn:
             used = in_use(conn)
             limits = provider_limits(conn)
@@ -165,7 +165,7 @@ class Capacity:
         }
 
     def set_provider_limit(self, principal: Principal, provider: str, limit: int | None) -> dict:
-        require_admin_session(principal)
+        require_admin(principal, PatPermission.OPERATIONS)
         if not provider or len(provider) > 64:
             raise MaestroError("CONFIG_VALIDATION_FAILED", "Invalid provider name", 422)
         if limit is not None and not 1 <= limit <= PROVIDER_MAX:

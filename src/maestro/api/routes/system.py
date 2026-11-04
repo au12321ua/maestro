@@ -63,9 +63,13 @@ def system_status(request: Request, _: Principal = Depends(principal)):
 @router.get("/api/v1/capabilities", response_model=Envelope[Capabilities], tags=["system"])
 def capabilities(request: Request):
     service = maestro(request)
-    experiment = {"web_session": True, "pat_scopes": ["experiment"]}
-    read = {"web_session": True, "pat_scopes": ["read", "experiment"]}
-    admin = {"web_session": True, "pat_scopes": [], "role": "admin"}
+    read = {"web_session": True, "pat": True}
+    experiment = {"web_session": True, "pat": True, "pat_permission": "experiment"}
+    session_admin = {"web_session": True, "pat": False, "role": "admin"}
+
+    def admin(permission: str) -> dict:
+        return {"web_session": True, "pat": True, "pat_permission": permission, "role": "admin"}
+
     return ok(
         request,
         {
@@ -110,49 +114,50 @@ def capabilities(request: Request):
                 "runs.submit_batch": experiment,
                 "runs.rerun": experiment,
                 "runs.cancel_own": experiment,
-                "runs.cancel_any": admin,
+                "runs.cancel_any": admin("override"),
                 "runs.delete_own": experiment,
-                "runs.delete_any": admin,
+                "runs.delete_any": admin("override"),
                 "exports.create": read,
-                "artifacts.delete": admin,
-                "admin.recycle_bin": admin,
+                "artifacts.delete": admin("override"),
+                "admin.recycle_bin": admin("audit"),
+                "admin.recycle_bin_restore_purge": session_admin,
                 "catalog.read": read,
-                "catalog.search_source": admin,
-                "datasets.import": admin,
+                "catalog.search_source": admin("datasets"),
+                "datasets.import": admin("datasets"),
                 "operations.read": read,
-                "pats.manage_own": {"web_session": True, "pat_scopes": []},
-                "admin.members": admin,
-                "admin.credentials": admin,
-                "admin.master_key": admin,
-                "admin.audit": admin,
-                "admin.capacity": admin,
-                "admin.model_configs": admin,
-                "admin.harness_versions": admin,
-                "admin.team_policy": admin,
+                "pats.manage_own": {"web_session": True, "pat": False},
+                "admin.members": session_admin,
+                "admin.credentials": session_admin,
+                "admin.master_key": session_admin,
+                "admin.audit": admin("audit"),
+                "admin.capacity": admin("operations"),
+                "admin.model_configs": admin("models"),
+                "admin.harness_versions": admin("models"),
+                "admin.team_policy": admin("operations"),
                 "config.resolve": read,
                 "config.read": read,
                 "credentials.names": read,
                 "attachments.read": read,
                 "attachments.publish": experiment,
                 "attachments.manage_own": experiment,
-                "attachments.manage_any": admin,
+                "attachments.manage_any": admin("override"),
                 "plans.read": read,
                 "plans.create": experiment,
                 "plans.edit_own": experiment,
-                "plans.archive_any": admin,
+                "plans.archive_any": admin("override"),
                 "comparisons.read": read,
                 "collections.read": read,
                 "collections.create": experiment,
                 "collections.copy": experiment,
                 "collections.edit": experiment,
                 "collections.delete_own": experiment,
-                "collections.delete_any": admin,
+                "collections.delete_any": admin("override"),
                 "snapshots.read": read,
                 "snapshots.create": experiment,
                 "snapshots.note": experiment,
                 "snapshots.edit_own_note": experiment,
                 "snapshots.delete_own": experiment,
-                "snapshots.delete_any": admin,
+                "snapshots.delete_any": admin("override"),
             },
             "execution": {
                 "executor": service.executor.executor_id if service.executor else None,

@@ -6,7 +6,7 @@ session. Resolution is the step before submission that web and SDK share.
 
 from fastapi import APIRouter, Depends, Request
 
-from maestro.api.deps import admin_session, maestro, ok, principal
+from maestro.api.deps import admin, maestro, ok, principal
 from maestro.api.models import (
     ConfigRequest,
     ConfigResolution,
@@ -27,10 +27,12 @@ from maestro.api.models import (
     TeamPolicyUpdate,
     UpstreamVersions,
 )
-from maestro.services.principal import Principal, require_admin_session
+from maestro.domain.states import PatPermission
+from maestro.services.principal import Principal, require_admin
 
 router = APIRouter(prefix="/api/v1", tags=["configuration"])
-ADMIN = [Depends(admin_session)]
+MODELS = [Depends(admin(PatPermission.MODELS))]
+OPERATIONS = [Depends(admin(PatPermission.OPERATIONS))]
 
 
 # --- reading ----------------------------------------------------------------------------
@@ -104,10 +106,10 @@ def get_resolution(resolution_id: str, request: Request, who: Principal = Depend
     "/admin/harness-adapters",
     response_model=Envelope[list[HarnessAdapter]],
     tags=["admin"],
-    dependencies=ADMIN,
+    dependencies=MODELS,
 )
 def list_adapters(request: Request, who: Principal = Depends(principal)):
-    require_admin_session(who)
+    require_admin(who, PatPermission.MODELS)
     return ok(request, maestro(request).models.public_adapters())
 
 
@@ -115,7 +117,7 @@ def list_adapters(request: Request, who: Principal = Depends(principal)):
     "/admin/harness-adapters/{agent}/upstream-versions",
     response_model=Envelope[UpstreamVersions],
     tags=["admin"],
-    dependencies=ADMIN,
+    dependencies=MODELS,
 )
 def upstream_versions(
     agent: str, request: Request, refresh: bool = False, who: Principal = Depends(principal)
@@ -130,7 +132,7 @@ def upstream_versions(
     response_model=Envelope[ModelConfig],
     status_code=201,
     tags=["admin"],
-    dependencies=ADMIN,
+    dependencies=MODELS,
 )
 def create_model(body: ModelConfigCreate, request: Request, who: Principal = Depends(principal)):
     return ok(request, maestro(request).models.create_model(who, body.model_dump()))
@@ -140,7 +142,7 @@ def create_model(body: ModelConfigCreate, request: Request, who: Principal = Dep
     "/admin/model-configs/{config_id}",
     response_model=Envelope[ModelConfig],
     tags=["admin"],
-    dependencies=ADMIN,
+    dependencies=MODELS,
 )
 def revise_model(
     config_id: str, body: ModelConfigRevise, request: Request, who: Principal = Depends(principal)
@@ -155,7 +157,7 @@ def revise_model(
     "/admin/model-configs/{config_id}/enabled",
     response_model=Envelope[ModelConfig],
     tags=["admin"],
-    dependencies=ADMIN,
+    dependencies=MODELS,
 )
 def model_enabled(
     config_id: str, body: EnabledChange, request: Request, who: Principal = Depends(principal)
@@ -167,7 +169,7 @@ def model_enabled(
     "/admin/model-configs/{config_id}",
     response_model=Envelope[RecycleEntry],
     tags=["admin"],
-    dependencies=ADMIN,
+    dependencies=MODELS,
 )
 def delete_model(config_id: str, request: Request, who: Principal = Depends(principal)):
     return ok(request, maestro(request).recycle.delete(who, "model_config", config_id))
@@ -178,7 +180,7 @@ def delete_model(config_id: str, request: Request, who: Principal = Depends(prin
     response_model=Envelope[Harness],
     status_code=201,
     tags=["admin"],
-    dependencies=ADMIN,
+    dependencies=MODELS,
 )
 def create_harness(body: HarnessCreate, request: Request, who: Principal = Depends(principal)):
     return ok(request, maestro(request).models.create_harness(who, body.model_dump()))
@@ -188,7 +190,7 @@ def create_harness(body: HarnessCreate, request: Request, who: Principal = Depen
     "/admin/harness-versions/{harness_id}/enabled",
     response_model=Envelope[Harness],
     tags=["admin"],
-    dependencies=ADMIN,
+    dependencies=MODELS,
 )
 def harness_enabled(
     harness_id: str, body: EnabledChange, request: Request, who: Principal = Depends(principal)
@@ -200,7 +202,7 @@ def harness_enabled(
     "/admin/harness-versions/{harness_id}",
     response_model=Envelope[RecycleEntry],
     tags=["admin"],
-    dependencies=ADMIN,
+    dependencies=MODELS,
 )
 def delete_harness(harness_id: str, request: Request, who: Principal = Depends(principal)):
     return ok(request, maestro(request).recycle.delete(who, "harness_version", harness_id))
@@ -210,7 +212,7 @@ def delete_harness(harness_id: str, request: Request, who: Principal = Depends(p
     "/admin/team-policy/revisions",
     response_model=Envelope[list[TeamPolicyRevision]],
     tags=["admin"],
-    dependencies=ADMIN,
+    dependencies=OPERATIONS,
 )
 def list_policy_revisions(request: Request, who: Principal = Depends(principal)):
     return ok(request, maestro(request).policies.history(who))
@@ -220,7 +222,7 @@ def list_policy_revisions(request: Request, who: Principal = Depends(principal))
     "/admin/setup-network",
     response_model=Envelope[SetupNetwork],
     tags=["admin"],
-    dependencies=ADMIN,
+    dependencies=OPERATIONS,
 )
 def update_setup_network(
     body: SetupNetworkUpdate, request: Request, who: Principal = Depends(principal)
@@ -234,7 +236,10 @@ def update_setup_network(
 
 
 @router.put(
-    "/admin/team-policy", response_model=Envelope[TeamPolicy], tags=["admin"], dependencies=ADMIN
+    "/admin/team-policy",
+    response_model=Envelope[TeamPolicy],
+    tags=["admin"],
+    dependencies=OPERATIONS,
 )
 def update_policy(body: TeamPolicyUpdate, request: Request, who: Principal = Depends(principal)):
     """Change some settings; a new revision takes effect for new work at once."""

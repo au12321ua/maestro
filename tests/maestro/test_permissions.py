@@ -1,9 +1,13 @@
-"""Permission matrix: PAT never reaches admin; ownership cannot be forged."""
+"""Permission matrix: a PAT reaches administration only with the permission a route
+declares and never reaches session-only routes; ownership cannot be forged."""
 
 import pytest
 from support import create_pat, invite_member, running, setup_admin, submit
 
-ADMIN_CALLS = [
+ALL_ADMIN = ("experiment", "datasets", "models", "operations", "override", "audit")
+
+# Session-only: no PAT reaches these, whatever it was granted.
+SESSION_CALLS = [
     ("GET", "/api/v1/admin/members", None),
     ("POST", "/api/v1/admin/invitations", {}),
     ("GET", "/api/v1/admin/credentials", None),
@@ -14,16 +18,15 @@ ADMIN_CALLS = [
     ),
     ("GET", "/api/v1/admin/master-key", None),
     ("POST", "/api/v1/admin/master-key/rotations", {"expected_generation": 1}),
-    ("GET", "/api/v1/admin/audit-events", None),
 ]
 
 
-@pytest.mark.parametrize("method,path,body", ADMIN_CALLS)
-def test_admin_endpoints_reject_pats_even_from_admins(service, method, path, body):
+@pytest.mark.parametrize("method,path,body", SESSION_CALLS)
+def test_session_only_endpoints_reject_every_pat(service, method, path, body):
     with running(service, run_worker=False) as client:
         admin = setup_admin(service, client)
         member = invite_member(service, admin, "alice")
-        for caller in (create_pat(admin, "experiment"), create_pat(admin, "read")):
+        for caller in (create_pat(admin, ALL_ADMIN), create_pat(admin, ())):
             response = caller.request(method, path, json=body)
             assert response.status_code == 403
             assert response.json()["error"]["code"] == "ADMIN_SESSION_REQUIRED"
@@ -38,7 +41,7 @@ def test_pat_cannot_manage_pats(service):
         pat = create_pat(admin)
         for method, path, body in (
             ("GET", "/api/v1/me/pats", None),
-            ("POST", "/api/v1/me/pats", {"name": "n", "scope": "read"}),
+            ("POST", "/api/v1/me/pats", {"name": "n", "permissions": []}),
         ):
             response = pat.request(method, path, json=body)
             assert response.json()["error"]["code"] == "WEB_SESSION_REQUIRED"
@@ -49,10 +52,10 @@ def test_read_pat_cannot_submit_but_reads_team_runs(service, version_id):
         admin = setup_admin(service, client)
         member = invite_member(service, admin, "alice")
         submit(member, version_id).raise_for_status()
-        reader = create_pat(admin, "read")
+        reader = create_pat(admin, ())
         response = submit(reader, version_id)
         assert response.status_code == 403
-        assert response.json()["error"]["code"] == "PAT_SCOPE_INSUFFICIENT"
+        assert response.json()["error"]["code"] == "PAT_PERMISSION_INSUFFICIENT"
         assert len(reader.get("/api/v1/runs").json()["data"]) == 1
 
 
@@ -70,12 +73,16 @@ def test_cancel_ownership_and_admin_override(service, version_id):
         assert view["allowed_actions"] == ["view", "rerun", "modify"]  # not "cancel"
         assert view["owner"]["username"] == "alice"
         assert "cancel" in alice.get(f"/api/v1/runs/{run_a}").json()["data"]["allowed_actions"]
-        # Admin PAT has no override; admin web session does.
+        # Overriding another member needs the override permission; a web session has it.
         assert create_pat(admin).post(f"/api/v1/runs/{run_a}/cancel").status_code == 403
         cancelled = admin.post(f"/api/v1/runs/{run_a}/cancel", expect=200).json()["data"]
         assert cancelled["state"] == "cancelled" and cancelled["stop_reason"] == "ADMIN_CANCELLED"
+        overriding = create_pat(admin, ("override",))
+        cancelled = overriding.post(f"/api/v1/runs/{run_b}/cancel", expect=200).json()["data"]
+        assert cancelled["stop_reason"] == "ADMIN_CANCELLED"
+        run_b = submit(alice, version_id).json()["data"]["run_id"]
         # Owner's experiment PAT may cancel; read PAT may not.
-        assert create_pat(alice, "read").post(f"/api/v1/runs/{run_b}/cancel").status_code == 403
+        assert create_pat(alice, ()).post(f"/api/v1/runs/{run_b}/cancel").status_code == 403
         own = create_pat(alice).post(f"/api/v1/runs/{run_b}/cancel", expect=200).json()["data"]
         assert own["stop_reason"] == "USER_CANCELLED"
         # Cancelling twice is idempotent.
@@ -112,32 +119,112 @@ def admin_routes():
     return found
 
 
-def test_every_admin_route_carries_the_route_level_guard():
-    """A new administrator route cannot rely on its service remembering the check."""
+def route_guard(route):
+    """The route's declared guard: 'session' or the permission a PAT needs."""
     from maestro.api.deps import admin_session
 
+    for dependency in route.dependant.dependencies:
+        if dependency.call is admin_session:
+            return "session"
+        permission = getattr(dependency.call, "permission", None)
+        if permission is not None:
+            return permission.value
+    return None
+
+
+# Prefixes that must stay session-only: a leaked token must not mint tokens, take over
+# accounts, move keys or destroy data for good.
+SESSION_ONLY = (
+    "/api/v1/admin/members",
+    "/api/v1/admin/invitations",
+    "/api/v1/admin/credentials",
+    "/api/v1/admin/master-key",
+    "/api/v1/admin/pats",
+    "/api/v1/admin/recycle-bin/{entry_id}/",
+)
+
+
+def test_every_admin_route_declares_its_guard():
+    """A new administrator route cannot rely on its service remembering the check."""
     routes = admin_routes()
     assert len(routes) > 40
     for method, route in routes:
-        guards = [d.call for d in route.dependant.dependencies]
-        assert admin_session in guards, f"{method} {route.path} lacks admin_session"
+        guard = route_guard(route)
+        assert guard is not None, f"{method} {route.path} declares no guard"
+        if route.path.startswith(SESSION_ONLY):
+            assert guard == "session", f"{method} {route.path} must stay session-only"
 
 
-def test_every_admin_route_refuses_members_and_pats(service):
+def test_every_admin_route_refuses_members_and_tokens_without_its_permission(service):
     with running(service, run_worker=False) as client:
         admin = setup_admin(service, client)
         member = invite_member(service, admin, "alice")
-        pats = (create_pat(admin, "experiment"), create_pat(admin, "read"))
+        member_pat = create_pat(member, ("experiment",))
+        everything = create_pat(admin, ALL_ADMIN)
+        lacking = {p: create_pat(admin, tuple(x for x in ALL_ADMIN if x != p)) for p in ALL_ADMIN}
         for method, route in admin_routes():
             # Placeholder ids and an empty body: the guard runs before either is read.
             path = route.path.replace("{", "").replace("}", "")
+            where = f"{method} {route.path}"
             response = member.request(method, path, json={})
             assert (response.status_code, response.json()["error"]["code"]) == (
                 403,
                 "FORBIDDEN",
-            ), f"{method} {route.path}"
-            for pat in pats:
-                response = pat.request(method, path, json={})
-                assert response.json()["error"]["code"] == "ADMIN_SESSION_REQUIRED", (
-                    f"{method} {route.path}"
-                )
+            ), where
+            response = member_pat.request(method, path, json={})
+            assert response.status_code == 403, where
+            guard = route_guard(route)
+            if guard == "session":
+                response = everything.request(method, path, json={})
+                assert response.json()["error"]["code"] == "ADMIN_SESSION_REQUIRED", where
+            else:
+                response = lacking[guard].request(method, path, json={})
+                assert response.json()["error"]["code"] == "PAT_PERMISSION_INSUFFICIENT", where
+                response = everything.request(method, path, json={})
+                assert response.status_code != 403, where
+
+
+def test_tokens_are_capped_by_role_and_admin_tokens_live_shorter(service):
+    with running(service, run_worker=False) as client:
+        admin = setup_admin(service, client)
+        member = invite_member(service, admin, "alice")
+        refused = member.post("/api/v1/me/pats", json={"name": "x", "permissions": ["datasets"]})
+        assert refused.status_code == 422
+        assert refused.json()["error"]["field_errors"][0]["code"] == "ROLE_EXCEEDED"
+        long = admin.post(
+            "/api/v1/me/pats",
+            json={"name": "x", "permissions": ["audit"], "expires_in_days": 31},
+        )
+        assert long.status_code == 422
+        assert long.json()["error"]["field_errors"][0]["limit"] == 30
+        issued = admin.post(
+            "/api/v1/me/pats", json={"name": "x", "permissions": ["audit"]}, expect=201
+        ).json()["data"]
+        assert issued["permissions"] == ["audit"]
+        # An ordinary token keeps the longer limit.
+        admin.post(
+            "/api/v1/me/pats",
+            json={"name": "y", "permissions": ["experiment"], "expires_in_days": 31},
+            expect=201,
+        )
+        me = create_pat(admin, ("audit", "experiment")).get("/api/v1/me").json()["data"]
+        assert me["pat_permissions"] == ["audit", "experiment"]
+
+
+def test_a_token_can_edit_models_but_never_bind_a_key(service):
+    with running(service, run_worker=False) as client:
+        admin = setup_admin(service, client)
+        models = create_pat(admin, ("models",))
+        body = {
+            "name": "m1",
+            "provider": "demo",
+            "protocol": "openai-compatible",
+            "endpoint": "https://models.example.test/v1",
+            "model_id": "demo-model",
+        }
+        created = models.post("/api/v1/admin/model-configs", json=body)
+        assert created.status_code == 201, created.text
+        bound = models.post(
+            "/api/v1/admin/model-configs", json={**body, "name": "m2", "credential_id": "cred_x"}
+        )
+        assert bound.json()["error"]["code"] == "ADMIN_SESSION_REQUIRED"

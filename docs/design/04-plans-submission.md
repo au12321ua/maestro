@@ -62,7 +62,7 @@ Worker 忙不构成受理失败，运行排队。预检不占额度；受理失�
 
 ## 6. 取消与完成竞争
 
-成员取消自己的运行，管理员网页会话可取消任何运行（原因分别为 `USER_CANCELLED`、`ADMIN_CANCELLED`）。取消幂等；未被领取的运行当场结束、试次记 `not_started`，已领取的写 `stop_requested`，由 Worker 走取消协议（[05](05-scheduling-execution.md) 第 7 节）。
+成员取消自己的运行，管理员网页会话或带 `override` 权限的管理员 PAT 可取消任何运行（原因分别为 `USER_CANCELLED`、`ADMIN_CANCELLED`）。取消幂等；未被领取的运行当场结束、试次记 `not_started`，已领取的写 `stop_requested`，由 Worker 走取消协议（[05](05-scheduling-execution.md) 第 7 节）。
 
 以服务端首次接受的终态为准：取消生效前的有效评分保留，之后到达的结果不改变试次终态。总时限到达同样走停止协议（`RUN_DEADLINE_EXCEEDED`），保留已完成结果；收尾与清理有有限宽限期，运行不会无限停在 running。
 

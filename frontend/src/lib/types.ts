@@ -7,7 +7,7 @@ import type { components } from "./schema";
 type S = components["schemas"];
 
 export type Role = S["User"]["role"];
-export type Scope = S["Pat"]["scope"];
+export type Permission = S["Pat"]["permissions"][number];
 
 export type FieldErrorModel = S["FieldErrorModel"];
 export type ErrorBody = S["ErrorBody"];

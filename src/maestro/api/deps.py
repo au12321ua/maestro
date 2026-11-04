@@ -1,7 +1,8 @@
 """Authentication dependencies.
 
 Bearer tokens are PATs only. Browser sessions use an HttpOnly cookie plus a
-per-session CSRF header on unsafe methods. PATs never receive admin rights.
+per-session CSRF header on unsafe methods. A PAT reaches an administrator route only
+with the permission that route declares; session-only routes refuse every PAT.
 """
 
 import secrets
@@ -12,8 +13,9 @@ from pydantic import TypeAdapter
 
 from maestro.application import Maestro
 from maestro.core.errors import MaestroError
+from maestro.domain.states import PatPermission
 from maestro.security import tokens
-from maestro.services.principal import Principal, require_admin_session
+from maestro.services.principal import Principal, require_admin, require_admin_session
 
 COOKIE = "maestro_session"
 CSRF_HEADER = "X-CSRF-Token"
@@ -52,13 +54,34 @@ def principal(request: Request) -> Principal:
 
 
 def admin_session(who: Principal = Depends(principal)) -> Principal:
-    """Route-level guard for every administrator route, so a new one cannot miss the check.
+    """Route-level guard for session-only administration (members, credentials, the
+    master key, permanent deletion), so a new route cannot miss the check.
 
     The services still check for themselves; this makes the boundary visible per route
     and lets a test walk the routes (test_permissions).
     """
     require_admin_session(who)
     return who
+
+
+_ADMIN_GUARDS: dict[PatPermission, object] = {}
+
+
+def admin(permission: PatPermission):
+    """Route-level guard for administration a PAT may do with ``permission``.
+
+    One function per permission, carrying it as ``.permission`` for the route test.
+    """
+    guard = _ADMIN_GUARDS.get(permission)
+    if guard is None:
+
+        def guard(who: Principal = Depends(principal)) -> Principal:
+            require_admin(who, permission)
+            return who
+
+        guard.permission = permission
+        _ADMIN_GUARDS[permission] = guard
+    return guard
 
 
 def set_session_cookie(response: Response, service: Maestro, token: str) -> None:

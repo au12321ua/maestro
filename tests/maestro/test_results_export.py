@@ -52,7 +52,7 @@ def test_query_summarize_and_export_runs_with_a_read_pat(service, version_id, ex
     with running(service) as client:
         admin = setup_admin(service, client)
         alice = invite_member(service, admin, "alice")
-        agent = create_pat(alice, "experiment")
+        agent = create_pat(alice, ("experiment",))
         start = clock.to_text(clock.now())
         mixed = run_to_end(agent, version_id)
         executor.script = {}
@@ -75,7 +75,7 @@ def test_query_summarize_and_export_runs_with_a_read_pat(service, version_id, ex
             )
         assert service.artifacts.sweep()["reclaimed"] == 1
 
-        reader = create_pat(admin, "read")
+        reader = create_pat(admin, ())
         listed = reader.get(
             f"/api/v1/runs?dataset_version_id={version_id}&accepted_after={start}"
         ).json()["data"]

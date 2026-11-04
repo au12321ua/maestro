@@ -28,7 +28,7 @@ from maestro.domain.states import (
     ArtifactState,
     CleanupState,
     OperationStatus,
-    PatScope,
+    PatPermission,
     RunState,
     TrialState,
     UserStatus,
@@ -174,9 +174,7 @@ def public_run(
     if manage and row["state"] in RUN_TERMINAL and not deletions.get("run"):
         allowed.append("delete")
     # New runs from this one belong to whoever starts them (reruns are the caller's).
-    experiment = principal is not None and (
-        principal.channel != Channel.PAT or principal.pat_scope == PatScope.EXPERIMENT
-    )
+    experiment = principal is not None and principal.has(PatPermission.EXPERIMENT)
     if experiment and not deletions.get("run"):
         allowed += ["rerun", "modify"]
     state = RunState(row["state"])

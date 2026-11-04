@@ -31,7 +31,7 @@ def test_session_cookie_csrf_and_logout(service):
         admin = setup_admin(service, client)
         assert admin.get("/api/v1/me", expect=200).json()["data"]["auth_channel"] == "web_session"
         # Unsafe request without CSRF header is refused.
-        no_csrf = client.post("/api/v1/me/pats", json={"name": "x", "scope": "read"})
+        no_csrf = client.post("/api/v1/me/pats", json={"name": "x", "permissions": []})
         assert no_csrf.status_code == 403 and no_csrf.json()["error"]["code"] == "CSRF_FAILED"
         session = admin.get("/api/v1/session", expect=200).json()["data"]
         assert session["csrf_token"] == admin.csrf
@@ -127,7 +127,7 @@ def test_disable_member_stops_sessions_and_pats(service):
     with running(service) as client:
         admin = setup_admin(service, client)
         member = invite_member(service, admin, "alice")
-        pat = create_pat(member, "read")
+        pat = create_pat(member, ())
         assert pat.get("/api/v1/me").status_code == 200
         user = member.get("/api/v1/me").json()["data"]
         admin.post(
@@ -154,7 +154,7 @@ def test_pat_lifecycle_shown_once_and_revocation(service):
         admin = setup_admin(service, client)
         issued = admin.post(
             "/api/v1/me/pats",
-            json={"name": "agent", "scope": "experiment", "run_limit": 5},
+            json={"name": "agent", "permissions": ["experiment"], "run_limit": 5},
             expect=201,
         ).json()["data"]
         assert issued["token"].startswith(issued["token_prefix"])
@@ -171,7 +171,7 @@ def test_pat_lifecycle_shown_once_and_revocation(service):
         assert entry["object_type"] == "pat" and entry["state"] == "recycled"
         assert admin.get("/api/v1/me/pats").json()["data"] == []
         invalid = admin.post(
-            "/api/v1/me/pats", json={"name": "x", "scope": "read", "expires_in_days": 9999}
+            "/api/v1/me/pats", json={"name": "x", "permissions": [], "expires_in_days": 9999}
         )
         assert invalid.status_code == 422
         assert invalid.json()["error"]["field_errors"][0]["path"] == "/expires_in_days"

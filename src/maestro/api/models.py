@@ -99,7 +99,7 @@ class ErrorResponse(Model):
 # --- identity -----------------------------------------------------------------
 
 Role = Literal["admin", "member"]
-Scope = Literal["read", "experiment"]
+Permission = Literal["experiment", "datasets", "models", "operations", "override", "audit"]
 
 
 class User(Model):
@@ -116,7 +116,9 @@ class User(Model):
 class Me(User):
     auth_channel: Literal["web_session", "pat"]
     pat_id: str | None
-    pat_scope: Scope | None
+    pat_permissions: list[Permission] | None = Field(
+        description="Permissions of the calling PAT (every PAT may read); null for a web session"
+    )
 
 
 class SessionInfo(Model):
@@ -202,7 +204,11 @@ class StatusChange(Model):
 
 class PatCreate(Model):
     name: str
-    scope: Scope
+    permissions: list[Permission] = Field(
+        default_factory=list,
+        description="Granted beyond reading; administrator permissions need an "
+        "administrator account and shorten the longest validity (pat_admin_max_days)",
+    )
     expires_in_days: int | None = None
     run_limit: int | None = None
 
@@ -210,7 +216,7 @@ class PatCreate(Model):
 class Pat(Model):
     id: str
     name: str
-    scope: Scope
+    permissions: list[Permission]
     token_prefix: str
     state: Literal["active", "revoked", "expired"]
     expires_at: str
@@ -2273,11 +2279,12 @@ class ProviderLimit(Model):
 
 
 class ActionRule(Model):
-    """Who may do an action: a web session (of an admin when ``role`` says so) and PATs
-    of the listed scopes."""
+    """Who may do an action: a web session (of an admin when ``role`` says so) and, when
+    ``pat`` is true, a PAT holding ``pat_permission`` (any PAT when it is null)."""
 
     web_session: bool
-    pat_scopes: list[Scope]
+    pat: bool
+    pat_permission: Permission | None = None
     role: Role | None = None
 
 

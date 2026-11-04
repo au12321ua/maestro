@@ -31,7 +31,7 @@ def unpack(response) -> tuple[zipfile.ZipFile, str, dict]:
 def test_every_level_packs_its_files_and_lists_what_is_left_out(service, version_id):
     with running(service) as client:
         admin = setup_admin(service, client)
-        reader = create_pat(admin, "read")
+        reader = create_pat(admin, ())
         run_id = finished_run(admin, version_id)
         base = f"/api/v1/runs/{run_id}/artifacts/archive"
         artifacts = reader.get(f"/api/v1/runs/{run_id}/artifacts").json()["data"]

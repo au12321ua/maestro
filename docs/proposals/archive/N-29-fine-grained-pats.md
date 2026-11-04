@@ -1,6 +1,6 @@
 # N-29 细粒度 PAT
 
-状态：已确认 · 优先级：一（N-28 依赖） · 2026-11-03 · 相关：[09](../design/09-identity-security.md)、[02](../design/02-datasets-preparation.md)、U-20、U-27、U-69、[N-28](N-28-datasets-and-evaluation-split.md)
+状态：完成 · 优先级：一（N-28 依赖） · 2026-11-03 · 相关：[09](../../design/09-identity-security.md)、[02](../../design/02-datasets-preparation.md)、U-20、U-27、U-69、[N-28](../N-28-datasets-and-evaluation-split.md)
 
 ## 问题
 
@@ -88,4 +88,10 @@ N-28 让使用者在本地把 benchmark 转换好，再用 SDK 或 Agent 上传�
 
 ## 结果
 
-尚未实施。
+已实现，行为见 [09](../../design/09-identity-security.md) 第 2、3 节。与上文方案的差异：
+
+- “读取”不作为单独的权限：所有 PAT 都能读，`permissions` 只列额外权限；原 read PAT 迁移为空列表，experiment PAT 迁移为 `["experiment"]`。
+- 实现中发现：带 `models` 权限的 PAT 若能修改已绑定密钥的模型地址，就能把密钥发往任意地址，因此模型的凭据绑定也只限网页会话。
+- 回收站的恢复与物理删除都只限网页会话；`audit` 只读回收站列表。删除产物归入 `override`。
+- 错误码 `PAT_SCOPE_INSUFFICIENT` 改为 `PAT_PERMISSION_INSUFFICIENT`；capabilities 的动作规则改为 `pat` 与 `pat_permission`。
+- 待定问题 1～3 按初稿处理：`read` 不再细分；N-28 扩展权限组时再与用户确认；迁移不另行通知持有人。

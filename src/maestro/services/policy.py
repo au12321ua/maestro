@@ -18,8 +18,9 @@ from maestro.core.ids import new_id
 from maestro.db import schema as t
 from maestro.db.engine import Database
 from maestro.domain import limits
+from maestro.domain.states import PatPermission
 from maestro.services import audit
-from maestro.services.principal import Principal, require_admin_session
+from maestro.services.principal import Principal, require_admin
 
 
 @dataclass(frozen=True)
@@ -80,6 +81,13 @@ SETTINGS: dict[str, Setting] = {
     "batch_max_trials": _s("batch_max_trials", 1, 1000000, "runs", "Most trials in one batch"),
     "pat_default_days": _s("pat_default_days", 1, 3650, "access", "Token validity (days)"),
     "pat_max_days": _s("pat_max_days", 1, 3650, "access", "Longest token validity (days)"),
+    "pat_admin_max_days": _s(
+        "pat_admin_max_days",
+        1,
+        3650,
+        "access",
+        "Longest validity of a token with admin permissions",
+    ),
     "pat_default_run_limit": _s(
         "pat_default_run_limit", 0, 1000000, "access", "Runs a token may submit"
     ),
@@ -97,13 +105,14 @@ SETTINGS: dict[str, Setting] = {
         "export_max_active_per_user", 1, 100, "retention", "Exports a user may have in progress"
     ),
 }
-# (default, limit): the default may not exceed the limit.
+# (lower, upper): the first may not exceed the second.
 PAIRS = (
     ("repetitions_default", "repetitions_max"),
     ("run_default_concurrency", "run_max_concurrency"),
     ("run_deadline_hours", "run_deadline_hours_max"),
     ("bootstrap_timeout_sec", "bootstrap_timeout_sec_max"),
     ("pat_default_days", "pat_max_days"),
+    ("pat_admin_max_days", "pat_max_days"),
     ("pat_default_run_limit", "pat_max_run_limit"),
 )
 
@@ -193,7 +202,7 @@ class Policies:
         return self.current().public({"settings": describe()})
 
     def history(self, principal: Principal) -> list[dict]:
-        require_admin_session(principal)
+        require_admin(principal, PatPermission.OPERATIONS)
         with self.db.read() as conn:
             rows = conn.execute(
                 select(t.team_policies, t.users.c.username)
@@ -215,7 +224,7 @@ class Policies:
         """Change some settings; the others keep their values. ``expected_revision`` is
         the revision the administrator edited, so two editors cannot overwrite each
         other silently."""
-        require_admin_session(principal)
+        require_admin(principal, PatPermission.OPERATIONS)
         if not isinstance(changes, dict) or not changes:
             raise MaestroError(
                 "POLICY_INVALID",

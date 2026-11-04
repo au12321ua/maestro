@@ -92,7 +92,7 @@ def test_plans_belong_to_their_creator_and_are_shared_for_reading(service, versi
         admin = setup_admin(service, client)
         alice = invite_member(service, admin, "alice")
         bob = invite_member(service, admin, "bob")
-        reader = create_pat(bob, scope="read")
+        reader = create_pat(bob, permissions=())
         plan = create_plan(alice, template={"dataset_version_id": version_id, "repetitions": 2})
         assert [p["id"] for p in reader.get("/api/v1/plans").json()["data"]] == [plan["id"]]
         assert create_plan(reader, expect=403).status_code == 403

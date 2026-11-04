@@ -1,14 +1,18 @@
-"""Authenticated principals and role, channel and ownership permissions.
+"""Authenticated principals and role, channel, permission and ownership checks.
 
-Effective permission = user role ∩ PAT scope ∩ allowed action ∩ ownership.
-Administrative actions also require ``auth_channel == web_session``.
+Effective permission = user role ∩ granted permission ∩ allowed action ∩ ownership.
+A web session holds every permission its role allows. A PAT holds only the
+permissions it was granted, still capped by its owner's current role. Some actions
+(PATs, members, credentials and the master key, permanent deletion) are never
+reachable through a PAT: a leaked token must not be able to mint tokens, take over
+accounts, move keys or destroy data for good.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 
 from maestro.core.errors import MaestroError
-from maestro.domain.states import PatScope, Role
+from maestro.domain.states import ADMIN_PERMISSIONS, PatPermission, Role
 
 
 class Channel(StrEnum):
@@ -25,11 +29,27 @@ class Principal:
     channel: Channel
     session_id: str | None = None
     pat_id: str | None = None
-    pat_scope: PatScope | None = None
+    pat_permissions: frozenset[PatPermission] = field(default_factory=frozenset)
 
     @property
     def is_admin_session(self) -> bool:
+        """Administrator in a web session: the only holder of session-only abilities."""
         return self.role == Role.ADMIN and self.channel == Channel.WEB_SESSION
+
+    def has(self, permission: PatPermission) -> bool:
+        if permission in ADMIN_PERMISSIONS and self.role != Role.ADMIN:
+            return False
+        if self.channel == Channel.WEB_SESSION:
+            return True
+        if self.channel == Channel.PAT:
+            return permission in self.pat_permissions
+        # The service acting for an accepted run: experiment work, never administration.
+        return permission == PatPermission.EXPERIMENT
+
+    @property
+    def can_override(self) -> bool:
+        """May act on other members' objects (cancel, bin, see their exports)."""
+        return self.has(PatPermission.OVERRIDE)
 
     @property
     def idempotency_principal(self) -> str:
@@ -37,12 +57,25 @@ class Principal:
 
 
 def require_admin_session(p: Principal) -> None:
+    """Session-only administration: no PAT reaches it, whatever it was granted."""
     if p.channel != Channel.WEB_SESSION:
         raise MaestroError(
-            "ADMIN_SESSION_REQUIRED", "Administrative actions require a web session", 403
+            "ADMIN_SESSION_REQUIRED", "This action requires an administrator web session", 403
         )
     if p.role != Role.ADMIN:
         raise MaestroError("FORBIDDEN", "Administrator role required", 403)
+
+
+def require_admin(p: Principal, permission: PatPermission) -> None:
+    """Administration a PAT may do when it was granted ``permission``."""
+    if p.role != Role.ADMIN:
+        raise MaestroError("FORBIDDEN", "Administrator role required", 403)
+    if not p.has(permission):
+        raise MaestroError(
+            "PAT_PERMISSION_INSUFFICIENT",
+            f"This access token lacks the '{permission.value}' permission",
+            403,
+        )
 
 
 def require_web_session(p: Principal) -> None:
@@ -52,20 +85,23 @@ def require_web_session(p: Principal) -> None:
 
 
 def require_experiment(p: Principal) -> None:
-    if p.channel == Channel.PAT and p.pat_scope != PatScope.EXPERIMENT:
+    if not p.has(PatPermission.EXPERIMENT):
         raise MaestroError(
-            "PAT_SCOPE_INSUFFICIENT", "A read token cannot perform experiment actions", 403
+            "PAT_PERMISSION_INSUFFICIENT",
+            "This access token lacks the 'experiment' permission",
+            403,
         )
 
 
 def can_manage_owned(p: Principal, owner_id: str) -> bool:
-    """Own object through web or experiment PAT; admin override only via web session."""
-    if p.channel == Channel.PAT and p.pat_scope != PatScope.EXPERIMENT:
-        return False
-    return owner_id == p.user_id or p.is_admin_session
+    """Own objects need the experiment permission; others' objects need override."""
+    if owner_id == p.user_id:
+        return p.has(PatPermission.EXPERIMENT)
+    return p.can_override
 
 
 def require_manage_owned(p: Principal, owner_id: str) -> None:
-    require_experiment(p)
-    if not can_manage_owned(p, owner_id):
+    if owner_id == p.user_id:
+        require_experiment(p)
+    elif not p.can_override:
         raise MaestroError("FORBIDDEN", "Only the owner or an administrator may do this", 403)

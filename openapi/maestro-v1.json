@@ -3,18 +3,30 @@
     "schemas": {
       "ActionRule": {
         "additionalProperties": false,
-        "description": "Who may do an action: a web session (of an admin when ``role`` says so) and PATs\nof the listed scopes.",
+        "description": "Who may do an action: a web session (of an admin when ``role`` says so) and, when\n``pat`` is true, a PAT holding ``pat_permission`` (any PAT when it is null).",
         "properties": {
-          "pat_scopes": {
-            "items": {
-              "enum": [
-                "read",
-                "experiment"
-              ],
-              "type": "string"
-            },
-            "title": "Pat Scopes",
-            "type": "array"
+          "pat": {
+            "title": "Pat",
+            "type": "boolean"
+          },
+          "pat_permission": {
+            "anyOf": [
+              {
+                "enum": [
+                  "experiment",
+                  "datasets",
+                  "models",
+                  "operations",
+                  "override",
+                  "audit"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pat Permission"
           },
           "role": {
             "anyOf": [
@@ -38,7 +50,8 @@
         },
         "required": [
           "web_session",
-          "pat_scopes",
+          "pat",
+          "pat_permission",
           "role"
         ],
         "title": "ActionRule",
@@ -9142,6 +9155,21 @@
             "title": "Name",
             "type": "string"
           },
+          "permissions": {
+            "items": {
+              "enum": [
+                "experiment",
+                "datasets",
+                "models",
+                "operations",
+                "override",
+                "audit"
+              ],
+              "type": "string"
+            },
+            "title": "Permissions",
+            "type": "array"
+          },
           "remaining_runs": {
             "title": "Remaining Runs",
             "type": "integer"
@@ -9165,14 +9193,6 @@
             "title": "Run Limit",
             "type": "integer"
           },
-          "scope": {
-            "enum": [
-              "read",
-              "experiment"
-            ],
-            "title": "Scope",
-            "type": "string"
-          },
           "state": {
             "enum": [
               "active",
@@ -9195,7 +9215,7 @@
         "required": [
           "id",
           "name",
-          "scope",
+          "permissions",
           "token_prefix",
           "state",
           "expires_at",
@@ -9631,20 +9651,28 @@
             ],
             "title": "Pat Id"
           },
-          "pat_scope": {
+          "pat_permissions": {
             "anyOf": [
               {
-                "enum": [
-                  "read",
-                  "experiment"
-                ],
-                "type": "string"
+                "items": {
+                  "enum": [
+                    "experiment",
+                    "datasets",
+                    "models",
+                    "operations",
+                    "override",
+                    "audit"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Pat Scope"
+            "description": "Permissions of the calling PAT (every PAT may read); null for a web session",
+            "title": "Pat Permissions"
           },
           "revision": {
             "title": "Revision",
@@ -9682,7 +9710,7 @@
           "disabled_at",
           "auth_channel",
           "pat_id",
-          "pat_scope"
+          "pat_permissions"
         ],
         "title": "Me",
         "type": "object"
@@ -10558,6 +10586,21 @@
             "title": "Name",
             "type": "string"
           },
+          "permissions": {
+            "items": {
+              "enum": [
+                "experiment",
+                "datasets",
+                "models",
+                "operations",
+                "override",
+                "audit"
+              ],
+              "type": "string"
+            },
+            "title": "Permissions",
+            "type": "array"
+          },
           "remaining_runs": {
             "title": "Remaining Runs",
             "type": "integer"
@@ -10581,14 +10624,6 @@
             "title": "Run Limit",
             "type": "integer"
           },
-          "scope": {
-            "enum": [
-              "read",
-              "experiment"
-            ],
-            "title": "Scope",
-            "type": "string"
-          },
           "state": {
             "enum": [
               "active",
@@ -10606,7 +10641,7 @@
         "required": [
           "id",
           "name",
-          "scope",
+          "permissions",
           "token_prefix",
           "state",
           "expires_at",
@@ -10639,6 +10674,22 @@
             "title": "Name",
             "type": "string"
           },
+          "permissions": {
+            "description": "Granted beyond reading; administrator permissions need an administrator account and shorten the longest validity (pat_admin_max_days)",
+            "items": {
+              "enum": [
+                "experiment",
+                "datasets",
+                "models",
+                "operations",
+                "override",
+                "audit"
+              ],
+              "type": "string"
+            },
+            "title": "Permissions",
+            "type": "array"
+          },
           "run_limit": {
             "anyOf": [
               {
@@ -10649,19 +10700,10 @@
               }
             ],
             "title": "Run Limit"
-          },
-          "scope": {
-            "enum": [
-              "read",
-              "experiment"
-            ],
-            "title": "Scope",
-            "type": "string"
           }
         },
         "required": [
-          "name",
-          "scope"
+          "name"
         ],
         "title": "PatCreate",
         "type": "object"

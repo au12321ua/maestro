@@ -18,6 +18,7 @@ from maestro.core.errors import FieldError, MaestroError, not_found
 from maestro.core.ids import new_id
 from maestro.db import schema as t
 from maestro.db.engine import Database
+from maestro.domain.states import PatPermission
 from maestro.execution.agents import (
     PARAM_TYPES,
     PARAMS_MAX_BYTES,
@@ -29,7 +30,7 @@ from maestro.execution.agents import (
 )
 from maestro.services import audit, deleted
 from maestro.services.credentials import credential_problem
-from maestro.services.principal import Principal, require_admin_session
+from maestro.services.principal import Principal, require_admin, require_admin_session
 from maestro.services.upstream import Unavailable, UpstreamVersions
 
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}")
@@ -102,9 +103,13 @@ def _check_model(body: dict) -> dict:
     }
 
 
-def _bind_credential(conn: Connection, credential_id: str | None) -> None:
+def _bind_credential(conn: Connection, principal: Principal, credential_id: str | None) -> None:
+    """Binding a key is credential management, so only an administrator web session may
+    bind one. A token allowed to edit models could otherwise point a bound key at an
+    endpoint of its choosing and receive the key with the next model request."""
     if credential_id is None:
         return
+    require_admin_session(principal)
     problem = credential_problem(conn, credential_id, MODEL_KINDS)
     if problem:
         raise _invalid(
@@ -322,7 +327,7 @@ class ModelConfigs:
         )
 
     def create_model(self, principal: Principal, body: dict) -> dict:
-        require_admin_session(principal)
+        require_admin(principal, PatPermission.MODELS)
         name = body.get("name")
         if not isinstance(name, str) or not NAME.fullmatch(name):
             raise _invalid(
@@ -352,7 +357,7 @@ class ModelConfigs:
                     409,
                     field_errors=[FieldError("/name", "TAKEN")],
                 )
-            _bind_credential(conn, fields["credential_id"])
+            _bind_credential(conn, principal, fields["credential_id"])
             conn.execute(
                 insert(t.model_configs).values(
                     id=config_id,
@@ -386,7 +391,7 @@ class ModelConfigs:
         self, principal: Principal, config_id: str, body: dict, expected_revision: int
     ) -> dict:
         """A new revision replaces every field; accepted runs keep theirs."""
-        require_admin_session(principal)
+        require_admin(principal, PatPermission.MODELS)
         fields = _check_model(body)
         at = clock.to_text(clock.now())
         with self.db.write() as conn:
@@ -395,7 +400,7 @@ class ModelConfigs:
                 raise MaestroError(
                     "REVISION_CONFLICT", "Model configuration changed; reload and edit again", 409
                 )
-            _bind_credential(conn, fields["credential_id"])
+            _bind_credential(conn, principal, fields["credential_id"])
             revision = row["current_revision"] + 1
             self._insert_revision(conn, config_id, revision, fields, principal, at)
             conn.execute(
@@ -415,7 +420,7 @@ class ModelConfigs:
 
     def set_model_enabled(self, principal: Principal, config_id: str, enabled: bool) -> dict:
         """Disabling stops new runs from choosing it; accepted runs keep running."""
-        require_admin_session(principal)
+        require_admin(principal, PatPermission.MODELS)
         with self.db.write() as conn:
             row = self._live_model(conn, config_id)
             if row["enabled"] != enabled:
@@ -453,7 +458,7 @@ class ModelConfigs:
     def upstream_versions(self, principal: Principal, agent: str, refresh: bool = False) -> dict:
         """What the adapter's package registry lists, for choosing an upstream version;
         a failed lookup is reported in ``error``, not raised (the form still works)."""
-        require_admin_session(principal)
+        require_admin(principal, PatPermission.MODELS)
         if agent not in self.upstream or agent not in (self.adapters or {}):
             raise not_found("Adapter that installs a program")
         found = {
@@ -519,7 +524,7 @@ class ModelConfigs:
             }
 
     def create_harness(self, principal: Principal, body: dict) -> dict:
-        require_admin_session(principal)
+        require_admin(principal, PatPermission.MODELS)
         errors: list[FieldError] = []
         name, version, agent = body.get("name"), body.get("version"), body.get("agent")
         if not isinstance(name, str) or not NAME.fullmatch(name):
@@ -638,7 +643,7 @@ class ModelConfigs:
         return self.get_harness(principal, harness_id)
 
     def set_harness_enabled(self, principal: Principal, harness_id: str, enabled: bool) -> dict:
-        require_admin_session(principal)
+        require_admin(principal, PatPermission.MODELS)
         with self.db.write() as conn:
             row = self._harness_row(conn, harness_id)
             if deleted.state(conn, "harness_version", harness_id):

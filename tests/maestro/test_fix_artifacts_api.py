@@ -99,7 +99,7 @@ def test_export_operations_are_visible_only_to_the_owner_and_admin_sessions(serv
         url = f"/api/v1/operations/{export_op}"
 
         # The owner, with a session or with her own token, and an administrator's session.
-        alice_pat = create_pat(alice, "read")
+        alice_pat = create_pat(alice, ())
         for who in (alice, alice_pat, admin):
             detail = who.get(url, expect=200).json()["data"]
             assert detail["result"]["export_id"] == created.json()["data"]["id"]
@@ -107,9 +107,9 @@ def test_export_operations_are_visible_only_to_the_owner_and_admin_sessions(serv
             assert export_op in operation_ids(who, "?kind=export")
 
         # Everybody else gets what GET /exports/{id} gives: not found, and no listing.
-        bob_read = create_pat(bob, "read")
-        bob_experiment = create_pat(bob, "experiment")
-        admin_pat = create_pat(admin, "read")
+        bob_read = create_pat(bob, ())
+        bob_experiment = create_pat(bob, ("experiment",))
+        admin_pat = create_pat(admin, ())
         for who in (bob, bob_read, bob_experiment, admin_pat):
             assert who.get(url).status_code == 404
             assert export_op not in operation_ids(who)
@@ -134,7 +134,7 @@ def test_exports_are_limited_per_user_and_paused_while_disk_is_low(service, vers
         alice = invite_member(service, admin, "alice")
         bob = invite_member(service, admin, "bob")
         run_id = submit(alice, version_id).json()["data"]["run_id"]
-        reader = create_pat(alice, "read")
+        reader = create_pat(alice, ())
         body = {"run_ids": [run_id], "include_artifacts": False}
         allowed = limits.EXPORT_MAX_ACTIVE_PER_USER
         assert allowed == 2

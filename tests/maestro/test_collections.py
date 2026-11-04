@@ -85,7 +85,7 @@ def test_compare_two_models_and_exclude_external_failures(service, version_id, e
         summary = member.get(f"/api/v1/runs/{run_b}/summary").json()["data"]
         assert summary["scored_trials"] == 1 and summary["excluded_error_trials"] == 2
 
-        reader = create_pat(member, "read")
+        reader = create_pat(member, ())
         assert compare(reader, [run_a, run_b])["runs"]
         oracle = member.post(
             "/api/v1/runs",
@@ -220,10 +220,10 @@ def test_a_collection_keeps_only_matching_runs(service, version_id, executor):
         assert rows(table)[rerun["run_id"]]["label"] == "again"
 
         # Read tokens look but do not touch.
-        reader = create_pat(alice, "read")
+        reader = create_pat(alice, ())
         assert reader.get(f"/api/v1/collections/{collection_id}").status_code == 200
         forbidden = reader.delete(f"/api/v1/collections/{collection_id}/runs/{run_b}")
-        assert error(forbidden) == (403, "PAT_SCOPE_INSUFFICIENT")
+        assert error(forbidden) == (403, "PAT_PERMISSION_INSUFFICIENT")
         bob.delete(f"/api/v1/collections/{collection_id}/runs/{run_b}", expect=200)
         events = alice.get(f"/api/v1/collections/{collection_id}/events").json()["data"]
         assert events[0]["action"] == "remove" and events[0]["actor_username"] == "bob"
@@ -284,7 +284,7 @@ def test_a_snapshot_stays_while_runs_and_files_go(service, version_id, executor)
             },
             expect=201,
         ).json()["data"]
-        agent = create_pat(alice, "experiment")
+        agent = create_pat(alice, ("experiment",))
         snapshot = agent.post(
             "/api/v1/analysis-snapshots",
             json={
@@ -378,7 +378,7 @@ def test_an_agent_keeps_a_collection_through_the_sdk(service, version_id, execut
         member = invite_member(service, admin, "member")
         model_a, harness = prepare_model(admin)
         model_b = second_model(admin, model_a)
-        token = create_pat(member, "experiment")
+        token = create_pat(member, ("experiment",))
         agent = MaestroClient("http://testserver", token.token, http=token.client)
         base = run_of(member, version_id, model_a, harness)
         collection = agent.collections.create("models", "models", base_run_id=base, run_ids=[base])

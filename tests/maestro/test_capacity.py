@@ -161,7 +161,7 @@ def test_admin_sets_provider_limits_on_the_web_only(service):
         bad = {"max_concurrent_trials": 0}
         admin.put("/api/v1/admin/capacity/providers/acme", json=bad, expect=422)
         token = admin.post(
-            "/api/v1/me/pats", json={"name": "p", "scope": "experiment"}, expect=201
+            "/api/v1/me/pats", json={"name": "p", "permissions": ["experiment"]}, expect=201
         ).json()["data"]["token"]
         pat = Api(client, token=token)
         pat.get("/api/v1/admin/capacity", expect=403)

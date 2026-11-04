@@ -4,8 +4,9 @@ from sqlalchemy import select
 
 from maestro.db import schema as t
 from maestro.db.engine import Database
+from maestro.domain.states import PatPermission
 from maestro.services import pagination
-from maestro.services.principal import Principal, require_admin_session
+from maestro.services.principal import Principal, require_admin
 
 
 def public_event(row) -> dict:
@@ -25,7 +26,7 @@ def public_event(row) -> dict:
 
 
 def list_events(db: Database, principal: Principal, *, object_type, object_id, cursor, limit):
-    require_admin_session(principal)
+    require_admin(principal, PatPermission.AUDIT)
     limit = pagination.check_limit(limit)
     filters = {"object_type": object_type, "object_id": object_id}
     query = select(t.audit_events)
