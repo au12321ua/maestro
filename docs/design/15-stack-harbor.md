@@ -107,7 +107,7 @@ Runner 在独立会话与进程组中启动。取消先发 SIGTERM，Runner 协�
 | 能力 | 结论 | 平台处理 |
 | --- | --- | --- |
 | 错误分类 | `error_policy.py` 只在 Harbor main 与开发构建中，0.24.0 没有 | 平台自定策略（U-15），Harbor 公开分类只作初值参考；适配器把锁定版本的异常类型名映射到 [06](06-results-scoring.md) 的规则，映射摘要进执行器标识 |
-| 分阶段网络 | Harbor 的 Docker 环境支持 allowlist 与阶段切换，依赖 nftables；作业级 `extra_allowed_hosts` 只能加主机 | Runner 改写任务副本收紧网络（作者与平台取更严、白名单取交集），不自建出口代理（[09](09-identity-security.md)）。不支持时拒绝运行，不退回 public |
+| 分阶段网络 | Harbor 的 Docker 环境支持 allowlist 与阶段切换，依赖 nftables；作业级 `extra_allowed_hosts` 只能加主机 | Runner 改写任务副本收紧网络（模型运行的 agent.run 只放行模型 endpoint 主机，作者的设置不影响它），不自建出口代理（[09](09-identity-security.md)）。不支持时拒绝运行，不退回 public |
 | Hub 引用 | `datasets[].ref` / `tasks[].ref` 支持标签、修订或 digest | 标签解析后固定 digest，上游摘要与本地材料摘要分开 |
 | Oracle | 执行任务自带的参考解法，solution 目录可选 | 选有参考解法、无需外部模型的任务作真实链路测试 |
 
@@ -139,7 +139,7 @@ TECH-01～04 是重写前对 Harbor 集成风险的四项验证，已在 M1 用�
 | 编号 | 验证的问题 | 落在代码中的做法 |
 | --- | --- | --- |
 | TECH-01 | 子进程能否实时、有序地报告阶段，协议不被终端输出污染，异常时有最终状态 | Job 生命周期钩子产生阶段事件；Runner 导入 Harbor 前独占 stdout（第 5 节） |
-| TECH-02 | 能否按阶段收紧任务网络，不放宽作者更严的约束，缺能力时拒绝 | 改写任务副本 + 包装 Harbor 策略切换（`runner/src/maestro_runner/network.py`） |
+| TECH-02 | 能否按阶段收紧任务网络（模型 endpoint 主机始终放行，其余不放宽作者更严的约束），缺能力时拒绝 | 改写任务副本 + 包装 Harbor 策略切换（`runner/src/maestro_runner/network.py`） |
 | TECH-03 | 不运行 Agent 能否独立准备、按原 digest 恢复并共享等待 | 服务直接调用 Docker 做可复现构建，镜像存进本机仓库（`src/maestro/execution/preparation.py`、`materials.py`） |
 | TECH-04 | 成员上传的附件能否在每个试次容器内独立安装，失败只影响本试次 | Agent 包装层在 setup 中复制、校验并限时运行 `bootstrap.sh`（`runner/src/maestro_runner/agents.py`） |
 

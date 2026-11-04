@@ -1,4 +1,5 @@
-"""Compose services must either use the egress sidecar or have no network at all."""
+"""Compose services must either use the egress sidecar or have no network at all, and a
+model run's agent phase always reaches the model whatever the task author allowed."""
 
 import json
 import subprocess
@@ -15,6 +16,105 @@ sys.path.insert(0, sys.argv[1])
 from maestro_runner.network import unrouted_services
 print(json.dumps(unrouted_services(Path(sys.argv[2]))))
 """
+
+# Tightens one private task copy per author setting, then asks Harbor what it would apply
+# in each phase, so the check covers the rewritten file as Harbor reads it.
+TIGHTEN = """
+import json, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from maestro_runner import network
+from harbor.models.task.config import TaskConfig
+from harbor.models.task.verifier_mode import VerifierEnvironmentMode
+from harbor.models.trial.config import AgentConfig, EnvironmentConfig
+from harbor.trial.network_policy import resolve_trial_network_plan
+
+platform = json.loads(sys.argv[2])
+found = {}
+for name, text in json.loads(sys.argv[3]).items():
+    task = Path(sys.argv[4]) / name
+    task.mkdir()
+    (task / "task.toml").write_text(text)
+    plan = network.tighten(task, platform)
+    config = TaskConfig.model_validate_toml((task / "task.toml").read_text())
+    applied = resolve_trial_network_plan(
+        config, AgentConfig(name="oracle"), EnvironmentConfig(), None,
+        verifier_mode=VerifierEnvironmentMode.SHARED,
+    )
+    found[name] = {
+        "agent": applied.agent_phase.model_dump(mode="json"),
+        "verifier": applied.verifier_phase.model_dump(mode="json"),
+        "recorded": plan["agent"]["effective"],
+    }
+print(json.dumps(found))
+"""
+MODEL_HOST = "gateway.example.net"
+AUTHORS = {
+    "public": 'version = "1.0"\n',
+    "allowlist_without_the_model": (
+        'version = "1.0"\n[agent]\nnetwork_mode = "allowlist"\n'
+        'allowed_hosts = ["pypi.org", "files.pythonhosted.org"]\n'
+    ),
+    "allowlist_with_the_model": (
+        'version = "1.0"\n[agent]\nnetwork_mode = "allowlist"\n'
+        f'allowed_hosts = ["{MODEL_HOST}", "pypi.org"]\n'
+    ),
+    "no_network": 'version = "1.0"\n[agent]\nnetwork_mode = "no-network"\n',
+}
+
+
+def _tighten(tmp_path, platform):
+    if not RUNNER.is_file():
+        pytest.skip("the Runner environment is not installed (uv sync in runner/)")
+    result = subprocess.run(
+        [
+            str(RUNNER),
+            "-I",
+            "-c",
+            TIGHTEN,
+            str(ROOT / "runner/src"),
+            json.dumps(platform),
+            json.dumps(AUTHORS),
+            str(tmp_path),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=120,
+    )
+    return json.loads(result.stdout.strip().splitlines()[-1])
+
+
+def test_the_model_host_is_reachable_whatever_the_author_allowed(tmp_path):
+    """An allowlist without the model's host, or no network, would leave a harness inside
+    the container with nothing to call; other hosts the author allows are not passed on."""
+    found = _tighten(
+        tmp_path,
+        {
+            "agent": {"mode": "allowlist", "hosts": [MODEL_HOST]},
+            "verifier": {"mode": "no-network"},
+        },
+    )
+    agent = {"network_mode": "allowlist", "allowed_hosts": [MODEL_HOST]}
+    assert found == {
+        name: {
+            "agent": agent,
+            "verifier": {"network_mode": "no-network", "allowed_hosts": []},
+            "recorded": agent,
+        }
+        for name in AUTHORS
+    }
+
+
+def test_a_runner_side_model_call_leaves_the_agent_phase_without_network(tmp_path):
+    found = _tighten(
+        tmp_path,
+        {"agent": {"mode": "no-network"}, "verifier": {"mode": "no-network"}},
+    )
+    closed = {"network_mode": "no-network", "allowed_hosts": []}
+    assert found == {
+        name: {"agent": closed, "verifier": closed, "recorded": closed} for name in AUTHORS
+    }
 
 
 @pytest.mark.parametrize("directory", ["environment", "tests"])

@@ -307,10 +307,11 @@ class HarborExecutor:
         return agent if version is None else {**agent, "version": version}
 
     def _network(self, spec: RunSpec) -> dict | None:
-        """Platform phase policy: model runs get the stricter of the author's and
-        this; Oracle is a test mode and keeps the author's settings. Verification never
-        needs the model; the agent phase needs it only when the harness calls the model
-        from inside the container."""
+        """Platform phase policy: model runs get it in place of the author's looser
+        settings, and the model's host stays reachable whatever the author set; Oracle
+        is a test mode and keeps the author's settings. Verification never needs the
+        model; the agent phase needs it only when the harness calls the model from
+        inside the container."""
         effective = spec.effective_config
         if effective.get("execution_mode") != "agent":
             return None

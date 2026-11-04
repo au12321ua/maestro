@@ -2,9 +2,9 @@
 
 Harbor cannot tighten a task from the job (``extra_allowed_hosts`` only adds hosts and is
 ignored for public tasks), so the Runner rewrites a private copy of each task: each phase
-takes the stricter of the author's and the platform's policy, allowlists intersect, and
-the author's stricter choice is always kept. Setup keeps the author's baseline, so tools
-can be installed.
+takes the stricter of the author's and the platform's mode, except that the hosts the
+platform names (the model's endpoint) stay reachable whatever the author set. Setup keeps
+the author's baseline, so tools can be installed.
 
 Two gaps in Harbor 0.24.0 are closed by wrapping its (private, version-pinned)
 policy switch: once a phase was restricted, a request to go back to public becomes
@@ -47,10 +47,13 @@ def stricter(author, platform: dict | None):
     if platform is None:
         return author
     a, p = author.network_mode.value, platform["mode"]
-    if a == "allowlist" and p == "allowlist":
-        allowed = set(platform.get("hosts", []))
-        hosts = [h for h in author.allowed_hosts if h in allowed]
-        return NetworkPolicy(network_mode=NetworkMode.ALLOWLIST, allowed_hosts=hosts)
+    if p == "allowlist":
+        # The platform's hosts are what the run needs: a harness inside the container has
+        # nothing to call if the author's allowlist lacks the model's host, or allows no
+        # network at all. Other hosts the author allows are not passed on.
+        return NetworkPolicy(
+            network_mode=NetworkMode.ALLOWLIST, allowed_hosts=platform.get("hosts", [])
+        )
     if RANK[a] <= RANK[p]:
         return author
     return NetworkPolicy(network_mode=NetworkMode(p), allowed_hosts=platform.get("hosts", []))

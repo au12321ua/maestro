@@ -89,7 +89,7 @@ PAT 一列写所需权限；“—”表示任何 PAT 都不行。管理员的 P
 | verify | no-network |
 
 - 只收紧模型运行；Oracle 是测试模式，按作者设置执行（`execution/harbor.py` 的 `_network`）。
-- 每阶段取作者与平台中更严的一方，allowlist 取交集。Harbor 的 `extra_allowed_hosts` 只能放宽，所以 Runner 改写任务私有副本的 `task.toml`，缓存的任务材料不变，生效计划记为 `network_plan` 事件。独立验证器的容器在验证阶段同样按收紧后的策略运行。
+- 模型运行的 agent.run 与 verify 一律按上表执行，作者的设置只影响环境基线与 agent.setup。因此作者设了 no-network、或 allowlist 里没有模型 endpoint 主机，容器内调模型的 Harness 也能连到模型；作者放行的其他主机在模型运行的 agent.run 中不生效。Harbor 的 `extra_allowed_hosts` 只能放宽，所以 Runner 改写任务私有副本的 `task.toml`，缓存的任务材料不变，生效计划记为 `network_plan` 事件。独立验证器的容器在验证阶段同样按收紧后的策略运行。
 - Runner 包装 Harbor 的策略切换：受限后不再回到 public（Harbor 会在阶段之间重新放开），并重置未经出口代理的 TCP 连接。
 - 容器内调模型的 Harness（OpenCode、Codex、Claude Code）只在 Agent 运行期间拿到密钥：Runner 用文件传输把它放进容器，权限 400、属主为任务的 Agent 用户，结束后、验证前删除；不经命令行或环境变量（`docker exec -e` 的值本机进程列表人人可见）。OpenCode 经配置读密钥文件，Claude Code 经 `apiKeyHelper` 读，Codex 拿到复制进去的 `auth.json`。
 - 不降级：作者 compose（`environment/` 与独立验证器的 `tests/`）中自带网络的服务会绕过 sidecar，运行以 NETWORK_POLICY_UNSUPPORTED 拒绝。明确声明 `network_mode: none` 且没有 `networks` 字段的服务已经断网，可保留作者设置；host、bridge、自定义 networks，以及同时声明 none 与 networks 的服务仍拒绝。主机不支持 nftables 时配置解析即给出同名 blocker，Runner 启动前再查一次。

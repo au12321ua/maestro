@@ -230,7 +230,7 @@ UI 文案与纯样式变更不写低价值单元测试；优先验证会导致�
 | F-15 | 恢复时缺所需主密钥 | 默认拒绝并说明凭据不可解密；显式接受时凭据失效，不虚报恢复完成。异机情形见 [N-21](../proposals/N-21-offhost-restore.md) | `test_backup.py` |
 | F-16 | Runner stderr 洪泛、stdout 混入非协议输出、进程非零退出 | 无死锁；协议错误可定位；已完成尝试的结果保留 | `test_harbor_executor.py` |
 | F-17 | Runner 协议版本或 Harbor 版本与发布清单不符 | 不把不可解析结果当正常评分 | 部分：`test_harbor_executor.py` 中运行时不符按 `RUNNER_PROTOCOL_ERROR` 结束；受理前预检未覆盖 |
-| F-18 | nftables 不可用、任务 public 或已有更严网络策略 | 能力缺失拒绝；平台限制可靠收紧，不静默放宽 | `test_network_capability.py`、`test_fix_m5_review.py`；`test_harbor_docker.py`（真实网络） |
+| F-18 | nftables 不可用、任务 public 或已有更严网络策略 | 能力缺失拒绝；平台限制可靠收紧，不静默放宽；作者的 no-network 或不含模型主机的 allowlist 不挡住容器内 Harness 调模型 | `test_network_capability.py`、`test_fix_m5_review.py`、`test_runner_network.py`；`test_harbor_docker.py`（真实网络） |
 | F-19 | bootstrap 超时 / 失败、两个试次独立安装 | setup 阶段执行；不进入 Agent；无跨试次安装缓存，不污染其他试次 | `test_runner_attachments.py`；`test_harbor_docker.py` |
 | F-20 | 修改 OpenAPI 后不重生成网页客户端或 SDK 类型 | CI 发现受控产物漂移并失败 | `test_sdk.py`（运行 `generate_clients.py --check`）、`test_api_contract.py`；网页类型由 CI 的 `check:api` 核对 |
 | F-21 | 回收已准入缓存，成员 / PAT 提交并原配置重跑 | 均可受理；固定摘要恢复；无管理员动作；准入与配置摘要不变 | `test_acceptance_p0.py`、`test_preparation.py` |
