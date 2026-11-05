@@ -1,6 +1,6 @@
 # N-31 用 SDK 与 skill 适配工作流：以附件改进为例
 
-状态：已确认（U-77） · 优先级：待定 · 2026-11-04 · 相关：[08](../design/08-collections-comparison.md)、[10](../design/10-api-sdk-cli.md) 第 7 节、`skills/`、`sdk/src/maestro_sdk/`、U-59～U-61、U-73～U-77、N-32
+状态：被取代（U-85） · 优先级：待定 · 2026-11-04 · 相关：[08](../../design/08-collections-comparison.md)、[10](../../design/10-api-sdk-cli.md) 第 7 节、`skills/`、`sdk/src/maestro_sdk/`、U-59～U-61、U-73～U-77、N-32
 
 范围与取舍已确认（U-77），可以按本提案实施。内容分两部分：一套通用机制，说明怎样用 SDK 和 skill 适配用户想要的工作流；以及按这套机制实现的第一个例子，附件改进。留出集另见 N-32；首轮实验发现的平台问题记在 `Gitea#18`，本提案都不处理（U-75）。
 
@@ -104,3 +104,7 @@ Agent 换一个工作流（比如比较模型、调 Harness 参数、复现论�
 1. skill 修订（第 5 节）。
 2. SDK 工作流模块中不依赖记录的部分（第 6 节前四项），以及 `workspace.init` 的工作流参数。
 3. 平台的通用记录、当前最优指针与 `attachment-candidate` 记录类型（第 3、7 节）。
+
+## 结果
+
+被 [N-33](../N-33-datasets-evaluation-workflows.md) 取代（U-85），未实施。机制与附件改进的例子并入 N-33 第 9 节，U-73～U-76 的取舍照常有效；本稿的确认（U-77）随之失效，改为 N-33 整体确认后，作为它的阶段 3 实施。
