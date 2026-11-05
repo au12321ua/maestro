@@ -49,3 +49,6 @@ extend-immutable-calls = ["fastapi.Depends", "fastapi.Header", "fastapi.Query"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Test modules sit in per-area directories without __init__.py, so their file names must
+# stay unique; shared helpers are imported from tests/maestro/support.
+pythonpath = ["tests/maestro"]

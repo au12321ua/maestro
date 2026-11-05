@@ -18,7 +18,7 @@
 | 测试替身 | `testing/fakes.py` | 四个边界的假实现，供测试和 `serve --demo-executor` 演示 |
 | HTTP | `api/` | FastAPI 应用、`{data, meta}` 外壳与结构化错误、静态网页（`app.py`）；会话 cookie + CSRF 与 PAT Bearer 认证（`deps.py`）；公开模型（`models.py`）；按资源分的路由（`routes/`，处理函数名即 OpenAPI 的 operationId）；不依赖部署的 OpenAPI 导出（`openapi.py`） |
 
-服务进程从不导入 Harbor（`tests/maestro/test_harbor_boundary.py` 检查）。
+服务进程从不导入 Harbor（`tests/maestro/runs/test_harbor_boundary.py` 检查）。
 
 ## Runner（`runner/`）
 
@@ -31,7 +31,7 @@
 | 公开契约 | `openapi/maestro-v1.json` | 由服务导出、受版本控制的 OpenAPI；网页类型与 SDK 模型都从它生成，服务在 `/capabilities` 报告它的摘要 |
 | 生成 | `tools/generate_clients.py` | 导出契约并生成 SDK 的 `models.py` 与 `_contract.py`；`--check` 只比较。网页类型在 `frontend/` 用 `npm run gen:api` / `check:api` |
 | Python SDK | `sdk/src/maestro_sdk/` | 只依赖 httpx 与 pydantic。生成的模型（`models.py`）；手写的部分：入口 `MaestroClient`（`client.py`），认证、重试、翻页与核对摘要的下载（`_transport.py`），每组接口一个模块（`resources/`），在生成模型之外的返回类型（`results.py`），错误类型（`errors.py`）；不连服务的 skill 安装（`skills.py`）与工作区骨架（`workspace.py`、`templates/AGENTS.md`）。`pyproject.toml` 把仓库的 `skills/` 打进 wheel 的 `maestro_sdk/_skills/`。用法见 `sdk/README.md` |
-| Agent skill | `skills/` | 随 SDK 发布，由 `maestro_sdk.skills.install` 安装。`maestro-sdk` 让 Agent 经 SDK 操作 Maestro：`SKILL.md` 写常用流程与报告规则，`references/` 按任务分文件，用到时再读；`maestro-package` 讲附件的制作与改进，只给建议。提到的 SDK 调用由 `test_sdk.py` 核对 |
+| Agent skill | `skills/` | 随 SDK 发布，由 `maestro_sdk.skills.install` 安装。`maestro-sdk` 让 Agent 经 SDK 操作 Maestro：`SKILL.md` 写常用流程与报告规则，`references/` 按任务分文件，用到时再读；`maestro-package` 讲附件的制作与改进，只给建议。提到的 SDK 调用由 `tests/maestro/api/test_sdk.py` 核对 |
 | 网页 | `frontend/src/` | Vite + React + shadcn/ui：页面（`pages/`，管理页的配置标签在 `pages/admin/`）、API 调用与生成的类型（`lib/`）、公用组件（`components/`）、界面语言（`i18n.ts` 与 `locales/` 的中英文语言文件）；Playwright 冒烟在 `frontend/qa/` |
 
 ## 安装、发布与检查
@@ -40,5 +40,5 @@
 | --- | --- | --- |
 | 安装管理 | `ops/maestroctl.py` | 只用系统 Python 标准库的 `maestroctl`：检查、安装、启停、状态、日志、备份恢复、更新与失败回退、卸载，按 [12](../design/12-operations.md) 的系统级布局；发布包随附一份。用法见[部署指南](../guides/deployment.md) |
 | 打包与发布 | `tools/release.py`、`tools/version.py`、`tools/validate_release.py`、`tools/build_release.py`、`tools/third_party_licenses.py`、`tools/publish_release.py`、`tools/publish_package.py`、`tools/package_index.py` | 维护者准备固定候选与下一开发版本、核对准确 SHA 的检查、按实际渠道状态续跑；构建与实际 wheel 验证独立。打出含服务 / Runner / SDK wheel、带哈希锁定的依赖、`INSTALL.md`（即部署指南）、`LICENSE`、`NOTICE`、第三方许可证清单与 `RELEASE.json` 的压缩包；许可证清单只允许列表内的许可证；CI 把产物发布到 Gitea Releases，把 SDK wheel 发布到 Gitea 的 Python 包仓库；GitHub 上由 `package_index.py` 为各 Release 的 SDK wheel 写出 Pages 上的静态索引 |
-| 测试 | `tests/maestro/` | pytest；分层与开关见 [13](../design/13-testing-plan.md) 第 2 节 |
+| 测试 | `tests/maestro/` | pytest，按模块分目录（见[开发验证](../guides/testing.md)“测试的组织”）；分层与开关见 [13](../design/13-testing-plan.md) 第 2 节 |
 | CI 与检查 | `.gitea/workflows/verify.yml`、`.github/workflows/release.yml`、`tools/verify_commit.py`、`tools/check_doc_links.py` | Gitea：分支 push 做全部不需要 Docker / Hub / 模型的检查，PR 复用结果；`dev` 检查后独立发布，正式 tag 核对准确 SHA 已有完整检查并验证实际产物；GitHub：只在推送版本 tag 时构建发布，再重建 Pages 上的 SDK 索引。检查范围与命令见[开发验证](../guides/testing.md) |

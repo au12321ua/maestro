@@ -79,9 +79,9 @@
 | U-67 | 2026-11-02 | CI 以所有分支 push 覆盖代码检查，PR 使用对应提交的结果；正式 tag 验证最终提交已有完整检查成功记录及实际发布物，取代 U-43 中 tag 重跑完整 CI 的要求。纯文档例外和 GitHub 从 tag 重建、不重复测试的约定沿用 | [N-27](../proposals/archive/N-27-release-workflow.md)；下方“本次发布方案的决定来源” |
 | U-68 | 2026-11-03 | 数据集拓展与执行 / 评测拆分的方向：数据集拆成题目集、参考集、评测方案三个概念（名称待定），增加 Hugging Face 等数据源与转换配方；执行与评测拆开，支持只执行并导出结果包、导入结果包后只评测；执行继续用 Harbor，评测器由平台实现。本轮只写提案，不实施，问题留待讨论 | [N-28](../proposals/N-28-datasets-and-evaluation-split.md)；下方“数据集与评测拆分的决定来源” |
 | U-69 | 2026-11-03 | PAT 细粒度权限：有效权限受账户角色上限约束，由创建者自己勾选（管理员的 PAT 可以带管理员能力，包括数据集上传与准入），不引入委派；创建与撤销 PAT、成员 / 邀请 / 重置密码、主密钥与凭据管理、物理删除与清空回收站始终只限网页会话；带管理员能力的 PAT 有更短的最长有效期，创建时提示。部分取代 U-20 与 IAM-02 | [N-29](../proposals/archive/N-29-fine-grained-pats.md)；下方“数据集与评测拆分的决定来源” |
-| U-70 | 2026-11-04 | 当场修不了、要调查或跨会话跟进的问题记在主仓库的 Gitea issues，不另建编号体系，也不放 `maestro-site`；引用时写明平台（如 `Gitea#12`），与 GitHub 的同号 issue 区分。外部贡献者与 GitHub issues 的分流等有外部用户后再考虑 | [开发与协作](../guides/development-workflow.md)“问题与修复”；[N-30](../proposals/N-30-issues-and-test-layout.md)；下方“问题记录与测试目录的决定来源” |
+| U-70 | 2026-11-04 | 当场修不了、要调查或跨会话跟进的问题记在主仓库的 Gitea issues，不另建编号体系，也不放 `maestro-site`；引用时写明平台（如 `Gitea#12`），与 GitHub 的同号 issue 区分。外部贡献者与 GitHub issues 的分流等有外部用户后再考虑 | [开发与协作](../guides/development-workflow.md)“问题与修复”；[N-30](../proposals/archive/N-30-issues-and-test-layout.md)；下方“问题记录与测试目录的决定来源” |
 | U-71 | 2026-11-04 | 代码注释与测试说明可以引用 issue（`Gitea#N`）：issue 编号分配后稳定、可追溯，不像文档章节与提案会变。注释仍先写出约束本身。放宽 U-65，文档路径、章节与 U / N / 验收编号仍不进代码 | `AGENTS.md`、[开发与协作](../guides/development-workflow.md)“问题与修复” |
-| U-72 | 2026-11-04 | 测试目录一次性分好，不分批迁移 | [N-30](../proposals/N-30-issues-and-test-layout.md) |
+| U-72 | 2026-11-04 | 测试目录一次性分好，不分批迁移 | [N-30](../proposals/archive/N-30-issues-and-test-layout.md) |
 
 ### 本次文档整理的决定来源
 

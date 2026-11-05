@@ -155,7 +155,7 @@ journald                            服务标准输出 / 错误
 
 ## 9. 验收
 
-- 安装、初始化、本机镜像仓库容器、启停、日志、更新、失败回退、同机备份恢复、保留数据卸载与彻底删除：`tests/maestro/test_install.py`（需 `MAESTRO_INSTALL_TESTS=1`，在临时根目录以 systemd 用户单元运行）；布局、单元文件与删除边界：`tests/maestro/test_maestroctl.py`；备份集与恢复检查：`tests/maestro/test_backup.py`。
+- 安装、初始化、本机镜像仓库容器、启停、日志、更新、失败回退、同机备份恢复、保留数据卸载与彻底删除：`tests/maestro/live/test_install.py`（需 `MAESTRO_INSTALL_TESTS=1`，在临时根目录以 systemd 用户单元运行）；布局、单元文件与删除边界：`tests/maestro/ops/test_maestroctl.py`；备份集与恢复检查：`tests/maestro/ops/test_backup.py`。
 - 非正常终止后按规则标记中断、保留评分并清理本实例遗留容器：见 [13](13-testing-plan.md) 的 F-08。
 - 普通重启不更新版本。
 - 带在途工作的排空更新与异机恢复不在当前范围：前者暂缓（U-48），后者见 [N-21](../proposals/N-21-offhost-restore.md)。

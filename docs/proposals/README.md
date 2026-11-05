@@ -22,9 +22,7 @@
 
 ### 已确认，待实施
 
-| 编号 | 提案 | 状态 | 要点 |
-| --- | --- | --- | --- |
-| N-30 | [问题记录与测试目录](N-30-issues-and-test-layout.md) | 实施中（U-70～U-72） | 问题记录已并入[开发与协作](../guides/development-workflow.md)“问题与修复”；待做：`tests/maestro/` 一次性按模块分目录，`test_fix_*` 按行为归并 |
+暂无。
 
 ### 由用户测试后再推进
 
@@ -59,6 +57,7 @@
 
 | 编号 | 状态 | 提案 |
 | --- | --- | --- |
+| N-30 | 完成 | [问题记录与测试目录](archive/N-30-issues-and-test-layout.md)（U-70～U-72）→ [开发与协作](../guides/development-workflow.md)“问题与修复”、[开发验证](../guides/testing.md)“测试的组织” |
 | N-29 | 完成 | [细粒度 PAT](archive/N-29-fine-grained-pats.md)（U-69）→ [09](../design/09-identity-security.md) 第 2、3 节 |
 | N-26 | 完成 | [文档结构与单向引用](archive/N-26-documentation-conventions.md) |
 

@@ -113,7 +113,7 @@ Runner 在独立会话与进程组中启动。取消先发 SIGTERM，Runner 协�
 
 Runner 依赖 Harbor 的私有接口与内部行为，升级 Harbor 时须逐项复核：
 
-- 替换 `EnvironmentFactory.create_environment_from_config`，按 `environment_dir` 加上每个环境目录的 override（第 6 节）；依赖 Harbor 在 `trial.py` 中只经它创建环境、并为独立验证环境清空 `extra_docker_compose`。测试在这两点变化时失败（`test_preparation_images.py`）。
+- 替换 `EnvironmentFactory.create_environment_from_config`，按 `environment_dir` 加上每个环境目录的 override（第 6 节）；依赖 Harbor 在 `trial.py` 中只经它创建环境、并为独立验证环境清空 `extra_docker_compose`。测试在这两点变化时失败（`datasets/test_preparation_images.py`）。
 - 包装 `DockerEnvironment._apply_network_policy`：受限后不再回到 public，并拒绝未经代理重定向的 TCP（M1 发现 Harbor 会在阶段之间恢复 public、旧连接不受新策略约束）。
 - 调用 `DockerEnvironment._egress_control_kernel_support` 做网络能力预检；它在没有 `/proc/config.gz` 时乐观放行，所以真实收紧另有测试覆盖。
 - Terminus-2 为在 Runner 内传入密钥覆盖了 `_init_llm`。

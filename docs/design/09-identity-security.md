@@ -65,7 +65,7 @@ PAT 一列写所需权限；“—”表示任何 PAT 都不行。管理员的 P
 
 删除账户时不能删自己、最后一个管理员或仍有排队 / 执行中运行的账户。更新、备份、恢复走主机上的 `maestroctl`，不经 HTTP（[12](12-operations.md)）。读取目录一行也包括集合、比较与分析快照。
 
-`/api/v1/admin/` 路由与 Hub 检索在路由层声明守卫：只限网页会话的挂 `admin_session`，其余挂 `admin(<权限>)`（`api/deps.py`）。`tests/maestro/test_permissions.py` 遍历路由，核对每条都有守卫、上表“—”的路径保持只限网页会话；`DELETE /artifacts/{id}` 等混合权限接口在服务内按对象检查，服务方法也都自行再查一次。
+`/api/v1/admin/` 路由与 Hub 检索在路由层声明守卫：只限网页会话的挂 `admin_session`，其余挂 `admin(<权限>)`（`api/deps.py`）。`tests/maestro/identity/test_permissions.py` 遍历路由，核对每条都有守卫、上表“—”的路径保持只限网页会话；`DELETE /artifacts/{id}` 等混合权限接口在服务内按对象检查，服务方法也都自行再查一次。
 
 缓存恢复和附件 bootstrap 属于已受理运行，由系统按固定规格执行，成员和 PAT 没有单独触发的入口；“仅管理员”只限首次准备。共享恢复 Operation 不属于任何等待者，等待者只能取消自己的运行。导出 Operation 只对本人和带 `override` 权限的管理员可见。
 
