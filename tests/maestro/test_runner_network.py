@@ -3,11 +3,10 @@ model run's agent phase always reaches the model whatever the task author allowe
 
 import json
 import subprocess
-from pathlib import Path
 
 import pytest
+from support import ROOT
 
-ROOT = Path(__file__).resolve().parents[2]
 RUNNER = ROOT / "runner/.venv/bin/python"
 PROBE = """
 import json, sys

@@ -9,19 +9,10 @@ from dataclasses import replace
 
 import pytest
 from support import Api, create_pat, invite_member, running, setup_admin, submit, wait_operation
-from test_configuration import agent_body, error
-from test_e2e_run import prepare_model
-from test_fix_prep_docker import make_spec, no_progress
-from test_harbor_executor import (
-    RecordingSink,
-    agent_spec,
-    attachment_spec,
-    execute,
-    make_executor,
-)
-from test_harbor_executor import (
-    make_spec as run_spec,
-)
+from support.configuration import agent_body, error, prepare_model
+from support.executor import RecordingSink, agent_spec, attachment_spec, execute, make_executor
+from support.executor import make_spec as run_spec
+from support.preparation import make_spec, no_progress
 
 from maestro.config import load
 from maestro.core.errors import MaestroError
@@ -175,7 +166,7 @@ def test_runs_read_the_revision_in_force_when_they_execute(service, version_id, 
 
 
 def test_preparations_name_the_revision_they_were_built_with(service, source):
-    from conftest import import_version
+    from support.datasets import import_version
 
     with running(service, run_worker=False) as client:
         admin = setup_admin(service, client)
@@ -257,7 +248,7 @@ open(sys.argv[3], "w").write(json.dumps(limit))
 def test_the_runner_gives_harbor_the_harness_setup_time_limit(runner_python, materials, tmp_path):
     import subprocess
 
-    from test_runner_container_harnesses import RUNNER, RUNNER_SRC
+    from support.runner import RUNNER, RUNNER_SRC
 
     if not RUNNER.exists():
         pytest.skip("Runner environment not installed")
@@ -284,23 +275,3 @@ def test_the_runner_gives_harbor_the_harness_setup_time_limit(runner_python, mat
     with_attachments = attachment_spec(materials, tmp_path, store)
     bootstrap = with_attachments.effective_config["bootstrap_timeout_sec"]
     assert limit(with_attachments, NETWORK) == 900 + bootstrap + 120
-
-
-@pytest.fixture
-def runner_python(tmp_path):
-    import stat
-    import sys
-
-    from test_harbor_executor import FAKE_RUNNER
-
-    wrapper = tmp_path / "runner-python"
-    wrapper.write_text(f'#!/bin/sh\nexec "{sys.executable}" -I "{FAKE_RUNNER}"\n')
-    wrapper.chmod(wrapper.stat().st_mode | stat.S_IXUSR)
-    return wrapper
-
-
-@pytest.fixture
-def materials(tmp_path):
-    from maestro.execution.materials import TaskMaterials
-
-    return TaskMaterials(tmp_path / "cache")

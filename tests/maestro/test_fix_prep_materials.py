@@ -11,7 +11,7 @@ from unittest import mock
 import pytest
 from sqlalchemy import select
 from support import running, setup_admin
-from test_datasets import import_dataset, tasks_by_key
+from support.datasets import import_dataset, tasks_by_key
 
 from maestro.boundaries.dataset_source import UNSUPPORTED, SourceError
 from maestro.db import schema as t

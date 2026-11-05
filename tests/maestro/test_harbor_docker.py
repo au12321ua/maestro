@@ -25,7 +25,16 @@ from unittest import mock
 import httpx
 import pytest
 from sqlalchemy import select
-from support import Api, create_pat, invite_member, running, setup_admin, wait_operation
+from support import (
+    FIXTURES,
+    ROOT,
+    Api,
+    create_pat,
+    invite_member,
+    running,
+    setup_admin,
+    wait_operation,
+)
 
 from maestro.application import Maestro
 from maestro.boundaries.storage import LocalArtifactStore
@@ -39,20 +48,19 @@ from maestro.execution.materials import LocalTaskSource, TaskMaterials
 from maestro.execution.preparation import DockerEnvironment
 from maestro.services.instance import instance_id as read_instance_id
 
-ROOT = Path(__file__).resolve().parents[2]
-TASKS = Path(__file__).with_name("fixtures") / "harbor-tasks"
+TASKS = FIXTURES / "harbor-tasks"
 # Separate verifiers of all three kinds and Compose services; the verifier with its
 # own named image is made by the test, which pushes that image to the test registry first.
 # Services pull ubuntu:22.04 by digest, so the host's own ubuntu:22.04 tag never moves.
-N01_TASKS = Path(__file__).with_name("fixtures") / "n01-tasks"
+N01_TASKS = FIXTURES / "n01-tasks"
 # Agent tasks need tmux in the image (Terminus-2): build ``maestro-test/ubuntu-tmux:22.04``
 # once, see the test docstring.
-AGENT_TASKS = Path(__file__).with_name("fixtures") / "agent-tasks"
+AGENT_TASKS = FIXTURES / "agent-tasks"
 # OpenCode tasks need Node and the pinned OpenCode in the image: build
 # ``maestro-test/ubuntu-opencode:22.04`` from fixtures/images/opencode once.
-OPENCODE_TASKS = Path(__file__).with_name("fixtures") / "opencode-tasks"
+OPENCODE_TASKS = FIXTURES / "opencode-tasks"
 # The same task on a plain image: a harness installed in setup.
-HARNESS_TASKS = Path(__file__).with_name("fixtures") / "harness-tasks"
+HARNESS_TASKS = FIXTURES / "harness-tasks"
 RUNNER = Path(os.environ.get("MAESTRO_RUNNER_PYTHON", ROOT / "runner/.venv/bin/python"))
 # Optional: the deployment's setup proxy (e.g. http://172.17.0.1:7890), for hosts that need
 # one to build images and install attachments. Tests then also check its boundaries.
@@ -1087,7 +1095,7 @@ def test_attachments_install_in_each_trial_container(agent_service, monkeypatch)
     installs in its own container during setup (with the setup network), the agent and
     verifier phases are then offline, and a failing or slow install ends only its trials,
     as an attachment failure rather than a score. Uses the local scripted model."""
-    from test_attachments import package, publish
+    from support.attachments import package, publish
 
     monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
     monkeypatch.setenv("no_proxy", "127.0.0.1,localhost")

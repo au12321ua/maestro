@@ -7,8 +7,9 @@ import os
 import uuid
 
 import pytest
-from conftest import import_version
 from sqlalchemy import insert, select, update
+from support.datasets import import_version
+from support.results import backdate, make_owner, run
 
 from maestro.application import Maestro
 from maestro.boundaries.storage import LocalArtifactStore
@@ -16,9 +17,7 @@ from maestro.core import clock
 from maestro.core.errors import MaestroError
 from maestro.db import migrate
 from maestro.db import schema as t
-from maestro.domain.states import Role
 from maestro.services.disk import GIB, DiskWatch
-from maestro.services.principal import Channel, Principal
 from maestro.testing.fakes import FakeExecutor
 
 
@@ -39,43 +38,6 @@ def local(settings, source, environment):
     built.worker.start_epoch()
     yield built, owner, version
     built.db.dispose()
-
-
-def make_owner(service) -> Principal:
-    with service.db.write() as conn:
-        conn.execute(
-            insert(t.users).values(
-                id="usr_owner",
-                username="owner",
-                display_name="o",
-                role="admin",
-                status="active",
-                password_hash="x",
-                revision=1,
-                created_at="t",
-                updated_at="t",
-            )
-        )
-    return Principal("usr_owner", "owner", Role.ADMIN, Channel.WEB_SESSION, session_id="s")
-
-
-def run(service, owner, version_id, **body) -> str:
-    _, data, _ = service.runs.submit(
-        owner,
-        uuid.uuid4().hex,
-        {"name": "r", "dataset_version_id": version_id, "execution_mode": "oracle", **body},
-    )
-    asyncio.run(service.worker.drain())
-    return data["run_id"]
-
-
-def backdate(service, artifact_id: str) -> None:
-    with service.db.write() as conn:
-        conn.execute(
-            update(t.artifacts)
-            .where(t.artifacts.c.id == artifact_id)
-            .values(expires_at=clock.to_text(clock.now() - clock.timedelta(seconds=1)))
-        )
 
 
 def test_expiry_counts_from_execution_end_not_upload(local):

@@ -8,7 +8,7 @@ import zipfile
 from fastapi.testclient import TestClient
 from sqlalchemy import select, update
 from support import PASSWORD, invite_member, running, setup_admin, wait_operation
-from test_recycle import finished_run, purge
+from support.results import finished_run, purge
 
 from maestro.db import schema as t
 from maestro.services.artifacts import UNINDEXED_GRACE_SECONDS

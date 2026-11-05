@@ -4,15 +4,13 @@ import json
 import subprocess
 import sys
 import uuid
-from pathlib import Path
 
 import pytest
-from support import invite_member, running, setup_admin, submit, wait_operation
-from test_attachments import manifest, package, publish, upload
-from test_batches import batch_body, post_batch
-from test_configuration import error
-from test_datasets import import_and_prepare
-from test_reruns import rerun
+from support import ROOT, invite_member, running, setup_admin, submit, wait_operation
+from support.attachments import manifest, package, publish, upload
+from support.configuration import error
+from support.datasets import import_and_prepare
+from support.runs import batch_body, post_batch, rerun
 
 from maestro.core.errors import MaestroError
 from maestro.execution.agents import endpoint_problem
@@ -233,7 +231,7 @@ def test_the_runner_refuses_reserved_names_in_task_env():
         "import sys; sys.path.insert(0, sys.argv[1]); from maestro_runner import job; "
         "print(job.RESERVED_ENV.pattern, file=sys.stderr)"
     )
-    runner_src = Path(__file__).resolve().parents[2] / "runner" / "src"
+    runner_src = ROOT / "runner" / "src"
     found = subprocess.run(
         [sys.executable, "-I", "-c", probe, str(runner_src)],
         capture_output=True,
@@ -270,7 +268,7 @@ print(json.dumps({"modes": modes, "unrouted": network.unrouted_services(task)}))
 
 
 def test_tightening_reaches_steps_and_finds_services_with_their_own_networks(tmp_path):
-    root = Path(__file__).resolve().parents[2] / "runner"
+    root = ROOT / "runner"
     python = root / ".venv" / "bin" / "python"
     if not python.exists():
         pytest.skip("the Runner environment is not installed (uv sync in runner/)")

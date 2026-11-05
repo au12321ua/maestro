@@ -4,51 +4,13 @@ import asyncio
 
 import pytest
 from sqlalchemy import select, update
+from support.runs import _drain, accept, trials_by_key
 
 from maestro.boundaries.executor import AttemptOutcome
 from maestro.db import schema as t
-from maestro.domain.states import Role
 from maestro.services.capacity import HostCapacity
-from maestro.services.principal import Channel, Principal
 from maestro.services.worker import RunSink, StaleLease
 from maestro.testing.fakes import failed, scored
-
-
-@pytest.fixture
-def owner(service):
-    with service.db.write() as conn:
-        conn.execute(
-            t.users.insert().values(
-                id="usr_owner",
-                username="owner",
-                display_name="o",
-                role="member",
-                status="active",
-                password_hash="x",
-                revision=1,
-                created_at="t",
-                updated_at="t",
-            )
-        )
-    return Principal("usr_owner", "owner", Role.MEMBER, Channel.WEB_SESSION, session_id="s")
-
-
-def accept(service, owner, version_id, **body):
-    import uuid
-
-    _, data, _ = service.runs.submit(
-        owner,
-        uuid.uuid4().hex,
-        {"name": "r", "dataset_version_id": version_id, "execution_mode": "oracle", **body},
-    )
-    return data
-
-
-def trials_by_key(service, run_id):
-    out = {}
-    for trial in service.runs.trials(run_id):
-        out.setdefault(trial["task_key"], []).append(trial)
-    return out
 
 
 def test_zero_missing_and_error_are_distinct(service, owner, version_id, executor):
@@ -226,8 +188,3 @@ def test_deadline_stops_queued_run(service, owner, version_id):
     with service.db.read() as conn:
         reasons = set(conn.execute(select(t.trials.c.reason_code)).scalars())
     assert reasons == {"RUN_DEADLINE_EXCEEDED"}
-
-
-async def _drain(service):
-    service.worker.start_epoch()
-    await service.worker.drain()

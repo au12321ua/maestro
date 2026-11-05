@@ -8,15 +8,11 @@ import json
 import os
 import subprocess
 from dataclasses import replace
-from pathlib import Path
 
 import pytest
-from test_harbor_executor import agent_spec, make_executor
-from test_runner_attachments import RUNNER_SRC, agents  # noqa: F401 - fixture
-from test_setup_network import materials, runner_python  # noqa: F401 - fixtures
+from support.executor import agent_spec, make_executor
+from support.runner import RUNNER, RUNNER_SRC
 
-ROOT = Path(__file__).resolve().parents[2]
-RUNNER = Path(os.environ.get("MAESTRO_RUNNER_PYTHON", ROOT / "runner/.venv/bin/python"))
 KEY = "sk-test-harness-0123456789abcdef"
 
 
@@ -29,7 +25,7 @@ def model(protocol="openai-compatible", **params):
     }
 
 
-def config(agents, adapter, protocol, version="1.2.3", params=None, **model_params):  # noqa: F811
+def config(agents, adapter, protocol, version="1.2.3", params=None, **model_params):
     agents.SECRETS["model_api_key"] = KEY
     try:
         return agents.agent_config(
@@ -44,7 +40,7 @@ def config(agents, adapter, protocol, version="1.2.3", params=None, **model_para
         agents.SECRETS.clear()
 
 
-def test_opencode_reads_the_key_from_a_file(agents):  # noqa: F811
+def test_opencode_reads_the_key_from_a_file(agents):
     found = config(agents, "opencode", "openai-compatible", temperature=0)
     assert found["import_path"] == "maestro_runner.agents:MaestroOpenCode"
     assert found["model_name"] == "maestro/gpt-test"
@@ -65,7 +61,7 @@ def test_opencode_reads_the_key_from_a_file(agents):  # noqa: F811
     assert second["kwargs"] == kwargs
 
 
-def test_codex_gets_the_endpoint_in_its_config_and_the_key_as_auth_json(agents):  # noqa: F811
+def test_codex_gets_the_endpoint_in_its_config_and_the_key_as_auth_json(agents):
     found = config(agents, "codex", "openai", reasoning_effort="high")
     assert found["import_path"] == "maestro_runner.agents:MaestroCodex"
     assert found["model_name"] == "gpt-test"
@@ -79,7 +75,7 @@ def test_codex_gets_the_endpoint_in_its_config_and_the_key_as_auth_json(agents):
     assert KEY not in json.dumps(found)
 
 
-def test_claude_code_reads_the_key_through_an_api_key_helper(agents):  # noqa: F811
+def test_claude_code_reads_the_key_through_an_api_key_helper(agents):
     found = config(
         agents, "claude-code", "anthropic", params={"max_turns": 7}, max_thinking_tokens=2048
     )
@@ -112,12 +108,12 @@ def test_claude_code_reads_the_key_through_an_api_key_helper(agents):  # noqa: F
         ("claude-code", "anthropic", "1.2.3", {}, {"top_p": 1}),
     ],
 )
-def test_wrong_inputs_are_refused(agents, adapter, protocol, version, params, model_params):  # noqa: F811
+def test_wrong_inputs_are_refused(agents, adapter, protocol, version, params, model_params):
     with pytest.raises(agents.InputError):
         config(agents, adapter, protocol, version, params, **model_params)
 
 
-def test_codex_refuses_a_model_id_it_would_shorten(agents):  # noqa: F811
+def test_codex_refuses_a_model_id_it_would_shorten(agents):
     with pytest.raises(agents.InputError, match="'/'"):
         agents.agent_config(
             {
@@ -130,7 +126,7 @@ def test_codex_refuses_a_model_id_it_would_shorten(agents):  # noqa: F811
 
 
 @pytest.mark.parametrize("adapter", ["opencode", "opencode-2", "codex", "claude-code"])
-def test_the_agent_phase_reaches_the_model_host_only(runner_python, materials, tmp_path, adapter):  # noqa: F811
+def test_the_agent_phase_reaches_the_model_host_only(runner_python, materials, tmp_path, adapter):
     spec = agent_spec(materials, tmp_path)
     harness = {
         **spec.effective_config["harness"],
@@ -148,8 +144,8 @@ def test_the_agent_phase_reaches_the_model_host_only(runner_python, materials, t
 
 
 def test_opencode_runs_accepted_before_the_upstream_version_install_what_they_did(
-    runner_python,  # noqa: F811
-    materials,  # noqa: F811
+    runner_python,
+    materials,
     tmp_path,
 ):
     spec = agent_spec(materials, tmp_path)
@@ -286,7 +282,7 @@ def test_opencode_2_runs_standalone_without_updates_or_the_model_catalogue(tmp_p
 
 
 def show(tmp_path, name: str, chunks: list[str]) -> list[tuple[str, str]]:
-    from test_fix_artifacts_runner import drive, logs
+    from support.runner import drive, logs
 
     out = tmp_path / "run"
     directory = out / "jobs" / "job" / "t1" / "agent"
@@ -424,7 +420,7 @@ def test_the_claude_code_stream_is_shown_as_readable_steps(tmp_path):
 
 
 def test_a_trajectory_left_by_a_streaming_harness_is_not_shown_again(tmp_path):
-    from test_fix_artifacts_runner import drive, logs
+    from support.runner import drive, logs
 
     out = tmp_path / "run"
     directory = out / "jobs" / "job" / "t1" / "agent"

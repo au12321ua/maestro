@@ -4,7 +4,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+from support import ROOT
 
 
 def test_service_imports_do_not_load_harbor():

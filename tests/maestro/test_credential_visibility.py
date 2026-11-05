@@ -2,9 +2,8 @@
 parameters take generic secrets only, never a model API key."""
 
 from support import create_pat, invite_member, running, setup_admin, submit
-from test_configuration import agent_body, resolve
-from test_datasets import import_and_prepare
-from test_e2e_run import prepare_model
+from support.configuration import agent_body, prepare_model, resolve
+from support.datasets import import_and_prepare
 
 from maestro.testing.fakes import FakeDatasetSource
 

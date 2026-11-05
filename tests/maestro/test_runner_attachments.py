@@ -6,9 +6,7 @@ the time limit inside the "container" and the records are all exercised for real
 """
 
 import asyncio
-import importlib
 import shutil
-import sys
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -16,20 +14,6 @@ from types import SimpleNamespace
 import pytest
 
 from maestro.execution.attachments import AttachmentStore, describe, files_digest
-
-RUNNER_SRC = Path(__file__).resolve().parents[2] / "runner" / "src"
-
-
-@pytest.fixture
-def agents():
-    sys.path.insert(0, str(RUNNER_SRC))
-    try:
-        module = importlib.import_module("maestro_runner.agents")
-        yield module
-    finally:
-        sys.path.remove(str(RUNNER_SRC))
-        module.ATTACHMENTS[:] = []
-        module.INSTALL.update(timeout_sec=None, report=None, env={})
 
 
 class Container:
@@ -69,7 +53,7 @@ class Container:
 
 
 def stored(tmp_path, name: str, script: str | None) -> dict:
-    from test_attachments import package, store_package
+    from support.attachments import package, store_package
 
     store = AttachmentStore(tmp_path / "data")
     files = {"bootstrap.sh": (script.encode(), 0o755)} if script is not None else None

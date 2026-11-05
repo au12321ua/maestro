@@ -1,32 +1,15 @@
 """Batches: several runs accepted all or none, PAT quota
 charged per run in the same transaction, members run and end on their own."""
 
-import uuid
 from concurrent.futures import ThreadPoolExecutor
 
 from sqlalchemy import func, select
 from support import create_pat, invite_member, running, setup_admin, submit, wait_operation
-from test_configuration import agent_body, error
-from test_datasets import tasks_by_key
-from test_e2e_run import prepare_model
+from support.configuration import agent_body, error, prepare_model
+from support.datasets import tasks_by_key
+from support.runs import batch_body, post_batch
 
 from maestro.db import schema as t
-
-
-def batch_body(version_id, *configs, name="sweep") -> dict:
-    return {
-        "name": name,
-        "runs": [
-            {"name": f"member {i}", "dataset_version_id": version_id, **config}
-            for i, config in enumerate(configs)
-        ],
-    }
-
-
-def post_batch(api, body, key=None):
-    return api.post(
-        "/api/v1/run-batches", json=body, headers={"Idempotency-Key": key or uuid.uuid4().hex}
-    )
 
 
 def counts(service) -> dict:

@@ -3,10 +3,16 @@
 import contextlib
 import time
 import uuid
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 from maestro.api.app import create_app
+
+# The repository, the test tree and its fixtures, wherever a test module sits below it.
+ROOT = Path(__file__).resolve().parents[3]
+TESTS = ROOT / "tests" / "maestro"
+FIXTURES = TESTS / "fixtures"
 
 PASSWORD = "correct horse battery"
 

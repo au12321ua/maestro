@@ -6,9 +6,9 @@ open by design may be free-form; this test keeps that list.
 """
 
 import json
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+from support import ROOT
+
 JSON_VALUE = {"$ref": "#/components/schemas/JsonValue"}
 
 # (schema, property): why the value is open.

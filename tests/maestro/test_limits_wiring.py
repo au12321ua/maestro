@@ -6,7 +6,7 @@ import json
 import stat
 import sys
 
-from test_harbor_executor import Cancel, RecordingDocker, RecordingSink, make_spec
+from support.executor import Cancel, RecordingDocker, RecordingSink, make_spec
 
 from maestro import cli
 from maestro.application import Maestro

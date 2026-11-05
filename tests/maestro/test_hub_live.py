@@ -12,7 +12,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from support import running, setup_admin, wait_operation
+from support import ROOT, running, setup_admin, wait_operation
 
 from maestro.application import Maestro
 from maestro.boundaries.dataset_source import SourceError
@@ -22,7 +22,6 @@ from maestro.execution.preparation import DockerEnvironment
 from maestro.services.instance import instance_id as read_instance_id
 from maestro.testing.fakes import FakeExecutor
 
-ROOT = Path(__file__).resolve().parents[2]
 RUNNER = Path(os.environ.get("MAESTRO_RUNNER_PYTHON", ROOT / "runner/.venv/bin/python"))
 DATASET = ("harbor", "hello-world")
 

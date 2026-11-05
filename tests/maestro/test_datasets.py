@@ -3,40 +3,9 @@
 import uuid
 
 from support import create_pat, invite_member, running, setup_admin, submit, wait_operation
+from support.datasets import evict, import_and_prepare, import_dataset, tasks_by_key, wait_run
 
 from maestro.testing.fakes import FakeDatasetSource
-
-
-def import_dataset(admin, namespace="demo", name="arith", ref="v1", **extra) -> dict:
-    body = {"source_kind": "fake", "namespace": namespace, "name": name, "ref": ref, **extra}
-    op = admin.post("/api/v1/admin/dataset-imports", json=body, expect=202).json()["data"]
-    return wait_operation(admin, op["id"])
-
-
-def import_and_prepare(admin, *args, **kw) -> tuple[str, dict | None]:
-    done = import_dataset(admin, *args, **kw)
-    assert done["status"] == "succeeded", done
-    prepared = None
-    if done["result"].get("preparation_operation_id"):
-        prepared = wait_operation(admin, done["result"]["preparation_operation_id"])
-    return done["result"]["dataset_version_id"], prepared
-
-
-def tasks_by_key(api, version_id) -> dict:
-    tasks = api.get(f"/api/v1/dataset-versions/{version_id}/tasks", expect=200).json()["data"]
-    return {x["task_key"]: x for x in tasks}
-
-
-def wait_run(api, run_id) -> dict:
-    run = api.get(f"/api/v1/runs/{run_id}", expect=200).json()["data"]
-    wait_operation(api, run["operation_id"])
-    return api.get(f"/api/v1/runs/{run_id}", expect=200).json()["data"]
-
-
-def evict(admin, task) -> None:
-    preparation = task["local_preparation"]["id"]
-    op = admin.post(f"/api/v1/admin/preparations/{preparation}/evict", expect=202).json()["data"]
-    assert wait_operation(admin, op["id"])["status"] == "succeeded"
 
 
 def test_ds01_import_fixes_content_and_reimport_is_idempotent(service, source):

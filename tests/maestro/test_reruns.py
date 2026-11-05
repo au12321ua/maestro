@@ -5,21 +5,10 @@ import time
 import uuid
 
 from support import create_pat, invite_member, running, setup_admin, submit, wait_operation
-from test_attachments import attach
-from test_configuration import agent_body, error, resolve
-from test_datasets import tasks_by_key
-from test_e2e_run import prepare_model
-
-
-def rerun(api, run_id, expect=None, key=None, **body):
-    response = api.post(
-        f"/api/v1/runs/{run_id}/rerun",
-        json=body,
-        headers={"Idempotency-Key": key or uuid.uuid4().hex},
-    )
-    if expect is not None:
-        assert response.status_code == expect, response.text
-    return response
+from support.attachments import attach
+from support.configuration import agent_body, error, prepare_model, resolve
+from support.datasets import tasks_by_key
+from support.runs import rerun
 
 
 def trials_of(api, run_id) -> list[dict]:

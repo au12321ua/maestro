@@ -8,37 +8,15 @@ import uuid
 import pytest
 from sqlalchemy import func, select
 from support import create_pat, invite_member, running, setup_admin, submit
-from test_configuration import resolve
-from test_datasets import evict, tasks_by_key, wait_run
-from test_preparation import solo
-from test_reruns import rerun
-from test_worker import _drain, accept, trials_by_key
+from support.configuration import resolve
+from support.datasets import evict, solo, tasks_by_key, wait_run
+from support.runs import _drain, accept, rerun, trials_by_key
 
 from maestro.db import schema as t
 from maestro.db.engine import Database
-from maestro.domain.states import CleanupState, Role
-from maestro.services.principal import Channel, Principal
+from maestro.domain.states import CleanupState
 from maestro.services.worker import RunSink, StaleLease, Worker, _Cancel
 from maestro.testing.fakes import scored
-
-
-@pytest.fixture
-def owner(service):
-    with service.db.write() as conn:
-        conn.execute(
-            t.users.insert().values(
-                id="usr_owner",
-                username="owner",
-                display_name="o",
-                role="member",
-                status="active",
-                password_hash="x",
-                revision=1,
-                created_at="t",
-                updated_at="t",
-            )
-        )
-    return Principal("usr_owner", "owner", Role.MEMBER, Channel.WEB_SESSION, session_id="s")
 
 
 def result_rows(service, run_id) -> dict:

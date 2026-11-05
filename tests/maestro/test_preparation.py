@@ -2,50 +2,25 @@
 
 import asyncio
 import shutil
-import time
 
 import pytest
 from sqlalchemy import delete, insert, select, update
 from support import create_pat, invite_member, running, setup_admin, submit, wait_operation
-from test_datasets import evict, import_and_prepare, import_dataset, tasks_by_key, wait_run
+from support.datasets import (
+    evict,
+    import_and_prepare,
+    import_dataset,
+    on_loop,
+    solo,
+    tasks_by_key,
+    trial_attempts,
+    until,
+    wait_run,
+)
 
 from maestro.db import schema as t
 from maestro.services import operations
 from maestro.testing.fakes import FakeDatasetSource
-
-
-def until(condition, timeout=10.0, message="condition"):
-    deadline = time.monotonic() + timeout
-    while True:
-        value = condition()
-        if value:
-            return value
-        if time.monotonic() > deadline:
-            raise AssertionError(f"timed out waiting for {message}")
-        time.sleep(0.02)
-
-
-def on_loop(service, callback):
-    service.worker._loop.call_soon_threadsafe(callback)
-
-
-def solo(service, source, client, name="solo"):
-    source.add("demo", name, "v1", [name])
-    admin = setup_admin(service, client)
-    version_id, prepared = import_and_prepare(admin, name=name)
-    assert prepared["status"] == "succeeded"
-    (task,) = tasks_by_key(admin, version_id).values()
-    return admin, version_id, task
-
-
-def trial_attempts(service, run_id):
-    with service.db.read() as conn:
-        return conn.execute(
-            select(t.execution_attempts.c.attempt_index, t.execution_attempts.c.error_json)
-            .join(t.trials, t.trials.c.id == t.execution_attempts.c.trial_id)
-            .where(t.trials.c.run_id == run_id)
-            .order_by(t.execution_attempts.c.attempt_index)
-        ).all()
 
 
 def test_ds04_cold_cache_is_restored_once_for_concurrent_runs(service, source, environment):

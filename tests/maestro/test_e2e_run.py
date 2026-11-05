@@ -11,54 +11,11 @@ scores and attempts, and downloads an artifact with a digest check. The generate
 import hashlib
 import uuid
 
-from conftest import import_version
 from support import create_pat, running, setup_admin, wait_operation
+from support.configuration import credential_of, prepare_model
+from support.datasets import import_version
 
 from maestro.testing.fakes import scored
-
-
-def prepare_model(admin) -> tuple[str, str]:
-    """The administrator's part: a credential, a model bound to it, a harness version."""
-    credential = admin.post(
-        "/api/v1/admin/credentials",
-        json={
-            "name": "demo-key",
-            "kind": "model_api_key",
-            "provider": "demo",
-            "value": "sk-demo-not-a-real-key-0000",
-        },
-        expect=201,
-    ).json()["data"]
-    model = admin.post(
-        "/api/v1/admin/model-configs",
-        json={
-            "name": "demo",
-            "provider": "demo",
-            "protocol": "openai-compatible",
-            "endpoint": "https://models.example.test/v1",
-            "model_id": "demo-model",
-            "params": {"temperature": 0},
-            "credential_id": credential["id"],
-        },
-        expect=201,
-    ).json()["data"]
-    harness = admin.post(
-        "/api/v1/admin/harness-versions",
-        json={
-            "name": "fake-harness",
-            "version": "1.0.0",
-            "agent": "fake-agent",
-            "protocols": ["openai-compatible"],
-        },
-        expect=201,
-    ).json()["data"]
-    return model["id"], harness["id"]
-
-
-def credential_of(admin, model_id: str) -> str:
-    return admin.get(f"/api/v1/model-configs/{model_id}", expect=200).json()["data"][
-        "credential_id"
-    ]
 
 
 def test_agent_runs_a_complete_experiment_with_only_a_pat(service, version_id, executor):

@@ -24,8 +24,7 @@ import urllib.request
 from pathlib import Path
 
 import pytest
-
-ROOT = Path(__file__).resolve().parents[2]
+from support import ROOT
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("MAESTRO_INSTALL_TESTS") != "1", reason="set MAESTRO_INSTALL_TESTS=1"

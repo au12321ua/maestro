@@ -8,7 +8,7 @@ from urllib.parse import unquote
 
 import pytest
 from support import create_pat, invite_member, running, setup_admin
-from test_configuration import agent_body, codes, error, resolve
+from support.configuration import agent_body, codes, error, resolve
 
 from maestro.services.upstream import UpstreamVersions
 from maestro.testing.fakes import FakeExecutor

@@ -28,15 +28,13 @@ from maestro_sdk import (
     models,
 )
 from maestro_sdk.resources.attachments import files_digest
-from support import create_pat, invite_member, running, setup_admin
-from test_datasets import evict, import_and_prepare, tasks_by_key
-from test_e2e_run import prepare_model
+from support import ROOT, create_pat, invite_member, running, setup_admin
+from support.configuration import prepare_model
+from support.datasets import evict, import_and_prepare, tasks_by_key
 
 from maestro.boundaries.executor import AttemptOutcome
 from maestro.core import clock
 from maestro.testing.fakes import failed, scored
-
-ROOT = Path(__file__).resolve().parents[2]
 
 
 def sdk(api, http=None) -> MaestroClient:

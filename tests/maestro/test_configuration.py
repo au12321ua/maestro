@@ -14,34 +14,11 @@ from support import (
     submit,
     wait_operation,
 )
-from test_datasets import import_and_prepare, tasks_by_key
-from test_e2e_run import prepare_model
+from support.configuration import agent_body, codes, error, prepare_model, resolve
+from support.datasets import import_and_prepare, tasks_by_key
 
 from maestro.db import schema as t
 from maestro.testing.fakes import FakeDatasetSource
-
-
-def resolve(api, version_id, expect=201, **body):
-    payload = {"dataset_version_id": version_id, "execution_mode": "oracle", **body}
-    return api.post("/api/v1/config-resolutions", json=payload, expect=expect).json()["data"]
-
-
-def agent_body(model_id, harness_id, **extra):
-    return {
-        "execution_mode": "agent",
-        "model_config_id": model_id,
-        "harness_version_id": harness_id,
-        **extra,
-    }
-
-
-def codes(resolution) -> list[str]:
-    return [b["code"] for b in resolution["blockers"]]
-
-
-def error(response) -> tuple[int, str]:
-    return response.status_code, response.json()["error"]["code"]
-
 
 # --- team policy --------------------------------------------------------------------
 

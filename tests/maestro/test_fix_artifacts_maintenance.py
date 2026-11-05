@@ -5,7 +5,7 @@ import logging
 
 import pytest
 from sqlalchemy import select, update
-from test_retention import backdate, make_owner, run
+from support.results import backdate, make_owner, run
 
 from maestro.core import clock
 from maestro.db import schema as t

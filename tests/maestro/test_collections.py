@@ -5,10 +5,9 @@ import uuid
 import pytest
 from sqlalchemy import select, update
 from support import create_pat, invite_member, running, setup_admin, wait_operation
-from test_configuration import agent_body, error
-from test_datasets import import_and_prepare
-from test_e2e_run import credential_of, prepare_model
-from test_recycle import bin_entry, purge
+from support.configuration import agent_body, credential_of, error, prepare_model
+from support.datasets import import_and_prepare
+from support.results import bin_entry, purge
 
 from maestro.db import schema as t
 from maestro.execution.policy import harbor_outcome

@@ -11,6 +11,7 @@ import textwrap
 from pathlib import Path
 
 import pytest
+from support import ROOT
 
 from maestro.domain import limits
 from maestro.execution import compose
@@ -19,7 +20,7 @@ from maestro.services import policy
 from maestro.services.configuration import Resolver
 
 DIGEST = "sha256:" + "ab" * 32
-RUNNER = Path(__file__).resolve().parents[2] / "runner"
+RUNNER = ROOT / "runner"
 RUNNER_PYTHON = RUNNER / ".venv" / "bin" / "python"
 
 

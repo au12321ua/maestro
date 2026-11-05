@@ -9,9 +9,9 @@ import sys
 import pytest
 from sqlalchemy import func, select
 from support import create_pat, invite_member, running, setup_admin, submit
-from test_e2e_run import prepare_model
-from test_harbor_executor import FAKE_RUNNER, make_executor
-from test_worker import _drain, accept, owner  # noqa: F401 - fixture
+from support.configuration import prepare_model
+from support.executor import FAKE_RUNNER, make_executor
+from support.runs import _drain, accept
 
 from maestro.boundaries.executor import ExecutionReport
 from maestro.db import schema as t
@@ -78,7 +78,7 @@ def test_model_runs_are_refused_at_acceptance_when_the_host_cannot_restrict(
         assert pat.get("/api/v1/capabilities").json()["data"]["features"]["restricted_network"]
 
 
-def test_a_runner_refusal_ends_trials_as_errors_not_scores(service, owner, version_id, executor):  # noqa: F811
+def test_a_runner_refusal_ends_trials_as_errors_not_scores(service, owner, version_id, executor):
     async def refuse(spec, sink, cancel):
         return ExecutionReport(cleanup_complete=True, failure_code="NETWORK_POLICY_UNSUPPORTED")
 

@@ -10,6 +10,7 @@ import sys
 import textwrap
 
 import pytest
+from support.preparation import build_entry, make_spec, no_progress
 
 from maestro.boundaries.environment import (
     AUTH,
@@ -18,7 +19,6 @@ from maestro.boundaries.environment import (
     TRANSIENT,
     UNAVAILABLE,
     PreparationError,
-    PreparationSpec,
     PreparedImage,
     PreparedOutput,
 )
@@ -30,7 +30,6 @@ from maestro.execution.preparation import (
 )
 from maestro.services.preparation import PreparationFailure, failure
 
-SPEC_DIGEST = "sha256:" + "5c" * 32
 DIGEST = "sha256:" + "17" * 32
 OTHER = "sha256:" + "18" * 32
 REGISTRY = "127.0.0.1:1"
@@ -224,30 +223,6 @@ def environment(tmp_path, docker):
     return env
 
 
-def build_entry(role="environment/main", context="environment") -> dict:
-    return {
-        "role": role,
-        "source": "build",
-        "context": context,
-        "dockerfile": "Dockerfile",
-        "args": {},
-        "target": None,
-        "definition_digest": "sha256:" + "de" * 32,
-    }
-
-
-def make_spec(tmp_path, kind="build", docker_image=None, known=None, **top) -> PreparationSpec:
-    task = tmp_path / "task"
-    (task / "environment").mkdir(parents=True, exist_ok=True)
-    (task / "environment" / "Dockerfile").write_text("FROM scratch\n")
-    if kind == "build":
-        entry = build_entry()
-    else:
-        entry = {"role": "environment/main", "source": "pull", "reference": docker_image}
-    spec = {"images": [entry], **top}
-    return PreparationSpec(SPEC_DIGEST, "demo", task, spec, known=known or {})
-
-
 def registry_answers(environment, digest=DIGEST):
     """The registry reports ``digest`` for any pushed tag and deletes what it is asked to."""
     deleted = []
@@ -261,10 +236,6 @@ def registry_answers(environment, digest=DIGEST):
     environment._registry_digest = reported
     environment._delete_manifest = delete
     return deleted
-
-
-async def no_progress(phase: str) -> None:
-    return None
 
 
 def prepare_error(environment, spec) -> PreparationError:

@@ -4,33 +4,12 @@ import asyncio
 import uuid
 
 import pytest
-from conftest import import_version
 from sqlalchemy import select, update
 from support import Api, running, setup_admin
+from support.datasets import import_version
 
 from maestro.db import schema as t
-from maestro.domain.states import Role
 from maestro.services.capacity import HostCapacity
-from maestro.services.principal import Channel, Principal
-
-
-@pytest.fixture
-def owner(service):
-    with service.db.write() as conn:
-        conn.execute(
-            t.users.insert().values(
-                id="usr_owner",
-                username="owner",
-                display_name="o",
-                role="member",
-                status="active",
-                password_hash="x",
-                revision=1,
-                created_at="t",
-                updated_at="t",
-            )
-        )
-    return Principal("usr_owner", "owner", Role.MEMBER, Channel.WEB_SESSION, session_id="s")
 
 
 def accept(service, owner, version_id, **body):

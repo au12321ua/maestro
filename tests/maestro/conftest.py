@@ -1,6 +1,5 @@
 """Isolated instances: fresh data, cache and master-key directories per test."""
 
-import asyncio
 import socket
 import subprocess
 import time
@@ -113,18 +112,69 @@ def service(settings, executor, store, source, environment):
     built.db.dispose()
 
 
-def import_version(service, namespace="demo", name="arith", ref="v1", **request) -> dict:
-    """Import and first-prepare through the real Operation code, outside the worker."""
-    return asyncio.run(
-        service.preparer.import_and_prepare(
-            {"source_kind": "fake", "namespace": namespace, "name": name, "ref": ref, **request},
-            None,
-        )
-    )
-
-
 @pytest.fixture
 def version_id(service, source):
     result = import_version(service)
     assert result["preparation"]["status"] == "succeeded", result
     return result["dataset_version_id"]
+
+
+import importlib
+import stat
+import sys
+
+import pytest
+from support.datasets import import_version
+from support.executor import FAKE_RUNNER
+from support.runner import RUNNER_SRC
+
+from maestro.db import schema as t
+from maestro.domain.states import Role
+from maestro.execution.materials import TaskMaterials
+from maestro.services.principal import Channel, Principal
+
+
+@pytest.fixture
+def owner(service):
+    with service.db.write() as conn:
+        conn.execute(
+            t.users.insert().values(
+                id="usr_owner",
+                username="owner",
+                display_name="o",
+                role="member",
+                status="active",
+                password_hash="x",
+                revision=1,
+                created_at="t",
+                updated_at="t",
+            )
+        )
+    return Principal("usr_owner", "owner", Role.MEMBER, Channel.WEB_SESSION, session_id="s")
+
+
+@pytest.fixture
+def agents():
+    sys.path.insert(0, str(RUNNER_SRC))
+    try:
+        module = importlib.import_module("maestro_runner.agents")
+        yield module
+    finally:
+        sys.path.remove(str(RUNNER_SRC))
+        module.ATTACHMENTS[:] = []
+        module.INSTALL.update(timeout_sec=None, report=None, env={})
+
+
+@pytest.fixture
+def materials(tmp_path):
+    return TaskMaterials(tmp_path / "cache")
+
+
+@pytest.fixture
+def runner_python(tmp_path):
+    """The executor runs ``<python> -I -m maestro_runner``; this wrapper ignores the
+    arguments and runs the scripted Runner instead."""
+    wrapper = tmp_path / "runner-python"
+    wrapper.write_text(f'#!/bin/sh\nexec "{sys.executable}" -I "{FAKE_RUNNER}"\n')
+    wrapper.chmod(wrapper.stat().st_mode | stat.S_IXUSR)
+    return wrapper

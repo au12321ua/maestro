@@ -13,29 +13,10 @@ from support import (
     submit,
     wait_operation,
 )
+from support.results import bin_entry, finished_run, purge
 
 from maestro.db import schema as t
 from maestro.testing.fakes import FakeDatasetSource
-
-
-def finished_run(api, version_id, **body) -> str:
-    response = submit(api, version_id, **body)
-    assert response.status_code == 202, response.text
-    accepted = response.json()["data"]
-    wait_operation(api, accepted["operation_id"])
-    return accepted["run_id"]
-
-
-def bin_entry(admin, object_id, state="recycled") -> dict:
-    entries = admin.get(f"/api/v1/admin/recycle-bin?state={state}").json()["data"]
-    return next(x for x in entries if x["object_id"] == object_id)
-
-
-def purge(admin, entry, confirm=None):
-    return admin.post(
-        f"/api/v1/admin/recycle-bin/{entry['id']}/purge",
-        json={"confirm_object_id": confirm or entry["object_id"]},
-    )
 
 
 def test_member_bins_own_run_admin_restores_and_purges(service, version_id, store):
@@ -327,7 +308,7 @@ def test_purging_a_version_reclaims_caches_except_shared_content(
 ):
     """Purge takes the version's preparation caches, local images and registry
     copies, and its task materials, but keeps what a remaining version still uses."""
-    from test_datasets import import_and_prepare, tasks_by_key
+    from support.datasets import import_and_prepare, tasks_by_key
 
     shared = FakeDatasetSource.task_files("demo", "pair", "shared")
     source.add("demo", "pair", "v1", ["shared", "only-v1"], files={"shared": shared})
@@ -355,7 +336,7 @@ def test_purging_a_version_reclaims_caches_except_shared_content(
 def test_imports_respect_the_recycle_bin(service, source):
     """A recycled version or dataset is restored, not imported again; after a purge
     the same content can be added as a new version (hand-over to)."""
-    from test_datasets import import_and_prepare, import_dataset, tasks_by_key
+    from support.datasets import import_and_prepare, import_dataset, tasks_by_key
 
     with running(service) as client:
         admin = setup_admin(service, client)

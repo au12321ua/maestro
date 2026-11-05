@@ -10,10 +10,9 @@ import tomllib
 from pathlib import Path
 
 import pytest
+from support import ROOT
 
 from maestro import config
-
-ROOT = Path(__file__).resolve().parents[2]
 
 
 def _load():

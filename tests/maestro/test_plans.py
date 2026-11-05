@@ -4,8 +4,7 @@ between the team policy and the request, fixed per run by revision."""
 import uuid
 
 from support import create_pat, invite_member, running, setup_admin, submit, wait_operation
-from test_configuration import agent_body, error, resolve
-from test_e2e_run import prepare_model
+from support.configuration import agent_body, error, prepare_model, resolve
 
 
 def create_plan(api, expect=201, **body):

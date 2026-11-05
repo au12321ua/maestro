@@ -11,7 +11,7 @@ import sys
 import pytest
 from sqlalchemy import select
 from support import invite_member, running, setup_admin, submit, wait_operation
-from test_harbor_executor import Cancel, RecordingDocker, RecordingSink, finished
+from support.executor import Cancel, RecordingDocker, RecordingSink, finished
 
 from maestro.boundaries.executor import RunSpec, TrialSpec
 from maestro.db import schema as t
