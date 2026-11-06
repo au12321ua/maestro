@@ -644,8 +644,9 @@ test("dataset upload: bad task, new dataset, new version, source boundary", asyn
 
   writeFileSync(toml, good);
   await choose.setInputFiles(folder);
+  await panel.getByLabel("标签（可选）").fill("v1");
   await panel.getByRole("button", { name: "上传并导入" }).click();
-  await expect(page.getByText(/^local\/bench@sha256:/)).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText("local/bench@v1")).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText("已准入 2 · 可提交 2")).toBeVisible({ timeout: 60_000 });
   // Uploaded datasets get versions only by upload; Hub datasets only from the Hub.
   const card = page.getByTestId("dataset-card").filter({ hasText: "local/bench" });
@@ -660,9 +661,28 @@ test("dataset upload: bad task, new dataset, new version, source boundary", asyn
     "新增 0 · 删除 0 · 内容变化 1 · 未变 1",
   );
   await expect(panel.getByText(/^沿用 local\/bench@/).first()).toBeVisible();
+  // Based on the newest version by default; the new one gets its own label.
+  await expect(panel.getByLabel("基于哪个版本")).toContainText("v1");
+  await panel.getByLabel("标签（可选）").fill("v2");
   await page.screenshot({ path: `${shots}/dataset-upload.png`, fullPage: true });
   await panel.getByRole("button", { name: "上传并导入" }).click();
   await expect(page.getByText("已导入新版本，首次准备已开始")).toBeVisible({ timeout: 60_000 });
+
+  // The version list says what each version is based on and how many tasks changed.
+  await expect(card.getByText("基于 v1 · 新增 0 · 删除 0 · 内容变化 1 · 未变 1")).toBeVisible();
+  await expect(page.getByText("local/bench@v2")).toBeVisible();
+  const relations = page.getByTestId("uploaded-version");
+  await expect(relations).toContainText("标签 v2 · 上传者 admin");
+  // Any two versions compare by task.
+  await page.getByText("与本数据集的另一版本比较").click();
+  await expect(page.getByTestId("version-compare")).toContainText("内容变化 1");
+  // The whole version downloads as a zip named after the label.
+  const zipLink = relations.getByRole("link", { name: "下载整个版本（zip）" });
+  const zip = await page.request.get(new URL((await zipLink.getAttribute("href"))!, page.url()).href);
+  expect(zip.status()).toBe(200);
+  expect(zip.headers()["content-disposition"]).toContain("bench-v2.zip");
+  expect((await zip.body()).subarray(0, 2).toString()).toBe("PK");
+  await page.screenshot({ path: `${shots}/dataset-versions.png`, fullPage: true });
 
   // A Hub dataset's name cannot be taken by an upload.
   await page.getByRole("button", { name: "上传数据集" }).click();
@@ -818,6 +838,95 @@ test("copying a collection edits fixed resources through the configuration form"
   expect(body.base.request.timeouts.verifier_sec).toBe(30.5);
   await expect(page.getByText("old run：资源与时限不同")).toBeVisible();
   await expect(page.getByRole("link", { name: "打开新集合" })).toHaveAttribute("href", "/collections/col_2");
+});
+
+// Copying a collection to another version of its dataset keeps held-out marks on the same
+// tasks (same key and content) and lists the others to choose again; read summaries say
+// which version a read was on and whether that version's content differed.
+test("held-out marks across dataset versions", async ({ page }) => {
+  const task = (id: string, version: string, key: string, digest: string) => ({
+    id, dataset_version_id: version, task_key: key, admission: null, can_submit: true,
+    content: { digest, material_digest: null, availability: "available", checked_at: null,
+      resources: [] },
+    local_preparation: { id: null, location_id: "host", cache_state: "ready",
+      last_restore_error: null, operation_id: null, prepared_at: null, last_used_at: null,
+      setup_network_revision: null },
+    spec_digest: "sha256:s", resources: { cpus: 1, memory_mb: 1024, storage_mb: null,
+      constraint_strength: "unknown", environments: [] },
+    timeouts: { agent_sec: 60, verifier_sec: 60, build_sec: null }, parameters: [],
+    required_parameters: [], blockers: [], warnings: [], required_preparation: [],
+  });
+  const version = (id: string, label: string) => ({
+    id, dataset_id: "ds_1", upstream_ref: `sha256:${id}`, ref_kind: "digest",
+    resolved_digest: `sha256:${id}`, materialization_digest: null, status: "ready",
+    description: "", created_at: id === "dsv_1" ? "2026-10-22T00:00:00Z" : "2026-10-23T00:00:00Z",
+    created_by: "usr_1", created_by_username: "u", operation_id: null, task_count: 3,
+    admitted_task_count: 3, submittable_task_count: 3, cache_ready_task_count: 3,
+    label, based_on_version_id: id === "dsv_2" ? "dsv_1" : null, changes_from_base: null,
+  });
+  const collection = {
+    id: "col_1", name: "held", description: "", scenario: "models",
+    variable_dimensions: ["model"], fixed: {}, fixed_labels: {}, owner_username: "u",
+    run_count: 0,
+    template: { dataset_version_id: "dsv_1", execution_mode: "agent",
+      harness_version_id: "har_1", repetitions: 1 },
+    members: [], allowed_actions: ["copy"], deletion: null,
+    held_out_task_ids: ["t1_b", "t1_c"], held_out_task_keys: ["b", "c"], current_best: null,
+    settings: comparisonFixture.settings, base_run_id: null, copied_from: null,
+    created_at: "2026-10-22T00:00:00Z",
+  };
+  const read = (taskId: string, versionId: string, changed: boolean) => ({
+    task_id: taskId, dataset_version_id: versionId, content_changed: changed,
+    reader_id: "usr_2", reader_username: "alice", channel: "web_session", channel_id: "web",
+    category: "task_files", first_read_at: "2026-10-23T00:00:00Z",
+    last_read_at: "2026-10-23T00:00:00Z", count: 1,
+  });
+  await serveFixtures(page, {
+    ...sessionRoutes,
+    "/api/v1/collections/col_1": collection,
+    "/api/v1/collections/col_1/comparison": comparisonFixture,
+    "/api/v1/collections/col_1/events": [], "/api/v1/analysis-snapshots": [],
+    "/api/v1/collections/col_1/held-out": [
+      { task_id: "t1_b", task_key: "b", read_since_creation: true, accepted_runs: 0,
+        reads: [read("t2_b", "dsv_2", false)] },
+      { task_id: "t1_c", task_key: "c", read_since_creation: false, accepted_runs: 0,
+        reads: [read("t2_c", "dsv_2", true)] },
+    ],
+    "/api/v1/plans": [], "/api/v1/credentials": [], "/api/v1/attachments": [],
+    "/api/v1/model-configs": [{ id: "mdl_1", name: "model", protocol: "openai", revision: 1 }],
+    "/api/v1/harness-versions": [{ id: "har_1", name: "harness", version: "1", enabled: true,
+      protocols: ["openai"], parameter_schema: { parameters: {} } }],
+    "/api/v1/datasets": [{ id: "ds_1", namespace: "local", name: "bench", source_kind: "upload",
+      credential_id: null, description: "",
+      versions: [version("dsv_2", "v2"), version("dsv_1", "v1")] }],
+    "/api/v1/dataset-versions/dsv_1/tasks": [
+      task("t1_a", "dsv_1", "a", "sha256:a"), task("t1_b", "dsv_1", "b", "sha256:b"),
+      task("t1_c", "dsv_1", "c", "sha256:c1"),
+    ],
+    "/api/v1/dataset-versions/dsv_2/tasks": [
+      task("t2_a", "dsv_2", "a", "sha256:a"), task("t2_b", "dsv_2", "b", "sha256:b"),
+      task("t2_c", "dsv_2", "c", "sha256:c2"),
+    ],
+  });
+  await page.goto("/collections/col_1");
+  const heldOut = page.getByText("另一版本").first();
+  await expect(heldOut).toBeVisible();
+  await expect(page.getByText("同一道题")).toBeVisible();
+  await expect(page.getByText("内容已变，不算读过本题")).toBeVisible();
+  await expect(page.getByText("题目文件（整版下载）").first()).toBeVisible();
+
+  await page.goto("/runs/new?copy_collection=col_1");
+  await expect(page.locator("#run-version option:checked")).toContainText("v1");
+  await page.locator("#run-version").selectOption("dsv_2");
+  const dropped = page.getByTestId("held-out-dropped");
+  await expect(dropped).toContainText("c（内容已变）");
+  await expect(dropped).not.toContainText("b（");
+  const copied = page.waitForRequest((r) => r.url().endsWith("/collections/col_1/copy"));
+  await page.route("**/api/v1/collections/col_1/copy", (route) => route.fulfill({ json: { meta,
+    data: { ...collection, id: "col_2", not_carried: [], held_out_not_carried: [] } } }));
+  await page.getByLabel("新集合名称").fill("held v2");
+  await page.getByRole("button", { name: "建立副本" }).click();
+  expect((await copied).postDataJSON().held_out_task_ids).toEqual(["t2_b"]);
 });
 
 // Records sections further down a page are reached from a button at its top; a dataset

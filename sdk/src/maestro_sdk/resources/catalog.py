@@ -7,7 +7,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from maestro_sdk import models
-from maestro_sdk._transport import _Resource
+from maestro_sdk._transport import _Resource, _save
 from maestro_sdk.errors import ContentMismatch
 from maestro_sdk.resources.attachments import _describe, files_digest
 
@@ -19,7 +19,13 @@ class Catalog(_Resource):
         return self._c._get("dataset-sources", list[models.DatasetSource])
 
     def upload(
-        self, directory: str | os.PathLike[str], *, namespace: str, name: str
+        self,
+        directory: str | os.PathLike[str],
+        *,
+        namespace: str,
+        name: str,
+        label: str | None = None,
+        based_on: str | None = None,
     ) -> models.Operation:
         """Upload Harbor task subdirectories as-is and start import and first preparation.
 
@@ -27,6 +33,8 @@ class Catalog(_Resource):
         operation; its result identifies the dataset version and preparation operation.
         Repeating the same content resolves to the same version within this dataset.
         Task validation errors are reported per task in the import operation.
+        Labels and provenance are immutable; for repeated content, result.ignored
+        names the supplied metadata that was not applied to the existing version.
         """
         root = Path(directory)
         if root.is_symlink() or not root.is_dir():
@@ -54,7 +62,13 @@ class Catalog(_Resource):
             "POST",
             "dataset-uploads",
             retry=True,
-            json={"namespace": namespace, "name": name, "files": listed},
+            json={
+                "namespace": namespace,
+                "name": name,
+                "files": listed,
+                "label": label,
+                "based_on": based_on,
+            },
         )
         operation = self._c._parse(models.Operation, response.json()["data"])
         if operation.progress.request.ref != files_digest(listed):
@@ -76,6 +90,10 @@ class Catalog(_Resource):
 
     def preparation(self, preparation_id: str) -> models.Preparation:
         return self._c._get(f"preparations/{preparation_id}", models.Preparation)
+
+    def download(self, version_id: str, destination: str | os.PathLike[str]) -> Path:
+        """Save an uploaded version's zip to a file; records reading all its tasks."""
+        return _save(self._c, f"dataset-versions/{version_id}/archive", Path(destination))
 
     def task(self, task_id: str) -> models.TaskDetail:
         """Read the instruction; the service records this content read."""

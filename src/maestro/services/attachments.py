@@ -13,10 +13,7 @@ runs.
 
 from __future__ import annotations
 
-import os
 import shutil
-import tempfile
-import zipfile
 from datetime import timedelta
 from pathlib import Path
 
@@ -36,6 +33,7 @@ from maestro.execution.attachments import (
     display,
 )
 from maestro.services import audit, deleted
+from maestro.services.file_archive import write_archive
 from maestro.services.principal import (
     Principal,
     require_content_upload,
@@ -480,27 +478,7 @@ class Attachments:
         with self.db.read() as conn:
             row = self._readable(conn, attachment_id)
         folder = f"{row['name']}-{display(row['label'], row['content_digest'])}"
-        self.store.root.mkdir(parents=True, exist_ok=True)
-        handle, name = tempfile.mkstemp(prefix=".archive-", suffix=".zip", dir=self.store.root)
-        os.close(handle)
-        target = Path(name)
-        try:
-            with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as archive:
-                for entry in row["files_json"]:
-                    blob = self.store.blob(entry["sha256"])
-                    if blob is None:
-                        raise MaestroError(
-                            "ATTACHMENT_CONTENT_MISSING", "The stored content is gone", 410
-                        )
-                    info = zipfile.ZipInfo(f"{folder}/{entry['path']}")
-                    info.compress_type = zipfile.ZIP_DEFLATED
-                    mode = 0o755 if entry["executable"] else 0o644
-                    info.external_attr = (0o100000 | mode) << 16
-                    with blob.open("rb") as source, archive.open(info, "w") as sink:
-                        shutil.copyfileobj(source, sink, 1 << 20)
-        except BaseException:
-            target.unlink(missing_ok=True)
-            raise
+        target = write_archive(self.store, row["files_json"], folder, "ATTACHMENT_CONTENT_MISSING")
         return target, f"{folder}.zip"
 
     def diff(self, principal: Principal, attachment_id: str, base_id: str | None) -> dict:

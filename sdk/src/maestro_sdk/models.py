@@ -502,27 +502,6 @@ class DatasetUploadFile(BaseModel):
     sha256: Annotated[str, Field(description="Lowercase hex")]
 
 
-class DatasetVersion(BaseModel):
-    model_config = ConfigDict(
-        extra="allow",
-    )
-    admitted_task_count: int
-    cache_ready_task_count: int
-    created_at: str
-    created_by: str | None
-    dataset_id: str
-    description: str
-    id: str
-    materialization_digest: str | None
-    operation_id: str | None
-    ref_kind: str
-    resolved_digest: str
-    status: Literal["ready"]
-    submittable_task_count: int
-    task_count: int
-    upstream_ref: str
-
-
 class DatasetVersionFile(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -789,6 +768,14 @@ class Health(BaseModel):
     status: Literal["alive", "ready", "maintenance"]
 
 
+class HeldOutNotCarried(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    reason: Literal["changed", "removed", "other_dataset"]
+    task_key: str
+
+
 class HostCapacityView(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -803,7 +790,9 @@ class ImportRequest(BaseModel):
         extra="allow",
     )
     accept_changed_content: bool
+    based_on: str | None
     credential_id: str | None
+    label: str | None
     name: str
     namespace: str
     prepare: bool
@@ -817,6 +806,7 @@ class ImportResult(BaseModel):
     )
     dataset_version_id: str
     existing: Annotated[bool, Field(description="The same version was imported before")]
+    ignored: list[Literal["label", "based_on"]] | None = None
     preparation_operation_id: str | None = None
 
 
@@ -1782,6 +1772,16 @@ class TaskAdmission(BaseModel):
     state: Literal["pending", "admitted", "first_failed", "revoked"]
 
 
+class TaskChanges(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    added: int
+    changed: int
+    removed: int
+    same: int
+
+
 class TaskContent(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -1797,10 +1797,12 @@ class TaskRead(BaseModel):
     model_config = ConfigDict(
         extra="allow",
     )
-    category: Literal["instruction", "trial_artifacts"]
+    category: Literal["instruction", "trial_artifacts", "task_files"]
     channel: Literal["pat", "web_session"]
     channel_id: str
+    content_changed: bool
     count: int
+    dataset_version_id: str
     first_read_at: str
     last_read_at: str
     reader_id: str
@@ -2334,31 +2336,45 @@ class ConfigRequestOutput(BaseModel):
     timeouts: TimeoutOverrides
 
 
-class Dataset(BaseModel):
-    model_config = ConfigDict(
-        extra="allow",
-    )
-    credential_id: str | None
-    description: str
-    id: str
-    name: str
-    namespace: str
-    source_kind: str
-    versions: list[DatasetVersion]
-
-
 class DatasetUpload(BaseModel):
     model_config = ConfigDict(
         extra="allow",
     )
+    based_on: str | None = None
     files: Annotated[
         list[DatasetUploadFile],
         Field(
             description="Harbor task directories as relative paths; upload missing attachment contents first"
         ),
     ]
+    label: str | None = None
     name: str
     namespace: str
+
+
+class DatasetVersion(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    admitted_task_count: int
+    based_on_version_id: str | None
+    cache_ready_task_count: int
+    changes_from_base: TaskChanges | None
+    created_at: str
+    created_by: str | None
+    created_by_username: str | None
+    dataset_id: str
+    description: str
+    id: str
+    label: str | None
+    materialization_digest: str | None
+    operation_id: str | None
+    ref_kind: str
+    resolved_digest: str
+    status: Literal["ready"]
+    submittable_task_count: int
+    task_count: int
+    upstream_ref: str
 
 
 class DatasetVersionDetail(BaseModel):
@@ -2366,9 +2382,12 @@ class DatasetVersionDetail(BaseModel):
         extra="allow",
     )
     admitted_task_count: int
+    based_on_version_id: str | None
     cache_ready_task_count: int
+    changes_from_base: TaskChanges | None
     created_at: str
     created_by: str | None
+    created_by_username: str | None
     dataset_id: str
     deletion: Annotated[
         DeletionState | None,
@@ -2377,6 +2396,7 @@ class DatasetVersionDetail(BaseModel):
     description: str
     first_preparation_operation_id: str | None
     id: str
+    label: str | None
     materialization_digest: str | None
     name: str
     namespace: str
@@ -2727,14 +2747,6 @@ class EnvelopeListDatasetVersionFile(BaseModel):
         extra="allow",
     )
     data: list[DatasetVersionFile]
-    meta: Meta
-
-
-class EnvelopeListDataset(BaseModel):
-    model_config = ConfigDict(
-        extra="allow",
-    )
-    data: list[Dataset]
     meta: Meta
 
 
@@ -3711,6 +3723,19 @@ class ConfigBlocker(BaseModel):
     trial_count: Annotated[int | None, Field(description="RUN_TOO_LARGE")] = None
 
 
+class Dataset(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    credential_id: str | None
+    description: str
+    id: str
+    name: str
+    namespace: str
+    source_kind: str
+    versions: list[DatasetVersion]
+
+
 class DatasetImportOperation(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -3818,6 +3843,14 @@ class EnvelopeListBatch(BaseModel):
         extra="allow",
     )
     data: list[Batch]
+    meta: Meta
+
+
+class EnvelopeListDataset(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: list[Dataset]
     meta: Meta
 
 
@@ -4234,6 +4267,10 @@ class Collection(BaseModel):
         Field(description="Fixed dimensions and their values"),
     ]
     fixed_labels: dict[str, str]
+    held_out_not_carried: Annotated[
+        list[HeldOutNotCarried],
+        Field(description="After a copy: held-out tasks left behind and why"),
+    ]
     held_out_task_ids: list[str]
     held_out_task_keys: list[str]
     id: str

@@ -2013,6 +2013,14 @@
             "title": "Fixed Labels",
             "type": "object"
           },
+          "held_out_not_carried": {
+            "description": "After a copy: held-out tasks left behind and why",
+            "items": {
+              "$ref": "#/components/schemas/HeldOutNotCarried"
+            },
+            "title": "Held Out Not Carried",
+            "type": "array"
+          },
           "held_out_task_ids": {
             "items": {
               "type": "string"
@@ -2145,7 +2153,8 @@
           "allowed_actions",
           "members",
           "deletion",
-          "not_carried"
+          "not_carried",
+          "held_out_not_carried"
         ],
         "title": "Collection",
         "type": "object"
@@ -5051,6 +5060,17 @@
       "DatasetUpload": {
         "additionalProperties": false,
         "properties": {
+          "based_on": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Based On"
+          },
           "files": {
             "description": "Harbor task directories as relative paths; upload missing attachment contents first",
             "items": {
@@ -5058,6 +5078,17 @@
             },
             "title": "Files",
             "type": "array"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
           },
           "name": {
             "title": "Name",
@@ -5109,9 +5140,30 @@
             "title": "Admitted Task Count",
             "type": "integer"
           },
+          "based_on_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Based On Version Id"
+          },
           "cache_ready_task_count": {
             "title": "Cache Ready Task Count",
             "type": "integer"
+          },
+          "changes_from_base": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaskChanges"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "created_at": {
             "title": "Created At",
@@ -5128,6 +5180,17 @@
             ],
             "title": "Created By"
           },
+          "created_by_username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Username"
+          },
           "dataset_id": {
             "title": "Dataset Id",
             "type": "string"
@@ -5139,6 +5202,17 @@
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
           },
           "materialization_digest": {
             "anyOf": [
@@ -5199,6 +5273,10 @@
           "description",
           "created_at",
           "created_by",
+          "created_by_username",
+          "label",
+          "based_on_version_id",
+          "changes_from_base",
           "operation_id",
           "task_count",
           "admitted_task_count",
@@ -5215,9 +5293,30 @@
             "title": "Admitted Task Count",
             "type": "integer"
           },
+          "based_on_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Based On Version Id"
+          },
           "cache_ready_task_count": {
             "title": "Cache Ready Task Count",
             "type": "integer"
+          },
+          "changes_from_base": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaskChanges"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "created_at": {
             "title": "Created At",
@@ -5233,6 +5332,17 @@
               }
             ],
             "title": "Created By"
+          },
+          "created_by_username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Username"
           },
           "dataset_id": {
             "title": "Dataset Id",
@@ -5267,6 +5377,17 @@
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
           },
           "materialization_digest": {
             "anyOf": [
@@ -5343,6 +5464,10 @@
           "description",
           "created_at",
           "created_by",
+          "created_by_username",
+          "label",
+          "based_on_version_id",
+          "changes_from_base",
           "operation_id",
           "task_count",
           "admitted_task_count",
@@ -9120,6 +9245,30 @@
         "title": "Health",
         "type": "object"
       },
+      "HeldOutNotCarried": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "enum": [
+              "changed",
+              "removed",
+              "other_dataset"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "task_key": {
+            "title": "Task Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_key",
+          "reason"
+        ],
+        "title": "HeldOutNotCarried",
+        "type": "object"
+      },
       "HeldOutTask": {
         "additionalProperties": false,
         "properties": {
@@ -9237,6 +9386,17 @@
             "title": "Accept Changed Content",
             "type": "boolean"
           },
+          "based_on": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Based On"
+          },
           "credential_id": {
             "anyOf": [
               {
@@ -9247,6 +9407,17 @@
               }
             ],
             "title": "Credential Id"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
           },
           "name": {
             "title": "Name",
@@ -9276,7 +9447,9 @@
           "ref",
           "credential_id",
           "accept_changed_content",
-          "prepare"
+          "prepare",
+          "label",
+          "based_on"
         ],
         "title": "ImportRequest",
         "type": "object"
@@ -9292,6 +9465,17 @@
             "description": "The same version was imported before",
             "title": "Existing",
             "type": "boolean"
+          },
+          "ignored": {
+            "items": {
+              "enum": [
+                "label",
+                "based_on"
+              ],
+              "type": "string"
+            },
+            "title": "Ignored",
+            "type": "array"
           },
           "preparation_operation_id": {
             "anyOf": [
@@ -16482,6 +16666,35 @@
         "title": "TaskBlocker",
         "type": "object"
       },
+      "TaskChanges": {
+        "additionalProperties": false,
+        "properties": {
+          "added": {
+            "title": "Added",
+            "type": "integer"
+          },
+          "changed": {
+            "title": "Changed",
+            "type": "integer"
+          },
+          "removed": {
+            "title": "Removed",
+            "type": "integer"
+          },
+          "same": {
+            "title": "Same",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "added",
+          "removed",
+          "changed",
+          "same"
+        ],
+        "title": "TaskChanges",
+        "type": "object"
+      },
       "TaskContent": {
         "additionalProperties": false,
         "properties": {
@@ -16658,7 +16871,8 @@
           "category": {
             "enum": [
               "instruction",
-              "trial_artifacts"
+              "trial_artifacts",
+              "task_files"
             ],
             "title": "Category",
             "type": "string"
@@ -16675,9 +16889,17 @@
             "title": "Channel Id",
             "type": "string"
           },
+          "content_changed": {
+            "title": "Content Changed",
+            "type": "boolean"
+          },
           "count": {
             "title": "Count",
             "type": "integer"
+          },
+          "dataset_version_id": {
+            "title": "Dataset Version Id",
+            "type": "string"
           },
           "first_read_at": {
             "title": "First Read At",
@@ -16702,6 +16924,8 @@
         },
         "required": [
           "task_id",
+          "dataset_version_id",
+          "content_changed",
           "reader_id",
           "reader_username",
           "channel",
@@ -21771,6 +21995,45 @@
           }
         },
         "summary": "Get Dataset Version",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/v1/dataset-versions/{version_id}/archive": {
+      "get": {
+        "description": "Download original uploaded files and record a task_files read for every task.",
+        "operationId": "download_dataset_version_archive",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/zip": {}
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Download Dataset Version Archive",
         "tags": [
           "catalog"
         ]

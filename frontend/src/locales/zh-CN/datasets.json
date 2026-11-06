@@ -188,6 +188,21 @@
     "tasksInvalid": "{{count}} 道题没有通过检查：",
     "taskError": "{{task}}：{{message}}",
     "failed": "导入失败：{{message}}",
-    "notRecorded": "没有登记版本；修好后重新上传，已上传的文件不会再传。"
+    "notRecorded": "没有登记版本；修好后重新上传，已上传的文件不会再传。",
+    "label": "标签（可选）",
+    "labelPlaceholder": "例如 v2、fix-task-3",
+    "basedOn": "基于哪个版本",
+    "newest": "（最新）",
+    "noBase": "不基于已有版本",
+    "ignored": "内容与已有版本相同：这次填的标签与“基于”没有生效。"
+  },
+  "versions": {
+    "compare": "与本数据集的另一版本比较",
+    "changes": "新增 {{added}} · 删除 {{removed}} · 内容变化 {{changed}} · 未变 {{same}}",
+    "uploadedBy": "标签 {{label}} · 上传者 {{user}} · {{time}}",
+    "noLabel": "（无）",
+    "basedOn": "基于 {{base}}",
+    "download": "下载整个版本（zip）",
+    "downloadHint": "包含各题的题面、参考解与验证代码；下载会为你记下这个版本每道题的读取（留出集可见）。解开后可修改并重新上传。"
   }
 }

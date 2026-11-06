@@ -35,7 +35,7 @@ from maestro.domain.comparison import (
 )
 from maestro.domain.scoring import contract_for, snapshot_contract
 from maestro.domain.states import RUN_TERMINAL, PatPermission
-from maestro.services import audit, deleted, task_reads
+from maestro.services import audit, deleted, task_identity, task_reads
 from maestro.services.configuration import (
     Blocker,
     Resolution,
@@ -469,6 +469,46 @@ def _validate_held_out(conn, version_id, raw) -> list[str]:
     return ids
 
 
+def _carry_held_out(conn, task_ids, old_version, new_version):
+    datasets = dict(
+        conn.execute(
+            select(t.dataset_versions.c.id, t.dataset_versions.c.dataset_id).where(
+                t.dataset_versions.c.id.in_([old_version, new_version])
+            )
+        ).all()
+    )
+    same_dataset = datasets[old_version] == datasets[new_version]
+    after = {
+        row.task_key: row
+        for row in conn.execute(
+            select(t.tasks.c.id, t.tasks.c.task_key, t.tasks.c.content_digest).where(
+                t.tasks.c.dataset_version_id == new_version
+            )
+        )
+    }
+    carried, omitted = [], []
+    for task in conn.execute(
+        select(t.tasks.c.task_key, t.tasks.c.content_digest)
+        .where(t.tasks.c.id.in_(task_ids))
+        .order_by(t.tasks.c.task_key)
+    ):
+        target = after.get(task.task_key)
+        if same_dataset and target and target.content_digest == task.content_digest:
+            carried.append(target.id)
+        else:
+            omitted.append(
+                {
+                    "task_key": task.task_key,
+                    "reason": "other_dataset"
+                    if not same_dataset
+                    else "changed"
+                    if target
+                    else "removed",
+                }
+            )
+    return carried, omitted
+
+
 class Comparisons:
     def __init__(self, db: Database):
         self.db = db
@@ -638,29 +678,38 @@ class Collections:
             ids = row["held_out_task_ids_json"]
             if not ids:
                 return []
-            reads = task_reads.summaries(conn, ids)
-            counts = dict(
-                conn.execute(
-                    select(t.trials.c.task_id, func.count(func.distinct(t.runs.c.id)))
-                    .join(t.runs, t.runs.c.id == t.trials.c.run_id)
-                    .where(t.trials.c.task_id.in_(ids), t.runs.c.accepted_at >= row["created_at"])
-                    .group_by(t.trials.c.task_id)
-                ).all()
-            )
+            relationships = task_identity.related(conn, ids)
+            reads = task_reads.by_task(conn, ids, relationships)
+            origins = {
+                target: {origin for origin, changed in related.items() if not changed}
+                for target, related in relationships.items()
+            }
+            origin_ids = set().union(*origins.values())
+            accepted = {origin: set() for origin in origin_ids}
+            for task_id, run_id in conn.execute(
+                select(t.trials.c.task_id, t.runs.c.id)
+                .join(t.runs, t.runs.c.id == t.trials.c.run_id)
+                .where(
+                    t.trials.c.task_id.in_(origin_ids), t.runs.c.accepted_at >= row["created_at"]
+                )
+                .distinct()
+            ):
+                accepted[task_id].add(run_id)
+            versions = select(t.tasks.c.dataset_version_id).where(t.tasks.c.id.in_(origin_ids))
             receipts = conn.execute(
-                select(t.deletions.c.detail_json)
+                select(t.runs.c.id, t.deletions.c.detail_json)
                 .join(t.runs, t.runs.c.id == t.deletions.c.object_id)
                 .where(
                     t.deletions.c.object_type == "run",
                     t.deletions.c.state == deleted.PURGED,
-                    t.runs.c.dataset_version_id == row["template_json"]["dataset_version_id"],
+                    t.runs.c.dataset_version_id.in_(versions),
                     t.runs.c.accepted_at >= row["created_at"],
                 )
-            ).scalars()
-            for receipt in receipts:
+            )
+            for run_id, receipt in receipts:
                 for task_id in (receipt.get("purged") or {}).get("task_ids", []):
-                    if task_id in ids:
-                        counts[task_id] = counts.get(task_id, 0) + 1
+                    if task_id in accepted:
+                        accepted[task_id].add(run_id)
             tasks = conn.execute(
                 select(t.tasks.c.id, t.tasks.c.task_key)
                 .where(t.tasks.c.id.in_(ids))
@@ -670,12 +719,14 @@ class Collections:
                 {
                     "task_id": task.id,
                     "task_key": task.task_key,
-                    "reads": [r for r in reads if r["task_id"] == task.id],
+                    "reads": reads[task.id],
                     "read_since_creation": any(
-                        r["task_id"] == task.id and r["last_read_at"] >= row["created_at"]
-                        for r in reads
+                        not r["content_changed"] and r["last_read_at"] >= row["created_at"]
+                        for r in reads[task.id]
                     ),
-                    "accepted_runs": counts.get(task.id, 0),
+                    "accepted_runs": len(
+                        set().union(*(accepted[origin] for origin in origins[task.id]))
+                    ),
                 }
                 for task in tasks
             ]
@@ -1049,6 +1100,18 @@ class Collections:
                 template = template_of(row["template_json"], variable)
                 base_run_id = row["base_run_id"]
             settings = check_settings(body.get("settings"), variable)
+            held_out = body.get("held_out_task_ids", row["held_out_task_ids_json"])
+            held_out_not_carried = []
+            if (
+                "held_out_task_ids" not in body
+                and template["dataset_version_id"] != row["template_json"]["dataset_version_id"]
+            ):
+                held_out, held_out_not_carried = _carry_held_out(
+                    conn,
+                    row["held_out_task_ids_json"],
+                    row["template_json"]["dataset_version_id"],
+                    template["dataset_version_id"],
+                )
             new = self._insert(
                 conn,
                 principal,
@@ -1060,7 +1123,7 @@ class Collections:
                 base_run_id,
                 settings,
                 copied_from=collection_id,
-                held_out_task_ids=body.get("held_out_task_ids", row["held_out_task_ids_json"]),
+                held_out_task_ids=held_out,
             )
             members = self._members(conn, collection_id)
             run_deletions = deleted.states(conn, "run", [m["run_id"] for m in members])
@@ -1091,7 +1154,11 @@ class Collections:
                         member["label"],
                         {"copied_from": collection_id},
                     )
-        return {**self.get(principal, new), "not_carried": not_carried}
+        return {
+            **self.get(principal, new),
+            "not_carried": not_carried,
+            "held_out_not_carried": held_out_not_carried,
+        }
 
     def set_current_best(self, principal: Principal, collection_id: str, body: dict) -> dict:
         require_experiment(principal)

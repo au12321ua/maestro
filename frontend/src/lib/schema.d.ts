@@ -1394,6 +1394,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/dataset-versions/{version_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Dataset Version Archive
+         * @description Download original uploaded files and record a task_files read for every task.
+         */
+        get: operations["download_dataset_version_archive"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/dataset-versions/{version_id}/files": {
         parameters: {
             query?: never;
@@ -2986,6 +3006,11 @@ export interface components {
             fixed_labels: {
                 [key: string]: string;
             };
+            /**
+             * Held Out Not Carried
+             * @description After a copy: held-out tasks left behind and why
+             */
+            held_out_not_carried: components["schemas"]["HeldOutNotCarried"][];
             /** Held Out Task Ids */
             held_out_task_ids: string[];
             /** Held Out Task Keys */
@@ -3970,11 +3995,15 @@ export interface components {
         };
         /** DatasetUpload */
         DatasetUpload: {
+            /** Based On */
+            based_on?: string | null;
             /**
              * Files
              * @description Harbor task directories as relative paths; upload missing attachment contents first
              */
             files: components["schemas"]["DatasetUploadFile"][];
+            /** Label */
+            label?: string | null;
             /** Name */
             name: string;
             /** Namespace */
@@ -3999,18 +4028,25 @@ export interface components {
         DatasetVersion: {
             /** Admitted Task Count */
             admitted_task_count: number;
+            /** Based On Version Id */
+            based_on_version_id: string | null;
             /** Cache Ready Task Count */
             cache_ready_task_count: number;
+            changes_from_base: components["schemas"]["TaskChanges"] | null;
             /** Created At */
             created_at: string;
             /** Created By */
             created_by: string | null;
+            /** Created By Username */
+            created_by_username: string | null;
             /** Dataset Id */
             dataset_id: string;
             /** Description */
             description: string;
             /** Id */
             id: string;
+            /** Label */
+            label: string | null;
             /** Materialization Digest */
             materialization_digest: string | null;
             /** Operation Id */
@@ -4035,12 +4071,17 @@ export interface components {
         DatasetVersionDetail: {
             /** Admitted Task Count */
             admitted_task_count: number;
+            /** Based On Version Id */
+            based_on_version_id: string | null;
             /** Cache Ready Task Count */
             cache_ready_task_count: number;
+            changes_from_base: components["schemas"]["TaskChanges"] | null;
             /** Created At */
             created_at: string;
             /** Created By */
             created_by: string | null;
+            /** Created By Username */
+            created_by_username: string | null;
             /** Dataset Id */
             dataset_id: string;
             /** @description Set when the version or its dataset was deleted; it still resolves */
@@ -4051,6 +4092,8 @@ export interface components {
             first_preparation_operation_id: string | null;
             /** Id */
             id: string;
+            /** Label */
+            label: string | null;
             /** Materialization Digest */
             materialization_digest: string | null;
             /** Name */
@@ -5246,6 +5289,16 @@ export interface components {
              */
             status: "alive" | "ready" | "maintenance";
         };
+        /** HeldOutNotCarried */
+        HeldOutNotCarried: {
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "changed" | "removed" | "other_dataset";
+            /** Task Key */
+            task_key: string;
+        };
         /** HeldOutTask */
         HeldOutTask: {
             /** Accepted Runs */
@@ -5282,8 +5335,12 @@ export interface components {
         ImportRequest: {
             /** Accept Changed Content */
             accept_changed_content: boolean;
+            /** Based On */
+            based_on: string | null;
             /** Credential Id */
             credential_id: string | null;
+            /** Label */
+            label: string | null;
             /** Name */
             name: string;
             /** Namespace */
@@ -5304,6 +5361,8 @@ export interface components {
              * @description The same version was imported before
              */
             existing: boolean;
+            /** Ignored */
+            ignored?: ("label" | "based_on")[];
             /** Preparation Operation Id */
             preparation_operation_id?: string | null;
         };
@@ -7627,6 +7686,17 @@ export interface components {
             /** Value */
             value?: number | null;
         };
+        /** TaskChanges */
+        TaskChanges: {
+            /** Added */
+            added: number;
+            /** Changed */
+            changed: number;
+            /** Removed */
+            removed: number;
+            /** Same */
+            same: number;
+        };
         /** TaskContent */
         TaskContent: {
             /**
@@ -7682,7 +7752,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "instruction" | "trial_artifacts";
+            category: "instruction" | "trial_artifacts" | "task_files";
             /**
              * Channel
              * @enum {string}
@@ -7690,8 +7760,12 @@ export interface components {
             channel: "pat" | "web_session";
             /** Channel Id */
             channel_id: string;
+            /** Content Changed */
+            content_changed: boolean;
             /** Count */
             count: number;
+            /** Dataset Version Id */
+            dataset_version_id: string;
             /** First Read At */
             first_read_at: string;
             /** Last Read At */
@@ -10828,6 +10902,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Envelope_DatasetVersionDetail_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    download_dataset_version_archive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": unknown;
                 };
             };
             /** @description Structured error */

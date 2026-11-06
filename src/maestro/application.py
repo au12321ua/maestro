@@ -146,7 +146,7 @@ class Maestro:
             pats=Pats(db),
             credentials=credentials,
             operations=Operations(db),
-            catalog=Catalog(db, location),
+            catalog=Catalog(db, location, attachment_store),
             datasets=Datasets(db, sources, credentials, attachment_store),
             runs=runs,
             policies=Policies(db),

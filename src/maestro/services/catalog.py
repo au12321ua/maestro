@@ -11,8 +11,11 @@ from maestro.core.errors import MaestroError, not_found
 from maestro.db import schema as t
 from maestro.db.engine import Database
 from maestro.domain import scoring
+from maestro.execution.attachments import display
 from maestro.execution.materials import configuration_blockers, required_parameters
 from maestro.services import deleted, pagination, task_reads
+from maestro.services.dataset_versions import not_purged
+from maestro.services.file_archive import write_archive
 from maestro.services.principal import Principal
 
 ADMITTED = "admitted"
@@ -173,9 +176,10 @@ def task_view(task, admission, availability: dict, preparation, location_id: str
 
 
 class Catalog:
-    def __init__(self, db: Database, location_id: str = "local-docker"):
+    def __init__(self, db: Database, location_id: str = "local-docker", store=None):
         self.db = db
         self.location_id = location_id
+        self.store = store
 
     def list_datasets(self, cursor: str | None, limit: int | None) -> tuple[list, str | None]:
         limit = pagination.check_limit(limit)
@@ -194,14 +198,19 @@ class Catalog:
             rows, next_cursor = pagination.split(rows, limit, "created_at", {})
             result = []
             for row in rows:
-                versions = conn.execute(
-                    select(t.dataset_versions)
-                    .where(
-                        t.dataset_versions.c.dataset_id == row["id"],
-                        deleted.visible(t.dataset_versions.c.id, "dataset_version"),
+                versions = (
+                    conn.execute(
+                        select(t.dataset_versions)
+                        .where(
+                            t.dataset_versions.c.dataset_id == row["id"],
+                            deleted.visible(t.dataset_versions.c.id, "dataset_version"),
+                        )
+                        .order_by(t.dataset_versions.c.created_at.desc())
                     )
-                    .order_by(t.dataset_versions.c.created_at.desc())
-                ).mappings()
+                    .mappings()
+                    .all()
+                )
+                metadata = self._version_metadata(conn, versions)
                 result.append(
                     {
                         "id": row["id"],
@@ -211,14 +220,62 @@ class Catalog:
                         "description": row["description"],
                         "credential_id": row["credential_id"],
                         "versions": [
-                            {**self._version(v), **self._counts(conn, v["id"])} for v in versions
+                            {**self._version(v, metadata[v["id"]]), **self._counts(conn, v["id"])}
+                            for v in versions
                         ],
                     }
                 )
         return result, next_cursor
 
     @staticmethod
-    def _version(row) -> dict:
+    def _version_metadata(conn, rows) -> dict:
+        ids = {row["id"] for row in rows} | {
+            row["based_on_version_id"] for row in rows if row["based_on_version_id"]
+        }
+        versions = {
+            row.id: row
+            for row in conn.execute(
+                select(
+                    t.dataset_versions.c.id,
+                    t.users.c.username,
+                    not_purged(t.dataset_versions.c.id).label("not_purged"),
+                )
+                .outerjoin(t.users, t.users.c.id == t.dataset_versions.c.created_by)
+                .where(t.dataset_versions.c.id.in_(ids))
+            )
+        }
+        bases = {key for key, value in versions.items() if value.not_purged}
+        tasks = {version_id: {} for version_id in ids}
+        if any(row["based_on_version_id"] in bases for row in rows):
+            for version_id, key, digest in conn.execute(
+                select(
+                    t.tasks.c.dataset_version_id, t.tasks.c.task_key, t.tasks.c.content_digest
+                ).where(t.tasks.c.dataset_version_id.in_(ids))
+            ):
+                tasks[version_id][key] = digest
+        result = {}
+        for row in rows:
+            base_id = row["based_on_version_id"]
+            changes = None
+            if base_id in bases:
+                before, after = tasks[base_id], tasks[row["id"]]
+                common = before.keys() & after.keys()
+                same = sum(before[key] == after[key] for key in common)
+                changes = {
+                    "added": len(after.keys() - before.keys()),
+                    "removed": len(before.keys() - after.keys()),
+                    "changed": len(common) - same,
+                    "same": same,
+                }
+            creator = versions.get(row["id"])
+            result[row["id"]] = {
+                "created_by_username": creator.username if creator else None,
+                "changes_from_base": changes,
+            }
+        return result
+
+    @staticmethod
+    def _version(row, metadata) -> dict:
         manifest = row["manifest_json"] or {}
         return {
             "id": row["id"],
@@ -231,6 +288,9 @@ class Catalog:
             "description": manifest.get("description") or "",
             "created_at": row["created_at"],
             "created_by": row["created_by"],
+            "label": row["label"],
+            "based_on_version_id": row["based_on_version_id"],
+            **metadata,
             "operation_id": row["operation_id"],
         }
 
@@ -273,7 +333,7 @@ class Catalog:
                 )
             ).scalar()
             return {
-                **self._version(row),
+                **self._version(row, self._version_metadata(conn, [row])[row["id"]]),
                 "namespace": row["namespace"],
                 "name": row["name"],
                 "source_kind": row["source_kind"],
@@ -316,6 +376,33 @@ class Catalog:
                     .order_by(t.dataset_files.c.path)
                 ).mappings()
             ]
+
+    def archive(self, principal: Principal, version_id: str):
+        files = self.files(version_id)
+        with self.db.read() as conn:
+            version = (
+                conn.execute(
+                    select(t.dataset_versions, t.datasets.c.name)
+                    .join(t.datasets, t.datasets.c.id == t.dataset_versions.c.dataset_id)
+                    .where(t.dataset_versions.c.id == version_id)
+                )
+                .mappings()
+                .one()
+            )
+            ids = list(
+                conn.execute(
+                    select(t.tasks.c.id).where(t.tasks.c.dataset_version_id == version_id)
+                ).scalars()
+            )
+        target = write_archive(self.store, files, version["name"], "DATASET_CONTENT_MISSING")
+        try:
+            # Commit the summaries before handing the file to the response sender.
+            task_reads.record(self.db, principal, ids, "task_files")
+        except BaseException:
+            target.unlink(missing_ok=True)
+            raise
+        name = f"{version['name']}-{display(version['label'], version['resolved_digest'])}.zip"
+        return target, name
 
     def list_tasks(self, version_id: str) -> list[dict]:
         with self.db.read() as conn:

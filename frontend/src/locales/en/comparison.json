@@ -288,6 +288,12 @@
     "web_session": "Web session",
     "instruction": "Instruction",
     "trial_artifacts": "Trial artifacts",
-    "runHint": "Development tasks are selected by default. Tick held-out tasks individually to include them."
+    "runHint": "Development tasks are selected by default. Tick held-out tasks individually to include them.",
+    "version": "Version",
+    "thisVersion": "This version",
+    "otherVersion": "Another version",
+    "contentChanged": "Content changed; not a read of this task",
+    "task_files": "Task files (whole-version download)",
+    "sameTask": "same task"
   }
 }

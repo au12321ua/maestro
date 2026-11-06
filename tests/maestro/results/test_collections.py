@@ -747,9 +747,11 @@ def test_held_out_spec_validation_copy_and_immutability(service, version_id, sou
         source.add("demo", "other", "v1", ["other-01", "other-02"])
         other, _ = import_and_prepare(admin, "demo", "other", "v1")
         other_base = {"request": {**base["request"], "dataset_version_id": other}}
-        refused = admin.post(path + "/copy", json={"base": other_base})
-        assert refused.status_code == 422
-        assert "new marks" in refused.json()["error"]["message"]
+        copied = admin.post(path + "/copy", json={"base": other_base}, expect=201).json()["data"]
+        assert copied["held_out_task_ids"] == []
+        assert copied["held_out_not_carried"] == [
+            {"task_key": tasks[0]["task_key"], "reason": "other_dataset"}
+        ]
         assert (
             admin.post(
                 "/api/v1/collections",
@@ -895,3 +897,117 @@ def test_held_out_view_counts_team_runs_once_and_keeps_read_history(service, ver
         admin.delete(f"/api/v1/admin/dataset-versions/{version_id}", expect=200)
         purge(admin, bin_entry(admin, version_id)).raise_for_status()
         assert member.get(path).json()["data"][0]["reads"] == view["reads"]
+
+
+def test_copy_maps_unchanged_held_out_tasks_and_reports_changed_removed(service, source):
+    from support.datasets import tasks_by_key
+
+    source.add("n", "versions", "v1", ["same", "changed", "removed", "development"])
+    source.add(
+        "n",
+        "versions",
+        "v2",
+        ["same", "changed", "development"],
+        files={"changed": source.task_files("n", "versions", "changed", "new")},
+    )
+    with running(service) as client:
+        admin = setup_admin(service, client)
+        model, harness = prepare_model(admin)
+        first, _ = import_and_prepare(admin, "n", "versions", "v1")
+        second, _ = import_and_prepare(admin, "n", "versions", "v2")
+        before, after = tasks_by_key(admin, first), tasks_by_key(admin, second)
+        base = {"request": {"dataset_version_id": first, **agent_body(model, harness)}}
+        original = admin.post(
+            "/api/v1/collections",
+            json={
+                "name": "marks",
+                "scenario": "models",
+                "base": base,
+                "held_out_task_ids": [before[key]["id"] for key in ("same", "changed", "removed")],
+            },
+            expect=201,
+        ).json()["data"]
+        url = f"/api/v1/collections/{original['id']}/copy"
+        assert admin.post(url, json={}, expect=201).json()["data"]["held_out_not_carried"] == []
+        new_base = {"request": {**base["request"], "dataset_version_id": second}}
+        copied = admin.post(url, json={"base": new_base}, expect=201).json()["data"]
+        assert copied["held_out_task_ids"] == [after["same"]["id"]]
+        assert copied["held_out_not_carried"] == [
+            {"task_key": "changed", "reason": "changed"},
+            {"task_key": "removed", "reason": "removed"},
+        ]
+        explicit = admin.post(
+            url, json={"base": new_base, "held_out_task_ids": [before["same"]["id"]]}
+        )
+        assert explicit.status_code == 422
+        assert explicit.json()["error"]["field_errors"][0]["code"] == "WRONG_VERSION"
+        for marks in ([], [after["changed"]["id"]]):
+            explicit = admin.post(
+                url, json={"base": new_base, "held_out_task_ids": marks}, expect=201
+            ).json()["data"]
+            assert explicit["held_out_task_ids"] == marks and explicit["held_out_not_carried"] == []
+        assert (
+            admin.get(f"/api/v1/collections/{original['id']}").json()["data"]["held_out_task_ids"]
+            == original["held_out_task_ids"]
+        )
+
+
+@pytest.mark.parametrize("kind", ["fake", "hub"])
+def test_held_out_counts_and_read_times_follow_cross_version_identity(service, source, kind):
+    from support.datasets import tasks_by_key
+    from support.results import finished_run
+
+    service.datasets.sources[kind] = source
+    service.preparer.sources[kind] = source
+    source.add("n", "versions", "v1", ["same", "changed", "development"])
+    source.add(
+        "n",
+        "versions",
+        "v2",
+        ["same", "changed", "development"],
+        files={"changed": source.task_files("n", "versions", "changed", "new")},
+    )
+    with running(service) as client:
+        admin = setup_admin(service, client)
+        reader = create_pat(admin, ())
+        model, harness = prepare_model(admin)
+        first, _ = import_and_prepare(admin, "n", "versions", "v1", source_kind=kind)
+        second, _ = import_and_prepare(admin, "n", "versions", "v2", source_kind=kind)
+        before, after = tasks_by_key(admin, first), tasks_by_key(admin, second)
+        reader.get(f"/api/v1/tasks/{before['same']['id']}", expect=200)
+        collection = admin.post(
+            "/api/v1/collections",
+            json={
+                "name": "identity",
+                "scenario": "models",
+                "base": {"request": {"dataset_version_id": second, **agent_body(model, harness)}},
+                "held_out_task_ids": [after[key]["id"] for key in ("same", "changed")],
+            },
+            expect=201,
+        ).json()["data"]
+        url = f"/api/v1/collections/{collection['id']}/held-out"
+        initial = {v["task_key"]: v for v in reader.get(url).json()["data"]}
+        assert not initial["same"]["read_since_creation"] and len(initial["same"]["reads"]) == 1
+        reader.get(f"/api/v1/tasks/{before['changed']['id']}", expect=200)
+        old_run = finished_run(admin, first, repetitions=2)
+        new_run = finished_run(admin, second)
+        for lifecycle in ("live", "recycled", "run_purged", "version_recycled"):
+            view = {v["task_key"]: v for v in reader.get(url, expect=200).json()["data"]}
+            assert view["same"]["accepted_runs"] == 2
+            assert view["changed"]["accepted_runs"] == 1
+            assert not view["same"]["read_since_creation"]
+            assert not view["changed"]["read_since_creation"]
+            assert view["changed"]["reads"][0]["content_changed"]
+            if lifecycle == "live":
+                admin.delete(f"/api/v1/runs/{old_run}", expect=200)
+            elif lifecycle == "recycled":
+                purge(admin, bin_entry(admin, old_run)).raise_for_status()
+            elif lifecycle == "run_purged":
+                admin.delete(f"/api/v1/admin/dataset-versions/{first}", expect=200)
+        reader.get(f"/api/v1/tasks/{after['same']['id']}", expect=200)
+        assert reader.get(url).json()["data"][1]["read_since_creation"]
+        assert admin.get(f"/api/v1/runs/{new_run}").status_code == 200
+        purge(admin, bin_entry(admin, first)).raise_for_status()
+        final = {v["task_key"]: v for v in reader.get(url).json()["data"]}
+        assert final["same"]["accepted_runs"] == 1
+        assert final["changed"]["reads"] == []

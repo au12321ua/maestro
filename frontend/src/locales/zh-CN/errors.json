@@ -5,8 +5,9 @@
     "requestFailed": "请求失败"
   },
   "codes": {
+    "DATASET_LABEL_TAKEN": "该数据集的版本标签已被占用，请使用其他标签",
     "DATASET_SOURCE_CONFLICT": "该命名空间和名称已属于另一种来源的数据集，请使用新名称",
-    "DATASET_VERSION_NOT_UPLOADED": "Hub 版本的内容保存在上游，仅上传版本提供文件清单",
+    "DATASET_VERSION_NOT_UPLOADED": "Hub 版本的内容保存在上游，仅上传版本提供原始文件清单与整包下载",
     "ACCOUNT_DISABLED": "账户已停用",
     "ACCOUNT_HAS_ACTIVE_RUNS": "该账户还有排队或运行中的运行",
     "ADMIN_SESSION_REQUIRED": "管理操作需在网页登录后进行",

@@ -184,6 +184,8 @@ dataset_versions = Table(
     Column("ref_kind", String(16), nullable=False),
     Column("resolved_digest", String(80), nullable=False),
     Column("materialization_digest", String(80), nullable=True),
+    Column("label", String(64), nullable=True),
+    _ref("based_on_version_id", "dataset_versions", nullable=True),
     _json("manifest_json"),
     Column("status", String(16), nullable=False),
     _ref("created_by", "users", nullable=True),
@@ -191,6 +193,7 @@ dataset_versions = Table(
     _time("created_at"),
     # Not unique for the same reason; imports check it in their write transaction.
     Index("ix_dataset_versions_digest", "dataset_id", "resolved_digest"),
+    Index("ix_dataset_versions_label", "dataset_id", "label"),
 )
 
 tasks = Table(
@@ -223,7 +226,7 @@ task_reads = Table(
     Column("count", Integer, nullable=False),
     PrimaryKeyConstraint("task_id", "reader_id", "channel", "channel_id", "category"),
     CheckConstraint("channel IN ('pat','web_session')", name="channel"),
-    CheckConstraint("category IN ('instruction','trial_artifacts')", name="category"),
+    CheckConstraint("category IN ('instruction','trial_artifacts','task_files')", name="category"),
 )
 
 task_admissions = Table(

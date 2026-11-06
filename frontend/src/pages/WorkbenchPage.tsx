@@ -13,7 +13,7 @@ import {
   StatusPill,
 } from "@/components/common";
 import { api } from "@/lib/api";
-import { RUN_STATE, RUN_TERMINAL, fmtTime, label } from "@/lib/format";
+import { RUN_STATE, RUN_TERMINAL, fmtTime, label, versionName } from "@/lib/format";
 import { useInterval, useLoad, useSession } from "@/lib/hooks";
 import type { Dataset, Me, Operation, Run, SystemStatus } from "@/lib/types";
 import { t } from "@/i18n";
@@ -103,10 +103,10 @@ function pendingItems(me: Me, mine: Run[], team: Run[], datasets: Dataset[], ops
         if (missing > 0) {
           add({
             key: `adm-${version.id}`,
-            to: "/datasets",
+            to: `/datasets?version=${version.id}`,
             title: t("workbench.pending.notAdmitted", {
               dataset: `${dataset.namespace}/${dataset.name}`,
-              version: version.upstream_ref,
+              version: versionName(version, dataset.source_kind === "upload"),
               count: missing,
             }),
             code: "TASK_NOT_ADMITTED",

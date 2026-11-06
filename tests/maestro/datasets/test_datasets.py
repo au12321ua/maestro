@@ -49,7 +49,11 @@ def test_ds01_import_fixes_content_and_reimport_is_idempotent(service, source):
 
         # The same import again returns the version it already made.
         again = import_dataset(admin)
-        assert again["result"] == {"dataset_version_id": version_id, "existing": True}
+        assert again["result"] == {
+            "dataset_version_id": version_id,
+            "existing": True,
+            "ignored": [],
+        }
         datasets = member.get("/api/v1/datasets").json()["data"]
         assert [len(d["versions"]) for d in datasets] == [1]
 

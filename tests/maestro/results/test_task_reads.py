@@ -271,3 +271,49 @@ def test_existing_export_packages_recover_task_attribution_from_their_manifest(s
             "trial_artifacts",
             1,
         )
+
+
+@pytest.mark.parametrize("kind", ["fake", "hub"])
+def test_task_reads_merge_cross_version_identity_without_rewriting_rows(service, source, kind):
+    from support.datasets import import_and_prepare, tasks_by_key
+    from support.results import purge
+
+    service.datasets.sources[kind] = source
+    service.preparer.sources[kind] = source
+    source.add("n", "versions", "v1", ["same", "changed"])
+    source.add(
+        "n",
+        "versions",
+        "v2",
+        ["same", "changed"],
+        files={"changed": source.task_files("n", "versions", "changed", "new")},
+    )
+    # A separate dataset with identical bytes must never contribute reads.
+    source.add(
+        "n", "other", "v1", ["same"], files={"same": source.task_files("n", "versions", "same")}
+    )
+    with running(service) as client:
+        admin = setup_admin(service, client)
+        reader = create_pat(admin, ())
+        first, _ = import_and_prepare(admin, "n", "versions", "v1", source_kind=kind)
+        second, _ = import_and_prepare(admin, "n", "versions", "v2", source_kind=kind)
+        other, _ = import_and_prepare(admin, "n", "other", "v1", source_kind=kind)
+        before, after = tasks_by_key(admin, first), tasks_by_key(admin, second)
+        for task in [*before.values(), *tasks_by_key(admin, other).values()]:
+            reader.get(f"/api/v1/tasks/{task['id']}", expect=200)
+        with service.db.read() as conn:
+            stored = conn.execute(select(t.task_reads)).mappings().all()
+        for key, changed in (("same", False), ("changed", True)):
+            (read,) = summaries(reader, [after[key]["id"]])
+            assert read["task_id"] == before[key]["id"]
+            assert read["dataset_version_id"] == first and read["content_changed"] is changed
+        # Querying both targets returns each original row once, preserving its identity.
+        batch = summaries(reader, [before["same"]["id"], after["same"]["id"]])
+        assert len(batch) == 1 and not batch[0]["content_changed"]
+        entry = admin.delete(f"/api/v1/admin/dataset-versions/{first}", expect=200).json()["data"]
+        assert summaries(reader, [after["same"]["id"]]) == batch
+        with service.db.read() as conn:
+            assert conn.execute(select(t.task_reads)).mappings().all() == stored
+        assert purge(admin, entry).status_code == 200
+        assert summaries(reader, [after["same"]["id"]]) == []
+        assert summaries(reader, [before["same"]["id"]]) == batch

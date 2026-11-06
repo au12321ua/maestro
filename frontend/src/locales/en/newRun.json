@@ -25,7 +25,14 @@
     "copyName": "{{name}} (copy)",
     "failed": "Copy failed",
     "busy": "Copying…",
-    "submit": "Create copy"
+    "submit": "Create copy",
+    "heldOutDropped": "With this version, these held-out tasks are not carried over (not the same task); choose again below:",
+    "heldOutDroppedItem": "{{task}} ({{reason}})",
+    "heldOutReason": {
+      "changed": "content changed",
+      "removed": "not in the new version",
+      "other_dataset": "a different dataset"
+    }
   },
   "fromCollection": "New run from collection <link>{{name}}</link>: the fixed dimensions ({{dimensions}}) are filled in from the collection and locked; choose only the variable dimensions, tasks and concurrency. The run joins the collection when submitted; a configuration that does not match the collection is pointed out at \"Check configuration\".",
   "fromRun": "Modifying run <link>{{id}}</link>: the form is filled with the values the original run actually used (team defaults and model revision are pinned). Differences from the original run are recorded on submit.",

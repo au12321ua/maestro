@@ -458,3 +458,116 @@ def test_task_read_migration_preserves_existing_collection_specs(tmp_path):
         assert row["held_out_task_ids_json"] == []
         assert row["fixed_json"] == {"dataset": {"digest": "fixed"}}
         assert conn.execute(select(t.task_reads)).all() == []
+
+
+def test_version_metadata_upgrade_preserves_existing_files_tasks_and_reads(tmp_path):
+    from sqlalchemy import insert, select, text
+
+    from maestro.db import schema as t
+
+    db = Database.open(tmp_path / "app.db")
+    migrate.upgrade(db, "0010")
+    with db.write() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO users (id, username, display_name, role, status, password_hash, revision, created_at, updated_at) "
+                "VALUES ('usr_1', 'reader', 'Reader', 'admin', 'active', 'x', 1, 'x', 'x')"
+            )
+        )
+        conn.execute(
+            insert(t.datasets).values(
+                id="ds_1",
+                source_kind="upload",
+                namespace="n",
+                name="existing",
+                description="",
+                enabled=True,
+                created_at="x",
+            )
+        )
+        conn.execute(
+            insert(t.dataset_versions).values(
+                id="dsv_1",
+                dataset_id="ds_1",
+                upstream_ref="sha256:a",
+                ref_kind="digest",
+                resolved_digest="sha256:a",
+                manifest_json={},
+                status="ready",
+                created_at="x",
+            )
+        )
+        conn.execute(
+            insert(t.tasks).values(
+                id="task_1",
+                dataset_version_id="dsv_1",
+                task_key="task",
+                definition_json={},
+                content_digest="sha256:b",
+                material_digest="sha256:c",
+                spec_digest="sha256:d",
+            )
+        )
+        conn.execute(
+            insert(t.operations).values(
+                id="op_1",
+                kind="dataset_import",
+                owner_id="usr_1",
+                status="succeeded",
+                progress_json={},
+                revision=1,
+                created_at="x",
+                updated_at="x",
+            )
+        )
+        conn.execute(
+            insert(t.dataset_files).values(
+                operation_id="op_1",
+                path="task/file",
+                dataset_digest="sha256:a",
+                dataset_version_id="dsv_1",
+                sha256="e" * 64,
+                size=1,
+                executable=True,
+            )
+        )
+        conn.execute(
+            insert(t.task_reads).values(
+                task_id="task_1",
+                reader_id="usr_1",
+                channel="web_session",
+                channel_id="web",
+                category="instruction",
+                first_read_at="a",
+                last_read_at="b",
+                count=3,
+            )
+        )
+        reads = conn.execute(select(t.task_reads)).mappings().all()
+        files = conn.execute(select(t.dataset_files)).mappings().all()
+    migrate.upgrade(db)
+    with db.write() as conn:
+        version = conn.execute(select(t.dataset_versions)).mappings().one()
+        assert version["label"] is None and version["based_on_version_id"] is None
+        assert conn.execute(select(t.task_reads)).mappings().all() == reads
+        assert conn.execute(select(t.dataset_files)).mappings().all() == files
+        conn.execute(
+            insert(t.task_reads).values(**{**reads[0], "category": "task_files", "count": 1})
+        )
+        conn.execute(
+            insert(t.dataset_versions).values(
+                id="dsv_2",
+                dataset_id="ds_1",
+                upstream_ref="sha256:f",
+                ref_kind="digest",
+                resolved_digest="sha256:f",
+                manifest_json={},
+                status="ready",
+                created_at="y",
+                label="v2",
+                based_on_version_id="dsv_1",
+            )
+        )
+        assert conn.exec_driver_sql("PRAGMA foreign_key_check").all() == []
+        assert conn.exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
+    db.dispose()
