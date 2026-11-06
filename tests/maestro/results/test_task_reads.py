@@ -166,7 +166,9 @@ def test_archives_and_exports_record_once_per_included_task(service, version_id,
         assert summaries(reader, ids) == after_archive
 
 
-@pytest.mark.parametrize("path", ["instruction", "file", "slice", "archive", "export"])
+@pytest.mark.parametrize(
+    "path", ["instruction", "file", "slice", "archive", "deliverables", "export"]
+)
 def test_recording_failure_returns_no_content(service, version_id, monkeypatch, path):
     with running(service) as client:
         admin = setup_admin(service, client)
@@ -179,6 +181,7 @@ def test_recording_failure_returns_no_content(service, version_id, monkeypatch, 
             "file": f"/api/v1/artifacts/{artifact['id']}/download",
             "slice": f"/api/v1/artifacts/{artifact['id']}/download?offset=1&length=2",
             "archive": f"/api/v1/runs/{run_id}/artifacts/archive",
+            "deliverables": f"/api/v1/runs/{run_id}/artifacts/archive?content=deliverables",
             "export": make_export(reader, run_id),
         }
 
@@ -193,7 +196,8 @@ def test_recording_failure_returns_no_content(service, version_id, monkeypatch, 
         assert summaries(reader, [task_id]) == []
 
 
-def test_archive_read_updates_roll_back_together_on_database_failure(service, version_id):
+@pytest.mark.parametrize("content", ["all", "deliverables"])
+def test_archive_read_updates_roll_back_together_on_database_failure(service, version_id, content):
     with running(service) as client:
         admin = setup_admin(service, client)
         run_id = finished_run(admin, version_id)
@@ -206,7 +210,7 @@ def test_archive_read_updates_roll_back_together_on_database_failure(service, ve
                 f"CREATE TRIGGER refuse_read BEFORE INSERT ON task_reads WHEN NEW.task_id = '{ids[-1]}' BEGIN SELECT RAISE(ABORT, 'read failure'); END"
             )
         with pytest.raises(IntegrityError, match="read failure"):
-            admin.get(f"/api/v1/runs/{run_id}/artifacts/archive")
+            admin.get(f"/api/v1/runs/{run_id}/artifacts/archive?content={content}")
         assert summaries(admin, ids) == []
 
 

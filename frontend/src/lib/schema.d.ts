@@ -2013,6 +2013,8 @@ export interface paths {
          * Download Run Archive
          * @description The run's artifacts as a zip built while it streams, or only one task's, trial's
          *     or attempt's (the narrowest given). Ended runs only; at most ``export_max_gb``.
+         *     With ``content=deliverables``, only final-attempt outputs are included, laid out as
+         *     task_key/repetition/file, like SDK download_deliverables. The default is ``all``.
          *     manifest.json, written last, lists every file and the ones left out with why.
          */
         get: operations["download_run_archive"];
@@ -12228,6 +12230,7 @@ export interface operations {
                 task_key?: string | null;
                 trial_id?: string | null;
                 attempt_id?: string | null;
+                content?: "all" | "deliverables";
             };
             header?: never;
             path: {

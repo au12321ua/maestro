@@ -207,11 +207,11 @@ UI 文案与纯样式变更不写低价值单元测试；优先验证会导致�
 
 ### E2E-OUT-04 按层级打包下载产物
 
-步骤：在已结束的运行上分别下载整个运行、一个任务、一个试次、一次执行尝试的 zip → 与逐个下载的文件比较 → 让其中一些文件过期或进回收站后再下载 → 对未结束的运行与超过 `export_max_gb` 的范围请求打包。
+步骤：在已结束的运行上分别下载整个运行、一个任务、一个试次、一次执行尝试的 zip → 与逐个下载的文件比较 → 下载 `content=deliverables` 的 zip，与 SDK `download_deliverables` 的目录和文件字节比较，覆盖重试、有结果及无结果的试次 → 让其中一些文件过期、保存失败或进回收站后再下载 → 对未结束的运行与超过 `export_max_gb` 的范围请求两种打包。
 
-预期：四层 zip 的内容与单个下载一致，包末 `manifest.json` 列出缺失文件与原因；未结束的运行拒绝打包，超限在传输前拒绝；打包流式生成、不落盘；SDK 的 `runs.download_archive` 得到同样的包。
+预期：四层 zip 的内容与单个下载一致，包末 `manifest.json` 列出缺失文件与原因；交付物包只含结果所属尝试（无结果时取最高尝试序号）的输出，省略 Harbor 收集清单、移除收集路径前缀，按 `<任务>/<重复序号>/<文件>` 排列，根目录另有归档 manifest。只对筛选后可下载文件所属任务记录读取汇总，在打开文件前提交，记录失败不发送；过期、删除、失败的交付物列出原因，不因日志或更早尝试超限而拒绝。未结束的运行拒绝打包，超限在传输前拒绝；打包流式生成、不落盘；SDK 的 `runs.download_archive` 得到同样的包。网页两个运行级下载入口并列，交付物按钮在运行未结束时不可用并说明原因；演示执行器的交付物链接返回 200、`application/zip`，文件以 `PK` 开头。
 
-覆盖：`results/test_artifact_archive.py`、`e2e/test_sdk_stories.py`；网页的产物树与下载由 `frontend/qa/smoke.spec.ts` 覆盖。
+覆盖：`results/test_artifact_archive.py`（含 SDK 路径映射对照与下载布局比较）、`results/test_task_reads.py`、`e2e/test_sdk_stories.py`；网页的产物树与两种下载由 `frontend/qa/smoke.spec.ts` 覆盖。
 
 ### E2E-OUT-05 工作流记录与证据保留
 

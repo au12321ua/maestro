@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator, Mapping
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, Literal
 
 from maestro_sdk import models
 from maestro_sdk._transport import _body, _key, _query, _Resource, _save
@@ -117,11 +117,20 @@ class Runs(_Resource):
         task_key: str | None = None,
         trial_id: str | None = None,
         attempt_id: str | None = None,
+        content: Literal["all", "deliverables"] = "all",
     ) -> Path:
         """Save the run's artifacts as one zip (``destination`` is the file path), or only
         one task's, trial's or attempt's. Ended runs only; its manifest.json lists the
-        files left out and why."""
-        params = _query({"task_key": task_key, "trial_id": trial_id, "attempt_id": attempt_id})
+        files left out and why. ``content=deliverables`` keeps final-attempt outputs
+        with the same layout as ``download_deliverables``; the default is ``all``."""
+        params = _query(
+            {
+                "task_key": task_key,
+                "trial_id": trial_id,
+                "attempt_id": attempt_id,
+                "content": content,
+            }
+        )
         return _save(self._c, f"runs/{run_id}/artifacts/archive", Path(destination), params)
 
     def download_artifacts(

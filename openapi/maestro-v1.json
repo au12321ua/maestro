@@ -23964,7 +23964,7 @@
     },
     "/api/v1/runs/{run_id}/artifacts/archive": {
       "get": {
-        "description": "The run's artifacts as a zip built while it streams, or only one task's, trial's\nor attempt's (the narrowest given). Ended runs only; at most ``export_max_gb``.\nmanifest.json, written last, lists every file and the ones left out with why.",
+        "description": "The run's artifacts as a zip built while it streams, or only one task's, trial's\nor attempt's (the narrowest given). Ended runs only; at most ``export_max_gb``.\nWith ``content=deliverables``, only final-attempt outputs are included, laid out as\ntask_key/repetition/file, like SDK download_deliverables. The default is ``all``.\nmanifest.json, written last, lists every file and the ones left out with why.",
         "operationId": "download_run_archive",
         "parameters": [
           {
@@ -24022,6 +24022,20 @@
                 }
               ],
               "title": "Attempt Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "content",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "all",
+                "deliverables"
+              ],
+              "title": "Content",
+              "type": "string"
             }
           }
         ],

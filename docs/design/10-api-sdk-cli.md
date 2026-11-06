@@ -52,7 +52,7 @@ SDK 要求 api_version 为 v1 且所需功能开启，否则抛 UNSUPPORTED_CAPA
 - 上传数据集复用附件的 missing / PUT 内容通道，`POST /dataset-uploads` 提交 Harbor task 目录的文件清单并返回导入 Operation。`client.catalog.upload(directory, namespace=..., name=...)` 上传缺失内容、核对受理摘要后返回 Operation；等待导入可取得版本标识和首次准备 Operation。同一名称下相同内容复用原版本，错误在导入 Operation 中按任务列出。
 
 - 附件增量发布（[03](03-configuration-attachments.md) 第 6 节）：`POST /attachment-contents/missing` 问出缺哪些文件内容，逐个 `PUT /attachment-contents/{sha256}` 上传，再 `POST /attachments` 提交文件清单，同步返回快照；内容相同返回 200 与原快照。单个文件、整包 zip 与两份快照的文件差异分别在 `/attachments/{id}/files/{path}`、`/archive`、`/diff`。SDK 的 `attachments.publish(目录)`、`publish_commit(仓库, 提交)` 与 `fetch(快照, 目录)` 都只传差异的文件。
-- 日志也是产物，通过 `GET /artifacts/{id}/download` 读取，可带 offset / length 分段读（单段上限 1 MiB）。已结束运行的产物可按运行、任务、试次或尝试打成 zip（`GET /runs/{id}/artifacts/archive`，[07](07-artifacts-export.md) 第 5 节），SDK 为 `runs.download_archive`。
+- 日志也是产物，通过 `GET /artifacts/{id}/download` 读取，可带 offset / length 分段读（单段上限 1 MiB）。已结束运行的产物可按运行、任务、试次或尝试打成 zip（`GET /runs/{id}/artifacts/archive`，[07](07-artifacts-export.md) 第 5 节），SDK 为 `runs.download_archive`。`content=all` 默认包含全部产物，`content=deliverables` 只包含最终尝试的交付物，按 `<任务键>/<重复序号>/<文件>` 排列并在根目录附 manifest；两种模式都在传输前检查大小并提交所含试次的任务读取汇总，不创建 Operation。
 - 修改后运行没有专门接口：`GET /runs/{id}/request` 取原请求，修改后重新解析，提交时带 source_run_id。
 - 维护（更新、备份、恢复）不在 HTTP API 中（[12](12-operations.md)）。
 - 比较是只计算不保存的 `POST /comparisons`；集合的比较用 `POST /collections/{id}/comparison`，请求体为空时用集合保存的设置（[08](08-collections-comparison.md)）。
@@ -102,7 +102,7 @@ client.runs.download_artifacts(submitted.run_id, local_directory)
 
 - 只自动重试 GET 与带幂等键的请求（网络错误与 502 / 503 / 504，遵守 Retry-After）；内容寻址上传及数据集上传可重试并复用内容身份；其他 POST 只发一次，结果未知时抛 TransportError 并带回幂等键。submit 省略幂等键时自动生成。
 - `operations.wait` 从 1 秒起带抖动放慢到 5 秒；超时抛 WaitTimeout，服务端继续执行，“暂无进度”不算失败。
-- `runs.download_deliverables(run_id, directory)` 从最终尝试的 `artifacts/` 下载完整交付物，按任务键与重复序号组织，返回下载结果与不可读原因（[07](07-artifacts-export.md)）。来源声明可经 `records.create` 挂在 `dataset_version` 上。
+- `runs.download_deliverables(run_id, directory)` 从最终结果所属尝试（无结果时取最后一次尝试）的 `artifacts/` 逐份下载并校验交付物，按任务键与重复序号组织，返回下载结果与不可读原因（[07](07-artifacts-export.md)）。`runs.download_archive(run_id, destination, content="deliverables")` 保存布局相同的 zip，缺失原因写在包内 manifest 中；两者都去掉 Harbor 收集前缀并省略其收集清单。来源声明可经 `records.create` 挂在 `dataset_version` 上。
 - 下载校验摘要；`download_artifacts` 列出跳过的过期 / 失败 / 已删产物及原因，拒绝越出目标目录的路径。
 - 类型区分 None、0、未知用量与已清理产物。
 - 发布附件后在本地按同一规则算出 `content_digest` 与返回的快照核对，不符抛 ContentMismatch。`publish_commit` 只读 git 对象中该提交跟踪的文件，仓库根目录就是附件根目录，可执行位取自文件模式，拒绝符号链接与子模块，工作目录有未提交的修改时警告；平台不记录提交（U-51）。

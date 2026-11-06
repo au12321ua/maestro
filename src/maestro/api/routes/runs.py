@@ -25,6 +25,7 @@ from maestro.api.models import (
     Trial,
 )
 from maestro.core.errors import MaestroError
+from maestro.domain.deliverables import ArchiveContent
 from maestro.services.principal import Principal
 
 router = APIRouter(prefix="/api/v1")
@@ -191,13 +192,16 @@ def download_run_archive(
     task_key: str | None = None,
     trial_id: str | None = None,
     attempt_id: str | None = None,
+    content: ArchiveContent = "all",
     who: Principal = Depends(principal),
 ):
     """The run's artifacts as a zip built while it streams, or only one task's, trial's
     or attempt's (the narrowest given). Ended runs only; at most ``export_max_gb``.
+    With ``content=deliverables``, only final-attempt outputs are included, laid out as
+    task_key/repetition/file, like SDK download_deliverables. The default is ``all``.
     manifest.json, written last, lists every file and the ones left out with why."""
     name, chunks = maestro(request).artifact_archives.open(
-        run_id, task_key, trial_id, attempt_id, principal=who
+        run_id, task_key, trial_id, attempt_id, content=content, principal=who
     )
     return StreamingResponse(
         chunks, media_type="application/zip", headers={"Content-Disposition": attachment(name)}
