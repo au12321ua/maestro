@@ -653,6 +653,7 @@ test("copying a collection edits fixed resources through the configuration form"
       harness_version_id: "har_1", resources: { cpus: 1 }, repetitions: 1,
       timeouts: { verifier_sec: 30.5 } },
     members: [], allowed_actions: ["copy"], deletion: null,
+    held_out_task_ids: [], held_out_task_keys: [], current_best: null,
     settings: comparisonFixture.settings, base_run_id: null, copied_from: null,
     created_at: "2026-10-22T00:00:00Z",
   };
