@@ -117,9 +117,23 @@ import maestro_sdk.skills, maestro_sdk.workspace
 
 maestro_sdk.skills.install(".")          # 复制到 .agents/skills/ 与 .claude/skills/，记下 SDK 版本
 maestro_sdk.workspace.init("my-work")    # AGENTS.md 模板、notes/、attachments/、.gitignore，并安装 skill
+maestro_sdk.workspace.init("improve", workflow="attachments")  # 另加附件工作流说明，不覆盖已有文件
 ```
 
 `maestro-sdk` 讲提交、观察、比较与诚实报告结果；`maestro-package` 讲怎样把已有材料做成附件、用实验改进它、在平台上记下当前最优的附件，以及中断后怎样只凭平台接着做。工作区是推荐布局：`AGENTS.md` 写服务地址、令牌文件位置、可花的预算与命名习惯，`notes/` 的格式完全自由，`attachments/<名称>/` 每个附件一个 git 仓库。`init` 不覆盖已有文件，只补缺并重装 skill；升级 SDK 后再运行一次即可同步 skill。
+
+`maestro_sdk.workflows.attachments` 替附件改进做机械活，只组合公开 API、写本地文件，不提交运行、不判断哪个候选更好（`workflow="attachments"` 写入的 `notes/attachments-workflow.md` 有用法说明）：
+
+```python
+from maestro_sdk.workflows.attachments import (
+    write_task_briefs, prepare_candidate, collect_evidence, build_report,
+)
+
+write_task_briefs(client, version.id, "briefs", tasks=["task-key"])      # 题面与公开元数据
+plan = prepare_candidate(client, collection.id, parent.id, candidate.id)  # 解析但不提交
+collect_evidence(client, [run.id], "evidence")       # 增量下载、清单、trace 事件索引
+report = build_report(client, collection.id, "report")  # report.json 与 report.md，保留所有失败
+```
 
 ## 错误
 
@@ -129,4 +143,4 @@ maestro_sdk.workspace.init("my-work")    # AGENTS.md 模板、notes/、attachmen
 
 `models.py` 与 `_contract.py` 由 `uv run python tools/generate_clients.py` 从服务的 OpenAPI 生成，不要手改；API 改了不重新生成，测试会失败。
 
-手写部分：`client.py` 是入口，`skills.py` 与 `workspace.py` 是不连服务的本地工具（skill 来自仓库的 `skills/`，由 `pyproject.toml` 打进 wheel 的 `maestro_sdk/_skills/`，可编辑安装时直接读仓库），`templates/AGENTS.md` 是工作区模板，`_transport.py` 负责认证、重试、翻页和下载，`resources/` 每组接口一个模块，`results.py` 放生成模型之外的返回类型。新增一组接口时加一个 `resources/` 模块，并在 `MaestroClient.__init__` 里挂上。
+手写部分：`client.py` 是入口，`skills.py` 与 `workspace.py` 是不连服务的本地工具（skill 来自仓库的 `skills/`，由 `pyproject.toml` 打进 wheel 的 `maestro_sdk/_skills/`，可编辑安装时直接读仓库），`templates/` 是随 wheel 发布的工作区与工作流说明，`workflows/` 组合公开 API 完成工作流机械操作，`_transport.py` 负责认证、重试、翻页和下载，`resources/` 每组接口一个模块，`results.py` 放生成模型之外的返回类型。新增一组接口时加一个 `resources/` 模块，并在 `MaestroClient.__init__` 里挂上。
