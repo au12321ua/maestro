@@ -1,7 +1,9 @@
-"""Attachment experiments: local briefs, preparation, evidence and factual reports.
+"""Attachment experiments: local briefs, preparation, evidence, factual reports and
+candidate records.
 
 Only public client resources are used. Returned dictionaries are JSON serializable;
-no helper submits runs, chooses a candidate or writes platform workflow records.
+no helper submits runs or chooses a candidate. Candidate records hold what the caller
+decided and why; the platform stores them without interpreting the body.
 """
 
 from __future__ import annotations
@@ -9,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -299,6 +301,153 @@ def build_report(
     _json(_local(root, "report.json"), report)
     _local(root, "report.md").write_text(_markdown(comparison, runs, complete), encoding="utf-8")
     return report
+
+
+CANDIDATE = "attachment-candidate"
+DECISIONS = ("undecided", "keep", "discard", "insufficient_evidence")
+
+
+def save_candidate(
+    client: MaestroClient,
+    collection_id: str,
+    snapshot_id: str,
+    *,
+    hypothesis: str,
+    parent_snapshot_id: str | None = None,
+    change_kind: str | None = None,
+    invalid_if: str | None = None,
+    references: Sequence[Mapping[str, str]] = (),
+    excerpts: Sequence[Mapping[str, Any]] = (),
+    self_report: Mapping[str, Any] | None = None,
+) -> models.WorkflowRecord:
+    """Record a published snapshot as a candidate of the collection.
+
+    ``change_kind`` is free text (for example installation, execution reliability,
+    delivery, quality). ``references`` and ``excerpts`` carry the source evidence;
+    excerpts outlive the artifacts they quote. ``self_report`` is what the improving
+    agent says about itself, such as its model and cost. A snapshot already recorded
+    in this collection returns the existing record unchanged, so a retry after an
+    interruption does not create a second one; change it with ``decide_candidate``
+    or ``client.records.update``.
+    """
+    existing = _candidate_record(client, collection_id, snapshot_id)
+    if existing is not None:
+        return existing
+    linked = [{"type": "attachment_snapshot", "id": snapshot_id}]
+    if parent_snapshot_id:
+        linked.append({"type": "attachment_snapshot", "id": parent_snapshot_id})
+    body = {
+        "schema_version": 1,
+        "snapshot_id": snapshot_id,
+        "parent_snapshot_id": parent_snapshot_id,
+        "hypothesis": hypothesis,
+        "change_kind": change_kind,
+        "invalid_if": invalid_if,
+        "self_report": dict(self_report) if self_report is not None else None,
+        "decisions": [],
+    }
+    return client.records.create(
+        {"type": "collection", "id": collection_id},
+        CANDIDATE,
+        f"Candidate {snapshot_id}",
+        body,
+        references=_unique([*linked, *map(dict, references)]),
+        excerpts=[dict(e) for e in excerpts],
+    )
+
+
+def decide_candidate(
+    client: MaestroClient,
+    record_id: str,
+    decision: str,
+    *,
+    reason: str,
+    evidence_level: str | None = None,
+    references: Sequence[Mapping[str, str]] = (),
+    excerpts: Sequence[Mapping[str, Any]] = (),
+) -> models.WorkflowRecord:
+    """Append a decision; earlier decisions stay in the body and in the record history.
+
+    ``decision`` is one of ``DECISIONS``; ``evidence_level`` is free text (for example
+    "mechanism observed" or "overall improvement shown"). New references and excerpts
+    are added to the existing ones. A concurrent edit makes the update fail with a
+    revision conflict instead of overwriting it.
+    """
+    if decision not in DECISIONS:
+        raise ValueError(f"decision must be one of {', '.join(DECISIONS)}")
+    record = client.records.get(record_id)
+    if record.kind != CANDIDATE:
+        raise ValueError(f"{record_id} is a {record.kind!r} record, not a candidate")
+    body = _plain_body(record)
+    body["decisions"] = [
+        *body.get("decisions", []),
+        {"decision": decision, "reason": reason, "evidence_level": evidence_level},
+    ]
+    stored = [r.model_dump(mode="json") for r in record.references]
+    kept = [e.model_dump(mode="json", exclude_none=True) for e in record.excerpts]
+    return client.records.update(
+        record_id,
+        expected_revision=record.revision,
+        body=body,
+        references=_unique([*stored, *map(dict, references)]),
+        excerpts=[*kept, *(dict(e) for e in excerpts)],
+    )
+
+
+def candidates(client: MaestroClient, collection_id: str) -> list[dict[str, Any]]:
+    """The collection's candidates with their latest decision and the member runs that
+    load each snapshot (found from the runs, not stored in the record)."""
+    collection = client.collections.get(collection_id)
+    best = collection.current_best.snapshot_id if collection.current_best else None
+    members = {m.run_id for m in collection.members or [] if m.deletion is None}
+    result = []
+    for record in client.records.list("collection", collection_id, kind=CANDIDATE):
+        body = _plain_body(record)
+        snapshot_id = body.get("snapshot_id")
+        runs = (
+            [r.id for r in client.runs.list(attachment_version_id=snapshot_id) if r.id in members]
+            if snapshot_id
+            else []
+        )
+        decisions = body.get("decisions") or []
+        result.append(
+            {
+                "record_id": record.id,
+                "revision": record.revision,
+                "snapshot_id": snapshot_id,
+                "parent_snapshot_id": body.get("parent_snapshot_id"),
+                "hypothesis": body.get("hypothesis"),
+                "change_kind": body.get("change_kind"),
+                "decision": decisions[-1] if decisions else None,
+                "current_best": snapshot_id is not None and snapshot_id == best,
+                "run_ids": runs,
+            }
+        )
+    return result
+
+
+def _candidate_record(
+    client: MaestroClient, collection_id: str, snapshot_id: str
+) -> models.WorkflowRecord | None:
+    for record in client.records.list("collection", collection_id, kind=CANDIDATE):
+        if _plain_body(record).get("snapshot_id") == snapshot_id:
+            return record
+    return None
+
+
+def _plain_body(record: models.WorkflowRecord) -> dict[str, Any]:
+    # The generated model wraps each JSON value; the workflow reads plain JSON.
+    return record.model_dump(mode="json")["body"]
+
+
+def _unique(references: list[dict[str, str]]) -> list[dict[str, str]]:
+    seen, result = set(), []
+    for ref in references:
+        key = (ref["type"], ref["id"])
+        if key not in seen:
+            seen.add(key)
+            result.append({"type": ref["type"], "id": ref["id"]})
+    return result
 
 
 def _markdown(comparison: models.Comparison, runs: list[dict[str, Any]], complete: bool) -> str:

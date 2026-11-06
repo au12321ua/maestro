@@ -42,6 +42,19 @@ for task in client.catalog.tasks(version_id):
 
 Write down, per task or for the set: the inputs, what the agent must deliver and where, what the score measures, and what you do not know. Most wrong hypotheses come from guessing these.
 
+**Helpers for the mechanical work.** `maestro_sdk.workflows.attachments` does the repetitive parts through the public API and only states facts; the judgements stay yours:
+
+```python
+from maestro_sdk.workflows import attachments as aw
+
+aw.write_task_briefs(client, version_id, "briefs", tasks=task_keys)   # instructions to local files
+plan = aw.prepare_candidate(client, c.id, parent.id, snapshot.id)      # resolve, never submit
+aw.collect_evidence(client, [run_id], "evidence")   # incremental downloads + trajectory event index
+aw.build_report(client, c.id, "report")             # report.json / report.md, every failure kept
+```
+
+`prepare_candidate` lists the planned trials, the file diff with the parent and whether `bootstrap.sh` changed and the parent installed on this harness; whether that is enough to skip an install check is your call.
+
 **Set up the comparison once.** Run the current best snapshot on the chosen tasks and repetitions, then build an attachment A/B collection from that run, so every later run differs only in the attachment:
 
 ```python
@@ -62,7 +75,14 @@ Fix the task list with `task_selection` (`{"mode": "explicit", "task_ids": [...]
 
    A reliability or delivery gain is not a quality gain, even if the mean rises with it; say which one you saw.
 4. Before submitting, write down what evidence would support which decision: that the mechanism happened (the agent did the new thing), that the snapshot is worth keeping for now, or that it is better overall. Decide this before the numbers come in. If the starting snapshot has unscored trials, report only the mechanism evidence; do not add trials just to fill the gap unless the person you work for asked for it.
-5. Change the files on a branch, commit, and publish with `parent=` the starting snapshot. No label is needed: snapshots are identified by id, and the same content published again returns the existing snapshot.
+5. Change the files on a branch, commit, and publish with `parent=` the starting snapshot. No label is needed: snapshots are identified by id, and the same content published again returns the existing snapshot. Record it as a candidate of the collection, so the team sees the hypothesis next to the runs (saving the same snapshot again returns the existing record):
+
+   ```python
+   record = aw.save_candidate(client, c.id, snapshot.id, parent_snapshot_id=parent.id,
+                              hypothesis="...", change_kind="delivery", invalid_if="...",
+                              references=[{"type": "run", "id": run_id}],
+                              excerpts=[{"text": "<the lines that show it>"}])
+   ```
 6. Submit into the collection with a `client_request_id` you can derive again, such as `<name>-<first 8 characters of the starting snapshot id>-<n>`:
 
    ```python
@@ -71,11 +91,17 @@ Fix the task list with `task_selection` (`{"mode": "explicit", "task_ids": [...]
    ```
 
 7. When the runs end, compare against the starting point task by task, and read the new trajectories, not only the means.
-8. Write down what you learned, including what did not work.
+8. Record the decision on the candidate (`keep`, `discard`, `insufficient_evidence` or `undecided`) with the reason and how strong the evidence is; earlier decisions stay:
 
-**Notes hold what the platform does not.** Snapshots, runs, comparisons and frozen snapshots are already kept by the platform; refer to them by id instead of copying their contents into your notes. An attachment A/B collection already guarantees that everything except the attachment is the same, so there is no need to compare configurations yourself.
+   ```python
+   aw.decide_candidate(client, record.id, "discard", reason="...", evidence_level="mechanism observed")
+   ```
 
-**Counting events in trajectories.** When a claim rests on how often something happened (errors of a kind, uses of a tool), find each occurrence (file and line), read it to confirm it is what you think, then count. Do not count by pattern alone: one command can span several lines, and similar text can mean different things. Write down how you counted, so someone else can repeat it.
+9. Write down what you learned, including what did not work.
+
+**Notes hold what the platform does not.** Snapshots, runs, comparisons, frozen snapshots and candidate records are already kept by the platform; refer to them by id instead of copying their contents into your notes. An attachment A/B collection already guarantees that everything except the attachment is the same, so there is no need to compare configurations yourself.
+
+**Counting events in trajectories.** When a claim rests on how often something happened (errors of a kind, uses of a tool), find each occurrence (file and line; the event index from `collect_evidence` lists recorded commands with their position and exit code), read it to confirm it is what you think, then count. Do not count by pattern alone: one command can span several lines, and similar text can mean different things. Write down how you counted, so someone else can repeat it.
 
 **Judging "better".** Compare with every failure kept and check the evidence is complete before reading the numbers:
 
@@ -90,19 +116,21 @@ complete = cmp.dropped_tasks == 0 and cmp.common_tasks == cmp.all_tasks and all(
 - Complete: `r.mean` and `r.difference` are the macro means over the same tasks and repetitions. A valid 0 is a real score.
 - Small differences over few tasks are often noise. Prefer more repetitions or tasks to a confident claim.
 
-**The best attachment.** When a snapshot is judged better than the current best, record that where the team can see it: freeze the comparison and say in its note which snapshot is now the best and why, so anyone can find it without your notes:
+**The best attachment.** When a snapshot is judged better than the current best, point the collection at it, with the reason; the change log keeps who changed it, when and why, so anyone can find it without your notes:
 
 ```python
-s = client.snapshots.create("<name> best", collection_id=c.id)
-client.snapshots.add_note(s.id, "Best: snapshot <id> (commit ...), better than <id> because ...")
+client.collections.set_current_best(c.id, snapshot.id, reason="better than <id> on ... because ...")
 ```
+
+Freeze the comparison as well (`client.snapshots.create`) when you want the numbers behind the decision kept as they are.
 
 ## Picking up after an interruption
 
 Do not rely on your notes having any particular form. The platform has what you need:
 
 - `client.attachments.list(name="<name>")`: every snapshot, with its parent.
-- `client.snapshots.list(collection_id=c.id)`: the latest one names the current best snapshot.
+- `client.collections.get(c.id).current_best`: the current best snapshot and why it was chosen.
+- `aw.candidates(client, c.id)`: every candidate with its hypothesis, latest decision and runs.
 - `client.collections.get(c.id)` and `client.collections.compare(c.id)`: the runs and how they stand.
 - `client.runs.find("<client_request_id>")`: a run you submitted, even if you lost its id. Submitting the same request again under its idempotency key never starts a second run.
 - `git log` in the attachment repository: what each commit changed.

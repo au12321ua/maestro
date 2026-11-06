@@ -30,8 +30,8 @@ Reinstall them after upgrading the SDK: `python -c "import maestro_sdk.skills as
 
 - `client_request_id`: <for example `<attachment>-<starting snapshot id prefix>-<n>`>, so a lost run
   can be found again with `client.runs.find(...)`.
-- The best attachment: an analysis snapshot of the comparison whose note says which
-  snapshot is now the best and why. Snapshots need no labels.
+- The best attachment: the collection's current best pointer
+  (`client.collections.set_current_best`), with the reason. Snapshots need no labels.
 
 ## Layout
 
