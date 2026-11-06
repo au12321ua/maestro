@@ -15,6 +15,7 @@ import json
 import posixpath
 import zipfile
 from collections.abc import Iterator
+from pathlib import PurePosixPath
 
 from sqlalchemy import select
 
@@ -24,6 +25,7 @@ from maestro.core import clock
 from maestro.core.errors import MaestroError, not_found
 from maestro.db import schema as t
 from maestro.db.engine import Database
+from maestro.domain.deliverables import ArchiveContent, deliverable_path, final_attempt_id
 from maestro.domain.states import RUN_TERMINAL
 from maestro.services import deleted, task_reads
 from maestro.services.exports import safe_name
@@ -89,6 +91,7 @@ class ArtifactArchives:
         trial_id: str | None = None,
         attempt_id: str | None = None,
         *,
+        content: ArchiveContent = "all",
         principal: Principal | None = None,
     ) -> tuple[str, Iterator[bytes]]:
         """The archive's file name and its content; errors are raised before the first
@@ -144,23 +147,45 @@ class ArtifactArchives:
             selected = [
                 dict(r)
                 for r in conn.execute(
-                    query.order_by(t.artifacts.c.trial_id, t.artifacts.c.relative_path)
+                    query.order_by(
+                        *(
+                            (t.artifacts.c.created_at,)
+                            if content == "deliverables"
+                            else (t.artifacts.c.trial_id, t.artifacts.c.relative_path)
+                        )
+                    )
                 ).mappings()
             ]
+            if content == "deliverables":
+                results = dict(
+                    conn.execute(
+                        select(t.trial_results.c.trial_id, t.trial_results.c.attempt_id).where(
+                            t.trial_results.c.trial_id.in_(trials)
+                        )
+                    ).all()
+                )
+                by_trial = {trial_id: [] for trial_id in trials}
+                for attempt in attempts.values():
+                    by_trial[attempt["trial_id"]].append(attempt)
+                final = {
+                    trial_id: final_attempt_id(results.get(trial_id), own)
+                    for trial_id, own in by_trial.items()
+                }
+                selected = [
+                    item
+                    for item in selected
+                    if item["kind"] == "output"
+                    and item["trial_id"] in trials
+                    and item["attempt_id"] == final[item["trial_id"]]
+                    and deliverable_path(item["relative_path"]) is not None
+                ]
+                scope["content"] = content
             removed = deleted.states(conn, "artifact", [a["id"] for a in selected])
             for item in selected:
                 if item["id"] in removed:
                     # Recycling hides content before purge changes the artifact status.
                     # Keep its receipt in missing, without opening it or counting its size.
                     item["status"] = "deleted"
-        size = sum(a["size_bytes"] or 0 for a in selected if a["status"] == "available")
-        if size > self.max_bytes:
-            raise MaestroError(
-                "ARCHIVE_TOO_LARGE",
-                f"{size} bytes exceed the {self.max_bytes}-byte limit; download a narrower "
-                "level or create an export",
-                413,
-            )
         root = f"{safe_name(run['name'] or '', 'run')}-{run_id[-8:]}"
         task_dirs = _unique(
             {v["task_key"]: safe_name(v["task_key"], "task") for v in trials.values()}
@@ -186,6 +211,52 @@ class ArtifactArchives:
             attempt = attempts.get(item["attempt_id"])
             return f"{path}/attempt-{attempt['attempt_index']}" if attempt else path
 
+        def archive_path(item: dict) -> str:
+            if content == "all":
+                return f"{folder(item)}/{_relative(item['relative_path'])}"
+            trial = trials[item["trial_id"]]
+            parts = [
+                trial["task_key"],
+                str(trial["repetition_index"]),
+                deliverable_path(item["relative_path"]),
+            ]
+            # Preserve SDK names verbatim; reject paths it cannot safely write instead
+            # of sanitizing them into a different deliverable layout.
+            if any(
+                not PurePosixPath(part).parts
+                or PurePosixPath(part).is_absolute()
+                or ".." in PurePosixPath(part).parts
+                for part in parts
+            ):
+                raise MaestroError("INVALID_DELIVERABLE_PATH", "Unsafe deliverable path", 409)
+            return str(PurePosixPath(*parts))
+
+        for item in selected:
+            if item["status"] == "available":
+                item["archive_path"] = archive_path(item)
+        if content == "deliverables":
+            root = ""
+            name += "-deliverables"
+            # The SDK writes files in index order: a later downloadable output with
+            # the same mapped path replaces the earlier one. Keep one zip entry too.
+            last = {
+                item["archive_path"]: item["id"]
+                for item in selected
+                if item["status"] == "available"
+            }
+            selected = [
+                item
+                for item in selected
+                if item["status"] != "available" or last[item["archive_path"]] == item["id"]
+            ]
+        size = sum(a["size_bytes"] or 0 for a in selected if a["status"] == "available")
+        if size > self.max_bytes:
+            raise MaestroError(
+                "ARCHIVE_TOO_LARGE",
+                f"{size} bytes exceed the {self.max_bytes}-byte limit; download a narrower "
+                "level or create an export",
+                413,
+            )
         if principal is not None:
             task_ids = {
                 trials[x["trial_id"]]["task_id"]
@@ -193,9 +264,9 @@ class ArtifactArchives:
                 if x["trial_id"] and x["status"] == "available"
             }
             task_reads.record(self.db, principal, sorted(task_ids), "trial_artifacts")
-        return f"{name}.zip", self._stream(root, scope, selected, folder)
+        return f"{name}.zip", self._stream(root, scope, selected)
 
-    def _stream(self, root, scope, selected, folder) -> Iterator[bytes]:
+    def _stream(self, root, scope, selected) -> Iterator[bytes]:
         pipe = _Pipe()
         files, missing, warnings, used = [], [], [], set()
         with zipfile.ZipFile(pipe, "w", zipfile.ZIP_DEFLATED, allowZip64=True) as archive:
@@ -219,7 +290,7 @@ class ArtifactArchives:
                     reason = ABSENT.get(item["status"], item["status_reason"] or item["status"])
                     missing.append({**entry, "reason": reason})
                     continue
-                path = f"{folder(item)}/{_relative(item['relative_path'])}"
+                path = item["archive_path"]
                 if path in used:
                     stem, ext = posixpath.splitext(path)
                     path = f"{stem}-{item['id'][-8:]}{ext}"
@@ -238,7 +309,9 @@ class ArtifactArchives:
                         if len(pipe.buffer) >= CHUNK:
                             yield pipe.take()
                 actual = "sha256:" + digest.hexdigest()
-                files.append({**entry, "path": path[len(root) + 1 :], "digest": actual})
+                files.append(
+                    {**entry, "path": path[len(root) + 1 :] if root else path, "digest": actual}
+                )
                 if item["digest"] and actual != item["digest"]:
                     warnings.append(
                         {
@@ -258,7 +331,7 @@ class ArtifactArchives:
                 "warnings": warnings,
             }
             archive.writestr(
-                f"{root}/manifest.json",
+                f"{root}/manifest.json" if root else "manifest.json",
                 json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True).encode(),
             )
         yield pipe.take()

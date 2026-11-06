@@ -71,9 +71,11 @@ SDK 的 `runs.download_deliverables` 只下载各试次最终结果所属尝试�
 
 已结束（finished / cancelled / interrupted）的运行可以把整个运行、一个任务、一个试次或一次执行尝试的产物打成 zip 下载（`GET /runs/{id}/artifacts/archive`，可带 `task_key`、`trial_id` 或 `attempt_id`，按给出的最窄一层），运行未结束时返回 409 RUN_ACTIVE。所有登录主体（含读 PAT）都可用。
 
+`content=all`（默认）打包范围内的所有产物；`content=deliverables` 只取各试次最终结果所属尝试的 `output`，无结果时取 `attempt_index` 最大的尝试。交付物包直接按 `<任务键>/<重复序号>/<文件>` 排列，不加运行或尝试目录，与 SDK 的 `runs.download_deliverables` 相同：`artifacts/logs/artifacts/<文件>` 映射为 `<文件>`，其他 `artifacts/<路径>` 去掉 `artifacts/` 前缀并保留内部目录，省略 Harbor 的 `artifacts/manifest.json`。范围筛选仍生效，更早尝试的产物不进入交付物包。SDK 的 `runs.download_archive(..., content="deliverables")` 保存同样的 zip；`download_deliverables` 仍逐份下载并校验索引摘要。
+
 - 边打包边发送，不先写磁盘，不建 Operation，也没有 `Content-Length`。发送第一个字节前，按选中的可下载试次产物所属的任务记录读取，记录失败就不发送内容；传输途中被回收的文件仍算读过，宁可让留出题显得被用过。可下载文件的总大小超过 `export_max_gb` 时在传输前返回 413 ARCHIVE_TOO_LARGE，改下更窄的一层或用批量导出。
-- 包内路径为 `<运行名>-<运行 ID 末 8 位>/tasks/<任务键>/trial-<重复序号>/attempt-<序号>/<相对路径>`，运行级文件在 `run/` 下；各段按导出的规则安全化，安全化后重名加稳定后缀，相对路径逐段安全化，不能逃出所在目录。
-- 末尾的 `manifest.json` 列出范围、每个文件的 artifact_id 与摘要，以及没打进包的文件（过期、删除、保存失败，或打包途中被回收的 STORAGE_CONTENT_MISSING）与原因。进入回收站与已物理删除的产物都保留缺失条目，原因是 DELETED，不读取内容、不计入包的大小上限；打包在打开文件前再查回收站状态。配置、结果与汇总不在包里，那些属于批量导出。
+- 全部产物包内路径为 `<运行名>-<运行 ID 末 8 位>/tasks/<任务键>/trial-<重复序号>/attempt-<序号>/<相对路径>`，运行级文件在 `run/` 下；各段按导出的规则安全化，安全化后重名加稳定后缀，相对路径逐段安全化，不能逃出所在目录。交付物保留 SDK 使用的名称，拒绝路径穿越。
+- 末尾的 `manifest.json` 列出范围、每个文件的 artifact_id 与摘要，以及没打进包的文件（过期、删除、保存失败，或打包途中被回收的 STORAGE_CONTENT_MISSING）与原因；全部产物包放在运行目录下，交付物包放在 zip 根目录。交付物模式只检查和记录筛选后的交付物：其他尝试、日志与 Harbor 收集清单不计入大小和读取汇总，也不列入缺失项。进入回收站与已物理删除的产物都保留缺失条目，原因是 DELETED，不读取内容、不计入包的大小上限；打包在打开文件前再查回收站状态。配置、结果与汇总不在包里，那些属于批量导出。
 - 日志与其他产品中的文本在写入时已脱敏，交付物保持原字节；打包只复制已存的文件。不加读 pin：已结束运行的文件只会因到期或管理员删除而消失，途中遇到时跳过并记入 manifest，不中断响应。
 
 证据不设审计门（U-10）：日志、阶段详情与普通产物经基本脱敏后即可查看，交付物保留原字节，运行中也可查看，不因疑似残留而扣留。确认的泄露按凭据轮换处理，管理员可删除对应产物。

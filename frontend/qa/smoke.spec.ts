@@ -127,14 +127,16 @@ test("setup, run, PAT, admin and invitation flow", async ({ page, browser }) => 
   await expect(page.getByTestId("task-summary-row")).toHaveCount(2);
   await page.screenshot({ path: `${shots}/run-summary.png`, fullPage: true });
 
-  // N-05: artifacts as a tree; the run and each task, trial and attempt download as a zip.
+  // The artifact tree offers whole-run, deliverables and narrower zip downloads.
   await page.getByRole("tab", { name: /^产物/ }).click();
   const wholeRun = page.getByRole("link", { name: "下载整个运行的产物（zip）" });
   await expect(wholeRun).toBeVisible();
+  const deliverables = page.getByRole("link", { name: "只下载交付物（zip）" });
+  await expect(deliverables).toBeVisible();
   await page.getByRole("button", { name: /mul-01/ }).click();
   await page.getByRole("button", { name: /试次 #1/ }).first().click();
   await expect(page.getByRole("link", { name: /^下载尝试 1 的产物/ }).first()).toBeVisible();
-  for (const link of [wholeRun, page.getByRole("link", { name: /^下载试次 #1 的产物/ }).first()]) {
+  for (const link of [wholeRun, deliverables, page.getByRole("link", { name: /^下载试次 #1 的产物/ }).first()]) {
     const zip = await page.request.get(new URL((await link.getAttribute("href"))!, page.url()).href);
     expect(zip.status()).toBe(200);
     expect(zip.headers()["content-type"]).toBe("application/zip");

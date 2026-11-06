@@ -402,7 +402,7 @@ export function ArtifactTree({
             </option>
           ))}
         </select>
-        <span className="ml-auto">
+        <span className="ml-auto flex flex-wrap items-center gap-2">
           {ended ? (
             zip(null, artifacts, t("runs.artifacts.ofRun"))
           ) : (
@@ -410,8 +410,29 @@ export function ArtifactTree({
               {t("runs.artifacts.zipAfterEnd")}
             </span>
           )}
+          {ended ? (
+            <Button asChild size="sm" variant="ghost" className="h-7 px-2">
+              <a href={`${archiveBase}?content=deliverables`}>
+                <Package /> {t("runs.artifacts.deliverablesZip")}
+              </a>
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2"
+              disabled
+              title={t("runs.artifacts.deliverablesAfterEnd")}
+            >
+              <Package /> {t("runs.artifacts.deliverablesZip")}
+            </Button>
+          )}
         </span>
       </div>
+      <p className="text-xs text-muted-foreground">
+        {t("runs.artifacts.deliverablesLayout")}
+        {!ended && <> {t("runs.artifacts.deliverablesAfterEnd")}</>}
+      </p>
       <div className="overflow-x-auto rounded-md border">
         <table className="w-full text-sm">
           <thead>
