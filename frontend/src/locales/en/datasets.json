@@ -22,7 +22,7 @@
   },
   "page": {
     "title": "Datasets",
-    "intro": "Browse Hub and uploaded datasets, fixed versions and task admission. Upload Harbor task directories with the SDK.",
+    "intro": "Browse Hub and uploaded datasets, fixed versions and task admission. Upload converted Harbor task directories here or with the SDK.",
     "empty": "No datasets yet.",
     "deleteDatasetConfirm": "Delete dataset \"{{name}}\" and all its versions? It moves to the recycle bin; existing runs are kept, but it can no longer be used to submit or rerun.",
     "deleteVersionConfirm": "Delete version \"{{dataset}} {{ref}}\"? It moves to the recycle bin; existing runs are kept, but it can no longer be used to submit or rerun.",
@@ -39,7 +39,7 @@
     "deleteVersion": "Delete this version",
     "deleteVersionLabel": "Delete version {{ref}}",
     "notListed": "This version is not in the dataset list: it was deleted or does not exist. A deleted version can still be viewed, but not used to submit.",
-    "uploadNoUpstream": "Uploaded with the SDK. No upstream update check or Hub credential applies."
+    "uploadNoUpstream": "Uploaded (web or SDK): new versions come only by upload; no upstream update check or Hub credential applies."
   },
   "diff": {
     "added": "Added",
@@ -94,7 +94,8 @@
     "query": "Author / name",
     "queryPlaceholder": "org/name or keyword",
     "search": "Search",
-    "notFound": "No datasets found."
+    "notFound": "No datasets found.",
+    "open": "Add dataset (search Hub)"
   },
   "upstream": {
     "title": "Upstream versions of {{name}}",
@@ -171,5 +172,28 @@
     "instruction": "Task instruction",
     "recordedRead": "Opening the instruction records your account, session and read time.",
     "hideInstruction": "Hide instruction"
+  },
+  "upload": {
+    "open": "Upload dataset",
+    "title": "Upload dataset",
+    "newVersion": "Upload new version",
+    "newVersionTitle": "Upload a new version of {{name}}",
+    "intro": "Choose a folder of converted Harbor tasks, one subfolder per task. Only files the service lacks are uploaded; the service checks every task with Harbor and records the version only if all pass, then first preparation runs as usual. The same content gives the existing version. Write provenance as a workflow record on the version page.",
+    "namespace": "Namespace",
+    "name": "Name",
+    "nameNeeded": "Enter a namespace and name first (start with a letter or digit; ._- allowed; at most 64).",
+    "otherSource": "This name belongs to a {{source}} dataset; choose another name for an uploaded dataset.",
+    "addsVersion": "An uploaded dataset with this name exists; this upload becomes its new version.",
+    "looseFiles": "These files are not inside a task folder: {{files}}. The chosen folder should hold only task folders.",
+    "submit": "Upload and import",
+    "importing": "Importing…",
+    "operation": "Import",
+    "added": "New version imported; first preparation has started",
+    "existing": "Same content as an existing version; no version added",
+    "tasksInvalid_one": "{{count}} task failed the check:",
+    "tasksInvalid_other": "{{count}} tasks failed the check:",
+    "taskError": "{{task}}: {{message}}",
+    "failed": "Import failed: {{message}}",
+    "notRecorded": "No version was recorded; fix the tasks and upload again — files already uploaded are not sent again."
   }
 }

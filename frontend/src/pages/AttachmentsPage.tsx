@@ -4,9 +4,9 @@
 import { useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AttachmentHistory, type HistoryActions } from "@/components/AttachmentHistory";
+import { FolderUpload, type Chosen, type FolderBase } from "@/components/FolderUpload";
 import {
   EmptyNote,
   ErrorAlert,
@@ -16,10 +16,10 @@ import {
   TextField,
 } from "@/components/common";
 import { t, Trans } from "@/i18n";
-import { ApiError, api } from "@/lib/api";
-import { fmtBytes, fmtTime, snapshotName } from "@/lib/format";
-import { useLoad, useSession } from "@/lib/hooks";
-import { sha256 } from "@/lib/sha256";
+import { api } from "@/lib/api";
+import { entries, type LocalFile } from "@/lib/folder";
+import { fmtTime, snapshotName } from "@/lib/format";
+import { limit, useLoad, useSession } from "@/lib/hooks";
 import type { Attachment } from "@/lib/types";
 
 const EXAMPLE = `{
@@ -30,34 +30,12 @@ const EXAMPLE = `{
   "compatible_harnesses": ["terminus-2"],
   "provides": { "tools": ["mytool"], "env": [] }
 }`;
-interface Picked {
-  path: string;
-  file: File;
-  sha256: string;
-  executable: boolean;
-}
-
-/** The folder's files below its top directory, leaving out `.git`. */
-async function pick(files: File[], parent: Attachment | undefined): Promise<Picked[]> {
-  const before = new Map((parent?.files ?? []).map((f) => [f.path, f]));
-  const picked: Picked[] = [];
-  for (const file of files) {
-    const parts = (file.webkitRelativePath || file.name).split("/");
-    const path = parts.length > 1 ? parts.slice(1).join("/") : parts[0];
-    if (path.split("/").includes(".git")) continue;
-    // Browsers do not tell a file's mode: keep the parent's, or guess from a shebang.
-    const head = new Uint8Array(await file.slice(0, 2).arrayBuffer());
-    const executable = before.get(path)?.executable ?? (head[0] === 0x23 && head[1] === 0x21);
-    picked.push({ path, file, sha256: await sha256(file), executable });
-  }
-  return picked.sort((a, b) => (a.path < b.path ? -1 : 1));
-}
-
-async function manifestName(files: File[]): Promise<string | null> {
-  const manifest = files.find((f) => /^[^/]+\/manifest\.json$/.test(f.webkitRelativePath));
+/** The attachment name in the folder's manifest.json, if it has one. */
+async function manifestName(files: LocalFile[]): Promise<string | null> {
+  const manifest = files.find((f) => f.path === "manifest.json");
   if (!manifest) return null;
   try {
-    const name: unknown = JSON.parse(await manifest.text())?.name;
+    const name: unknown = JSON.parse(await manifest.file.text())?.name;
     return typeof name === "string" ? name : null;
   } catch {
     return null;
@@ -68,84 +46,62 @@ export function AttachmentsPage() {
   const { me } = useSession();
   const list = useLoad(async () => (await api.get("/attachments")).data);
   const [params] = useSearchParams();
+  const { capabilities } = useSession();
   const [error, setError] = useState<unknown>();
-  const [busy, setBusy] = useState<string | null>(null);
-  const [picked, setPicked] = useState<Picked[]>([]);
   const [name, setName] = useState<string | null>(null);
   const [label, setLabel] = useState("");
   const [parentId, setParentId] = useState("");
-  const input = useRef<HTMLInputElement>(null);
+  const [base, setBase] = useState<FolderBase>();
   const publishCard = useRef<HTMLDivElement>(null);
 
   const all = useMemo(() => list.data ?? [], [list.data]);
   const byId = new Map(all.map((a) => [a.id, a]));
   const sameName = (n: string | null) => all.filter((a) => a.name === n);
 
-  const choose = async (chosen: FileList | null) => {
-    setError(undefined);
-    if (!chosen || chosen.length === 0) return;
-    const files = Array.from(chosen);
-    setBusy(t("attachments.progress.reading"));
-    try {
-      const found = await manifestName(files);
-      // The newest snapshot of the same name is the default parent; one chosen with
-      // "base a new snapshot on this" stays when the names match.
-      const chosenParent = byId.get(parentId);
-      const parent =
-        chosenParent && chosenParent.name === found ? chosenParent : sameName(found).at(-1);
-      const withFiles = parent
-        ? (await api.get("/attachments/{attachment_id}", { path: { attachment_id: parent.id } }))
-            .data
-        : undefined;
-      setPicked(await pick(files, withFiles));
-      setName(found);
-      setParentId(parent?.id ?? "");
-    } catch (err) {
-      setError(err);
-    } finally {
-      setBusy(null);
+  /** The parent snapshot's files decide carried-over executable bits and the preview. */
+  const chooseParent = async (id: string) => {
+    setParentId(id);
+    const parent = byId.get(id);
+    if (!parent) {
+      setBase(undefined);
+      return;
     }
+    const detail = (await api.get("/attachments/{attachment_id}", { path: { attachment_id: id } }))
+      .data;
+    setBase({ label: `${parent.name} · ${snapshotName(parent)}`, files: detail.files ?? [] });
   };
 
-  const publish = async () => {
-    setError(undefined);
-    try {
-      setBusy(t("attachments.progress.checking"));
-      const shas = [...new Set(picked.map((p) => p.sha256))];
-      const { missing } = (
-        await api.post("/attachment-contents/missing", { body: { sha256: shas } })
-      ).data;
-      const contents = new Map(picked.map((p) => [p.sha256, p.file]));
-      for (const [index, sha] of missing.entries()) {
-        setBusy(t("attachments.progress.uploading", { index: index + 1, total: missing.length }));
-        await api.upload("/attachment-contents/{sha256}", { sha256: sha }, contents.get(sha)!);
-      }
-      setBusy(t("attachments.progress.publishing"));
-      const res = await api.post("/attachments", {
-        body: {
-          files: picked.map(({ path, sha256, executable }) => ({ path, sha256, executable })),
-          label: label.trim() || null,
-          parent_id: parentId || null,
-        },
-      });
-      toast.success(
-        t("attachments.publish.done", {
-          name: res.data.name,
-          snapshot: snapshotName(res.data),
-          count: missing.length,
-        }),
-      );
-      setPicked([]);
-      setLabel("");
-      setName(null);
-      setParentId("");
-      if (input.current) input.current.value = "";
-      await list.reload();
-    } catch (err) {
-      setError(err);
-    } finally {
-      setBusy(null);
-    }
+  const chooseFolder = async (_folder: string, files: LocalFile[]) => {
+    const found = await manifestName(files);
+    setName(found);
+    // The newest snapshot of the same name is the default parent; one chosen with
+    // "base a new snapshot on this" stays when the names match.
+    const chosenParent = byId.get(parentId);
+    const parent =
+      chosenParent && chosenParent.name === found ? chosenParent : sameName(found).at(-1);
+    await chooseParent(parent?.id ?? "");
+  };
+
+  const publish = async ({ files, uploaded }: Chosen) => {
+    const res = await api.post("/attachments", {
+      body: {
+        files: entries(files),
+        label: label.trim() || null,
+        parent_id: parentId || null,
+      },
+    });
+    toast.success(
+      t("attachments.publish.done", {
+        name: res.data.name,
+        snapshot: snapshotName(res.data),
+        count: uploaded,
+      }),
+    );
+    setLabel("");
+    setName(null);
+    setParentId("");
+    setBase(undefined);
+    await list.reload();
   };
 
   const act = async (fn: () => Promise<unknown>, done: string) => {
@@ -159,10 +115,7 @@ export function AttachmentsPage() {
     }
   };
   const baseOn = (a: Attachment) => {
-    setParentId(a.id);
-    setPicked([]);
-    setName(null);
-    if (input.current) input.current.value = "";
+    void chooseParent(a.id).catch(setError);
     publishCard.current?.scrollIntoView({ behavior: "smooth" });
   };
   const actions: HistoryActions = {
@@ -184,8 +137,6 @@ export function AttachmentsPage() {
       ),
     onError: setError,
   };
-  const fieldErrors = error instanceof ApiError ? error.body.field_errors : [];
-  const parent = byId.get(parentId);
 
   return (
     <div className="grid gap-4">
@@ -226,97 +177,52 @@ export function AttachmentsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 text-sm">
-          {parent && !picked.length && (
-            <p className="text-xs">
-              {t("attachments.publish.basedOn", { name: parent.name, snapshot: snapshotName(parent) })}
-            </p>
-          )}
-          <input
-            ref={input}
-            type="file"
-            multiple
-            className="text-sm"
-            onChange={(e) => void choose(e.target.files)}
-            {...({ webkitdirectory: "" } as Record<string, string>)}
-          />
-          {picked.length > 0 && (
-            <div className="grid gap-3">
-              <p className="text-xs">
-                {t("attachments.publish.picked", {
-                  name: name
-                    ? t("attachments.publish.pickedName", { name })
-                    : t("attachments.publish.noName"),
-                  count: picked.length,
-                  size: fmtBytes(picked.reduce((n, p) => n + p.file.size, 0)),
-                })}
-              </p>
-              <div className="grid gap-3 md:grid-cols-2">
-                <TextField
-                  id="attachment-label"
-                  label={t("attachments.publish.label")}
-                  value={label}
-                  placeholder={t("attachments.publish.labelPlaceholder")}
-                  onChange={(e) => setLabel(e.target.value)}
-                />
-                <SelectField
-                  id="attachment-parent"
-                  label={t("attachments.publish.parent")}
-                  value={parentId}
-                  onChange={(e) => setParentId(e.target.value)}
-                >
-                  <option value="">{t("attachments.publish.noParent")}</option>
-                  {sameName(name).map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {snapshotName(s)} · {fmtTime(s.created_at)}
-                    </option>
-                  ))}
-                </SelectField>
-              </div>
-              <div className="max-h-72 overflow-auto rounded-md border p-2">
-                <p className="mb-1 text-xs text-muted-foreground">
-                  {t("attachments.publish.modeHint")}
-                </p>
-                <ul className="grid gap-0.5 font-mono text-xs">
-                  {picked.map((p, i) => (
-                    <li key={p.path}>
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={p.executable}
-                          onChange={(e) =>
-                            setPicked(
-                              picked.map((q, j) =>
-                                j === i ? { ...q, executable: e.target.checked } : q,
-                              ),
-                            )
-                          }
-                        />
-                        {p.path}
-                        <span className="text-muted-foreground">({fmtBytes(p.file.size)})</span>
-                      </label>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <Button disabled={busy !== null} onClick={() => void publish()}>
-                  {busy ?? t("attachments.publish.submit")}
-                </Button>
-              </div>
-            </div>
-          )}
-          {busy && !picked.length && <Loading text={busy} />}
           <ErrorAlert error={error} />
-          {fieldErrors.length > 0 && (
-            <ul className="grid gap-0.5 font-mono text-xs text-destructive">
-              {fieldErrors.map((e, i) => (
-                <li key={i}>
-                  {e.path} · {e.code}
-                  {e.message ? ` · ${e.message}` : ""}
-                </li>
-              ))}
-            </ul>
-          )}
+          <FolderUpload
+            base={base}
+            maxFiles={limit(capabilities, "attachment_max_files", 10000)}
+            maxBytes={limit(capabilities, "attachment_max_bytes", 1024 ** 3)}
+            submitLabel={t("attachments.publish.submit")}
+            check={(files) =>
+              files.some((f) => f.path === "manifest.json")
+                ? []
+                : [t("attachments.publish.noManifest")]
+            }
+            onFolder={chooseFolder}
+            onSubmit={publish}
+          >
+            {() => (
+              <div className="grid gap-3">
+                <p className="text-xs">
+                  {name
+                    ? t("attachments.publish.pickedName", { name })
+                    : t("attachments.publish.noName")}
+                </p>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <TextField
+                    id="attachment-label"
+                    label={t("attachments.publish.label")}
+                    value={label}
+                    placeholder={t("attachments.publish.labelPlaceholder")}
+                    onChange={(e) => setLabel(e.target.value)}
+                  />
+                  <SelectField
+                    id="attachment-parent"
+                    label={t("attachments.publish.parent")}
+                    value={parentId}
+                    onChange={(e) => void chooseParent(e.target.value).catch(setError)}
+                  >
+                    <option value="">{t("attachments.publish.noParent")}</option>
+                    {sameName(name).map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {snapshotName(s)} · {fmtTime(s.created_at)}
+                      </option>
+                    ))}
+                  </SelectField>
+                </div>
+              </div>
+            )}
+          </FolderUpload>
           <details>
             <summary className="cursor-pointer text-xs text-muted-foreground">
               {t("attachments.publish.exampleSummary")}

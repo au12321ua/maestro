@@ -1394,6 +1394,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/dataset-versions/{version_id}/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Dataset Version Files
+         * @description List original upload metadata without reading or returning task contents.
+         */
+        get: operations["list_dataset_version_files"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/dataset-versions/{version_id}/tasks": {
         parameters: {
             query?: never;
@@ -4059,6 +4079,17 @@ export interface components {
             /** Upstream Ref */
             upstream_ref: string;
         };
+        /** DatasetVersionFile */
+        DatasetVersionFile: {
+            /** Executable */
+            executable: boolean;
+            /** Path */
+            path: string;
+            /** Sha256 */
+            sha256: string;
+            /** Size Bytes */
+            size_bytes: number;
+        };
         /** DeletionState */
         DeletionState: {
             /** Deleted At */
@@ -4549,6 +4580,12 @@ export interface components {
         Envelope_list_DatasetSource__: {
             /** Data */
             data: components["schemas"]["DatasetSource"][];
+            meta: components["schemas"]["Meta"];
+        };
+        /** Envelope[list[DatasetVersionFile]] */
+        Envelope_list_DatasetVersionFile__: {
+            /** Data */
+            data: components["schemas"]["DatasetVersionFile"][];
             meta: components["schemas"]["Meta"];
         };
         /** Envelope[list[Dataset]] */
@@ -10791,6 +10828,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Envelope_DatasetVersionDetail_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_dataset_version_files: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_list_DatasetVersionFile__"];
                 };
             };
             /** @description Structured error */

@@ -59,7 +59,7 @@
 
 ## 网页冒烟
 
-Playwright 测试需要一个全新的一次性 state：`maestro --config <tmp>/config.toml init` 记下初始化令牌，`maestro --config <tmp>/config.toml serve --port 8431 --demo-executor`，再在 `frontend/` 执行 `MAESTRO_SETUP_TOKEN=<令牌> npm run test:ui`（说明见 [smoke.spec.ts](../../frontend/qa/smoke.spec.ts) 开头）。同一个 state 只能跑一次，因为第一步是初始化管理员。
+Playwright 测试需要一个全新的一次性 state：`maestro --config <tmp>/config.toml init` 记下初始化令牌，`maestro --config <tmp>/config.toml serve --port 8431 --demo-executor`，再在 `frontend/` 执行 `MAESTRO_SETUP_TOKEN=<令牌> npm run test:ui`（说明见 [smoke.spec.ts](../../frontend/qa/smoke.spec.ts) 开头）。同一个 state 只能跑一次，因为第一步是初始化管理员。数据集上传用例要服务用 Runner 检查题目：先在 `runner/` 执行 `uv sync --locked`，在该 state 的 `config.toml` 里加 `runner_python = "<仓库>/runner/.venv/bin/python"`（只做本地解析，不用 Docker）；没有配置时该用例跳过。
 
 ## 打包与 CI
 

@@ -361,6 +361,7 @@ SDK_METHODS = {
     "list_datasets": "catalog.datasets",
     "get_dataset_version": "catalog.version",
     "list_tasks": "catalog.tasks",
+    "list_dataset_version_files": "catalog.files",
     "get_preparation": "catalog.preparation",
     "list_model_configs": "configs.models",
     "get_model_config": "configs.model",

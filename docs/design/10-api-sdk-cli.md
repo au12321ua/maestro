@@ -51,6 +51,9 @@ SDK 要求 api_version 为 v1 且所需功能开启，否则抛 UNSUPPORTED_CAPA
 
 - 上传数据集复用附件的 missing / PUT 内容通道，`POST /dataset-uploads` 提交 Harbor task 目录的文件清单并返回导入 Operation。`client.catalog.upload(directory, namespace=..., name=...)` 上传缺失内容、核对受理摘要后返回 Operation；等待导入可取得版本标识和首次准备 Operation。同一名称下相同内容复用原版本，错误在导入 Operation 中按任务列出。
 
+- 数据集来源在创建时固定；Hub 导入与上传在受理前及登记事务中检查同名跨来源冲突，返回 409 `DATASET_SOURCE_CONFLICT` 并用 `field_errors` 指向 `/name`、说明已占用的来源；受理后竞争失败的导入 Operation 使用同一错误码。回收站中的数据集仍占用名称，物理删除数据集才释放。`Dataset` 列表项与 `DatasetVersionDetail` 均返回 `source_kind`。
+- `GET /api/v1/dataset-versions/{version_id}/files` 返回 `Envelope[list[DatasetVersionFile]]`；`client.catalog.files(version_id)` 返回 `list[models.DatasetVersionFile]`。文件项为 `path`、`sha256`、`executable`、`size_bytes`，按路径排序，所有认证主体（含只读 PAT）可读，不返回内容、不记录任务读取。Hub 版本返回 409 `DATASET_VERSION_NOT_UPLOADED`（内容在上游）；回收站版本可读，物理删除返回 410 `OBJECT_PURGED`，不存在返回 404。上传上限由 capabilities 的 `limits.dataset_upload_max_files` 与 `limits.dataset_upload_max_bytes` 提供。
+
 - 附件增量发布（[03](03-configuration-attachments.md) 第 6 节）：`POST /attachment-contents/missing` 问出缺哪些文件内容，逐个 `PUT /attachment-contents/{sha256}` 上传，再 `POST /attachments` 提交文件清单，同步返回快照；内容相同返回 200 与原快照。单个文件、整包 zip 与两份快照的文件差异分别在 `/attachments/{id}/files/{path}`、`/archive`、`/diff`。SDK 的 `attachments.publish(目录)`、`publish_commit(仓库, 提交)` 与 `fetch(快照, 目录)` 都只传差异的文件。
 - 日志也是产物，通过 `GET /artifacts/{id}/download` 读取，可带 offset / length 分段读（单段上限 1 MiB）。已结束运行的产物可按运行、任务、试次或尝试打成 zip（`GET /runs/{id}/artifacts/archive`，[07](07-artifacts-export.md) 第 5 节），SDK 为 `runs.download_archive`。`content=all` 默认包含全部产物，`content=deliverables` 只包含最终尝试的交付物，按 `<任务键>/<重复序号>/<文件>` 排列并在根目录附 manifest；两种模式都在传输前检查大小并提交所含试次的任务读取汇总，不创建 Operation。
 - 修改后运行没有专门接口：`GET /runs/{id}/request` 取原请求，修改后重新解析，提交时带 source_run_id。

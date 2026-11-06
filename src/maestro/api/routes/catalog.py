@@ -13,6 +13,7 @@ from maestro.api.models import (
     DatasetSource,
     DatasetUpload,
     DatasetVersionDetail,
+    DatasetVersionFile,
     Envelope,
     Operation,
     Preparation,
@@ -110,6 +111,16 @@ def get_dataset_version(version_id: str, request: Request, _: Principal = Depend
 @router.get("/dataset-versions/{version_id}/tasks", response_model=Envelope[list[Task]])
 def list_tasks(version_id: str, request: Request, _: Principal = Depends(principal)):
     return ok(request, maestro(request).catalog.list_tasks(version_id))
+
+
+@router.get(
+    "/dataset-versions/{version_id}/files", response_model=Envelope[list[DatasetVersionFile]]
+)
+def list_dataset_version_files(
+    version_id: str, request: Request, _: Principal = Depends(principal)
+):
+    """List original upload metadata without reading or returning task contents."""
+    return ok(request, maestro(request).catalog.files(version_id))
 
 
 @router.get("/preparations/{preparation_id}", response_model=Envelope[Preparation])

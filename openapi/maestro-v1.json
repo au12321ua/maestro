@@ -5358,6 +5358,35 @@
         "title": "DatasetVersionDetail",
         "type": "object"
       },
+      "DatasetVersionFile": {
+        "additionalProperties": false,
+        "properties": {
+          "executable": {
+            "title": "Executable",
+            "type": "boolean"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "sha256",
+          "executable",
+          "size_bytes"
+        ],
+        "title": "DatasetVersionFile",
+        "type": "object"
+      },
       "DeletionState": {
         "additionalProperties": false,
         "properties": {
@@ -6903,6 +6932,27 @@
           "meta"
         ],
         "title": "Envelope[list[DatasetSource]]",
+        "type": "object"
+      },
+      "Envelope_list_DatasetVersionFile__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetVersionFile"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[list[DatasetVersionFile]]",
         "type": "object"
       },
       "Envelope_list_Dataset__": {
@@ -21721,6 +21771,49 @@
           }
         },
         "summary": "Get Dataset Version",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/v1/dataset-versions/{version_id}/files": {
+      "get": {
+        "description": "List original upload metadata without reading or returning task contents.",
+        "operationId": "list_dataset_version_files",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_list_DatasetVersionFile__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "List Dataset Version Files",
         "tags": [
           "catalog"
         ]

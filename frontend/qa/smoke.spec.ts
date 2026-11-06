@@ -2,13 +2,16 @@
 //   maestro --config <tmp>/config.toml init        (prints the setup token)
 //   maestro --config <tmp>/config.toml serve --port 8431 --demo-executor
 //   MAESTRO_SETUP_TOKEN=<token> npm run test:ui
+// The dataset upload test also needs `runner_python` in that config (see its comment).
 // Never point this at a real team state: it creates an admin, runs, PATs and invitations.
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 
 const token = process.env.MAESTRO_SETUP_TOKEN;
+/** Harbor task fixtures shared with the Python tests. */
+const fixtures = join(import.meta.dirname, "../../tests/maestro/fixtures/harbor-tasks");
 const password = "smoke-password-123";
 const shots = process.env.MAESTRO_SHOTS ?? "/tmp";
 
@@ -551,19 +554,27 @@ test("attachment snapshots", async ({ page }) => {
 
   const choose = page.locator('input[type="file"]');
   await choose.setInputFiles(folder);
-  await expect(page.getByText("附件 smoke-tools · 3 个文件")).toBeVisible();
-  // A shebang makes a file executable by default.
-  await expect(page.getByRole("checkbox", { name: /bootstrap\.sh/ })).toBeChecked();
-  await expect(page.getByRole("checkbox", { name: /manifest\.json/ })).not.toBeChecked();
+  await expect(page.getByText("附件 smoke-tools")).toBeVisible();
+  await expect(page.getByTestId("folder-summary")).toContainText("3 个文件");
+  // A shebang makes a file executable by default; the executable files are listed apart.
+  await expect(page.getByRole("checkbox", { name: "bootstrap.sh 可执行" })).toBeChecked();
+  await expect(page.getByText("以 #! 开头").first()).toBeVisible();
+  await page.getByText("全部文件（3）").click();
+  await expect(page.getByRole("checkbox", { name: "manifest.json 可执行" })).not.toBeChecked();
   await page.getByLabel("标签（可选）").fill("v1");
   await page.getByRole("button", { name: "上传并发布" }).click();
   await expect(page.getByText("已发布 smoke-tools v1（上传 3 个文件）")).toBeVisible();
 
   writeFileSync(join(folder, "bin", "run.sh"), "#!/bin/sh\necho two\n");
   await page.getByRole("button", { name: "基于此发布" }).click();
-  await expect(page.getByText("将基于 smoke-tools v1 发布")).toBeVisible();
+  await expect(page.getByText("基于：smoke-tools · v1")).toBeVisible();
   await choose.setInputFiles(folder);
   await expect(page.getByLabel("父快照")).not.toHaveValue("");
+  // Compared with the parent before publishing; modes carry over from it.
+  await expect(page.getByTestId("folder-diff")).toHaveText(
+    "较 smoke-tools · v1（按文件）：新增 0 · 删除 0 · 改动 1 · 未变 2",
+  );
+  await expect(page.getByText("沿用 smoke-tools · v1").first()).toBeVisible();
   await page.getByLabel("标签（可选）").fill("v2");
   await page.getByRole("button", { name: "上传并发布" }).click();
   await expect(page.getByText("已发布 smoke-tools v2（上传 1 个文件）")).toBeVisible();
@@ -583,7 +594,7 @@ test("attachment snapshots", async ({ page }) => {
   // A second snapshot built on v1 makes the history a tree with two branches.
   writeFileSync(join(folder, "bin", "run.sh"), "#!/bin/sh\necho three\n");
   await page.getByRole("button", { name: "基于此发布" }).first().click();
-  await expect(page.getByText("将基于 smoke-tools v1 发布")).toBeVisible();
+  await expect(page.getByText("基于：smoke-tools · v1")).toBeVisible();
   await choose.setInputFiles(folder);
   await page.getByLabel("标签（可选）").fill("v3");
   await page.getByRole("button", { name: "上传并发布" }).click();
@@ -592,6 +603,74 @@ test("attachment snapshots", async ({ page }) => {
   await expect(page.getByText("分支 1")).toBeVisible();
   await expect(page.getByText("分支 2")).toBeVisible();
   await page.screenshot({ path: `${shots}/attachments.png`, fullPage: true });
+});
+
+// Uploading converted Harbor tasks from the datasets page. Needs the service to validate
+// tasks with the Runner (`runner_python` in its config); skipped otherwise.
+test("dataset upload: bad task, new dataset, new version, source boundary", async ({ page }) => {
+  test.skip(!token, "MAESTRO_SETUP_TOKEN not set");
+  const root = mkdtempSync(join(tmpdir(), "maestro-smoke-"));
+  const folder = join(root, "bench");
+  for (const task of ["oracle-pass", "oracle-zero"]) {
+    cpSync(join(fixtures, task), join(folder, task), { recursive: true });
+  }
+  const toml = join(folder, "oracle-zero", "task.toml");
+  const good = readFileSync(toml, "utf8");
+  writeFileSync(toml, "[broken");
+
+  await page.goto("/");
+  await page.getByLabel("用户名").fill("admin");
+  await page.getByLabel("密码").fill(password);
+  await page.getByRole("button", { name: "登录" }).click();
+  await nav(page, "数据集").click();
+  await page.getByRole("button", { name: "上传数据集" }).click();
+  const panel = page.getByTestId("dataset-upload");
+  const choose = panel.getByTestId("folder-input");
+  await choose.setInputFiles(folder);
+  await expect(panel.getByTestId("folder-summary")).toContainText("2 道题");
+  await expect(panel.getByText("先填命名空间和名称")).toBeVisible();
+  await panel.getByLabel("命名空间").fill("local");
+  await panel.getByLabel("名称", { exact: true }).fill("bench");
+  await panel.getByRole("button", { name: "上传并导入" }).click();
+  const failed = panel.getByTestId("upload-failed");
+  await expect(failed.or(panel.getByText("RUNNER_NOT_CONFIGURED"))).toBeVisible({
+    timeout: 60_000,
+  });
+  test.skip(await panel.getByText("RUNNER_NOT_CONFIGURED").isVisible(), "no Runner configured");
+  // One bad task: reported by name, and no version is recorded.
+  await expect(failed).toContainText("1 道题没有通过检查");
+  await expect(failed).toContainText("oracle-zero");
+  await expect(page.getByText("local/bench")).toHaveCount(0);
+
+  writeFileSync(toml, good);
+  await choose.setInputFiles(folder);
+  await panel.getByRole("button", { name: "上传并导入" }).click();
+  await expect(page.getByText(/^local\/bench@sha256:/)).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText("已准入 2 · 可提交 2")).toBeVisible({ timeout: 60_000 });
+  // Uploaded datasets get versions only by upload; Hub datasets only from the Hub.
+  const card = page.getByTestId("dataset-card").filter({ hasText: "local/bench" });
+  await expect(card.getByRole("button", { name: "检查上游更新" })).toHaveCount(0);
+
+  // A new version that changes one task: compared per task with the latest version, and
+  // the scripts keep their executable bits from it.
+  writeFileSync(join(folder, "oracle-pass", "instruction.md"), "Changed instruction.\n");
+  await card.getByRole("button", { name: "上传新版本" }).click();
+  await choose.setInputFiles(folder);
+  await expect(panel.getByTestId("folder-task-diff")).toContainText(
+    "新增 0 · 删除 0 · 内容变化 1 · 未变 1",
+  );
+  await expect(panel.getByText(/^沿用 local\/bench@/).first()).toBeVisible();
+  await page.screenshot({ path: `${shots}/dataset-upload.png`, fullPage: true });
+  await panel.getByRole("button", { name: "上传并导入" }).click();
+  await expect(page.getByText("已导入新版本，首次准备已开始")).toBeVisible({ timeout: 60_000 });
+
+  // A Hub dataset's name cannot be taken by an upload.
+  await page.getByRole("button", { name: "上传数据集" }).click();
+  await panel.getByLabel("命名空间").fill("demo");
+  await panel.getByLabel("名称", { exact: true }).fill("arith");
+  await choose.setInputFiles(folder);
+  await expect(panel.getByText(/这个名称已属于 .* 数据集/)).toBeVisible();
+  await expect(panel.getByRole("button", { name: "上传并导入" })).toBeDisabled();
 });
 
 // Comparisons keep their settings in shared URLs and their frozen evidence status

@@ -339,6 +339,13 @@ class DatasetVersionDetail(DatasetVersion):
     )
 
 
+class DatasetVersionFile(Model):
+    path: str
+    sha256: str
+    executable: bool
+    size_bytes: int
+
+
 class Dataset(Model):
     id: str
     source_kind: str

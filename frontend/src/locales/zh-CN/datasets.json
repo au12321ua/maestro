@@ -21,7 +21,7 @@
   },
   "page": {
     "title": "数据集",
-    "intro": "查看 Hub 与上传的数据集、固定版本和任务准入。Harbor task 目录通过 SDK 上传。",
+    "intro": "查看 Hub 与上传的数据集、固定版本和任务准入。转换好的 Harbor task 目录可以在这里或用 SDK 上传。",
     "empty": "还没有数据集。",
     "deleteDatasetConfirm": "删除数据集「{{name}}」及其全部版本？它会移入回收站；已有运行记录保留，但不能再用它提交或重跑。",
     "deleteVersionConfirm": "删除版本「{{dataset}} {{ref}}」？它会移入回收站；已有运行记录保留，但不能再用它提交或重跑。",
@@ -38,7 +38,7 @@
     "deleteVersion": "删除该版本",
     "deleteVersionLabel": "删除版本 {{ref}}",
     "notListed": "这个版本不在数据集列表中：它已删除或不存在；已删除的版本仍可查看，但不能再用来提交。",
-    "uploadNoUpstream": "通过 SDK 上传；没有上游更新检查，不使用 Hub 凭据。"
+    "uploadNoUpstream": "上传得到（网页或 SDK）；只能上传新版本，没有上游更新检查，不使用 Hub 凭据。"
   },
   "diff": {
     "added": "新增",
@@ -92,7 +92,8 @@
     "query": "作者 / 名称",
     "queryPlaceholder": "org/name 或关键字",
     "search": "搜索",
-    "notFound": "没有找到数据集。"
+    "notFound": "没有找到数据集。",
+    "open": "添加数据集（检索 Hub）"
   },
   "upstream": {
     "title": "{{name}} 的上游版本",
@@ -166,5 +167,27 @@
     "instruction": "任务说明",
     "recordedRead": "打开题面会记录你的账户、会话和读取时间。",
     "hideInstruction": "收起题面"
+  },
+  "upload": {
+    "open": "上传数据集",
+    "title": "上传数据集",
+    "newVersion": "上传新版本",
+    "newVersionTitle": "上传 {{name}} 的新版本",
+    "intro": "选择本地转换好的 Harbor task 目录：文件夹里每道题一个子文件夹。只上传服务端还没有的文件；服务用 Harbor 逐题检查，全部通过才登记版本，之后照常首次准备。内容相同时得到已有的版本。来源说明在版本页的工作流记录里写。",
+    "namespace": "命名空间",
+    "name": "名称",
+    "nameNeeded": "先填命名空间和名称（字母或数字开头，可含 ._-，最长 64）。",
+    "otherSource": "这个名称已属于 {{source}} 数据集；上传数据集请换一个名称。",
+    "addsVersion": "已有同名的上传数据集，这次上传会成为它的新版本。",
+    "looseFiles": "这些文件不在任务子文件夹里：{{files}}。所选文件夹里应当只有各题的子文件夹。",
+    "submit": "上传并导入",
+    "importing": "正在导入…",
+    "operation": "导入",
+    "added": "已导入新版本，首次准备已开始",
+    "existing": "内容与已有版本相同，没有新增版本",
+    "tasksInvalid": "{{count}} 道题没有通过检查：",
+    "taskError": "{{task}}：{{message}}",
+    "failed": "导入失败：{{message}}",
+    "notRecorded": "没有登记版本；修好后重新上传，已上传的文件不会再传。"
   }
 }

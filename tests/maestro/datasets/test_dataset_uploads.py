@@ -1,13 +1,23 @@
 """Uploaded task trees use the shared content transport and normal admission lifecycle."""
 
+import asyncio
 import hashlib
 import shutil
 
 import pytest
 from maestro_sdk import ApiError
 from sqlalchemy import select
-from support import FIXTURES, create_pat, invite_member, running, setup_admin, wait_operation
-from support.datasets import tasks_by_key
+from support import (
+    FIXTURES,
+    create_pat,
+    invite_member,
+    make_client,
+    running,
+    setup_admin,
+    wait_operation,
+)
+from support.datasets import import_and_prepare, tasks_by_key
+from support.results import purge
 from support.sdk import sdk
 
 from maestro.db import schema as t
@@ -35,6 +45,191 @@ def finish_upload(agent, operation):
         prepared = agent.operations.wait(imported.result.preparation_operation_id, interval=0.02)
         assert prepared.status == "succeeded", prepared
     return imported.result.dataset_version_id
+
+
+def stage_files(admin, tree):
+    files = describe(tree)
+    for file in files:
+        admin.client.put(
+            f"/api/v1/attachment-contents/{file['sha256']}",
+            content=(tree / file["path"]).read_bytes(),
+            headers=admin._headers(),
+        ).raise_for_status()
+    return [{k: file[k] for k in ("path", "sha256", "executable")} for file in files]
+
+
+@pytest.mark.parametrize("existing_kind", ["hub", "upload"])
+def test_source_name_conflict_counts_recycled_and_only_dataset_purge_frees_name(
+    upload_service, task_tree, source, existing_kind
+):
+    service = upload_service
+    service.datasets.sources["hub"] = source
+    service.preparer.sources["hub"] = source
+    with running(service) as client:
+        admin = setup_admin(service, client)
+        agent = sdk(create_pat(admin, ("datasets",)))
+        files = stage_files(admin, task_tree)
+        if existing_kind == "hub":
+            version, _ = import_and_prepare(admin, source_kind="hub")
+        else:
+            version = finish_upload(
+                agent, agent.catalog.upload(task_tree, namespace="demo", name="arith")
+            )
+        dataset = agent.catalog.version(version).dataset_id
+        assert agent.catalog.version(version).source_kind == existing_kind
+        assert next(agent.catalog.datasets()).source_kind == existing_kind
+
+        def opposing_request():
+            if existing_kind == "hub":
+                return admin.post(
+                    "/api/v1/dataset-uploads",
+                    json={"namespace": "demo", "name": "arith", "files": files},
+                )
+            return admin.post(
+                "/api/v1/admin/dataset-imports",
+                json={"namespace": " demo ", "name": " arith ", "ref": "v1"},
+            )
+
+        def assert_conflict():
+            with service.db.read() as conn:
+                before = list(conn.execute(select(t.operations.c.id)))
+            response = opposing_request()
+            assert response.status_code == 409, response.text
+            error = response.json()["error"]
+            assert error["code"] == "DATASET_SOURCE_CONFLICT"
+            assert existing_kind in error["message"]
+            assert error["field_errors"][0]["path"] == "/name"
+            with service.db.read() as conn:
+                assert list(conn.execute(select(t.operations.c.id))) == before
+
+        assert_conflict()
+        entry = admin.delete(f"/api/v1/admin/dataset-versions/{version}", expect=200).json()["data"]
+        assert_conflict()
+        assert purge(admin, entry).status_code == 200
+        # Removing all versions leaves the dataset itself owning the name.
+        assert_conflict()
+        entry = admin.delete(f"/api/v1/admin/datasets/{dataset}", expect=200).json()["data"]
+        assert_conflict()
+        assert purge(admin, entry).status_code == 200
+        accepted = opposing_request()
+        assert accepted.status_code == 202, accepted.text
+        done = wait_operation(admin, accepted.json()["data"]["id"])
+        assert done["status"] == "succeeded", done
+        detail = agent.catalog.version(done["result"]["dataset_version_id"])
+        assert detail.source_kind == ("upload" if existing_kind == "hub" else "hub")
+        assert detail.dataset_id != dataset
+
+
+@pytest.mark.parametrize("winner", ["hub", "upload"])
+def test_import_recording_guards_two_requests_accepted_before_a_dataset_exists(
+    upload_service, task_tree, source, monkeypatch, winner
+):
+    service = upload_service
+    service.datasets.sources["hub"] = source
+    service.preparer.sources["hub"] = source
+
+    async def pause_imports():
+        pass
+
+    monkeypatch.setattr(service.preparer, "tick", pause_imports)
+    with running(service) as client:
+        admin = setup_admin(service, client)
+        files = stage_files(admin, task_tree)
+        pending = {
+            "upload": admin.post(
+                "/api/v1/dataset-uploads",
+                json={"namespace": "demo", "name": "arith", "files": files},
+                expect=202,
+            ).json()["data"]["id"],
+            "hub": admin.post(
+                "/api/v1/admin/dataset-imports",
+                json={"namespace": "demo", "name": "arith", "ref": "v1"},
+                expect=202,
+            ).json()["data"]["id"],
+        }
+        loser = "upload" if winner == "hub" else "hub"
+        for kind in (winner, loser):
+            asyncio.run_coroutine_threadsafe(
+                service.preparer._job(pending[kind], service.preparer._import),
+                service.worker._loop,
+            ).result(timeout=10)
+        assert wait_operation(admin, pending[winner])["status"] == "succeeded"
+        failed = wait_operation(admin, pending[loser])
+        assert failed["status"] == "failed"
+        assert failed["error"]["code"] == "DATASET_SOURCE_CONFLICT"
+        assert winner in failed["error"]["message"]
+        with service.db.read() as conn:
+            assert list(conn.execute(select(t.datasets.c.source_kind)).scalars()) == [winner]
+            assert len(list(conn.execute(select(t.dataset_versions.c.id)))) == 1
+
+
+def test_version_files_are_original_sorted_metadata_for_all_readers_without_task_reads(
+    upload_service, task_tree
+):
+    service = upload_service
+    script = min(task_tree.iterdir()) / "environment" / "生成 data.sh"
+    script.write_bytes(b"#!/bin/sh\necho uploaded\n")
+    script.chmod(0o755)
+    expected = [
+        {
+            "path": f["path"],
+            "sha256": f["sha256"],
+            "executable": f["executable"],
+            "size_bytes": f["size"],
+        }
+        for f in describe(task_tree)
+    ]
+    with running(service) as client:
+        admin = setup_admin(service, client)
+        member = invite_member(service, admin, "member")
+        reader = create_pat(member, ())
+        agent = sdk(create_pat(admin, ("datasets",)))
+        version = finish_upload(agent, agent.catalog.upload(task_tree, namespace="n", name="one"))
+        assert (
+            finish_upload(agent, agent.catalog.upload(task_tree, namespace="n", name="one"))
+            == version
+        )
+        second = finish_upload(agent, agent.catalog.upload(task_tree, namespace="n", name="two"))
+        url = f"/api/v1/dataset-versions/{version}/files"
+        assert make_client(service).get(url).status_code == 401
+        for caller in (admin, member, reader):
+            assert caller.get(url, expect=200).json()["data"] == expected
+        assert [f.model_dump() for f in sdk(reader).catalog.files(version)] == expected
+        caps = reader.get("/api/v1/capabilities").json()["data"]["limits"]
+        assert caps["dataset_upload_max_files"] == limits.DATASET_UPLOAD_MAX_FILES
+        assert caps["dataset_upload_max_bytes"] == limits.DATASET_UPLOAD_MAX_BYTES
+        assert reader.get("/api/v1/dataset-versions/missing/files").status_code == 404
+        entry = admin.delete(f"/api/v1/admin/dataset-versions/{version}", expect=200).json()["data"]
+        assert reader.get(url, expect=200).json()["data"] == expected
+        assert purge(admin, entry).status_code == 200
+        response = reader.get(url)
+        assert response.status_code == 410
+        assert response.json()["error"]["code"] == "OBJECT_PURGED"
+        # A shared digest must not expose another version's files after purge.
+        assert [f.model_dump() for f in sdk(reader).catalog.files(second)] == expected
+        dataset = agent.catalog.version(second).dataset_id
+        entry = admin.delete(f"/api/v1/admin/datasets/{dataset}", expect=200).json()["data"]
+        assert [f.model_dump() for f in sdk(reader).catalog.files(second)] == expected
+        assert purge(admin, entry).status_code == 200
+        with pytest.raises(ApiError) as error:
+            sdk(reader).catalog.files(second)
+        assert error.value.status == 410 and error.value.code == "OBJECT_PURGED"
+        with service.db.read() as conn:
+            assert conn.execute(select(t.task_reads)).first() is None
+
+
+def test_hub_version_file_list_explains_upstream_contents(service, source):
+    service.datasets.sources["hub"] = source
+    service.preparer.sources["hub"] = source
+    with running(service) as client:
+        admin = setup_admin(service, client)
+        version, _ = import_and_prepare(admin, source_kind="hub")
+        reader = sdk(create_pat(admin, ()))
+        with pytest.raises(ApiError) as error:
+            reader.catalog.files(version)
+        assert error.value.status == 409
+        assert error.value.code == "DATASET_VERSION_NOT_UPLOADED"
+        assert "upstream" in str(error.value)
 
 
 def test_sdk_upload_reupload_incremental_content_admission_and_cache_recovery(

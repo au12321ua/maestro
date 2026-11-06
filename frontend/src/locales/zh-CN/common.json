@@ -302,5 +302,38 @@
     "snapshot": "固定附件快照：{{id}}",
     "pat": "PAT",
     "revisions": "{{count}} 个修订"
+  },
+  "folder": {
+    "choose": "选择文件夹",
+    "orDrop": "或把文件夹拖到这里",
+    "dropOneFolder": "请拖入一个文件夹（不是单个文件，也不是多个文件夹）。",
+    "basedOn": "基于：{{base}}",
+    "noBase": "不基于已有版本",
+    "reading": "读取并计算摘要",
+    "checking": "询问服务缺少哪些内容…",
+    "uploading": "上传缺失内容",
+    "recording": "登记中…",
+    "summary": "{{folder}} · {{count}} 个文件 · {{size}}",
+    "taskCount": " · {{count}} 道题",
+    "diff": "较 {{base}}（按文件）：新增 {{added}} · 删除 {{removed}} · 改动 {{changed}} · 未变 {{same}}",
+    "taskDiff": "较 {{base}}（按题）：新增 {{added}} · 删除 {{removed}} · 内容变化 {{changed}} · 未变 {{same}}",
+    "executables": "可执行文件（{{count}}）",
+    "executablesHint": "浏览器读不到文件权限，以下是推断，可以修改。",
+    "noExecutables": "没有标为可执行的文件。",
+    "executableOf": "{{path}} 可执行",
+    "mode": {
+      "base": "沿用 {{base}}",
+      "shebang": "以 #! 开头",
+      "elf": "ELF 程序",
+      "none": "",
+      "manual": "手动设置"
+    },
+    "allFiles": "全部文件（{{count}}）",
+    "changedOnly": "只看有改动的",
+    "modeHint": "勾选表示可执行；划线的是所基于版本里有、这次没有的文件。",
+    "reset": "重新选择",
+    "tooManyFiles": "共 {{count}} 个文件，超过 {{max}} 个的上限；请改用 SDK 上传。",
+    "tooLarge": "共 {{size}}，超过 {{max}} 的上限；请改用 SDK 上传。",
+    "fileTooLarge": "{{path}} 有 {{size}}，超过网页单个文件 {{max}} 的上限（浏览器计算摘要要把整份文件读入内存）；请改用 SDK 上传。"
   }
 }
