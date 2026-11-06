@@ -162,7 +162,8 @@ def test_ds03_sdk_reads_but_cannot_administer(service, source):
             assert listed[0]["admission"]["state"] == "admitted"
             assert listed[0]["local_preparation"]["cache_state"] == "stale"
             assert pat.get("/api/v1/dataset-sources").json()["data"] == [
-                {"kind": "fake", "available": True}
+                {"kind": "fake", "available": True},
+                {"kind": "upload", "available": True},
             ]
         for pat in (reader, experimenter, admin_pat):
             body = {"source_kind": "fake", "namespace": "demo", "name": "solo", "ref": "v1"}

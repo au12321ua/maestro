@@ -93,6 +93,13 @@ def require_experiment(p: Principal) -> None:
         )
 
 
+def require_content_upload(p: Principal) -> None:
+    """Shared file transport serves attachment publishers and dataset administrators."""
+    if p.has(PatPermission.DATASETS):
+        return
+    require_experiment(p)
+
+
 def can_manage_owned(p: Principal, owner_id: str) -> bool:
     """Own objects need the experiment permission; others' objects need override."""
     if owner_id == p.user_id:

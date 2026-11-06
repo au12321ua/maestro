@@ -36,7 +36,12 @@ from maestro.execution.attachments import (
     display,
 )
 from maestro.services import audit, deleted
-from maestro.services.principal import Principal, require_experiment, require_manage_owned
+from maestro.services.principal import (
+    Principal,
+    require_content_upload,
+    require_experiment,
+    require_manage_owned,
+)
 
 # Contents a query names at once in ``IN (...)``.
 _CHUNK = 500
@@ -65,6 +70,11 @@ def _held(conn: Connection, shas: list[str], user_id: str | None = None) -> set[
         found |= set(
             conn.execute(
                 select(t.attachment_files.c.sha256).where(t.attachment_files.c.sha256.in_(chunk))
+            ).scalars()
+        )
+        found |= set(
+            conn.execute(
+                select(t.dataset_files.c.sha256).where(t.dataset_files.c.sha256.in_(chunk))
             ).scalars()
         )
         uploads = select(t.attachment_uploads.c.sha256).where(
@@ -175,7 +185,7 @@ class Attachments:
     def missing(self, principal: Principal, shas) -> list[str]:
         """Which of these contents a publish by this principal would still need: those no
         snapshot holds and this user has not uploaded (or whose stored copy is gone)."""
-        require_experiment(principal)
+        require_content_upload(principal)
         if (
             not isinstance(shas, list)
             or len(shas) > limits.ATTACHMENT_MAX_FILES
@@ -194,8 +204,9 @@ class Attachments:
 
     @staticmethod
     def _upload_allowance(conn: Connection, user_id: str, sha256: str) -> int:
-        published = select(t.attachment_files.c.sha256)
-        if conn.execute(published.where(t.attachment_files.c.sha256 == sha256)).first():
+        published = select(t.attachment_files.c.sha256).union(select(t.dataset_files.c.sha256))
+        published_rows = published.subquery()
+        if conn.execute(select(published_rows).where(published_rows.c.sha256 == sha256)).first():
             return limits.ATTACHMENT_FILE_MAX_BYTES
         staged = conn.execute(
             select(func.coalesce(func.sum(t.attachment_uploads.c.size), 0)).where(
@@ -215,7 +226,7 @@ class Attachments:
     def add_upload(self, principal: Principal, sha256: str, source: Path, size: int) -> None:
         """Keep a received file whose SHA-256 the caller checked, for this user's next
         publish; it expires unless a snapshot holds it by then."""
-        require_experiment(principal)
+        require_content_upload(principal)
         expires = clock.to_text(clock.now() + timedelta(hours=limits.ATTACHMENT_UPLOAD_HOURS))
         key = (
             t.attachment_uploads.c.sha256 == sha256,
@@ -253,6 +264,20 @@ class Attachments:
             )
             if shas:
                 conn.execute(delete(t.attachment_uploads).where(expired))
+            shas += list(
+                conn.execute(
+                    delete(t.dataset_files)
+                    .where(
+                        t.dataset_files.c.dataset_version_id.is_(None),
+                        t.dataset_files.c.operation_id.in_(
+                            select(t.operations.c.id).where(
+                                t.operations.c.status.in_(["failed", "cancelled", "interrupted"])
+                            )
+                        ),
+                    )
+                    .returning(t.dataset_files.c.sha256)
+                ).scalars()
+            )
         return release_contents(self.db, self.store, shas) if shas else 0
 
     # --- publishing ----------------------------------------------------------------------

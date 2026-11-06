@@ -55,6 +55,9 @@ ATTACHMENT_MAX_BYTES = 1024 * 1024 * 1024
 ATTACHMENT_MAX_FILES = 10000
 ATTACHMENT_STAGED_MAX_BYTES = 2 * 1024 * 1024 * 1024
 ATTACHMENT_UPLOAD_HOURS = 24
+# Uploaded Harbor task trees share the content transport and its bounded staging.
+DATASET_UPLOAD_MAX_FILES = ATTACHMENT_MAX_FILES
+DATASET_UPLOAD_MAX_BYTES = ATTACHMENT_MAX_BYTES
 # Runs compared at once, and runs one collection holds.
 COMPARISON_MAX_RUNS = 50
 # Recent runs a collection offers to add, each checked against its fixed values.
@@ -77,6 +80,8 @@ STRUCTURAL = (
     "ATTACHMENT_FILE_MAX_BYTES",
     "ATTACHMENT_MAX_BYTES",
     "ATTACHMENT_MAX_FILES",
+    "DATASET_UPLOAD_MAX_FILES",
+    "DATASET_UPLOAD_MAX_BYTES",
     "COMPARISON_MAX_RUNS",
     "RECORD_BODY_MAX_BYTES",
     "RECORD_EXCERPT_MAX_BYTES",

@@ -10,7 +10,9 @@ from maestro.config import Settings
 from maestro.db import migrate
 from maestro.db.engine import Database
 from maestro.execution.attachments import AttachmentStore
+from maestro.execution.hub import HubSource
 from maestro.execution.materials import TaskMaterials
+from maestro.execution.uploads import UploadSource
 from maestro.security.master_key import MasterKeys
 from maestro.services.accounts import Accounts
 from maestro.services.artifact_archive import ArtifactArchives
@@ -95,6 +97,12 @@ class Maestro:
         disk = DiskWatch(settings.data_dir, settings)
         materials = TaskMaterials(settings.cache_dir)
         attachment_store = AttachmentStore(settings.data_dir, settings.cache_dir)
+        validator = sources.get("hub")
+        if not isinstance(validator, HubSource):
+            validator = HubSource(
+                settings.runner_python, settings.work_dir, max_runners=settings.hub_runner_slots
+            )
+        sources = {**sources, "upload": UploadSource(db, attachment_store, validator)}
         preparer = (
             Preparer(
                 db,
@@ -139,7 +147,7 @@ class Maestro:
             credentials=credentials,
             operations=Operations(db),
             catalog=Catalog(db, location),
-            datasets=Datasets(db, sources, credentials),
+            datasets=Datasets(db, sources, credentials, attachment_store),
             runs=runs,
             policies=Policies(db),
             setup_networks=setup_networks,

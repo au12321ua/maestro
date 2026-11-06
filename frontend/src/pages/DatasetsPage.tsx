@@ -23,6 +23,7 @@ import {
   StatusPill,
   TextField,
 } from "@/components/common";
+import { WorkflowRecords } from "@/components/WorkflowRecords";
 import { TaskStatusCells } from "@/components/TaskStatusCells";
 import { t, Trans } from "@/i18n";
 import { api, errorText } from "@/lib/api";
@@ -203,12 +204,12 @@ export function DatasetsPage() {
                 </CardTitle>
                 <div className="text-xs text-muted-foreground">
                   {t("datasets.page.source", { kind: dataset.source_kind })}
-                  {dataset.credential_id
+                  {dataset.source_kind !== "upload" && (dataset.credential_id
                     ? t("datasets.page.teamCredential")
-                    : t("datasets.page.anonymous")}
+                    : t("datasets.page.anonymous"))}
                   {dataset.description && ` · ${dataset.description}`}
                 </div>
-                {isAdmin && (
+                {isAdmin && dataset.source_kind !== "upload" && (
                   <div>
                     <Button
                       size="sm"
@@ -218,6 +219,9 @@ export function DatasetsPage() {
                       {t("datasets.page.checkUpstream")}
                     </Button>
                   </div>
+                )}
+                {dataset.source_kind === "upload" && (
+                  <p className="text-xs text-muted-foreground">{t("datasets.page.uploadNoUpstream")}</p>
                 )}
               </CardHeader>
               <CardContent className="grid gap-1">
@@ -278,6 +282,7 @@ export function DatasetsPage() {
               isAdmin={isAdmin}
               onChange={datasets.reload}
             />
+            <WorkflowRecords targetType="dataset_version" targetId={versionId} />
           </div>
         )}
       </div>
@@ -659,7 +664,9 @@ function AddDataset({
   datasets: Dataset[];
   onImported: (versionId?: string) => Promise<void>;
 }) {
-  const sources = useLoad(async () => (await api.get("/dataset-sources")).data);
+  const sources = useLoad(async () =>
+    (await api.get("/dataset-sources")).data.filter((source) => source.kind !== "upload"),
+  );
   const credentials = useLoad(async () =>
     (await api.get("/admin/credentials")).data.filter((c) => c.kind === "hub_token" && c.enabled),
   );
@@ -910,6 +917,7 @@ function VersionTasks({
         </CardTitle>
         {detail.data && (
           <div className="grid gap-1 text-xs text-muted-foreground">
+            <div>{t("datasets.page.source", { kind: detail.data.source_kind })}</div>
             <div>
               <Trans
                 i18nKey="datasets.tasks.digests"

@@ -357,6 +357,7 @@ SDK_METHODS = {
     "get_me": "me",
     "system_status": "system_status",
     "list_sources": "catalog.sources",
+    "upload_dataset": "catalog.upload",
     "list_datasets": "catalog.datasets",
     "get_dataset_version": "catalog.version",
     "list_tasks": "catalog.tasks",

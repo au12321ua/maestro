@@ -947,3 +947,19 @@ service_epochs = Table(
     _time("started_at"),
     _json("process_identity_json"),
 )
+
+
+# Original uploaded dataset content, held during import and until version purge.
+dataset_files = Table(
+    "dataset_files",
+    metadata,
+    _ref("operation_id", "operations", primary_key=True),
+    Column("path", Text, primary_key=True),
+    Column("dataset_digest", String(80), nullable=False),
+    _ref("dataset_version_id", "dataset_versions", nullable=True),
+    Column("sha256", String(64), nullable=False),
+    Column("size", Integer, nullable=False),
+    Column("executable", Boolean, nullable=False),
+    Index("ix_dataset_files_digest", "dataset_digest"),
+    Index("ix_dataset_files_sha256", "sha256"),
+)

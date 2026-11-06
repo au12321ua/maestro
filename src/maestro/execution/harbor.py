@@ -86,6 +86,11 @@ def artifact_kind(relative_path: str) -> str:
     return {"agent": "agent", "verifier": "verifier", "artifacts": "output"}.get(top, "trial")
 
 
+def _holds_secret(data: bytes, secrets: tuple[str, ...]) -> bool:
+    """Whether a deliverable carries one of this run's known secret values verbatim."""
+    return any(secret and secret.encode() in data for secret in secrets)
+
+
 def _redacted(data: bytes, limit: int, secrets: tuple[str, ...] = ()) -> bytes:
     """Logs and products are shown after basic redaction.
 
@@ -112,6 +117,7 @@ class _Session:
     failure: str | None = None
     secrets: tuple[str, ...] = ()
     network_plans: dict = field(default_factory=dict)
+    deliverable_bytes: dict[str, int] = field(default_factory=dict)
 
 
 class _StderrTail:
@@ -651,25 +657,69 @@ class HarborExecutor:
             root = (session.workdir / archive).resolve()
             if not root.is_relative_to(session.workdir.resolve()):
                 raise ProtocolError("archive outside the work directory")
-            for entry in p.get("files") or []:
-                if entry.get("skipped"):
-                    continue
+            entries = p.get("files") or []
+            outputs = [e for e in entries if artifact_kind(e["path"]) == "output"]
+            output_failure = (
+                "DELIVERABLES_INCOMPLETE" if any(e.get("skipped") for e in outputs) else None
+            )
+            if (
+                session.deliverable_bytes.get(trial_id, 0) + sum(e.get("size", 0) for e in outputs)
+                > self.artifact_limits["max_total_bytes"]
+            ):
+                output_failure = "DELIVERABLES_TOTAL_LIMIT"
+            elif any(e.get("size", 0) > self.artifact_limits["max_file_bytes"] for e in outputs):
+                output_failure = "DELIVERABLES_FILE_LIMIT"
+            elif len(outputs) > self.artifact_limits["max_files"]:
+                output_failure = "DELIVERABLES_FILE_COUNT_LIMIT"
+            for entry in entries:
+                kind = artifact_kind(entry["path"])
                 path = (root / entry["path"]).resolve()
                 if not path.is_relative_to(root):
                     raise ProtocolError("artifact path escapes the archive")
+                if kind == "output" and (entry.get("skipped") or output_failure):
+                    await sink.artifact_failed(
+                        trial_id,
+                        attempt,
+                        kind,
+                        entry["path"],
+                        entry.get("reason") or output_failure,
+                    )
+                    continue
+                if entry.get("skipped"):
+                    continue
                 data = await asyncio.to_thread(path.read_bytes)
+                if kind == "output" and len(data) > self.artifact_limits["max_file_bytes"]:
+                    await sink.artifact_failed(trial_id, attempt, kind, entry["path"], "TOO_LARGE")
+                    continue
+                # Deliverables skip redaction so they stay byte-for-byte; a known secret
+                # of this run inside one means it is not stored at all rather than leaked.
+                if kind == "output" and _holds_secret(data, session.secrets):
+                    await sink.artifact_failed(
+                        trial_id, attempt, kind, entry["path"], "DELIVERABLE_CONTAINS_SECRET"
+                    )
+                    continue
                 if hashlib.sha256(data).hexdigest() != entry.get("sha256"):
                     log.warning("run %s: %s changed after the manifest", trial_id, entry["path"])
+                    if kind == "output":
+                        await sink.artifact_failed(
+                            trial_id, attempt, kind, entry["path"], "CONTENT_DIGEST_MISMATCH"
+                        )
                     continue
                 await sink.artifact(
                     trial_id,
                     attempt,
-                    artifact_kind(entry["path"]),
+                    kind,
                     entry["path"],
-                    await asyncio.to_thread(
+                    data
+                    if kind == "output"
+                    else await asyncio.to_thread(
                         _redacted, data, self.artifact_limits["max_file_bytes"], session.secrets
                     ),
                 )
+                if kind == "output":
+                    session.deliverable_bytes[trial_id] = session.deliverable_bytes.get(
+                        trial_id, 0
+                    ) + len(data)
         outcome = harbor_outcome(
             p.get("exception_type"),
             redact(p.get("exception_message") or "", session.secrets) or None,

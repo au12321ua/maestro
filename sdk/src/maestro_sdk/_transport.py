@@ -200,14 +200,19 @@ class _Resource:
 
 
 def _save(
-    client: Transport, path: str, target: Path, params: Mapping[str, Any] | None = None
+    client: Transport,
+    path: str,
+    target: Path,
+    params: Mapping[str, Any] | None = None,
+    *,
+    expected_digest: str | None = None,
 ) -> Path:
     """Stream to a temporary file next to ``target``; keep it only if the digest matches."""
     target.parent.mkdir(parents=True, exist_ok=True)
     response = client._call(
         "GET", path, params=params, headers={"Accept": "application/octet-stream"}, stream=True
     )
-    expected = response.headers.get("X-Content-Digest") or None
+    expected = expected_digest or response.headers.get("X-Content-Digest") or None
     hasher = hashlib.sha256()
     handle, temporary = tempfile.mkstemp(dir=target.parent, prefix=".download-")
     try:

@@ -5048,6 +5048,60 @@
         "title": "DatasetSource",
         "type": "object"
       },
+      "DatasetUpload": {
+        "additionalProperties": false,
+        "properties": {
+          "files": {
+            "description": "Harbor task directories as relative paths; upload missing attachment contents first",
+            "items": {
+              "$ref": "#/components/schemas/DatasetUploadFile"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "namespace": {
+            "title": "Namespace",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace",
+          "name",
+          "files"
+        ],
+        "title": "DatasetUpload",
+        "type": "object"
+      },
+      "DatasetUploadFile": {
+        "additionalProperties": false,
+        "properties": {
+          "executable": {
+            "title": "Executable",
+            "type": "boolean"
+          },
+          "path": {
+            "description": "Relative task file path; Unicode and spaces allowed; no links or traversal",
+            "title": "Path",
+            "type": "string"
+          },
+          "sha256": {
+            "description": "Lowercase hex",
+            "title": "Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "sha256",
+          "executable"
+        ],
+        "title": "DatasetUploadFile",
+        "type": "object"
+      },
       "DatasetVersion": {
         "additionalProperties": false,
         "properties": {
@@ -5256,6 +5310,10 @@
             "$ref": "#/components/schemas/ScoringContract",
             "description": "Contract new runs freeze; source is dataset_version or platform_default"
           },
+          "source_kind": {
+            "title": "Source Kind",
+            "type": "string"
+          },
           "status": {
             "const": "ready",
             "title": "Status",
@@ -5290,6 +5348,7 @@
           "admitted_task_count",
           "submittable_task_count",
           "cache_ready_task_count",
+          "source_kind",
           "namespace",
           "name",
           "first_preparation_operation_id",
@@ -12498,7 +12557,8 @@
             "enum": [
               "collection",
               "run",
-              "attachment"
+              "attachment",
+              "dataset_version"
             ],
             "title": "Type",
             "type": "string"
@@ -12535,7 +12595,8 @@
             "enum": [
               "collection",
               "run",
-              "attachment"
+              "attachment",
+              "dataset_version"
             ],
             "title": "Type",
             "type": "string"
@@ -21581,6 +21642,48 @@
         ]
       }
     },
+    "/api/v1/dataset-uploads": {
+      "post": {
+        "description": "Import a file list, validate tasks with the Runner, then start first preparation.",
+        "operationId": "upload_dataset",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DatasetUpload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_Operation_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Upload Dataset",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
     "/api/v1/dataset-versions/{version_id}": {
       "get": {
         "operationId": "get_dataset_version",
@@ -22892,7 +22995,8 @@
               "enum": [
                 "collection",
                 "run",
-                "attachment"
+                "attachment",
+                "dataset_version"
               ],
               "title": "Target Type",
               "type": "string"

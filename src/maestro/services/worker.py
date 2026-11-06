@@ -271,11 +271,30 @@ class RunSink:
             False,
         )
 
-    async def _store(self, key, owner, kind, relative_path, data, append) -> None:
+    async def artifact_failed(self, trial_id, attempt_index, kind, relative_path, reason):
+        attempt_index = self._index(trial_id, attempt_index)
+        with self.db.read() as conn:
+            self._check(conn, trial_id)
+            attempt_id = self._attempt(conn, trial_id, attempt_index)
+        await self._store(
+            storage_key(self.run_id, attempt_id, relative_path),
+            {"trial_id": trial_id, "attempt_id": attempt_id},
+            kind,
+            relative_path,
+            b"",
+            False,
+            failure_reason=reason,
+        )
+
+    async def _store(
+        self, key, owner, kind, relative_path, data, append, failure_reason=None
+    ) -> None:
         store = self.worker.store
         if append and store.exists(key):
             data = store.get(key) + data
         try:
+            if failure_reason:
+                raise OSError(failure_reason)
             digest, size = await asyncio.to_thread(store.put, key, data)
             status = "available"
         except OSError:
@@ -288,7 +307,9 @@ class RunSink:
                 "digest": digest,
                 "size_bytes": size,
                 "status": status,
-                "status_reason": None if status == "available" else "STORAGE_WRITE_FAILED",
+                "status_reason": None
+                if status == "available"
+                else (failure_reason or "STORAGE_WRITE_FAILED"),
             }
             if existing:
                 conn.execute(

@@ -21,6 +21,7 @@ class Records(_Resource):
         excerpts: list[models.RecordExcerptInput | Mapping[str, Any]] | None = None,
     ) -> models.WorkflowRecord:
         """Target uses type/id and optional snapshot_id; attachment ids are names.
+        Dataset provenance can target a dataset_version id.
         Excerpts are redacted on the service and retained after artifact expiry."""
         return self._c._send(
             "POST",

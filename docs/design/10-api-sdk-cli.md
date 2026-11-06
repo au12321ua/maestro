@@ -45,9 +45,11 @@ SDK 要求 api_version 为 v1 且所需功能开启，否则抛 UNSUPPORTED_CAPA
 - 目录：能力与状态、团队策略、数据集来源 / 版本 / 任务 / 准备记录、模型配置、Harness 版本、凭据名称（U-23）、配置解析。
 - 实验：附件、方案、运行（含试次、汇总、原请求、取消、重跑、删除）、批次、比较、集合（含成员、修改记录、复制、当前最优）、工作流记录（含修订历史）、分析快照（含结论）、产物、导出、Operation。
 - 账号：初始化、会话、邀请查询与接受、本人信息、改密码、本人 PAT。
-- 管理（`/api/v1/admin/`，以及 Hub 检索 `/dataset-search*`，U-20）：管理员网页会话，或带对应权限的管理员 PAT；成员、凭据、主密钥、PAT 管理与物理删除只接受网页会话（[09](09-identity-security.md) 第 2 节，U-69）。
+- 管理（`/api/v1/admin/`，以及 Hub 检索 `/dataset-search*` 与上传 `/dataset-uploads`，U-20）：管理员网页会话，或带对应权限的管理员 PAT；成员、凭据、主密钥、PAT 管理与物理删除只接受网页会话（[09](09-identity-security.md) 第 2 节，U-69）。
 
 关键约定：
+
+- 上传数据集复用附件的 missing / PUT 内容通道，`POST /dataset-uploads` 提交 Harbor task 目录的文件清单并返回导入 Operation。`client.catalog.upload(directory, namespace=..., name=...)` 上传缺失内容、核对受理摘要后返回 Operation；等待导入可取得版本标识和首次准备 Operation。同一名称下相同内容复用原版本，错误在导入 Operation 中按任务列出。
 
 - 附件增量发布（[03](03-configuration-attachments.md) 第 6 节）：`POST /attachment-contents/missing` 问出缺哪些文件内容，逐个 `PUT /attachment-contents/{sha256}` 上传，再 `POST /attachments` 提交文件清单，同步返回快照；内容相同返回 200 与原快照。单个文件、整包 zip 与两份快照的文件差异分别在 `/attachments/{id}/files/{path}`、`/archive`、`/diff`。SDK 的 `attachments.publish(目录)`、`publish_commit(仓库, 提交)` 与 `fetch(快照, 目录)` 都只传差异的文件。
 - 日志也是产物，通过 `GET /artifacts/{id}/download` 读取，可带 offset / length 分段读（单段上限 1 MiB）。已结束运行的产物可按运行、任务、试次或尝试打成 zip（`GET /runs/{id}/artifacts/archive`，[07](07-artifacts-export.md) 第 5 节），SDK 为 `runs.download_archive`。
@@ -55,7 +57,7 @@ SDK 要求 api_version 为 v1 且所需功能开启，否则抛 UNSUPPORTED_CAPA
 - 维护（更新、备份、恢复）不在 HTTP API 中（[12](12-operations.md)）。
 - 比较是只计算不保存的 `POST /comparisons`；集合的比较用 `POST /collections/{id}/comparison`，请求体为空时用集合保存的设置（[08](08-collections-comparison.md)）。
 
-工作流记录用 `/records` 创建、按目标列举，`/records/{id}` 读取、修改或放进回收站，`/history` 返回从初稿到当前的完整修订及编辑者、PAT 与时间。修改要求 `expected_revision`；目标与作者不可改。目标用 `type`、`id`，附件的 `id` 是名称，另可固定 `snapshot_id`；附件名列表包括固定快照的记录，给出快照筛选时只列出固定该快照的记录，可再按 `kind` 筛选。正文为不解释的 JSON 对象，显式引用与脱敏摘录另列。目标进回收站后只读，物理删除后列表为空、单条与历史返回 410，记录自身仍可回收与清除（[01](01-domain-model.md)）。
+工作流记录用 `/records` 创建、按目标列举，`/records/{id}` 读取、修改或放进回收站，`/history` 返回从初稿到当前的完整修订及编辑者、PAT 与时间。修改要求 `expected_revision`；目标与作者不可改。目标可为集合、运行、附件或数据集版本，用 `type`、`id`，附件的 `id` 是名称，另可固定 `snapshot_id`；附件名列表包括固定快照的记录，给出快照筛选时只列出固定该快照的记录，可再按 `kind` 筛选。正文为不解释的 JSON 对象，显式引用与脱敏摘录另列。目标进回收站后只读，物理删除后列表为空、单条与历史返回 410，记录自身仍可回收与清除（[01](01-domain-model.md)）。
 
 `PUT /collections/{id}/current-best` 设置或清除附件快照指针，两种操作都要求理由并写集合修改记录；清除用 null，最近清除的理由仍由集合 GET 返回。SDK 提供 `client.records.create/get/list/update/history/delete` 与 `client.collections.set_current_best(id, snapshot_id, reason=...)`。记录使用 `experiment` 写权限，编辑只限作者，删除沿用归属与 `override`；所有 PAT 都可读取目标可读的记录。
 
@@ -98,8 +100,9 @@ client.operations.wait(submitted.operation_id, timeout=3600)
 client.runs.download_artifacts(submitted.run_id, local_directory)
 ~~~
 
-- 只自动重试 GET 与带幂等键的请求（网络错误与 502 / 503 / 504，遵守 Retry-After）；其他 POST 只发一次，结果未知时抛 TransportError 并带回幂等键。submit 省略幂等键时自动生成。
+- 只自动重试 GET 与带幂等键的请求（网络错误与 502 / 503 / 504，遵守 Retry-After）；内容寻址上传及数据集上传可重试并复用内容身份；其他 POST 只发一次，结果未知时抛 TransportError 并带回幂等键。submit 省略幂等键时自动生成。
 - `operations.wait` 从 1 秒起带抖动放慢到 5 秒；超时抛 WaitTimeout，服务端继续执行，“暂无进度”不算失败。
+- `runs.download_deliverables(run_id, directory)` 从最终尝试的 `artifacts/` 下载完整交付物，按任务键与重复序号组织，返回下载结果与不可读原因（[07](07-artifacts-export.md)）。来源声明可经 `records.create` 挂在 `dataset_version` 上。
 - 下载校验摘要；`download_artifacts` 列出跳过的过期 / 失败 / 已删产物及原因，拒绝越出目标目录的路径。
 - 类型区分 None、0、未知用量与已清理产物。
 - 发布附件后在本地按同一规则算出 `content_digest` 与返回的快照核对，不符抛 ContentMismatch。`publish_commit` 只读 git 对象中该提交跟踪的文件，仓库根目录就是附件根目录，可执行位取自文件模式，拒绝符号链接与子模块，工作目录有未提交的修改时警告；平台不记录提交（U-51）。

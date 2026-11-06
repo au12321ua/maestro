@@ -751,6 +751,8 @@ class Preparer:
                 )
             ).scalar()
             if found:  # a concurrent import of the same content won
+                if request["source_kind"] == "upload":
+                    _link_upload(conn, op["id"], found)
                 return found
             version_id = new_id("dsv")
             materials = [m for _, m, _ in tasks if m]
@@ -775,6 +777,8 @@ class Preparer:
                     created_at=at,
                 )
             )
+            if request["source_kind"] == "upload":
+                _link_upload(conn, op["id"], version_id)
             for task, material, definition in tasks:
                 task_id = new_id("task")
                 spec_digest = (definition.get("preparation") or {}).get("spec_digest")
@@ -812,6 +816,8 @@ class Preparer:
     def _import_done(self, op_id: str, request: dict, version_id: str, existing: bool) -> None:
         result = {"dataset_version_id": version_id, "existing": existing}
         with self.db.write() as conn:
+            if request["source_kind"] == "upload":
+                _link_upload(conn, op_id, version_id)
             if request.get("prepare", True):
                 pending = (
                     conn.execute(
@@ -1671,6 +1677,31 @@ def purged_ids(object_type: str):
     return select(t.deletions.c.object_id).where(
         t.deletions.c.object_type == object_type, t.deletions.c.state == deleted.PURGED
     )
+
+
+def _link_upload(conn: Connection, op_id: str, version_id: str) -> None:
+    """Original files and the version become durable in the same transaction.
+
+    Later imports release their duplicate references; the first list owns the bytes.
+    """
+    held = conn.execute(
+        select(t.dataset_files.c.operation_id)
+        .where(t.dataset_files.c.dataset_version_id == version_id)
+        .limit(1)
+    ).scalar()
+    if held:
+        conn.execute(
+            delete(t.dataset_files).where(
+                t.dataset_files.c.operation_id == op_id,
+                t.dataset_files.c.dataset_version_id.is_(None),
+            )
+        )
+    else:
+        conn.execute(
+            update(t.dataset_files)
+            .where(t.dataset_files.c.operation_id == op_id)
+            .values(dataset_version_id=version_id)
+        )
 
 
 def live_dataset(conn: Connection, source_kind: str, namespace: str, name: str) -> str | None:

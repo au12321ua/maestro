@@ -264,6 +264,13 @@ def purge_versions(conn: Connection, version_ids: list[str], service: Recycle) -
     )
     still_used = set(conn.execute(select(remaining.c.content_digest)).scalars())
     specs_used = set(conn.execute(select(remaining.c.spec_digest)).scalars())
+    upload_shas = list(
+        conn.execute(
+            delete(t.dataset_files)
+            .where(t.dataset_files.c.dataset_version_id.in_(version_ids))
+            .returning(t.dataset_files.c.sha256)
+        ).scalars()
+    )
     task_ids = [x.id for x in tasks]
     conn.execute(delete(t.task_admissions).where(t.task_admissions.c.task_id.in_(task_ids)))
     conn.execute(update(t.tasks).where(t.tasks.c.id.in_(task_ids)).values(definition_json={}))
@@ -294,6 +301,11 @@ def purge_versions(conn: Connection, version_ids: list[str], service: Recycle) -
             "released_preparations": len(preparation_ids),
         },
         [
+            lambda: (
+                release_contents(service.db, service.attachments, upload_shas)
+                if service.attachments
+                else None
+            ),
             lambda: service.remove_task_materials(released),
             lambda: service.discard_preparations(outputs),
         ],

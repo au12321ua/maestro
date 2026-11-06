@@ -488,6 +488,20 @@ class DatasetSource(BaseModel):
     kind: str
 
 
+class DatasetUploadFile(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    executable: bool
+    path: Annotated[
+        str,
+        Field(
+            description="Relative task file path; Unicode and spaces allowed; no links or traversal"
+        ),
+    ]
+    sha256: Annotated[str, Field(description="Lowercase hex")]
+
+
 class DatasetVersion(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -1324,7 +1338,7 @@ class RecordTargetInput(BaseModel):
         Field(description="Object id, or the attachment name for an attachment target"),
     ]
     snapshot_id: Annotated[str | None, Field(description="Only for attachment targets")] = None
-    type: Literal["collection", "run", "attachment"]
+    type: Literal["collection", "run", "attachment", "dataset_version"]
 
 
 class RecordTargetOutput(BaseModel):
@@ -1336,7 +1350,7 @@ class RecordTargetOutput(BaseModel):
         Field(description="Object id, or the attachment name for an attachment target"),
     ]
     snapshot_id: Annotated[str | None, Field(description="Only for attachment targets")]
-    type: Literal["collection", "run", "attachment"]
+    type: Literal["collection", "run", "attachment", "dataset_version"]
 
 
 class RecycleEntry(BaseModel):
@@ -2323,6 +2337,20 @@ class Dataset(BaseModel):
     versions: list[DatasetVersion]
 
 
+class DatasetUpload(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    files: Annotated[
+        list[DatasetUploadFile],
+        Field(
+            description="Harbor task directories as relative paths; upload missing attachment contents first"
+        ),
+    ]
+    name: str
+    namespace: str
+
+
 class DatasetVersionDetail(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -2351,6 +2379,7 @@ class DatasetVersionDetail(BaseModel):
             description="Contract new runs freeze; source is dataset_version or platform_default"
         ),
     ]
+    source_kind: str
     status: Literal["ready"]
     submittable_task_count: int
     task_count: int

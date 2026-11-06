@@ -98,6 +98,7 @@ def capabilities(request: Request):
                 "workflow_records": True,
                 "collection_current_best": True,
                 "dataset_import": True,
+                "dataset_upload": True,
             },
             "limits": {
                 **limits.structural(),
@@ -126,6 +127,7 @@ def capabilities(request: Request):
                 "catalog.read": read,
                 "catalog.search_source": admin("datasets"),
                 "datasets.import": admin("datasets"),
+                "datasets.upload": admin("datasets"),
                 "operations.read": read,
                 "pats.manage_own": {"web_session": True, "pat": False},
                 "admin.members": session_admin,

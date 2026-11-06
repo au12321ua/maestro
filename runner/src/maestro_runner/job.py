@@ -464,10 +464,14 @@ def _copy(handle, target: Path, limit: int) -> tuple[str, int] | None:
     return digest.hexdigest(), size
 
 
-def _archive(source: Path, target: Path, limits: dict) -> tuple[list[dict], int]:
+def _archive(
+    source: Path, target: Path, limits: dict, *, deliverable_bytes: int | None = None
+) -> tuple[list[dict], int]:
     """Copy a trial directory's regular files and describe them: the manifest entries and
     how many skipped entries were left off the list. ``limits`` holds ``max_files``,
     ``max_file_bytes`` and ``max_total_bytes``.
+
+    ``deliverable_bytes`` is the remaining trial budget after previous attempts.
 
     Nothing is followed or copied as a link, and the limits apply on the way, so a runaway
     task cannot fill the disk a second time. Skipped files stay in the manifest, with a
@@ -483,9 +487,25 @@ def _archive(source: Path, target: Path, limits: dict) -> tuple[list[dict], int]
         if skipped <= MAX_LISTED_SKIPS:
             files.append({"path": relative, "size": size, "skipped": True, "reason": reason})
 
-    for path, info in _entries(source):
+    entries = _entries(source)
+    outputs = [(p, i) for p, i in entries if p.relative_to(source).parts[0] == "artifacts"]
+    output_reason = None
+    output_cap = (
+        min(limits["max_total_bytes"], deliverable_bytes)
+        if deliverable_bytes is not None
+        else limits["max_total_bytes"]
+    )
+    if sum(i.st_size for _, i in outputs) > output_cap:
+        output_reason = "DELIVERABLES_TOTAL_LIMIT"
+    elif len(outputs) > limits["max_files"]:
+        output_reason = "DELIVERABLES_FILE_COUNT_LIMIT"
+    # Collect deliverables first so logs cannot consume their allowance.
+    entries.sort(key=lambda item: (item[0].relative_to(source).parts[0] != "artifacts", item[0]))
+    for path, info in entries:
         relative = path.relative_to(source).as_posix()
-        if stat.S_ISLNK(info.st_mode):
+        if relative.startswith("artifacts/") and output_reason:
+            skip(relative, info.st_size, output_reason)
+        elif stat.S_ISLNK(info.st_mode):
             skip(relative, 0, "SYMLINK")
         elif copied >= limits["max_files"]:
             skip(relative, info.st_size, "TOO_MANY_FILES")
@@ -501,7 +521,13 @@ def _archive(source: Path, target: Path, limits: dict) -> tuple[list[dict], int]
                     done = _copy(
                         handle,
                         target / relative,
-                        min(limits["max_file_bytes"], limits["max_total_bytes"] - total),
+                        min(
+                            limits["max_file_bytes"],
+                            limits["max_total_bytes"] - total,
+                            output_cap - total
+                            if relative.startswith("artifacts/")
+                            else limits["max_total_bytes"],
+                        ),
                     )
             except OSError:
                 (target / relative).unlink(missing_ok=True)
@@ -514,6 +540,12 @@ def _archive(source: Path, target: Path, limits: dict) -> tuple[list[dict], int]
             copied += 1
             total += size
             files.append({"path": relative, "size": size, "sha256": digest})
+    if any(f.get("skipped") and f["path"].split("/")[0] == "artifacts" for f in files):
+        for entry in files:
+            if entry["path"].startswith("artifacts/") and not entry.get("skipped"):
+                (target / entry["path"]).unlink(missing_ok=True)
+                entry.pop("sha256", None)
+                entry.update(skipped=True, reason="DELIVERABLES_INCOMPLETE")
     return files, max(0, skipped - MAX_LISTED_SKIPS)
 
 
@@ -534,6 +566,7 @@ class Execution:
         self.attempts_dir = self.out / "attempts"
         self.retry = spec["retry"]
         self.limits = spec["artifact_limits"]
+        self.deliverable_bytes: dict[str, int] = defaultdict(int)
         self.cancelling = False
         # Harbor trial name -> platform trial id; retries keep the trial name.
         self.bound: dict[str, str] = {}
@@ -773,7 +806,21 @@ class Execution:
         trial_dir = self.jobs_dir / "job" / name
         archive = self.attempts_dir / trial_id / str(attempt)
         archived = trial_dir.is_dir()
-        files, unlisted = _archive(trial_dir, archive, self.limits) if archived else ([], 0)
+        files, unlisted = (
+            _archive(
+                trial_dir,
+                archive,
+                self.limits,
+                deliverable_bytes=max(
+                    0, self.limits["max_total_bytes"] - self.deliverable_bytes[trial_id]
+                ),
+            )
+            if archived
+            else ([], 0)
+        )
+        self.deliverable_bytes[trial_id] += sum(
+            f["size"] for f in files if f["path"].startswith("artifacts/") and not f.get("skipped")
+        )
         exc = result.exception_info
         exception_type = exc.exception_type if exc else None
         rewards = result.verifier_result.rewards if result.verifier_result else None

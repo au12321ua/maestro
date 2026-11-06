@@ -45,7 +45,7 @@ def test_story_one_agent_reads_the_catalog_and_runs_on_a_cold_cache(service, sou
             (listed,) = pat.catalog.tasks(version_id)
             assert listed.admission.state == "admitted" and listed.can_submit
             assert listed.local_preparation.cache_state == "stale"
-            assert [s.kind for s in pat.catalog.sources()] == ["fake"]
+            assert [s.kind for s in pat.catalog.sources()] == ["fake", "upload"]
             # Searching the external source and administering are not SDK business.
             with pytest.raises(ApiError) as denied:
                 pat._call("GET", "dataset-search", params={"q": "solo", "source_kind": "fake"})

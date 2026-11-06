@@ -9,7 +9,7 @@ export function WorkflowRecords({
   targetType,
   targetId,
 }: {
-  targetType: "collection" | "run" | "attachment";
+  targetType: "collection" | "run" | "attachment" | "dataset_version";
   targetId: string;
 }) {
   const records = useLoad(

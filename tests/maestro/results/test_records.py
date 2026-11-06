@@ -4,11 +4,13 @@ import json
 from dataclasses import replace
 
 import pytest
+from maestro_sdk import ApiError
 from sqlalchemy import select, update
 from support import create_pat, invite_member, running, setup_admin
 from support.attachments import attach
 from support.configuration import agent_body, prepare_model
 from support.results import finished_run, purge, run
+from support.sdk import sdk
 
 from maestro.core.errors import MaestroError
 from maestro.db import schema as t
@@ -326,3 +328,40 @@ def test_recycled_targets_are_readable_and_purged_targets_are_set_aside(service,
         assert admin.post("/api/v1/records", json=reference_body).status_code == 410
         assert admin.post("/api/v1/records", json=record_body(run_id)).status_code == 410
         admin.delete(path, expect=200)
+
+
+def test_dataset_version_records_share_revision_and_visibility_rules(service, version_id):
+    with running(service) as client:
+        admin = setup_admin(service, client)
+        writer = sdk(create_pat(admin, ("experiment",)))
+        reader = sdk(create_pat(admin, ()))
+        target = {"type": "dataset_version", "id": version_id}
+        record = writer.records.create(
+            target=target,
+            kind="dataset-provenance",
+            title="Conversion",
+            body={"repository": "local benchmark", "revision": "fixed", "converter": "v1"},
+        )
+        assert (
+            reader.records.list(target_type="dataset_version", target_id=version_id)[0].id
+            == record.id
+        )
+        changed = writer.records.update(
+            record.id, expected_revision=record.revision, title="Updated"
+        )
+        assert changed.revision == 2 and len(reader.records.history(record.id)) == 2
+        with pytest.raises(ApiError):
+            writer.records.create(
+                target={"type": "dataset_version", "id": "missing"},
+                kind="dataset-provenance",
+                title="Missing",
+                body={},
+            )
+        admin.delete(f"/api/v1/admin/dataset-versions/{version_id}", expect=200)
+        assert reader.records.list(target_type="dataset_version", target_id=version_id)[
+            0
+        ].target_deletion
+        with pytest.raises(ApiError):
+            writer.records.create(
+                target=target, kind="dataset-provenance", title="Deleted", body={}
+            )

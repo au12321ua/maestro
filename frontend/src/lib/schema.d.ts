@@ -1357,6 +1357,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/dataset-uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Dataset
+         * @description Import a file list, validate tasks with the Runner, then start first preparation.
+         */
+        post: operations["upload_dataset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/dataset-versions/{version_id}": {
         parameters: {
             query?: never;
@@ -3926,6 +3946,33 @@ export interface components {
             /** Kind */
             kind: string;
         };
+        /** DatasetUpload */
+        DatasetUpload: {
+            /**
+             * Files
+             * @description Harbor task directories as relative paths; upload missing attachment contents first
+             */
+            files: components["schemas"]["DatasetUploadFile"][];
+            /** Name */
+            name: string;
+            /** Namespace */
+            namespace: string;
+        };
+        /** DatasetUploadFile */
+        DatasetUploadFile: {
+            /** Executable */
+            executable: boolean;
+            /**
+             * Path
+             * @description Relative task file path; Unicode and spaces allowed; no links or traversal
+             */
+            path: string;
+            /**
+             * Sha256
+             * @description Lowercase hex
+             */
+            sha256: string;
+        };
         /** DatasetVersion */
         DatasetVersion: {
             /** Admitted Task Count */
@@ -3996,6 +4043,8 @@ export interface components {
             resolved_digest: string;
             /** @description Contract new runs freeze; source is dataset_version or platform_default */
             scoring_contract: components["schemas"]["ScoringContract"];
+            /** Source Kind */
+            source_kind: string;
             /**
              * Status
              * @constant
@@ -6301,7 +6350,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "collection" | "run" | "attachment";
+            type: "collection" | "run" | "attachment" | "dataset_version";
         };
         /** RecordTarget */
         "RecordTarget-Output": {
@@ -6319,7 +6368,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "collection" | "run" | "attachment";
+            type: "collection" | "run" | "attachment" | "dataset_version";
         };
         /** RecordUpdate */
         RecordUpdate: {
@@ -10689,6 +10738,39 @@ export interface operations {
             };
         };
     };
+    upload_dataset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DatasetUpload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_Operation_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     get_dataset_version: {
         parameters: {
             query?: never;
@@ -11613,7 +11695,7 @@ export interface operations {
     list_records: {
         parameters: {
             query: {
-                target_type: "collection" | "run" | "attachment";
+                target_type: "collection" | "run" | "attachment" | "dataset_version";
                 target_id: string;
                 snapshot_id?: string | null;
                 kind?: string | null;
