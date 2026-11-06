@@ -12,7 +12,7 @@
 
 ## 接手与验证
 
-1. 核对根目录 `AGENTS.md`、当前任务和[用户决定](design/14-decisions.md)；按[协作流程](guides/development-workflow.md)建立分支，改代码使用独立 worktree。
+1. 核对根目录 `AGENTS.md` 与当前任务（[决策记录](design/14-decisions.md)只在追溯来由时查）；按[协作流程](guides/development-workflow.md)建立分支，改代码使用独立 worktree。
 2. 在任务目录执行 `uv sync --locked --group dev`；修改网页时在 `frontend/` 执行 `npm ci`。
 3. 按影响范围选择[开发验证](guides/testing.md)中的命令。文档修改运行 `python3 tools/check_doc_links.py` 和 `git diff --check`；接口说明变动也可能影响生成的 OpenAPI 与客户端，须同步生成。
 4. 提交时说明固定代码版本、实际覆盖和未覆盖范围；发布按[打包与发布](guides/releasing.md)，部署按[部署维护](guides/deployment.md)。
