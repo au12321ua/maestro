@@ -30,7 +30,7 @@ from maestro.db.engine import Database
 from maestro.domain import limits
 from maestro.domain.states import OperationStatus
 from maestro.execution.policy import MAPPING_ID, POLICY_VERSION
-from maestro.services import audit, deleted, operations, pagination, policy
+from maestro.services import audit, deleted, operations, pagination, policy, task_reads
 from maestro.services.principal import Principal
 
 log = logging.getLogger(__name__)
@@ -64,7 +64,9 @@ def public_export(row) -> dict:
         "request": row["request_json"],
         "size_bytes": row["size_bytes"],
         "digest": row["digest"],
-        "summary": row["summary_json"],
+        "summary": {k: v for k, v in row["summary_json"].items() if k != "task_ids"}
+        if row["summary_json"]
+        else None,
         "error": row["error_json"],
         "created_at": row["created_at"],
         "finished_at": row["finished_at"],
@@ -248,6 +250,32 @@ class Exports:
         path = self.directory / export_id / ARCHIVE
         if not path.is_file():
             raise MaestroError("EXPORT_UNAVAILABLE", "Export package is missing", 409)
+        ids = (row["summary_json"] or {}).get("task_ids")
+        if ids is None:
+            # Older packages keep the exact included files in their manifest too.
+            with zipfile.ZipFile(path) as archive:
+                manifest = json.loads(archive.read(f"export-{export_id}/manifest.json"))
+            artifact_paths = [f["path"] for f in manifest["files"] if f.get("artifact_id")]
+            ids = []
+            with self.db.read() as conn:
+                for run in manifest["runs"]:
+                    version_id = conn.execute(
+                        select(t.runs.c.dataset_version_id).where(t.runs.c.id == run["run_id"])
+                    ).scalar_one()
+                    keys = [
+                        key
+                        for key, directory in run["tasks"].items()
+                        if any(p.startswith(directory + "/") for p in artifact_paths)
+                    ]
+                    ids.extend(
+                        conn.execute(
+                            select(t.tasks.c.id).where(
+                                t.tasks.c.dataset_version_id == version_id,
+                                t.tasks.c.task_key.in_(keys),
+                            )
+                        ).scalars()
+                    )
+        task_reads.record(self.db, principal, ids, "trial_artifacts")
         return public_export(row), path
 
     # --- building (maintenance loop) ---------------------------------------------
@@ -356,7 +384,7 @@ class Exports:
         if not request["include_artifacts"]:
             return []
         query = (
-            select(t.artifacts, t.tasks.c.task_key)
+            select(t.artifacts, t.tasks.c.task_key, t.tasks.c.id.label("task_id"))
             .outerjoin(t.trials, t.trials.c.id == t.artifacts.c.trial_id)
             .outerjoin(t.tasks, t.tasks.c.id == t.trials.c.task_id)
             .where(t.artifacts.c.run_id.in_(request["run_ids"]))
@@ -502,7 +530,15 @@ class Exports:
         with open(target / ARCHIVE, "rb") as file:
             for chunk in iter(lambda: file.read(1 << 20), b""):
                 digest.update(chunk)
+        included_artifacts = {f["artifact_id"] for f in files if "artifact_id" in f}
         return {
+            "task_ids": sorted(
+                {
+                    item["task_id"]
+                    for item in selected
+                    if item["task_id"] and item["id"] in included_artifacts
+                }
+            ),
             "runs": len(runs_index),
             "files": len(files),
             "missing": len(missing),
@@ -622,7 +658,10 @@ class Exports:
                     "runs": len(row["request_json"]["run_ids"]),
                     "files": summary["files"] if summary else 0,
                 },
-                result={"export_id": export_id, **(summary or {})},
+                result={
+                    "export_id": export_id,
+                    **{k: v for k, v in (summary or {}).items() if k != "task_ids"},
+                },
                 error=error,
             )
 

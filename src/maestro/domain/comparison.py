@@ -22,7 +22,7 @@ from maestro.domain.states import TRIAL_ACTIVE, TrialState
 
 # Snapshots keep the tables they computed: a change to the table's shape bumps this, and
 # reading a snapshot must then still understand the older shape.
-COMPARISON_VERSION = 2
+COMPARISON_VERSION = 3
 GROUPING_VERSION = 2
 
 # --- dimensions -------------------------------------------------------------------------

@@ -414,3 +414,47 @@ def test_workflow_upgrade_keeps_existing_collections_and_events(tmp_path):
         assert conn.execute(select(t.workflow_record_revisions)).first() is None
         assert conn.exec_driver_sql("PRAGMA foreign_key_check").all() == []
     db.dispose()
+
+
+def test_task_read_migration_preserves_existing_collection_specs(tmp_path):
+    from sqlalchemy import insert, select
+
+    from maestro.db import schema as t
+
+    db = Database.open(tmp_path / "app.db")
+    migrate.upgrade(db, "0008")
+    with db.write() as conn:
+        conn.execute(
+            insert(t.users).values(
+                id="usr_reader",
+                username="reader",
+                display_name="Reader",
+                role="member",
+                status="active",
+                password_hash="x",
+                revision=1,
+                created_at="x",
+                updated_at="x",
+            )
+        )
+        conn.execute(
+            insert(t.collections).values(
+                id="col_existing",
+                name="existing",
+                description="",
+                owner_id="usr_reader",
+                scenario="models",
+                variable_json=["model"],
+                fixed_json={"dataset": {"digest": "fixed"}},
+                template_json={"dataset_version_id": "version"},
+                settings_json={},
+                created_at="x",
+                updated_at="x",
+            )
+        )
+    migrate.upgrade(db)
+    with db.read() as conn:
+        row = conn.execute(select(t.collections)).mappings().one()
+        assert row["held_out_task_ids_json"] == []
+        assert row["fixed_json"] == {"dataset": {"digest": "fixed"}}
+        assert conn.execute(select(t.task_reads)).all() == []

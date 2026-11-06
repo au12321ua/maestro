@@ -21,6 +21,7 @@ import {
   TextAreaField,
   TextField,
 } from "@/components/common";
+import { HeldOutPicker } from "@/components/HeldOutPicker";
 import { ScenarioPicker } from "@/pages/ComparePage";
 import { t } from "@/i18n";
 import { api } from "@/lib/api";
@@ -178,6 +179,10 @@ function NewCollection({ onClose }: { onClose: () => void }) {
   const [scenario, setScenario] = useState<Scenario>("models");
   const [variable, setVariable] = useState<VariableDimension[]>(["model"]);
   const [baseRun, setBaseRun] = useState("");
+  const [heldOut, setHeldOut] = useState<string[]>([]);
+  const versionId = runs.data?.find(run => run.id === baseRun)?.dataset_version_id;
+  const tasks = useLoad(async () => versionId ? (await api.get("/dataset-versions/{version_id}/tasks", { path: { version_id: versionId } })).data : [], [versionId]);
+
   const [error, setError] = useState<unknown>();
   const [busy, setBusy] = useState(false);
   const create = async () => {
@@ -192,6 +197,7 @@ function NewCollection({ onClose }: { onClose: () => void }) {
           variable_dimensions: scenario === "custom" ? variable : null,
           base: { run_id: baseRun },
           run_ids: [baseRun],
+          held_out_task_ids: heldOut,
         },
       });
       navigate(`/collections/${res.data.id}`);
@@ -234,7 +240,7 @@ function NewCollection({ onClose }: { onClose: () => void }) {
           <select
             className="h-9 rounded-md border bg-background px-2"
             value={baseRun}
-            onChange={(e) => setBaseRun(e.target.value)}
+            onChange={(e) => { setBaseRun(e.target.value); setHeldOut([]); }}
           >
             <option value="">{t("comparison.collections.pickRun")}</option>
             {(runs.data ?? []).map((r) => (
@@ -251,6 +257,8 @@ function NewCollection({ onClose }: { onClose: () => void }) {
             {t("comparison.collections.fromNewRun")}
           </span>
         </label>
+        <ErrorAlert error={tasks.error} />
+        <HeldOutPicker tasks={tasks.data ?? []} selected={heldOut} onChange={setHeldOut} />
         <ErrorAlert error={error} />
         <div className="flex gap-2">
           <Button

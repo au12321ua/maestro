@@ -712,3 +712,186 @@ def test_current_best_requires_a_live_member_run_and_records_every_reason(servic
             ).status_code
             == 422
         )
+
+
+def test_held_out_spec_validation_copy_and_immutability(service, version_id, source):
+    with running(service) as client:
+        admin = setup_admin(service, client)
+        model, harness = prepare_model(admin)
+        tasks = admin.get(f"/api/v1/dataset-versions/{version_id}/tasks").json()["data"]
+        ids = [task["id"] for task in tasks]
+        base = {"request": {"dataset_version_id": version_id, **agent_body(model, harness)}}
+        body = {"name": "held out", "scenario": "attachments", "base": base}
+        for marks in (["unknown"], ids):
+            refused = admin.post("/api/v1/collections", json={**body, "held_out_task_ids": marks})
+            assert refused.status_code == 422
+            assert refused.json()["error"]["field_errors"][0]["path"] == "/held_out_task_ids"
+        collection = admin.post(
+            "/api/v1/collections", json={**body, "held_out_task_ids": ids[:1]}, expect=201
+        ).json()["data"]
+        path = f"/api/v1/collections/{collection['id']}"
+        assert collection["held_out_task_ids"] == ids[:1]
+        assert collection["held_out_task_keys"] == [tasks[0]["task_key"]]
+        assert admin.put(path, json={"held_out_task_ids": []}).status_code == 422
+        assert admin.get(path).json()["data"]["held_out_task_ids"] == ids[:1]
+        assert (
+            admin.post(path + "/copy", json={}, expect=201).json()["data"]["held_out_task_ids"]
+            == ids[:1]
+        )
+        assert (
+            admin.post(path + "/copy", json={"held_out_task_ids": ids[1:2]}, expect=201).json()[
+                "data"
+            ]["held_out_task_ids"]
+            == ids[1:2]
+        )
+        source.add("demo", "other", "v1", ["other-01", "other-02"])
+        other, _ = import_and_prepare(admin, "demo", "other", "v1")
+        other_base = {"request": {**base["request"], "dataset_version_id": other}}
+        refused = admin.post(path + "/copy", json={"base": other_base})
+        assert refused.status_code == 422
+        assert "new marks" in refused.json()["error"]["message"]
+        assert (
+            admin.post(
+                "/api/v1/collections",
+                json={**body, "base": other_base, "held_out_task_ids": ids[:1]},
+            ).status_code
+            == 422
+        )
+        copied = admin.post(
+            path + "/copy", json={"base": other_base, "held_out_task_ids": []}, expect=201
+        ).json()["data"]
+        assert (
+            copied["held_out_task_ids"] == [] and copied["template"]["dataset_version_id"] == other
+        )
+
+
+def test_held_out_comparison_and_snapshots_split_without_recording_reads(
+    service, version_id, executor
+):
+    with running(service) as client:
+        admin = setup_admin(service, client)
+        model, harness = prepare_model(admin)
+        tasks = admin.get(f"/api/v1/dataset-versions/{version_id}/tasks").json()["data"]
+        held = next(task for task in tasks if task["task_key"] == "add-02")
+        first = run_of(admin, version_id, model, harness)
+        collection = admin.post(
+            "/api/v1/collections",
+            json={
+                "name": "split",
+                "scenario": "models",
+                "base": {"run_id": first},
+                "run_ids": [first],
+                "held_out_task_ids": [held["id"]],
+            },
+            expect=201,
+        ).json()["data"]
+        path = f"/api/v1/collections/{collection['id']}"
+        executor.script = {"add-01": [scored(0)], "add-02": [scored(0)]}
+        second = run_of(admin, version_id, model, harness, collection_id=collection["id"])
+        result = admin.post(path + "/comparison", expect=200).json()["data"]
+        assert result["comparison_version"] == 3
+        assert {task["task_key"] for task in result["tasks"]} == {"add-01", "mul-01"}
+        assert result["held_out"]["tasks"][0]["task_key"] == "add-02"
+        assert result["held_out"]["tasks"][0]["held_out"]
+        assert rows(result)[second]["mean"] == 0.5
+        assert rows(result)[second]["difference"]["mean"] == -0.5
+        assert rows(result["held_out"])[second]["mean"] == 0
+        assert rows(result["held_out"])[second]["difference"]["mean"] == -1
+        ad_hoc = compare(admin, [first, second])
+        assert ad_hoc["held_out"] is None and len(ad_hoc["tasks"]) == 3
+        # An excluded failure in the held-out group drops only that group's task.
+        executor.script = {"add-02": [RATE_LIMITED]}
+        third = run_of(admin, version_id, model, harness, collection_id=collection["id"])
+        filtered = admin.post(path + "/comparison", expect=200).json()["data"]
+        assert filtered["dropped_tasks"] == 0 and filtered["held_out"]["dropped_tasks"] == 1
+        assert rows(filtered["held_out"])[third]["excluded_by_group"] == {"provider_unavailable": 1}
+        all_tasks = admin.post(
+            path + "/comparison", json={"scope": "all", "exclude": []}, expect=200
+        ).json()["data"]
+        assert rows(all_tasks["held_out"])[third]["failed_trials"] == 1
+        snapshot = admin.post(
+            "/api/v1/analysis-snapshots",
+            json={"name": "frozen", "collection_id": collection["id"]},
+            expect=201,
+        ).json()["data"]
+        assert snapshot["result"] == filtered and snapshot["spec"]["held_out_task_ids"] == [
+            held["id"]
+        ]
+        with service.db.read() as conn:
+            stored = (
+                conn.execute(
+                    select(t.analysis_snapshots).where(t.analysis_snapshots.c.id == snapshot["id"])
+                )
+                .mappings()
+                .one()
+            )
+            assert stored["result_json"]["held_out"]["runs"]
+            assert conn.execute(select(t.task_reads)).all() == []
+        # Frozen older results remain readable without adding or recomputing a split.
+        legacy = {k: v for k, v in stored["result_json"].items() if k != "held_out"}
+        legacy["comparison_version"] = 2
+        with service.db.write() as conn:
+            conn.execute(
+                update(t.analysis_snapshots)
+                .where(t.analysis_snapshots.c.id == snapshot["id"])
+                .values(
+                    result_json=legacy,
+                    spec_json={
+                        k: v for k, v in stored["spec_json"].items() if not k.startswith("held_out")
+                    },
+                )
+            )
+        old = admin.get(f"/api/v1/analysis-snapshots/{snapshot['id']}", expect=200).json()["data"]
+        assert old["result"]["comparison_version"] == 2 and old["result"]["held_out"] is None
+        assert old["result"]["runs"] == filtered["runs"]
+
+
+def test_held_out_view_counts_team_runs_once_and_keeps_read_history(service, version_id):
+    from support.results import finished_run
+
+    with running(service) as client:
+        admin = setup_admin(service, client)
+        member = invite_member(service, admin, "member")
+        model, harness = prepare_model(admin)
+        tasks = admin.get(f"/api/v1/dataset-versions/{version_id}/tasks").json()["data"]
+        task = tasks[0]
+        admin.get(f"/api/v1/tasks/{task['id']}", expect=200)
+        before = run_of(admin, version_id, model, harness)
+        collection = admin.post(
+            "/api/v1/collections",
+            json={
+                "name": "reads and runs",
+                "scenario": "models",
+                "base": {"run_id": before},
+                "held_out_task_ids": [task["id"]],
+            },
+            expect=201,
+        ).json()["data"]
+        path = f"/api/v1/collections/{collection['id']}/held-out"
+        (view,) = member.get(path, expect=200).json()["data"]
+        assert not view["read_since_creation"] and view["accepted_runs"] == 0
+        assert view["reads"][0]["count"] == 1
+        # Runs outside the collection and Oracle runs count; repetitions do not multiply it.
+        run_id = finished_run(
+            member,
+            version_id,
+            repetitions=2,
+            task_selection={"mode": "explicit", "task_ids": [task["id"]]},
+        )
+        other = finished_run(
+            member, version_id, task_selection={"mode": "explicit", "task_ids": [tasks[1]["id"]]}
+        )
+        reader = create_pat(member, ())
+        reader.get(f"/api/v1/tasks/{task['id']}", expect=200)
+        (view,) = reader.get(path, expect=200).json()["data"]
+        assert view["read_since_creation"] and view["accepted_runs"] == 1
+        assert len(view["reads"]) == 2
+        member.delete(f"/api/v1/runs/{run_id}", expect=200)
+        assert member.get(path).json()["data"][0]["accepted_runs"] == 1
+        purge(admin, bin_entry(admin, run_id)).raise_for_status()
+        assert member.get(path).json()["data"][0]["accepted_runs"] == 1
+        assert admin.get(f"/api/v1/runs/{other}").status_code == 200
+        # Purging task definitions does not discard read summaries.
+        admin.delete(f"/api/v1/admin/dataset-versions/{version_id}", expect=200)
+        purge(admin, bin_entry(admin, version_id)).raise_for_status()
+        assert member.get(path).json()["data"][0]["reads"] == view["reads"]

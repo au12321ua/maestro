@@ -106,7 +106,7 @@ def test_task_briefs_copy_public_catalog_and_select_by_key_or_id(workflow, tmp_p
     assert len(paths) == 2
     for task, path in zip(catalog, paths, strict=False):
         assert path.name == task.id
-        assert (path / "instruction.md").read_text() == task.instruction
+        assert (path / "instruction.md").read_text() == client.catalog.task(task.id).instruction
         data = json.loads((path / "metadata.json").read_text())
         assert data["content"]["digest"] == task.content.digest
         assert data["spec_digest"] == task.spec_digest
@@ -546,3 +546,48 @@ def test_candidate_records_keep_every_decision_and_find_their_runs(workflow):
     assert listed["record_id"] == record.id and listed["current_best"] is True
     assert listed["decision"]["decision"] == "keep"
     assert listed["run_ids"] == [candidate_run]
+
+
+def test_held_out_sdk_and_report_keep_development_completeness_separate(
+    workflow, tmp_path, executor
+):
+    client, collection, parent, _ = workflow
+    tasks = client.catalog.tasks(collection.template.dataset_version_id)
+    held = tasks[1]
+    split = client.collections.copy(collection.id, held_out_task_ids=[held.id])
+    assert split.held_out_task_ids == [held.id]
+    assert client.collections.copy(split.id).held_out_task_ids == [held.id]
+    assert client.collections.copy(split.id, held_out_task_ids=[]).held_out_task_ids == []
+    created = client.collections.create(
+        "explicit marks",
+        "attachments",
+        base_request=collection.template.model_dump(mode="json", exclude_none=True)
+        | {"attachments": [parent.id]},
+        held_out_task_ids=[held.id],
+    )
+    assert created.held_out_task_ids == [held.id]
+    assert not hasattr(tasks[0], "instruction")
+    assert client.catalog.reads([held.id]) == []
+    paths = write_task_briefs(
+        client, collection.template.dataset_version_id, tmp_path / "brief", tasks=[tasks[0].id]
+    )
+    assert len(paths) == 1 and client.catalog.reads([tasks[0].id])[0].count == 1
+    assert client.catalog.reads([held.id]) == []
+    # A missing score affects only held-out completeness.
+    executor.script = {held.task_key: [scored(None)]}
+    finish(client, split, parent)
+    report = build_report(client, split.id, tmp_path / "report")
+    assert report["complete"] and not report["held_out_complete"]
+    assert report["comparison"]["held_out"]["tasks"][0]["held_out"]
+    assert len(report["comparison"]["tasks"]) == 2
+    assert report["held_out"][0]["accepted_runs"] == 1
+    assert report["held_out"][0]["reads"] == []
+    assert json.loads((tmp_path / "report/report.json").read_text()) == report
+    markdown = (tmp_path / "report/report.md").read_text()
+    assert "Development results" in markdown and "Held-out results" in markdown
+    assert "Held-out reads and runs" in markdown and held.task_key in markdown
+    client.catalog.task(held.id)
+    assert client.collections.held_out(split.id)[0].read_since_creation
+    report = build_report(client, split.id, tmp_path / "read-report")
+    assert report["held_out"][0]["reads"][0]["count"] == 1
+    assert "instruction" in (tmp_path / "read-report/report.md").read_text()

@@ -28,6 +28,7 @@ class Collections(_Resource):
         base_request: Mapping[str, Any] | None = None,
         variable_dimensions: list[str] | None = None,
         run_ids: list[str] | None = None,
+        held_out_task_ids: list[str] | None = None,
         description: str = "",
         settings: Mapping[str, Any] | None = None,
     ) -> models.Collection:
@@ -41,7 +42,13 @@ class Collections(_Resource):
             "base": base,
             "description": description,
             "run_ids": run_ids or [],
-            **_query({"variable_dimensions": variable_dimensions, "settings": settings}),
+            **_query(
+                {
+                    "variable_dimensions": variable_dimensions,
+                    "settings": settings,
+                    "held_out_task_ids": held_out_task_ids,
+                }
+            ),
         }
         return self._c._send("POST", "collections", models.Collection, body)
 
@@ -51,9 +58,13 @@ class Collections(_Resource):
             "PUT", f"collections/{collection_id}", models.Collection, _query(changes)
         )
 
-    def copy(self, collection_id: str, **changes: Any) -> models.Collection:
+    def copy(
+        self, collection_id: str, *, held_out_task_ids: list[str] | None = None, **changes: Any
+    ) -> models.Collection:
         """A new collection: ``name``, ``scenario``, ``variable_dimensions``, ``base``
         (``{"run_id": ...}`` or ``{"request": ...}``); ``not_carried`` lists runs left out."""
+        if held_out_task_ids is not None:
+            changes["held_out_task_ids"] = held_out_task_ids
         return self._c._send(
             "POST", f"collections/{collection_id}/copy", models.Collection, _query(changes)
         )
@@ -107,3 +118,6 @@ class Collections(_Resource):
             models.Collection,
             {"snapshot_id": snapshot_id, "reason": reason},
         )
+
+    def held_out(self, collection_id: str) -> list[models.HeldOutTask]:
+        return self._c._get(f"collections/{collection_id}/held-out", list[models.HeldOutTask])

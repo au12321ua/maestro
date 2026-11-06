@@ -280,3 +280,48 @@ def test_record_routes_and_current_best_declare_authentication_and_reject_read_p
             )
             response = client.request(next(iter(route.methods)), url, json={})
             assert response.status_code == 401
+
+
+def test_task_content_reads_and_held_out_views_are_readable_without_write_permissions(
+    service, version_id
+):
+    from support.configuration import agent_body, prepare_model
+
+    with running(service, run_worker=False) as client:
+        admin = setup_admin(service, client)
+        member = invite_member(service, admin, "reader")
+        model, harness = prepare_model(admin)
+        task = member.get(f"/api/v1/dataset-versions/{version_id}/tasks").json()["data"][0]
+        collection = admin.post(
+            "/api/v1/collections",
+            json={
+                "name": "held out",
+                "scenario": "models",
+                "base": {
+                    "request": {"dataset_version_id": version_id, **agent_body(model, harness)}
+                },
+                "held_out_task_ids": [task["id"]],
+            },
+            expect=201,
+        ).json()["data"]
+        for caller in (member, create_pat(member, ()), create_pat(admin, ())):
+            caller.get(f"/api/v1/tasks/{task['id']}", expect=200)
+            reads = caller.post(
+                "/api/v1/tasks/reads", json={"task_ids": [task["id"]]}, expect=200
+            ).json()["data"]
+            assert reads
+            caller.get(f"/api/v1/collections/{collection['id']}/held-out", expect=200)
+        reader = create_pat(member, ())
+        assert (
+            reader.post(
+                f"/api/v1/collections/{collection['id']}/copy", json={"held_out_task_ids": []}
+            ).status_code
+            == 403
+        )
+        anonymous = type(client)(client.app)
+        for method, path, body in (
+            ("GET", f"/api/v1/tasks/{task['id']}", None),
+            ("POST", "/api/v1/tasks/reads", {"task_ids": [task["id"]]}),
+            ("GET", f"/api/v1/collections/{collection['id']}/held-out", None),
+        ):
+            assert anonymous.request(method, path, json=body).status_code == 401

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
+import { HeldOutPicker } from "@/components/HeldOutPicker";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -234,6 +235,7 @@ export function NewRunPage() {
   const [planId, setPlanId] = useState("");
   const [planName, setPlanName] = useState("");
   const [collectionName, setCollectionName] = useState("");
+  const [heldOut, setHeldOut] = useState<string[]>([]);
   const [collectionScenario, setCollectionScenario] = useState<Scenario>("models");
   const [collectionDescription, setCollectionDescription] = useState("");
   const [collectionVariable, setCollectionVariable] = useState<VariableDimension[]>([]);
@@ -434,9 +436,19 @@ export function NewRunPage() {
       setCollectionDescription(collection.data.description);
       setCollectionScenario(collection.data.scenario);
       setCollectionVariable(collection.data.variable_dimensions);
+      setHeldOut(collection.data.held_out_task_ids);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [collection.data]);
+
+  const developmentApplied = useRef(false);
+  useEffect(() => {
+    const c = collection.data;
+    if (!collectionId || !c?.held_out_task_ids.length || developmentApplied.current || tasks.loading || !tasks.data?.length || tasks.data[0].dataset_version_id !== c.template.dataset_version_id) return;
+    developmentApplied.current = true;
+    setMode("explicit");
+    setSelected(new Set(tasks.data.filter(task => task.can_submit && !c.held_out_task_ids.includes(task.id)).map(task => task.id)));
+  }, [collectionId, collection.data, tasks.data, tasks.loading]);
 
   const imported = useRef(false);
   useEffect(() => {
@@ -483,6 +495,7 @@ export function NewRunPage() {
           name: collectionName.trim(),
           scenario: collectionScenario,
           base: { request: setFields(request()) },
+          held_out_task_ids: heldOut,
         },
       });
       toast.success(t("newRun.collection.created", { name: res.data.name }));
@@ -506,6 +519,7 @@ export function NewRunPage() {
           scenario: collectionScenario,
           variable_dimensions: collectionScenario === "custom" ? collectionVariable : null,
           base: { request: setFields(request()) },
+          held_out_task_ids: heldOut,
         },
       });
       if (res.data.not_carried?.length) setCopiedCollection(res.data);
@@ -725,6 +739,7 @@ export function NewRunPage() {
                     setCollectionVariable(v);
                   }}
                 />
+                <HeldOutPicker tasks={tasks.data ?? []} selected={heldOut} onChange={setHeldOut} />
                 <SelectField
                   id="copy-base-run"
                   label={t("newRun.copy.baseRun")}
@@ -811,6 +826,7 @@ export function NewRunPage() {
                   </option>
                 ))}
               </SelectField>
+              <div className="md:col-span-2"><HeldOutPicker tasks={tasks.data ?? []} selected={heldOut} onChange={setHeldOut} /></div>
               <div className="flex items-end gap-2 md:col-span-2">
                 <TextField
                   id="collection-from-form"
@@ -1277,6 +1293,7 @@ export function NewRunPage() {
                     type="radio"
                     name="mode"
                     checked={mode === "all_eligible"}
+                    disabled={!!collectionId && !!collection.data?.held_out_task_ids.length}
                     onChange={() => changed(setMode)("all_eligible")}
                   />
                   {t("newRun.tasks.allEligible", { count: eligible.length })}
@@ -1291,6 +1308,7 @@ export function NewRunPage() {
                   {t("newRun.tasks.explicit", { count: selected.size })}
                 </label>
               </div>
+              {!!collectionId && !!collection.data?.held_out_task_ids.length && <p className="text-xs text-muted-foreground">{t("comparison.heldOut.runHint")}</p>}
               <ErrorAlert error={tasks.error} title={t("newRun.tasks.loadFailed")} />
               {tasks.loading && !tasks.data && <Loading />}
               {tasks.data && (
@@ -1323,6 +1341,7 @@ export function NewRunPage() {
                           )}
                           <TableCell className="max-w-[24rem] font-mono text-xs">
                             <LongName value={task.task_key} prefix={taskPrefix} />
+                            {collection.data?.held_out_task_ids.includes(task.id) && <Pill tone="warn">{t("comparison.heldOut.title")}</Pill>}
                             {task.required_parameters.length > 0 && (
                               <div className="text-[11px] text-muted-foreground">
                                 {t("newRun.tasks.needsParams", {

@@ -5,8 +5,9 @@ compose the public HTTP API and write local files; they do not submit runs or de
 which snapshot to keep. Follow the installed `maestro-package` skill for decisions.
 
 1. `write_task_briefs(client, version_id, directory, tasks=[key_or_id, ...])` writes
-   `instruction.md` and `metadata.json` below each task id. Read the selected tasks and
-   record your hypothesis and what evidence would support it.
+   `instruction.md` and `metadata.json` below each task id. Pass development tasks only:
+   each brief is recorded as a read of that task, and held-out tasks should stay unread.
+   Read the selected tasks and record your hypothesis and what evidence would support it.
 2. Publish your candidate, then call
    `prepare_candidate(client, collection_id, parent_id, candidate_id, tasks=[...])`.
    Inspect the resolution, planned trials, blockers, file diff and recorded parent

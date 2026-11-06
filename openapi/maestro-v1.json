@@ -2013,6 +2013,20 @@
             "title": "Fixed Labels",
             "type": "object"
           },
+          "held_out_task_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Held Out Task Ids",
+            "type": "array"
+          },
+          "held_out_task_keys": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Held Out Task Keys",
+            "type": "array"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -2118,6 +2132,8 @@
           "variable_dimensions",
           "fixed",
           "fixed_labels",
+          "held_out_task_ids",
+          "held_out_task_keys",
           "template",
           "base_run_id",
           "settings",
@@ -2256,6 +2272,20 @@
             ],
             "title": "Description"
           },
+          "held_out_task_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Held Out Task Ids"
+          },
           "name": {
             "anyOf": [
               {
@@ -2332,6 +2362,14 @@
             "default": "",
             "title": "Description",
             "type": "string"
+          },
+          "held_out_task_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Held Out Task Ids",
+            "type": "array"
           },
           "name": {
             "title": "Name",
@@ -2904,6 +2942,11 @@
             "title": "Cells",
             "type": "object"
           },
+          "held_out": {
+            "default": false,
+            "title": "Held Out",
+            "type": "boolean"
+          },
           "status": {
             "enum": [
               "compared",
@@ -2919,6 +2962,7 @@
           }
         },
         "required": [
+          "held_out",
           "task_key",
           "status",
           "cells"
@@ -2975,6 +3019,16 @@
             },
             "title": "Groups",
             "type": "array"
+          },
+          "held_out": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ComparisonResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "runs": {
             "items": {
@@ -3041,7 +3095,8 @@
           "common_tasks",
           "all_tasks",
           "dropped_tasks",
-          "set_aside"
+          "set_aside",
+          "held_out"
         ],
         "title": "Comparison",
         "type": "object"
@@ -3407,6 +3462,126 @@
           "run_ids"
         ],
         "title": "ComparisonRequest",
+        "type": "object"
+      },
+      "ComparisonResult": {
+        "additionalProperties": false,
+        "properties": {
+          "all_tasks": {
+            "title": "All Tasks",
+            "type": "integer"
+          },
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/ComparisonNotice"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "common_tasks": {
+            "title": "Common Tasks",
+            "type": "integer"
+          },
+          "comparable": {
+            "description": "Same dataset content and scoring contract",
+            "title": "Comparable",
+            "type": "boolean"
+          },
+          "comparison_version": {
+            "title": "Comparison Version",
+            "type": "integer"
+          },
+          "dimensions": {
+            "items": {
+              "$ref": "#/components/schemas/ComparisonDimension"
+            },
+            "title": "Dimensions",
+            "type": "array"
+          },
+          "dropped_tasks": {
+            "description": "Common tasks left out: a run had no valid trial",
+            "title": "Dropped Tasks",
+            "type": "integer"
+          },
+          "grouping_version": {
+            "title": "Grouping Version",
+            "type": "integer"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/FailureGroupCount"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/ComparedRunRow"
+            },
+            "title": "Runs",
+            "type": "array"
+          },
+          "set_aside": {
+            "items": {
+              "$ref": "#/components/schemas/SetAsideRun"
+            },
+            "title": "Set Aside",
+            "type": "array"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/ComparisonSettings"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/ComparedTask"
+            },
+            "title": "Tasks",
+            "type": "array"
+          },
+          "varying": {
+            "items": {
+              "enum": [
+                "dataset",
+                "scoring",
+                "model",
+                "harness",
+                "attachments",
+                "resources",
+                "repetitions",
+                "parameters",
+                "other"
+              ],
+              "type": "string"
+            },
+            "title": "Varying",
+            "type": "array"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/ComparisonNotice"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "comparison_version",
+          "grouping_version",
+          "settings",
+          "comparable",
+          "blockers",
+          "warnings",
+          "dimensions",
+          "varying",
+          "groups",
+          "runs",
+          "tasks",
+          "common_tasks",
+          "all_tasks",
+          "dropped_tasks",
+          "set_aside"
+        ],
+        "title": "ComparisonResult",
         "type": "object"
       },
       "ComparisonSettings": {
@@ -6376,6 +6551,23 @@
         "title": "Envelope[SystemStatus]",
         "type": "object"
       },
+      "Envelope_TaskDetail_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/TaskDetail"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[TaskDetail]",
+        "type": "object"
+      },
       "Envelope_TeamPolicy_": {
         "additionalProperties": false,
         "properties": {
@@ -6738,6 +6930,27 @@
         "title": "Envelope[list[Harness]]",
         "type": "object"
       },
+      "Envelope_list_HeldOutTask__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/HeldOutTask"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[list[HeldOutTask]]",
+        "type": "object"
+      },
       "Envelope_list_Invitation__": {
         "additionalProperties": false,
         "properties": {
@@ -6988,6 +7201,27 @@
           "meta"
         ],
         "title": "Envelope[list[SourceVersion]]",
+        "type": "object"
+      },
+      "Envelope_list_TaskRead__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/TaskRead"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[list[TaskRead]]",
         "type": "object"
       },
       "Envelope_list_Task__": {
@@ -8775,6 +9009,43 @@
           "accepting_runs"
         ],
         "title": "Health",
+        "type": "object"
+      },
+      "HeldOutTask": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted_runs": {
+            "title": "Accepted Runs",
+            "type": "integer"
+          },
+          "read_since_creation": {
+            "title": "Read Since Creation",
+            "type": "boolean"
+          },
+          "reads": {
+            "items": {
+              "$ref": "#/components/schemas/TaskRead"
+            },
+            "title": "Reads",
+            "type": "array"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          },
+          "task_key": {
+            "title": "Task Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "task_key",
+          "reads",
+          "read_since_creation",
+          "accepted_runs"
+        ],
+        "title": "HeldOutTask",
         "type": "object"
       },
       "HostCapacityView": {
@@ -15308,6 +15579,22 @@
             "title": "Fixed",
             "type": "object"
           },
+          "held_out_task_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Held Out Task Ids",
+            "type": "array"
+          },
+          "held_out_task_keys": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Held Out Task Keys",
+            "type": "array"
+          },
           "scenario": {
             "enum": [
               "models",
@@ -15337,6 +15624,8 @@
           }
         },
         "required": [
+          "held_out_task_ids",
+          "held_out_task_keys",
           "scenario",
           "variable_dimensions",
           "fixed"
@@ -15821,10 +16110,6 @@
             "title": "Id",
             "type": "string"
           },
-          "instruction": {
-            "title": "Instruction",
-            "type": "string"
-          },
           "local_preparation": {
             "$ref": "#/components/schemas/LocalPreparation"
           },
@@ -15891,7 +16176,6 @@
           "timeouts",
           "parameters",
           "required_parameters",
-          "instruction",
           "can_submit",
           "blockers",
           "warnings",
@@ -16141,6 +16425,199 @@
           "resources"
         ],
         "title": "TaskContent",
+        "type": "object"
+      },
+      "TaskDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "admission": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaskAdmission"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/TaskBlocker"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "can_submit": {
+            "title": "Can Submit",
+            "type": "boolean"
+          },
+          "content": {
+            "$ref": "#/components/schemas/TaskContent"
+          },
+          "dataset_version_id": {
+            "title": "Dataset Version Id",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "instruction": {
+            "title": "Instruction",
+            "type": "string"
+          },
+          "local_preparation": {
+            "$ref": "#/components/schemas/LocalPreparation"
+          },
+          "parameters": {
+            "items": {
+              "$ref": "#/components/schemas/AuthorParameter"
+            },
+            "title": "Parameters",
+            "type": "array"
+          },
+          "required_parameters": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Required Parameters",
+            "type": "array"
+          },
+          "required_preparation": {
+            "items": {
+              "$ref": "#/components/schemas/RequiredPreparation"
+            },
+            "title": "Required Preparation",
+            "type": "array"
+          },
+          "resources": {
+            "$ref": "#/components/schemas/TaskResources"
+          },
+          "spec_digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spec Digest"
+          },
+          "task_key": {
+            "title": "Task Key",
+            "type": "string"
+          },
+          "timeouts": {
+            "$ref": "#/components/schemas/TaskTimeouts"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/TaskWarning"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "dataset_version_id",
+          "task_key",
+          "admission",
+          "content",
+          "local_preparation",
+          "spec_digest",
+          "resources",
+          "timeouts",
+          "parameters",
+          "required_parameters",
+          "can_submit",
+          "blockers",
+          "warnings",
+          "required_preparation",
+          "instruction"
+        ],
+        "title": "TaskDetail",
+        "type": "object"
+      },
+      "TaskRead": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "enum": [
+              "instruction",
+              "trial_artifacts"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "channel": {
+            "enum": [
+              "pat",
+              "web_session"
+            ],
+            "title": "Channel",
+            "type": "string"
+          },
+          "channel_id": {
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "first_read_at": {
+            "title": "First Read At",
+            "type": "string"
+          },
+          "last_read_at": {
+            "title": "Last Read At",
+            "type": "string"
+          },
+          "reader_id": {
+            "title": "Reader Id",
+            "type": "string"
+          },
+          "reader_username": {
+            "title": "Reader Username",
+            "type": "string"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "reader_id",
+          "reader_username",
+          "channel",
+          "channel_id",
+          "category",
+          "first_read_at",
+          "last_read_at",
+          "count"
+        ],
+        "title": "TaskRead",
+        "type": "object"
+      },
+      "TaskReadQuery": {
+        "additionalProperties": false,
+        "properties": {
+          "task_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Task Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "task_ids"
+        ],
+        "title": "TaskReadQuery",
         "type": "object"
       },
       "TaskResources": {
@@ -20479,6 +20956,48 @@
         ]
       }
     },
+    "/api/v1/collections/{collection_id}/held-out": {
+      "get": {
+        "operationId": "collection_held_out",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_list_HeldOutTask__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Collection Held Out",
+        "tags": [
+          "collections"
+        ]
+      }
+    },
     "/api/v1/collections/{collection_id}/runs": {
       "post": {
         "description": "Runs that differ from the fixed values are refused with what differs.",
@@ -23915,6 +24434,89 @@
         "summary": "System Status",
         "tags": [
           "system"
+        ]
+      }
+    },
+    "/api/v1/tasks/reads": {
+      "post": {
+        "operationId": "get_task_reads",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskReadQuery"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_list_TaskRead__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Get Task Reads",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/v1/tasks/{task_id}": {
+      "get": {
+        "operationId": "get_task",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_TaskDetail_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Get Task",
+        "tags": [
+          "catalog"
         ]
       }
     },

@@ -35,7 +35,8 @@ def write_task_briefs(
     version = client.catalog.version(dataset_version_id)
     selected = _select(client.catalog.tasks(dataset_version_id), tasks)
     paths = []
-    for task in selected:
+    for selected_task in selected:
+        task = client.catalog.task(selected_task.id)
         folder = _local(Path(directory), task.id)
         _local(folder, "instruction.md").write_text(task.instruction, encoding="utf-8")
         metadata = task.model_dump(mode="json", exclude={"instruction"})
@@ -271,6 +272,71 @@ def build_report(
     if baseline_run_id is not None:
         settings["baseline_run_id"] = baseline_run_id
     comparison = client.collections.compare(collection_id, **settings)
+    runs = _report_runs(client, comparison)
+    complete = _complete(comparison)
+    report = {
+        "collection_id": collection_id,
+        "complete": complete,
+        "comparison": comparison.model_dump(mode="json"),
+        "runs": runs,
+    }
+    markdown = _markdown(comparison, runs, complete)
+    if comparison.held_out is not None:
+        held_out_runs = _report_runs(client, comparison.held_out)
+        held_out_complete = _complete(comparison.held_out)
+        view = client.collections.held_out(collection_id)
+        report.update(
+            held_out_complete=held_out_complete,
+            held_out_runs=held_out_runs,
+            held_out=[task.model_dump(mode="json") for task in view],
+        )
+        markdown = "# Attachment experiment report\n\n" + _markdown(
+            comparison, runs, complete, title="Development results", level=2
+        )
+        markdown += "\n" + _markdown(
+            comparison.held_out, held_out_runs, held_out_complete, title="Held-out results", level=2
+        )
+        markdown += "\n## Held-out reads and runs\n\n| Task | Read since collection creation | Accepted runs |\n| --- | --- | --- |\n"
+        for task in view:
+            markdown += (
+                f"| {_cell(task.task_key)} | {task.read_since_creation} | {task.accepted_runs} |\n"
+            )
+        markdown += "\n| Task | Reader | Channel | Category | First read | Last read | Count |\n| --- | --- | --- | --- | --- | --- | --- |\n"
+        for task in view:
+            for read in task.reads:
+                markdown += (
+                    "| "
+                    + " | ".join(
+                        _cell(value)
+                        for value in (
+                            task.task_key,
+                            read.reader_username,
+                            f"{read.channel}: {read.channel_id}",
+                            read.category,
+                            read.first_read_at,
+                            read.last_read_at,
+                            read.count,
+                        )
+                    )
+                    + " |\n"
+                )
+    root = Path(directory)
+    _json(_local(root, "report.json"), report)
+    _local(root, "report.md").write_text(markdown, encoding="utf-8")
+    return report
+
+
+def _complete(comparison: models.ComparisonResult) -> bool:
+    return (
+        comparison.dropped_tasks == 0
+        and comparison.common_tasks == comparison.all_tasks
+        and all(r.scored_trials == r.planned_trials for r in comparison.runs)
+    )
+
+
+def _report_runs(
+    client: MaestroClient, comparison: models.ComparisonResult
+) -> list[dict[str, Any]]:
     runs = []
     for row in comparison.runs:
         run = client.runs.get(row.run_id)
@@ -283,24 +349,13 @@ def build_report(
                 ],
                 "scoring_contract": summary.contract.model_dump(mode="json"),
                 "summary": summary.model_dump(mode="json"),
-                "usage": summary.usage.model_dump(mode="json"),
+                "usage": {
+                    **row.usage.model_dump(mode="json"),
+                    "unknown_trials": row.planned_trials - row.usage.known_trials,
+                },
             }
         )
-    complete = (
-        comparison.dropped_tasks == 0
-        and comparison.common_tasks == comparison.all_tasks
-        and all(r.scored_trials == r.planned_trials for r in comparison.runs)
-    )
-    report = {
-        "collection_id": collection_id,
-        "complete": complete,
-        "comparison": comparison.model_dump(mode="json"),
-        "runs": runs,
-    }
-    root = Path(directory)
-    _json(_local(root, "report.json"), report)
-    _local(root, "report.md").write_text(_markdown(comparison, runs, complete), encoding="utf-8")
-    return report
+    return runs
 
 
 CANDIDATE = "attachment-candidate"
@@ -450,10 +505,17 @@ def _unique(references: list[dict[str, str]]) -> list[dict[str, str]]:
     return result
 
 
-def _markdown(comparison: models.Comparison, runs: list[dict[str, Any]], complete: bool) -> str:
+def _markdown(
+    comparison: models.ComparisonResult,
+    runs: list[dict[str, Any]],
+    complete: bool,
+    *,
+    title: str = "Attachment experiment report",
+    level: int = 1,
+) -> str:
     """Tables a person can read; report.json keeps every field."""
     lines = [
-        "# Attachment experiment report",
+        f"{'#' * level} {title}",
         "",
         f"- Complete: {'yes' if complete else 'no'}",
         (
@@ -462,7 +524,7 @@ def _markdown(comparison: models.Comparison, runs: list[dict[str, Any]], complet
         ),
         f"- Excluded failure groups: {', '.join(comparison.settings.exclude) or 'none'}",
         "",
-        "## Runs",
+        f"{'#' * (level + 1)} Runs",
         "",
         (
             "| Run | Label | Attachments | Planned | Scored | Failed | Mean | Mean difference "
@@ -497,7 +559,7 @@ def _markdown(comparison: models.Comparison, runs: list[dict[str, Any]], complet
         )
     lines += [
         "",
-        "## Tasks",
+        f"{'#' * (level + 1)} Tasks",
         "",
         "Mean per run; failures kept in the comparison count as 0 (or as not passed when lower is better).",
         "",

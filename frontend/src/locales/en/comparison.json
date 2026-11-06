@@ -266,5 +266,28 @@
     "noneYet": "No collections yet. <link>Create one</link>",
     "select": "Choose a collection",
     "add": "Add"
+  },
+  "heldOut": {
+    "title": "Held-out tasks",
+    "development": "Development tasks",
+    "choose": "Choose held-out tasks",
+    "fixedHint": "Marks are fixed at collection creation. Keep at least one development task.",
+    "wrongVersion": "Some marks belong to another version. Clear them and choose again.",
+    "clear": "Clear marks",
+    "refresh": "Refresh read summaries",
+    "readSince": "Read since collection creation",
+    "unreadSince": "No reads since collection creation",
+    "runs": "Team runs accepted: {{n}}",
+    "reader": "Reader",
+    "channel": "Channel",
+    "category": "Category",
+    "first": "First read",
+    "last": "Last read",
+    "count": "Count",
+    "pat": "PAT",
+    "web_session": "Web session",
+    "instruction": "Instruction",
+    "trial_artifacts": "Trial artifacts",
+    "runHint": "Development tasks are selected by default. Tick held-out tasks individually to include them."
   }
 }

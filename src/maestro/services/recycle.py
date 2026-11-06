@@ -153,6 +153,11 @@ class RunHandler(Handler):
         counts = {
             "trials": conn.execute(select(func.count()).select_from(trials.subquery())).scalar(),
             "artifacts": len(ids),
+            "task_ids": list(
+                conn.execute(
+                    select(t.trials.c.task_id).where(t.trials.c.run_id == run_id).distinct()
+                ).scalars()
+            ),
         }
         conn.execute(delete(t.artifact_pins).where(t.artifact_pins.c.artifact_id.in_(ids)))
         conn.execute(delete(t.artifacts).where(t.artifacts.c.run_id == run_id))
