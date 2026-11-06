@@ -154,6 +154,11 @@
     "USER_DELETED": "Account was deleted",
     "VALIDATION_FAILED": "Validation failed",
     "WEB_NOT_BUILT": "Web pages are not built",
-    "WEB_SESSION_REQUIRED": "This action requires a web session"
+    "WEB_SESSION_REQUIRED": "This action requires a web session",
+    "RECORD_INVALID": "Invalid workflow record",
+    "RECORD_DELETED": "Record is in the recycle bin",
+    "RECORD_TARGET_DELETED": "Record target is in the recycle bin",
+    "RECORD_REVISION_CHANGED": "Record changed; reload and retry",
+    "CURRENT_BEST_INVALID": "Invalid current best snapshot or reason"
   }
 }

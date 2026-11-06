@@ -168,7 +168,8 @@
     "attachment_version": "Attachment",
     "experiment_plan": "Experiment plan",
     "collection": "Collection",
-    "analysis_snapshot": "Analysis snapshot"
+    "analysis_snapshot": "Analysis snapshot",
+    "workflow_record": "Workflow record"
   },
   "storageLevel": {
     "ok": "Storage OK",
@@ -263,5 +264,16 @@
     "zh-CN": "中文",
     "en": "English",
     "aiNotice": "AI-translated, not reviewed by a human. Please contact the developers about any problems."
+  },
+  "records": {
+    "title": "Workflow records",
+    "empty": "No records yet. Write records through the API or SDK.",
+    "body": "Expand body and references (JSON)",
+    "excerpts": "Evidence excerpts",
+    "updated": "Updated {{time}}",
+    "snapshot": "Pinned attachment snapshot: {{id}}",
+    "pat": "PAT",
+    "revisions_one": "{{count}} revision",
+    "revisions_other": "{{count}} revisions"
   }
 }

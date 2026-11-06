@@ -18,6 +18,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { WorkflowRecords } from "@/components/WorkflowRecords";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -516,6 +517,7 @@ function RunDetailView({ runId }: { runId: string }) {
           )}
         </TabsContent>
       </Tabs>
+      <WorkflowRecords targetType="run" targetId={run.id} />
     </div>
   );
 }

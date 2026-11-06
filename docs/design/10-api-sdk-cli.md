@@ -43,7 +43,7 @@ SDK 要求 api_version 为 v1 且所需功能开启，否则抛 UNSUPPORTED_CAPA
 接口的方法、字段、错误以 `openapi/maestro-v1.json` 为准，SDK 方法见 `sdk/README.md`。读取默认团队共享，写入按 [权限矩阵](09-identity-security.md) 校验。资源分组：
 
 - 目录：能力与状态、团队策略、数据集来源 / 版本 / 任务 / 准备记录、模型配置、Harness 版本、凭据名称（U-23）、配置解析。
-- 实验：附件、方案、运行（含试次、汇总、原请求、取消、重跑、删除）、批次、比较、集合（含成员、修改记录、复制）、分析快照（含结论）、产物、导出、Operation。
+- 实验：附件、方案、运行（含试次、汇总、原请求、取消、重跑、删除）、批次、比较、集合（含成员、修改记录、复制、当前最优）、工作流记录（含修订历史）、分析快照（含结论）、产物、导出、Operation。
 - 账号：初始化、会话、邀请查询与接受、本人信息、改密码、本人 PAT。
 - 管理（`/api/v1/admin/`，以及 Hub 检索 `/dataset-search*`，U-20）：管理员网页会话，或带对应权限的管理员 PAT；成员、凭据、主密钥、PAT 管理与物理删除只接受网页会话（[09](09-identity-security.md) 第 2 节，U-69）。
 
@@ -54,6 +54,10 @@ SDK 要求 api_version 为 v1 且所需功能开启，否则抛 UNSUPPORTED_CAPA
 - 修改后运行没有专门接口：`GET /runs/{id}/request` 取原请求，修改后重新解析，提交时带 source_run_id。
 - 维护（更新、备份、恢复）不在 HTTP API 中（[12](12-operations.md)）。
 - 比较是只计算不保存的 `POST /comparisons`；集合的比较用 `POST /collections/{id}/comparison`，请求体为空时用集合保存的设置（[08](08-collections-comparison.md)）。
+
+工作流记录用 `/records` 创建、按目标列举，`/records/{id}` 读取、修改或放进回收站，`/history` 返回从初稿到当前的完整修订及编辑者、PAT 与时间。修改要求 `expected_revision`；目标与作者不可改。目标用 `type`、`id`，附件的 `id` 是名称，另可固定 `snapshot_id`；附件名列表包括固定快照的记录，给出快照筛选时只列出固定该快照的记录，可再按 `kind` 筛选。正文为不解释的 JSON 对象，显式引用与脱敏摘录另列。目标进回收站后只读，物理删除后列表为空、单条与历史返回 410，记录自身仍可回收与清除（[01](01-domain-model.md)）。
+
+`PUT /collections/{id}/current-best` 设置或清除附件快照指针，两种操作都要求理由并写集合修改记录；清除用 null，最近清除的理由仍由集合 GET 返回。SDK 提供 `client.records.create/get/list/update/history/delete` 与 `client.collections.set_current_best(id, snapshot_id, reason=...)`。记录使用 `experiment` 写权限，编辑只限作者，删除沿用归属与 `override`；所有 PAT 都可读取目标可读的记录。
 
 ### 任务准入与本机缓存响应
 

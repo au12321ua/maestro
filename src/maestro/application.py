@@ -31,6 +31,7 @@ from maestro.services.pats import Pats
 from maestro.services.plans import Plans
 from maestro.services.policy import Policies
 from maestro.services.preparation import Preparer
+from maestro.services.records import Records
 from maestro.services.recycle import Recycle
 from maestro.services.runs import Runs
 from maestro.services.setup_network import SetupNetworks
@@ -58,6 +59,7 @@ class Maestro:
     comparisons: Comparisons
     collections: Collections
     snapshots: Snapshots
+    records: Records
     artifacts: Artifacts
     artifact_archives: ArtifactArchives
     exports: Exports
@@ -154,6 +156,7 @@ class Maestro:
             comparisons=Comparisons(db),
             collections=runs.collections,
             snapshots=Snapshots(db, runs.collections),
+            records=Records(db),
             artifacts=artifacts,
             artifact_archives=ArtifactArchives(db, store, settings.export_max_bytes),
             exports=exports,

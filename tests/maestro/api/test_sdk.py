@@ -373,6 +373,13 @@ SDK_METHODS = {
     "label_collection_run": "collections.label_run",
     "remove_collection_run": "collections.remove_run",
     "list_collection_events": "collections.events",
+    "set_collection_current_best": "collections.set_current_best",
+    "create_record": "records.create",
+    "get_record": "records.get",
+    "list_records": "records.list",
+    "update_record": "records.update",
+    "record_history": "records.history",
+    "delete_record": "records.delete",
     "list_snapshots": "snapshots.list",
     "create_snapshot": "snapshots.create",
     "get_snapshot": "snapshots.get",
@@ -474,3 +481,61 @@ def test_the_skill_and_the_guide_only_name_real_sdk_calls():
             for part in dotted.split("."):
                 assert hasattr(target, part), f"{doc.name}: client.{dotted}"
                 target = getattr(target, part)
+
+
+def test_sdk_records_and_current_best_use_the_public_contract(service, version_id):
+    from support.attachments import attach
+    from support.configuration import agent_body, prepare_model
+    from support.results import finished_run
+
+    with running(service) as client:
+        admin = setup_admin(service, client)
+        model, harness = prepare_model(admin)
+        attachment = attach(admin)
+        run_id = finished_run(
+            admin, version_id, **agent_body(model, harness), attachments=[attachment]
+        )
+        agent = sdk(create_pat(admin))
+        collection = agent.collections.create(
+            "c", "attachments", base_run_id=run_id, run_ids=[run_id]
+        )
+        from maestro_sdk import models
+
+        ref = models.RecordReference(type="run", id=run_id)
+        record = agent.records.create(
+            models.RecordTargetInput(type="collection", id=collection.id),
+            "attachment-candidate",
+            "Candidate",
+            {"workflow": {"decision": "pending"}},
+            references=[ref],
+            excerpts=[models.RecordExcerptInput(text="api_key=do-not-store", reference=ref)],
+        )
+        assert record.revision == 1 and record.excerpts[0].text == "api_key=[REDACTED]"
+        assert agent.records.get(record.id).id == record.id
+        assert [
+            r.id for r in agent.records.list("collection", collection.id, kind=record.kind)
+        ] == [record.id]
+        updated = agent.records.update(
+            record.id,
+            expected_revision=record.revision,
+            body={"workflow": "anything"},
+            references=[ref],
+            excerpts=[models.RecordExcerptInput(text="sk-abcdefghijklmnopqrstuvwx", reference=ref)],
+        )
+        assert updated.revision == 2
+        assert updated.excerpts[0].text == "[REDACTED]"
+        versions = agent.records.history(record.id)
+        assert [v.revision for v in versions] == [1, 2]
+        assert versions[0].pat_id == record.pat_id
+        best = agent.collections.set_current_best(collection.id, attachment, reason="supported")
+        assert best.current_best.snapshot_id == attachment
+        assert agent.collections.get(collection.id).current_best.reason == "supported"
+        assert agent.collections.events(collection.id)[0].action == "current_best"
+        assert (
+            agent.collections.set_current_best(
+                collection.id, None, reason="reconsider"
+            ).current_best.snapshot_id
+            is None
+        )
+        assert agent.records.delete(record.id).state == "recycled"
+        assert agent.records.list("collection", collection.id) == []

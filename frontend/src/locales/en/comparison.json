@@ -171,7 +171,8 @@
       "remove": "Removed",
       "purged": "Run permanently deleted, removed",
       "label": "Renamed a column",
-      "edit": "Edited"
+      "edit": "Edited",
+      "current_best": "Changed current best"
     },
     "saveSettingsFailed": "Saving settings failed: {{error}}",
     "removeConfirm": "Remove this run from the collection? The run itself is not affected.",
@@ -215,6 +216,11 @@
       "addSelected": "Add selected",
       "selectedCount": " ({{n}})",
       "mismatched": "Runs not matching the specification ({{n}})"
+    },
+    "currentBest": {
+      "title": "Current best attachment snapshot",
+      "cleared": "Current best cleared",
+      "unset": "No current best attachment snapshot set."
     }
   },
   "collections": {

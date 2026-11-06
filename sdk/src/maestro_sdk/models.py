@@ -435,6 +435,30 @@ class CredentialValue(BaseModel):
     value: str
 
 
+class CurrentBest(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    actor_id: str
+    actor_username: str
+    at: str
+    pat_id: str | None
+    reason: str
+    snapshot_id: Annotated[
+        str | None, Field(description="An attachment snapshot, or null to clear")
+    ]
+
+
+class CurrentBestInput(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    reason: str
+    snapshot_id: Annotated[
+        str | None, Field(description="An attachment snapshot, or null to clear")
+    ]
+
+
 class DatasetImport(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -1281,6 +1305,40 @@ class PurgeRequest(BaseModel):
     ]
 
 
+class RecordReference(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    id: str
+    type: Literal[
+        "run", "trial", "artifact", "attachment_snapshot", "collection", "analysis_snapshot"
+    ]
+
+
+class RecordTargetInput(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    id: Annotated[
+        str,
+        Field(description="Object id, or the attachment name for an attachment target"),
+    ]
+    snapshot_id: Annotated[str | None, Field(description="Only for attachment targets")] = None
+    type: Literal["collection", "run", "attachment"]
+
+
+class RecordTargetOutput(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    id: Annotated[
+        str,
+        Field(description="Object id, or the attachment name for an attachment target"),
+    ]
+    snapshot_id: Annotated[str | None, Field(description="Only for attachment targets")]
+    type: Literal["collection", "run", "attachment"]
+
+
 class RecycleEntry(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -1309,6 +1367,7 @@ class RecycleEntry(BaseModel):
         "experiment_plan",
         "collection",
         "analysis_snapshot",
+        "workflow_record",
     ]
     owner_id: str | None
     owner_username: str | None
@@ -2949,6 +3008,57 @@ class Problem(BaseModel):
     suggested_actions: list[SuggestedAction] | None = None
 
 
+class RecordExcerptInput(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    reference: Annotated[
+        RecordReference | None, Field(description="Must be in the record's references")
+    ] = None
+    text: str
+
+
+class RecordExcerptOutput(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    reference: Annotated[
+        RecordReference | None, Field(description="Must be in the record's references")
+    ]
+    text: str
+
+
+class RecordRevision(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    actor_id: str
+    actor_username: str
+    at: str
+    body: Annotated[
+        dict[str, JsonValue],
+        Field(description="Opaque workflow-owned JSON; the platform does not interpret its schema"),
+    ]
+    excerpts: list[RecordExcerptOutput]
+    kind: str
+    pat_id: str | None
+    references: list[RecordReference]
+    revision: int
+    title: str
+
+
+class RecordUpdate(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    body: dict[str, JsonValue] | None = None
+    excerpts: list[RecordExcerptInput] | None = None
+    expected_revision: int
+    kind: str | None = None
+    references: list[RecordReference] | None = None
+    title: str | None = None
+
+
 class ReferenceRevisions(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -3244,6 +3354,31 @@ class TaskBlocker(BaseModel):
     parameters: list[str] | None = None
     resource_kind: str | None = None
     value: int | float | None = None
+
+
+class WorkflowRecord(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    allowed_actions: list[str]
+    author_id: str
+    author_username: str
+    body: Annotated[
+        dict[str, JsonValue],
+        Field(description="Opaque workflow-owned JSON; the platform does not interpret its schema"),
+    ]
+    created_at: str
+    deletion: DeletionState | None
+    excerpts: list[RecordExcerptOutput]
+    id: str
+    kind: str
+    pat_id: Annotated[str | None, Field(description="The PAT used to create the record")]
+    references: list[RecordReference]
+    revision: int
+    target: RecordTargetOutput
+    target_deletion: DeletionState | None
+    title: str
+    updated_at: str
 
 
 class Attempt(BaseModel):
@@ -3579,6 +3714,14 @@ class EnvelopeSystemStatus(BaseModel):
     meta: Meta
 
 
+class EnvelopeWorkflowRecord(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: WorkflowRecord
+    meta: Meta
+
+
 class EnvelopeListBatch(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -3595,11 +3738,27 @@ class EnvelopeListModelConfig(BaseModel):
     meta: Meta
 
 
+class EnvelopeListRecordRevision(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: list[RecordRevision]
+    meta: Meta
+
+
 class EnvelopeListRun(BaseModel):
     model_config = ConfigDict(
         extra="allow",
     )
     data: list[Run]
+    meta: Meta
+
+
+class EnvelopeListWorkflowRecord(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: list[WorkflowRecord]
     meta: Meta
 
 
@@ -3794,6 +3953,21 @@ class Preparation(BaseModel):
     waiters: list[PreparationWaiter]
 
 
+class RecordCreate(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    body: Annotated[
+        dict[str, JsonValue],
+        Field(description="Opaque workflow-owned JSON; the platform does not interpret its schema"),
+    ]
+    excerpts: Annotated[list[RecordExcerptInput] | None, Field(validate_default=True)] = []
+    kind: str
+    references: Annotated[list[RecordReference] | None, Field(validate_default=True)] = []
+    target: RecordTargetInput
+    title: str
+
+
 class RunAccepted(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -3932,6 +4106,7 @@ class Collection(BaseModel):
     base_run_id: str | None
     copied_from: str | None
     created_at: str
+    current_best: CurrentBest | None
     deletion: DeletionState | None
     description: str
     fixed: Annotated[

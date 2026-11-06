@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { Camera, CopyPlus, Play, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { WorkflowRecords } from "@/components/WorkflowRecords";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -78,7 +79,9 @@ export function CollectionPage() {
   if (!c)
     return collection.error ? (
       <div>
-        <BackLink to="/collections">{t("common.nav.back.collections")}</BackLink>
+        <BackLink to="/collections">
+          {t("common.nav.back.collections")}
+        </BackLink>
         <ErrorAlert error={collection.error} />
       </div>
     ) : (
@@ -107,7 +110,9 @@ export function CollectionPage() {
       await reloadAll();
     } catch (err) {
       toast.error(
-        t("comparison.collection.saveSettingsFailed", { error: errorText(err) }),
+        t("comparison.collection.saveSettingsFailed", {
+          error: errorText(err),
+        }),
       );
     }
   };
@@ -143,8 +148,7 @@ export function CollectionPage() {
     }
   };
   const deleteCollection = async () => {
-    if (!window.confirm(t("comparison.collection.deleteConfirm")))
-      return;
+    if (!window.confirm(t("comparison.collection.deleteConfirm"))) return;
     try {
       await api.del("/collections/{collection_id}", { path });
       toast.success(t("comparison.shared.movedToBin"));
@@ -215,6 +219,38 @@ export function CollectionPage() {
         />
       )}
       <Spec collection={c} />
+      {c.current_best && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">
+              {t("comparison.collection.currentBest.title")}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-2 text-sm">
+            {c.current_best.snapshot_id ? (
+              <Link
+                className="break-all text-primary underline"
+                to={`/attachments?snapshot=${encodeURIComponent(c.current_best.snapshot_id)}`}
+              >
+                {c.current_best.snapshot_id}
+              </Link>
+            ) : (
+              <p>{t("comparison.collection.currentBest.cleared")}</p>
+            )}
+            <p className="whitespace-pre-wrap break-words">
+              {c.current_best.reason}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {c.current_best.actor_username} · {fmtTime(c.current_best.at)}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+      {!c.current_best && (
+        <p className="text-sm text-muted-foreground">
+          {t("comparison.collection.currentBest.unset")}
+        </p>
+      )}
       {panel === "add" && (
         <AddRuns collection={c} onDone={() => void reloadAll()} />
       )}
@@ -338,6 +374,7 @@ export function CollectionPage() {
           )}
         </CardContent>
       </Card>
+      <WorkflowRecords targetType="collection" targetId={c.id} />
       <details className="rounded-md border p-3 text-sm">
         <summary className="cursor-pointer">
           {t("comparison.collection.history")}
@@ -346,7 +383,17 @@ export function CollectionPage() {
           {(events.data ?? []).map((e) => (
             <li key={e.id} className="text-xs">
               {fmtTime(e.at)} · {e.actor_username}
-              {e.pat_id ? t("comparison.shared.pat") : ""} · {ACTION[e.action] ?? e.action}
+              {e.pat_id ? t("comparison.shared.pat") : ""} ·{" "}
+              {ACTION[e.action] ?? e.action}
+              {e.action === "current_best" && (
+                <span className="block whitespace-pre-wrap break-words">
+                  {typeof e.detail.snapshot_id === "string"
+                    ? e.detail.snapshot_id
+                    : t("comparison.collection.currentBest.cleared")}
+                  {" · "}
+                  {typeof e.detail.reason === "string" ? e.detail.reason : ""}
+                </span>
+              )}
               {e.run_id && (
                 <>
                   {" "}
@@ -549,7 +596,9 @@ function AddRuns({
         {candidates.data && (
           <>
             <p className="text-sm text-muted-foreground">
-              {t("comparison.collection.add.fitting", { count: fitting.length })}
+              {t("comparison.collection.add.fitting", {
+                count: fitting.length,
+              })}
               {others.length > 0 &&
                 t("comparison.collection.add.others", { count: others.length })}
             </p>

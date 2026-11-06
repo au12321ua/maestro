@@ -30,6 +30,7 @@ from maestro_sdk.resources import (
     Exports,
     Operations,
     Plans,
+    Records,
     Runs,
     Snapshots,
 )
@@ -76,6 +77,7 @@ class MaestroClient(Transport):
         self.comparisons = Comparisons(self)
         self.collections = Collections(self)
         self.snapshots = Snapshots(self)
+        self.records = Records(self)
         self.runs = Runs(self)
         self.batches = Batches(self)
         self.operations = Operations(self)

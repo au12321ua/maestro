@@ -96,3 +96,14 @@ class Collections(_Resource):
 
     def events(self, collection_id: str) -> list[models.CollectionEvent]:
         return self._c._get(f"collections/{collection_id}/events", list[models.CollectionEvent])
+
+    def set_current_best(
+        self, collection_id: str, snapshot_id: str | None, *, reason: str
+    ) -> models.Collection:
+        """Set or clear the attachment snapshot pointer, recording the reason."""
+        return self._c._send(
+            "PUT",
+            f"collections/{collection_id}/current-best",
+            models.Collection,
+            {"snapshot_id": snapshot_id, "reason": reason},
+        )

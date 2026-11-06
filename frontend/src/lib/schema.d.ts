@@ -1122,6 +1122,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/collections/{collection_id}/current-best": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Collection Current Best */
+        put: operations["set_collection_current_best"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/collections/{collection_id}/events": {
         parameters: {
             query?: never;
@@ -1740,6 +1757,68 @@ export interface paths {
         };
         /** Get Preparation */
         get: operations["get_preparation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Records
+         * @description An attachment name lists all its records; snapshot_id selects only pinned ones.
+         *
+         *     Recycled targets remain readable. Purged targets return an empty list.
+         */
+        get: operations["list_records"];
+        put?: never;
+        /** Create Record */
+        post: operations["create_record"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/records/{record_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Record */
+        get: operations["get_record"];
+        /** Update Record */
+        put: operations["update_record"];
+        post?: never;
+        /** Delete Record */
+        delete: operations["delete_record"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/records/{record_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Record History
+         * @description All committed versions, including the current version, in revision order.
+         */
+        get: operations["record_history"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2797,6 +2876,7 @@ export interface components {
             copied_from: string | null;
             /** Created At */
             created_at: string;
+            current_best: components["schemas"]["CurrentBest"] | null;
             deletion: components["schemas"]["DeletionState"] | null;
             /** Description */
             description: string;
@@ -3620,6 +3700,34 @@ export interface components {
             /** Value */
             value: string;
         };
+        /** CurrentBest */
+        CurrentBest: {
+            /** Actor Id */
+            actor_id: string;
+            /** Actor Username */
+            actor_username: string;
+            /** At */
+            at: string;
+            /** Pat Id */
+            pat_id: string | null;
+            /** Reason */
+            reason: string;
+            /**
+             * Snapshot Id
+             * @description An attachment snapshot, or null to clear
+             */
+            snapshot_id: string | null;
+        };
+        /** CurrentBestInput */
+        CurrentBestInput: {
+            /** Reason */
+            reason: string;
+            /**
+             * Snapshot Id
+             * @description An attachment snapshot, or null to clear
+             */
+            snapshot_id: string | null;
+        };
         /** Dataset */
         Dataset: {
             /** Credential Id */
@@ -4216,6 +4324,11 @@ export interface components {
             data: components["schemas"]["User"];
             meta: components["schemas"]["Meta"];
         };
+        /** Envelope[WorkflowRecord] */
+        Envelope_WorkflowRecord_: {
+            data: components["schemas"]["WorkflowRecord"];
+            meta: components["schemas"]["Meta"];
+        };
         /** Envelope[list[Artifact]] */
         Envelope_list_Artifact__: {
             /** Data */
@@ -4330,6 +4443,12 @@ export interface components {
             data: components["schemas"]["Plan"][];
             meta: components["schemas"]["Meta"];
         };
+        /** Envelope[list[RecordRevision]] */
+        Envelope_list_RecordRevision__: {
+            /** Data */
+            data: components["schemas"]["RecordRevision"][];
+            meta: components["schemas"]["Meta"];
+        };
         /** Envelope[list[RecycleEntry]] */
         Envelope_list_RecycleEntry__: {
             /** Data */
@@ -4388,6 +4507,12 @@ export interface components {
         Envelope_list_User__: {
             /** Data */
             data: components["schemas"]["User"][];
+            meta: components["schemas"]["Meta"];
+        };
+        /** Envelope[list[WorkflowRecord]] */
+        Envelope_list_WorkflowRecord__: {
+            /** Data */
+            data: components["schemas"]["WorkflowRecord"][];
             meta: components["schemas"]["Meta"];
         };
         /** EnvironmentResources */
@@ -5941,6 +6066,142 @@ export interface components {
              */
             confirm_object_id: string;
         };
+        /** RecordCreate */
+        RecordCreate: {
+            /**
+             * Body
+             * @description Opaque workflow-owned JSON; the platform does not interpret its schema
+             */
+            body: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /**
+             * Excerpts
+             * @default []
+             */
+            excerpts?: components["schemas"]["RecordExcerpt-Input"][];
+            /** Kind */
+            kind: string;
+            /**
+             * References
+             * @default []
+             */
+            references?: components["schemas"]["RecordReference"][];
+            target: components["schemas"]["RecordTarget-Input"];
+            /** Title */
+            title: string;
+        };
+        /** RecordExcerpt */
+        "RecordExcerpt-Input": {
+            /** @description Must be in the record's references */
+            reference?: components["schemas"]["RecordReference"] | null;
+            /** Text */
+            text: string;
+        };
+        /** RecordExcerpt */
+        "RecordExcerpt-Output": {
+            /** @description Must be in the record's references */
+            reference: components["schemas"]["RecordReference"] | null;
+            /** Text */
+            text: string;
+        };
+        /** RecordReference */
+        RecordReference: {
+            /** Id */
+            id: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "run" | "trial" | "artifact" | "attachment_snapshot" | "collection" | "analysis_snapshot";
+        };
+        /** RecordRevision */
+        RecordRevision: {
+            /** Actor Id */
+            actor_id: string;
+            /** Actor Username */
+            actor_username: string;
+            /** At */
+            at: string;
+            /**
+             * Body
+             * @description Opaque workflow-owned JSON; the platform does not interpret its schema
+             */
+            body: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /**
+             * Excerpts
+             * @default []
+             */
+            excerpts: components["schemas"]["RecordExcerpt-Output"][];
+            /** Kind */
+            kind: string;
+            /** Pat Id */
+            pat_id: string | null;
+            /**
+             * References
+             * @default []
+             */
+            references: components["schemas"]["RecordReference"][];
+            /** Revision */
+            revision: number;
+            /** Title */
+            title: string;
+        };
+        /** RecordTarget */
+        "RecordTarget-Input": {
+            /**
+             * Id
+             * @description Object id, or the attachment name for an attachment target
+             */
+            id: string;
+            /**
+             * Snapshot Id
+             * @description Only for attachment targets
+             */
+            snapshot_id?: string | null;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "collection" | "run" | "attachment";
+        };
+        /** RecordTarget */
+        "RecordTarget-Output": {
+            /**
+             * Id
+             * @description Object id, or the attachment name for an attachment target
+             */
+            id: string;
+            /**
+             * Snapshot Id
+             * @description Only for attachment targets
+             */
+            snapshot_id: string | null;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "collection" | "run" | "attachment";
+        };
+        /** RecordUpdate */
+        RecordUpdate: {
+            /** Body */
+            body?: {
+                [key: string]: components["schemas"]["JsonValue"];
+            } | null;
+            /** Excerpts */
+            excerpts?: components["schemas"]["RecordExcerpt-Input"][] | null;
+            /** Expected Revision */
+            expected_revision: number;
+            /** Kind */
+            kind?: string | null;
+            /** References */
+            references?: components["schemas"]["RecordReference"][] | null;
+            /** Title */
+            title?: string | null;
+        };
         /** RecycleEntry */
         RecycleEntry: {
             /** Deleted At */
@@ -5969,7 +6230,7 @@ export interface components {
              * Object Type
              * @enum {string}
              */
-            object_type: "run" | "artifact" | "dataset" | "dataset_version" | "credential" | "user" | "pat" | "model_config" | "harness_version" | "attachment_version" | "experiment_plan" | "collection" | "analysis_snapshot";
+            object_type: "run" | "artifact" | "dataset" | "dataset_version" | "credential" | "user" | "pat" | "model_config" | "harness_version" | "attachment_version" | "experiment_plan" | "collection" | "analysis_snapshot" | "workflow_record";
             /** Owner Id */
             owner_id: string | null;
             /** Owner Username */
@@ -7428,6 +7689,52 @@ export interface components {
             /** Username */
             username: string;
         };
+        /** WorkflowRecord */
+        WorkflowRecord: {
+            /** Allowed Actions */
+            allowed_actions: string[];
+            /** Author Id */
+            author_id: string;
+            /** Author Username */
+            author_username: string;
+            /**
+             * Body
+             * @description Opaque workflow-owned JSON; the platform does not interpret its schema
+             */
+            body: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Created At */
+            created_at: string;
+            deletion: components["schemas"]["DeletionState"] | null;
+            /**
+             * Excerpts
+             * @default []
+             */
+            excerpts: components["schemas"]["RecordExcerpt-Output"][];
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Pat Id
+             * @description The PAT used to create the record
+             */
+            pat_id: string | null;
+            /**
+             * References
+             * @default []
+             */
+            references: components["schemas"]["RecordReference"][];
+            /** Revision */
+            revision: number;
+            target: components["schemas"]["RecordTarget-Output"];
+            target_deletion: components["schemas"]["DeletionState"] | null;
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -8604,7 +8911,7 @@ export interface operations {
         parameters: {
             query?: {
                 state?: string;
-                object_type?: ("run" | "artifact" | "dataset" | "dataset_version" | "credential" | "user" | "pat" | "model_config" | "harness_version" | "attachment_version" | "experiment_plan" | "collection" | "analysis_snapshot") | null;
+                object_type?: ("run" | "artifact" | "dataset" | "dataset_version" | "credential" | "user" | "pat" | "model_config" | "harness_version" | "attachment_version" | "experiment_plan" | "collection" | "analysis_snapshot" | "workflow_record") | null;
                 cursor?: string | null;
                 limit?: number | null;
             };
@@ -9698,6 +10005,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_Collection_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    set_collection_current_best: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CurrentBestInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -11015,6 +11357,201 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Envelope_Preparation_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_records: {
+        parameters: {
+            query: {
+                target_type: "collection" | "run" | "attachment";
+                target_id: string;
+                snapshot_id?: string | null;
+                kind?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_list_WorkflowRecord__"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_record: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_WorkflowRecord_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_record: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_WorkflowRecord_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_record: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_WorkflowRecord_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_record: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_RecycleEntry_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    record_history: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_list_RecordRevision__"];
                 };
             };
             /** @description Structured error */

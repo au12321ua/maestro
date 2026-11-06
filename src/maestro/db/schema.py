@@ -753,6 +753,8 @@ collections = Table(
     _ref("base_run_id", "runs", nullable=True),
     # Layout, failure groups excluded, task scope and baseline; the team edits these.
     _json("settings_json"),
+    _ref("current_best_snapshot_id", "attachment_versions", nullable=True),
+    _json("current_best_json", nullable=True),
     _ref("copied_from", "collections", nullable=True),
     _time("created_at"),
     _time("updated_at"),
@@ -819,6 +821,45 @@ snapshot_notes = Table(
     _time("created_at"),
     _time("updated_at"),
     Index("ix_snapshot_notes_snapshot", "snapshot_id", "created_at"),
+)
+
+# Targets use a type and identifier rather than one nullable column per object type.
+# Attachment identifiers are names; a record can also pin one immutable snapshot.
+workflow_records = Table(
+    "workflow_records",
+    metadata,
+    _id(),
+    Column("target_type", String(32), nullable=False),
+    Column("target_id", String(128), nullable=False),
+    _ref("target_snapshot_id", "attachment_versions", nullable=True),
+    Column("kind", String(64), nullable=False),
+    Column("title", String(256), nullable=False),
+    _json("body_json"),
+    _json("references_json"),
+    _json("excerpts_json"),
+    _ref("author_id", "users"),
+    _ref("pat_id", "pats", nullable=True),
+    Column("revision", Integer, nullable=False),
+    _time("created_at"),
+    _time("updated_at"),
+    Index("ix_workflow_records_target", "target_type", "target_id", "created_at", "id"),
+)
+
+# Each committed version includes its editor and PAT, including the initial version.
+workflow_record_revisions = Table(
+    "workflow_record_revisions",
+    metadata,
+    _ref("record_id", "workflow_records"),
+    Column("revision", Integer, nullable=False),
+    Column("kind", String(64), nullable=False),
+    Column("title", String(256), nullable=False),
+    _json("body_json"),
+    _json("references_json"),
+    _json("excerpts_json"),
+    _ref("actor_id", "users"),
+    _ref("pat_id", "pats", nullable=True),
+    _time("at"),
+    PrimaryKeyConstraint("record_id", "revision"),
 )
 
 # --- Deletion ------------------------------------------
