@@ -19,6 +19,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { WorkflowRecords } from "@/components/WorkflowRecords";
+import { recordsLabel, useRecords } from "@/lib/records";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -78,7 +79,7 @@ import { ArtifactTree } from "@/components/ArtifactTree";
 import { AddToCollection } from "@/components/AddToCollection";
 import { ConfigDifferences, type ConfigDifference } from "@/components/ConfigDifferences";
 
-const TABS = new Set(["execution", "results", "config", "artifacts"]);
+const TABS = new Set(["execution", "results", "config", "artifacts", "records"]);
 const TRIAL_TERMINAL = new Set(["scored", "execution_error", "not_started", "cancelled", "interrupted"]);
 
 export function RunDetailPage() {
@@ -88,6 +89,7 @@ export function RunDetailPage() {
 
 function RunDetailView({ runId }: { runId: string }) {
   const { me } = useSession();
+  const records = useRecords("run", runId);
   const [run, setRun] = useState<RunDetail>();
   const [trials, setTrials] = useState<Trial[]>();
   const [artifacts, setArtifacts] = useState<Artifact[]>();
@@ -447,7 +449,7 @@ function RunDetailView({ runId }: { runId: string }) {
       </Card>
 
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList>
+        <TabsList className="h-auto max-w-full flex-wrap justify-start">
           <TabsTrigger value="execution">{t("runs.detail.tab.execution")}</TabsTrigger>
           <TabsTrigger value="results">{t("runs.summary.title")}</TabsTrigger>
           <TabsTrigger value="config">{t("runs.detail.tab.config")}</TabsTrigger>
@@ -455,6 +457,7 @@ function RunDetailView({ runId }: { runId: string }) {
             {t("runs.column.artifacts")}
             {artifacts ? t("runs.detail.tab.count", { n: artifacts.length }) : ""}
           </TabsTrigger>
+          <TabsTrigger value="records">{recordsLabel(records)}</TabsTrigger>
         </TabsList>
         <TabsContent value="execution" className="mt-3">
           {!trials && <Loading />}
@@ -516,8 +519,16 @@ function RunDetailView({ runId }: { runId: string }) {
             />
           )}
         </TabsContent>
+        <TabsContent value="records" className="mt-3">
+          <WorkflowRecords
+            targetType="run"
+            targetId={run.id}
+            records={records}
+            readOnly={!!run.deletion}
+            anchor={false}
+          />
+        </TabsContent>
       </Tabs>
-      <WorkflowRecords targetType="run" targetId={run.id} />
     </div>
   );
 }

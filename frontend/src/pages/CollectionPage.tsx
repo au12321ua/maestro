@@ -5,7 +5,8 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { Camera, CopyPlus, Play, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { WorkflowRecords } from "@/components/WorkflowRecords";
+import { RecordsJumpButton, WorkflowRecords } from "@/components/WorkflowRecords";
+import { useRecords } from "@/lib/records";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -48,6 +49,7 @@ export function CollectionPage() {
     async () => (await api.get("/collections/{collection_id}", { path })).data,
     [collectionId],
   );
+  const records = useRecords("collection", collectionId);
   const heldOut = useLoad(async () => (await api.get("/collections/{collection_id}/held-out", { path })).data, [collectionId]);
   const [view, setView] = useState<ComparisonSettingsInput>({});
   const table = useLoad(
@@ -202,6 +204,7 @@ export function CollectionPage() {
             </Link>
           </Button>
         )}
+        <RecordsJumpButton records={records} />
         {can("delete") && (
           <Button
             size="sm"
@@ -396,7 +399,12 @@ export function CollectionPage() {
           )}
         </CardContent>
       </Card>
-      <WorkflowRecords targetType="collection" targetId={c.id} />
+      <WorkflowRecords
+        targetType="collection"
+        targetId={c.id}
+        records={records}
+        readOnly={!!c.deletion}
+      />
       <details className="rounded-md border p-3 text-sm">
         <summary className="cursor-pointer">
           {t("comparison.collection.history")}

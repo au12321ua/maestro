@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { WorkflowRecords } from "@/components/WorkflowRecords";
+import { useRecords } from "@/lib/records";
 import { ErrorAlert, Loading, Pill, SelectField } from "@/components/common";
 import { t } from "@/i18n";
 import { API, api } from "@/lib/api";
@@ -463,7 +464,9 @@ function GroupBlock({
       {expanded && (
         <div className="border-t px-3 py-4">
           <Tree group={group} byId={byId} actions={actions} focus={focus} />
-          <div className="mt-4"><WorkflowRecords targetType="attachment" targetId={group.name} /></div>
+          <div className="mt-4">
+            <AttachmentRecords name={group.name} />
+          </div>
         </div>
       )}
     </div>
@@ -506,5 +509,13 @@ export function AttachmentHistory({
         />
       ))}
     </div>
+  );
+}
+
+/** Records on an attachment name, loaded when its block is opened. */
+function AttachmentRecords({ name }: { name: string }) {
+  const records = useRecords("attachment", name);
+  return (
+    <WorkflowRecords targetType="attachment" targetId={name} records={records} anchor={false} />
   );
 }

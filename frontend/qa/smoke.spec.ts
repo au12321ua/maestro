@@ -142,6 +142,30 @@ test("setup, run, PAT, admin and invitation flow", async ({ page, browser }) => 
   }
   await page.screenshot({ path: `${shots}/run-artifacts.png`, fullPage: true });
 
+  // Workflow records: a tab of their own on the run. A member adds one like a comment; the
+  // author edits it and sees its history (others get no edit button, checked below).
+  await page.getByRole("tab", { name: "记录（0）" }).click();
+  await expect(page.getByText("还没有记录。")).toBeVisible();
+  await page.getByRole("button", { name: "添加记录" }).click();
+  await page.getByLabel("标题").fill("smoke note");
+  await page.getByLabel("正文（JSON 对象）").fill("[1]");
+  await page.getByRole("button", { name: "添加", exact: true }).click();
+  await expect(page.getByText("正文必须是 JSON 对象（{…}）。")).toBeVisible();
+  await page.getByLabel("正文（JSON 对象）").fill('{"finding": "baseline"}');
+  await page.getByRole("button", { name: "添加", exact: true }).click();
+  await expect(page.getByRole("tab", { name: "记录（1）" })).toBeVisible();
+  const record = page.getByTestId("workflow-record");
+  await expect(record.getByText("smoke note")).toBeVisible();
+  await expect(record.getByText('"finding": "baseline"')).toBeVisible();
+  await record.getByRole("button", { name: "编辑" }).click();
+  await page.getByLabel("标题").fill("smoke note v2");
+  await page.getByRole("button", { name: "保存修改" }).click();
+  await expect(record.getByText("smoke note v2")).toBeVisible();
+  await expect(record.getByText("2 个修订")).toBeVisible();
+  await record.getByText("修改历史").click();
+  await expect(record.getByTestId("record-revision")).toHaveCount(2);
+  await page.screenshot({ path: `${shots}/run-records.png`, fullPage: true });
+
   // The workbench: my recent runs with their score coverage, pending items, system status.
   await nav(page, "工作台").click();
   await expect(page.getByRole("heading", { name: "工作台" })).toBeVisible();
@@ -219,6 +243,17 @@ test("setup, run, PAT, admin and invitation flow", async ({ page, browser }) => 
   await expect(member.getByRole("heading", { name: "工作台" })).toBeVisible();
   await expect(member.getByRole("link", { name: "管理" })).toHaveCount(0);
   await expect(member.getByText("smoke run").first()).toBeVisible();
+  // The administrator's record: readable, no edit or delete for another member. Her own
+  // record she may edit.
+  await member.goto(`${runUrl}?tab=records`);
+  const theirs = member.getByTestId("workflow-record").filter({ hasText: "smoke note v2" });
+  await expect(theirs).toBeVisible();
+  await expect(theirs.getByRole("button")).toHaveCount(0);
+  await member.getByRole("button", { name: "添加记录" }).click();
+  await member.getByLabel("标题").fill("alice note");
+  await member.getByRole("button", { name: "添加", exact: true }).click();
+  const hers = member.getByTestId("workflow-record").filter({ hasText: "alice note" });
+  await expect(hers.getByRole("button", { name: "编辑" })).toBeVisible();
   await member.getByRole("button", { name: "退出" }).click();
   await expect(member.getByRole("heading", { name: "登录" })).toBeVisible();
   await other.close();
@@ -233,6 +268,13 @@ test("setup, run, PAT, admin and invitation flow", async ({ page, browser }) => 
   await expect(patRow.getByText("已撤销")).toBeVisible();
   await patRow.getByRole("button", { name: "删除", exact: true }).click();
   await expect(page.getByText("smoke pat")).toHaveCount(0);
+  // An administrator may delete any record (it goes to the recycle bin), not edit it.
+  await page.goto(`${runUrl}?tab=records`);
+  const aliceNote = page.getByTestId("workflow-record").filter({ hasText: "alice note" });
+  await expect(aliceNote.getByRole("button", { name: "编辑" })).toHaveCount(0);
+  await aliceNote.getByRole("button", { name: "删除" }).click();
+  await expect(page.getByRole("tab", { name: "记录（1）" })).toBeVisible();
+  await expect(aliceNote).toHaveCount(0);
   await page.goto(runUrl);
   await page.getByRole("button", { name: "删除", exact: true }).click();
   await expect(page.getByText("该运行已删除，在回收站中")).toBeVisible();
@@ -293,6 +335,7 @@ const result = (score: number | null, cause: string | null) => ({
 const sessionRoutes: Record<string, unknown> = {
   "/api/v1/setup": { needs_setup: false },
   "/api/v1/session": { user: me, csrf_token: "csrf" },
+  "/api/v1/records": [],
   // Fixtures follow the contract (SystemStatus, Capabilities in src/lib/schema.d.ts).
   "/api/v1/capabilities": { api_version: "v1", service_version: "t", schema_revision: "t",
     contract_digest: "sha256:t", team_policy_revision: 0, features: {}, limits: {},
@@ -694,6 +737,70 @@ test("copying a collection edits fixed resources through the configuration form"
   expect(body.base.request.timeouts.verifier_sec).toBe(30.5);
   await expect(page.getByText("old run：资源与时限不同")).toBeVisible();
   await expect(page.getByRole("link", { name: "打开新集合" })).toHaveAttribute("href", "/collections/col_2");
+});
+
+// Records sections further down a page are reached from a button at its top; a dataset
+// version's new record starts from the provenance template; an edit that lost a race says
+// so instead of overwriting.
+test("workflow records: jump button, provenance template, edit conflict", async ({ page }) => {
+  const record = {
+    id: "rec_1", target: { type: "dataset_version", id: "dsv_1", snapshot_id: null },
+    kind: "provenance", title: "where it came from", body: { upstream_repo: "x" },
+    references: [], excerpts: [], author_id: "usr_1", author_username: "u", pat_id: null,
+    created_at: "2026-10-22T00:00:00Z", updated_at: "2026-10-22T00:00:00Z", revision: 1,
+    deletion: null, target_deletion: null, allowed_actions: ["view", "edit", "delete"],
+  };
+  const tasks = Array.from({ length: 40 }, (_, i) => ({
+    id: `task_${i}`, dataset_version_id: "dsv_1", task_key: `task-${i}`, admission: null,
+    content: { digest: "sha256:c", material_digest: null, availability: "available",
+      checked_at: null, resources: [] },
+    local_preparation: { id: null, location_id: "host", cache_state: "absent",
+      last_restore_error: null, operation_id: null, prepared_at: null, last_used_at: null,
+      setup_network_revision: null },
+    spec_digest: "sha256:s", resources: { cpus: 1, memory_mb: 1024, storage_mb: null,
+      constraint_strength: "unknown", environments: [] },
+    timeouts: { agent_sec: 60, verifier_sec: 60, build_sec: null }, parameters: [],
+    required_parameters: [], can_submit: false, blockers: [], warnings: [],
+    required_preparation: [],
+  }));
+  await serveFixtures(page, {
+    ...sessionRoutes,
+    "/api/v1/records": [record],
+    "/api/v1/datasets": [{ id: "ds_1", namespace: "demo", name: "arith", source_kind: "hub",
+      versions: [{ id: "dsv_1", upstream_ref: "v1", ref_kind: "tag", status: "ready",
+        created_at: "2026-10-22T00:00:00Z", task_count: 40, submittable_task_count: 0,
+        cache_ready_task_count: 0, resolved_digest: "sha256:aa" }] }],
+    "/api/v1/dataset-versions/dsv_1": { id: "dsv_1", namespace: "demo", name: "arith",
+      upstream_ref: "v1", source_kind: "hub", task_count: 40, admitted_task_count: 0,
+      submittable_task_count: 0, cache_ready_task_count: 0, resolved_digest: "sha256:aa",
+      materialization_digest: null, created_at: "2026-10-22T00:00:00Z", deletion: null,
+      scoring_contract: { name: "reward", metric_id: "reward", unit: null,
+        direction: "higher_is_better", source: "platform_default", contract_version: 1,
+        count_as_failure: [], task_aggregation: "mean", bench_aggregation: "mean",
+        passed: null },
+      first_preparation_operation_id: null },
+    "/api/v1/dataset-versions/dsv_1/tasks": tasks,
+  });
+  await page.route("**/api/v1/records/rec_1", (route) => route.fulfill({ status: 409, json: {
+    error: { code: "RECORD_REVISION_CHANGED", message: "changed", field_errors: [],
+      retryable: false, suggested_actions: [] }, meta } }));
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto("/datasets?version=dsv_1");
+  const jump = page.getByRole("button", { name: "记录（1）" });
+  await expect(jump).toBeInViewport();
+  const section = page.getByText("工作流记录（1）");
+  await expect(section).not.toBeInViewport();
+  await jump.click();
+  await expect(section).toBeInViewport();
+  await page.getByRole("button", { name: "添加记录" }).click();
+  await expect(page.getByLabel("类型")).toHaveValue("provenance");
+  await expect(page.getByLabel("正文（JSON 对象）")).toHaveValue(/"converter_version"/);
+  await page.getByRole("button", { name: "取消" }).click();
+  await page.getByTestId("workflow-record").getByRole("button", { name: "编辑" }).click();
+  await page.getByLabel("标题").fill("changed title");
+  await page.getByRole("button", { name: "保存修改" }).click();
+  await expect(page.getByText("这条记录在你编辑期间已被修改")).toBeVisible();
+  await expect(page.getByRole("button", { name: "刷新记录" })).toBeVisible();
 });
 
 // The English UI (N-18): a browser without a stored choice and an English locale gets English,

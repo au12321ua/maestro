@@ -117,6 +117,10 @@ export type RecycleEntry = S["RecycleEntry"];
 export type RecycleObjectType = RecycleEntry["object_type"];
 export type AuditEvent = S["AuditEvent"];
 
+export type WorkflowRecord = S["WorkflowRecord"];
+export type RecordRevision = S["RecordRevision"];
+export type RecordTargetType = WorkflowRecord["target"]["type"];
+
 export type Capabilities = S["Capabilities"];
 export type CapacityOverview = S["CapacityOverview"];
 export type Health = S["Health"];
