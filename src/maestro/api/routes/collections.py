@@ -21,6 +21,7 @@ from maestro.api.models import (
     ComparisonSettingsInput,
     CurrentBestInput,
     Envelope,
+    HeldOutTask,
     NoteBody,
     RecycleEntry,
     Snapshot,
@@ -218,3 +219,8 @@ def update_snapshot_note(
         request,
         maestro(request).snapshots.update_note(who, snapshot_id, note_id, body.model_dump()),
     )
+
+
+@router.get("/collections/{collection_id}/held-out", response_model=Envelope[list[HeldOutTask]])
+def collection_held_out(collection_id: str, request: Request, who: Principal = Depends(principal)):
+    return ok(request, maestro(request).collections.held_out(who, collection_id))

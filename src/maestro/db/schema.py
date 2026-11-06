@@ -209,6 +209,23 @@ tasks = Table(
     Index("ix_tasks_spec", "spec_digest"),
 )
 
+# Channel ids survive session expiry and token revocation; neither is a foreign key.
+task_reads = Table(
+    "task_reads",
+    metadata,
+    _ref("task_id", "tasks"),
+    _ref("reader_id", "users"),
+    Column("channel", String(16), nullable=False),
+    Column("channel_id", String(40), nullable=False),
+    Column("category", String(32), nullable=False),
+    _time("first_read_at"),
+    _time("last_read_at"),
+    Column("count", Integer, nullable=False),
+    PrimaryKeyConstraint("task_id", "reader_id", "channel", "channel_id", "category"),
+    CheckConstraint("channel IN ('pat','web_session')", name="channel"),
+    CheckConstraint("category IN ('instruction','trial_artifacts')", name="category"),
+)
+
 task_admissions = Table(
     "task_admissions",
     metadata,
@@ -748,6 +765,7 @@ collections = Table(
     Column("scenario", String(32), nullable=False),
     _json("variable_json"),
     _json("fixed_json"),
+    Column("held_out_task_ids_json", JSON, nullable=False, server_default="[]"),
     # The request the fixed values came from, to fill in runs submitted from here.
     _json("template_json"),
     _ref("base_run_id", "runs", nullable=True),

@@ -1655,6 +1655,8 @@ class SnapshotSpec(BaseModel):
         extra="allow",
     )
     fixed: dict[str, dict[str, JsonValue]]
+    held_out_task_ids: list[str]
+    held_out_task_keys: list[str]
     scenario: Literal["models", "harnesses", "model_harness", "attachments", "repeats", "custom"]
     variable_dimensions: list[
         Literal["model", "harness", "attachments", "resources", "repetitions", "parameters"]
@@ -1765,6 +1767,28 @@ class TaskContent(BaseModel):
     digest: str
     material_digest: str | None
     resources: list[ContentResource]
+
+
+class TaskRead(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    category: Literal["instruction", "trial_artifacts"]
+    channel: Literal["pat", "web_session"]
+    channel_id: str
+    count: int
+    first_read_at: str
+    last_read_at: str
+    reader_id: str
+    reader_username: str
+    task_id: str
+
+
+class TaskReadQuery(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    task_ids: list[str]
 
 
 class TaskResources(BaseModel):
@@ -2136,6 +2160,7 @@ class ComparedTask(BaseModel):
         extra="allow",
     )
     cells: dict[str, ComparisonCell | None]
+    held_out: bool
     status: Literal["compared", "no_valid_trials", "not_common"]
     task_key: str
 
@@ -2730,6 +2755,14 @@ class EnvelopeListSourceVersion(BaseModel):
     meta: Meta
 
 
+class EnvelopeListTaskRead(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: list[TaskRead]
+    meta: Meta
+
+
 class EnvelopeListTeamPolicyRevision(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -2789,6 +2822,17 @@ class HarnessParameterSchemaOutput(BaseModel):
         extra="allow",
     )
     parameters: dict[str, HarnessParameterSpec]
+
+
+class HeldOutTask(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    accepted_runs: int
+    read_since_creation: bool
+    reads: list[TaskRead]
+    task_id: str
+    task_key: str
 
 
 class ImportProgress(BaseModel):
@@ -3730,6 +3774,14 @@ class EnvelopeListBatch(BaseModel):
     meta: Meta
 
 
+class EnvelopeListHeldOutTask(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: list[HeldOutTask]
+    meta: Meta
+
+
 class EnvelopeListModelConfig(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -4035,6 +4087,27 @@ class Task(BaseModel):
     content: TaskContent
     dataset_version_id: str
     id: str
+    local_preparation: LocalPreparation
+    parameters: list[AuthorParameter]
+    required_parameters: list[str]
+    required_preparation: list[RequiredPreparation]
+    resources: TaskResources
+    spec_digest: str | None
+    task_key: str
+    timeouts: TaskTimeouts
+    warnings: list[TaskWarning]
+
+
+class TaskDetail(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    admission: TaskAdmission | None
+    blockers: list[TaskBlocker]
+    can_submit: bool
+    content: TaskContent
+    dataset_version_id: str
+    id: str
     instruction: str
     local_preparation: LocalPreparation
     parameters: list[AuthorParameter]
@@ -4114,6 +4187,8 @@ class Collection(BaseModel):
         Field(description="Fixed dimensions and their values"),
     ]
     fixed_labels: dict[str, str]
+    held_out_task_ids: list[str]
+    held_out_task_keys: list[str]
     id: str
     members: list[CollectionMember] | None
     name: str
@@ -4149,6 +4224,7 @@ class CollectionCopy(BaseModel):
         Field(description="Required when a dimension that varied becomes fixed"),
     ] = None
     description: str | None = None
+    held_out_task_ids: list[str] | None = None
     name: str | None = None
     scenario: (
         Literal["models", "harnesses", "model_harness", "attachments", "repeats", "custom"] | None
@@ -4166,6 +4242,7 @@ class CollectionCreate(BaseModel):
     )
     base: CollectionBase
     description: str | None = ""
+    held_out_task_ids: list[str] | None = []
     name: str
     run_ids: list[str] | None = []
     scenario: Literal["models", "harnesses", "model_harness", "attachments", "repeats", "custom"]
@@ -4186,7 +4263,7 @@ class CollectionUpdate(BaseModel):
     settings: ComparisonSettingsInput | None = None
 
 
-class Comparison(BaseModel):
+class ComparisonResult(BaseModel):
     model_config = ConfigDict(
         extra="allow",
     )
@@ -4261,14 +4338,6 @@ class EnvelopeCollection(BaseModel):
     meta: Meta
 
 
-class EnvelopeComparison(BaseModel):
-    model_config = ConfigDict(
-        extra="allow",
-    )
-    data: Comparison
-    meta: Meta
-
-
 class EnvelopeConfigResolution(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -4314,6 +4383,14 @@ class EnvelopeRunAccepted(BaseModel):
         extra="allow",
     )
     data: RunAccepted
+    meta: Meta
+
+
+class EnvelopeTaskDetail(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: TaskDetail
     meta: Meta
 
 
@@ -4422,30 +4499,6 @@ class RunDetail(BaseModel):
     stop_requested: bool
 
 
-class Snapshot(BaseModel):
-    model_config = ConfigDict(
-        extra="allow",
-    )
-    allowed_actions: list[str]
-    collection_id: str | None
-    created_at: str
-    deletion: DeletionState | None
-    evidence: Annotated[
-        dict[str, Literal["available", "none", "deleted", "purged"]],
-        Field(description="Whether each run's files still open"),
-    ]
-    id: str
-    name: str
-    notes: list[SnapshotNote]
-    owner_id: str
-    owner_username: str | None
-    pat_id: str | None
-    result: Comparison
-    run_count: int
-    settings: ComparisonSettings
-    spec: SnapshotSpec | None
-
-
 class BatchPreview(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -4458,6 +4511,42 @@ class BatchPreview(BaseModel):
     runs: list[BatchPreviewRun]
 
 
+class Comparison(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    all_tasks: int
+    blockers: list[ComparisonNotice]
+    common_tasks: int
+    comparable: Annotated[bool, Field(description="Same dataset content and scoring contract")]
+    comparison_version: int
+    dimensions: list[ComparisonDimension]
+    dropped_tasks: Annotated[
+        int, Field(description="Common tasks left out: a run had no valid trial")
+    ]
+    grouping_version: int
+    groups: list[FailureGroupCount]
+    held_out: ComparisonResult | None
+    runs: list[ComparedRunRow]
+    set_aside: list[SetAsideRun]
+    settings: ComparisonSettings
+    tasks: list[ComparedTask]
+    varying: list[
+        Literal[
+            "dataset",
+            "scoring",
+            "model",
+            "harness",
+            "attachments",
+            "resources",
+            "repetitions",
+            "parameters",
+            "other",
+        ]
+    ]
+    warnings: list[ComparisonNotice]
+
+
 class EnvelopeBatchPreview(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -4466,19 +4555,19 @@ class EnvelopeBatchPreview(BaseModel):
     meta: Meta
 
 
+class EnvelopeComparison(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: Comparison
+    meta: Meta
+
+
 class EnvelopeRunDetail(BaseModel):
     model_config = ConfigDict(
         extra="allow",
     )
     data: RunDetail
-    meta: Meta
-
-
-class EnvelopeSnapshot(BaseModel):
-    model_config = ConfigDict(
-        extra="allow",
-    )
-    data: Snapshot
     meta: Meta
 
 
@@ -4529,11 +4618,43 @@ class Operation(
     ]
 
 
+class Snapshot(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    allowed_actions: list[str]
+    collection_id: str | None
+    created_at: str
+    deletion: DeletionState | None
+    evidence: Annotated[
+        dict[str, Literal["available", "none", "deleted", "purged"]],
+        Field(description="Whether each run's files still open"),
+    ]
+    id: str
+    name: str
+    notes: list[SnapshotNote]
+    owner_id: str
+    owner_username: str | None
+    pat_id: str | None
+    result: Comparison
+    run_count: int
+    settings: ComparisonSettings
+    spec: SnapshotSpec | None
+
+
 class EnvelopeOperation(BaseModel):
     model_config = ConfigDict(
         extra="allow",
     )
     data: Operation
+    meta: Meta
+
+
+class EnvelopeSnapshot(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: Snapshot
     meta: Meta
 
 

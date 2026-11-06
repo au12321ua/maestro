@@ -20,7 +20,8 @@ from maestro.core.errors import MaestroError, not_found
 from maestro.db import schema as t
 from maestro.db.engine import Database
 from maestro.domain.states import ArtifactState
-from maestro.services import deleted, policy
+from maestro.services import deleted, policy, task_reads
+from maestro.services.principal import Principal
 
 log = logging.getLogger(__name__)
 SWEEP_BATCH = 500
@@ -168,7 +169,12 @@ class Artifacts:
         return [public_artifact(r) for r in rows]
 
     def open(
-        self, artifact_id: str, offset: int = 0, length: int | None = None
+        self,
+        artifact_id: str,
+        offset: int = 0,
+        length: int | None = None,
+        *,
+        principal: Principal | None = None,
     ) -> tuple[dict, BinaryIO, int, int]:
         """Metadata, a reader positioned at ``offset``, the byte count to send and the
         total size. The reader stays valid if retention unlinks the file meanwhile."""
@@ -195,6 +201,16 @@ class Artifacts:
         offset = min(offset, total)
         reader.seek(offset)
         count = total - offset if length is None else min(length, total - offset)
+        try:
+            if principal is not None and row["trial_id"]:
+                with self.db.read() as conn:
+                    task_id = conn.execute(
+                        select(t.trials.c.task_id).where(t.trials.c.id == row["trial_id"])
+                    ).scalar_one()
+                task_reads.record(self.db, principal, [task_id], "trial_artifacts")
+        except BaseException:
+            reader.close()
+            raise
         return public_artifact(row), reader, count, total
 
     @staticmethod

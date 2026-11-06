@@ -191,12 +191,14 @@ def download_run_archive(
     task_key: str | None = None,
     trial_id: str | None = None,
     attempt_id: str | None = None,
-    _: Principal = Depends(principal),
+    who: Principal = Depends(principal),
 ):
     """The run's artifacts as a zip built while it streams, or only one task's, trial's
     or attempt's (the narrowest given). Ended runs only; at most ``export_max_gb``.
     manifest.json, written last, lists every file and the ones left out with why."""
-    name, chunks = maestro(request).artifact_archives.open(run_id, task_key, trial_id, attempt_id)
+    name, chunks = maestro(request).artifact_archives.open(
+        run_id, task_key, trial_id, attempt_id, principal=who
+    )
     return StreamingResponse(
         chunks, media_type="application/zip", headers={"Content-Disposition": attachment(name)}
     )
@@ -212,11 +214,13 @@ def download_artifact(
     request: Request,
     offset: int = 0,
     length: int | None = None,
-    _: Principal = Depends(principal),
+    who: Principal = Depends(principal),
 ):
     """Whole file, or a bounded slice with ``offset`` and ``length`` (at most 1 MiB) for
     paging logs. X-Total-Size reports the file size."""
-    meta, reader, count, total = maestro(request).artifacts.open(artifact_id, offset, length)
+    meta, reader, count, total = maestro(request).artifacts.open(
+        artifact_id, offset, length, principal=who
+    )
 
     def chunks():
         with reader:

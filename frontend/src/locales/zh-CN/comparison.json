@@ -253,5 +253,28 @@
     "noneYet": "还没有集合，<link>去新建</link>",
     "select": "选择集合",
     "add": "加入"
+  },
+  "heldOut": {
+    "title": "留出题",
+    "development": "开发题",
+    "choose": "选择留出题",
+    "fixedHint": "标记在集合创建后固定；至少保留一道开发题。",
+    "wrongVersion": "部分标记属于其他版本，请清除后重新选择。",
+    "clear": "清除标记",
+    "refresh": "刷新读取汇总",
+    "readSince": "集合创建后有人读取",
+    "unreadSince": "集合创建后无人读取",
+    "runs": "团队受理运行：{{n}}",
+    "reader": "读取者",
+    "channel": "渠道",
+    "category": "类别",
+    "first": "首次读取",
+    "last": "最后读取",
+    "count": "次数",
+    "pat": "PAT",
+    "web_session": "网页会话",
+    "instruction": "题面",
+    "trial_artifacts": "试次产物",
+    "runHint": "默认只选开发题；若要运行留出题，请逐题勾选。"
   }
 }

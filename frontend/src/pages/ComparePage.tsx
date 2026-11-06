@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Camera, Library } from "lucide-react";
 import { toast } from "sonner";
+import { HeldOutPicker } from "@/components/HeldOutPicker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ComparisonView } from "@/components/ComparisonView";
@@ -136,6 +137,13 @@ function MakeCollection({
   const found = scenarioFor(table.varying);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [heldOut, setHeldOut] = useState<string[]>([]);
+  const baseRunId = table.runs[0]?.run_id;
+  const tasks = useLoad(async () => {
+    if (!baseRunId) return [];
+    const run = (await api.get("/runs/{run_id}", { path: { run_id: baseRunId } })).data;
+    return (await api.get("/dataset-versions/{version_id}/tasks", { path: { version_id: run.dataset_version_id } })).data;
+  }, [baseRunId]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>();
   const create = async () => {
@@ -150,6 +158,7 @@ function MakeCollection({
           variable_dimensions:
             found.scenario === "custom" ? found.variable : null,
           base: { run_id: table.runs[0].run_id },
+          held_out_task_ids: heldOut,
           run_ids: table.runs.map((r) => r.run_id),
           settings: {
             exclude: table.settings.exclude,
@@ -199,6 +208,8 @@ function MakeCollection({
           value={description}
           onChange={(e) => setDescription(e.target.value)}
         />
+        <ErrorAlert error={tasks.error} />
+        <HeldOutPicker tasks={tasks.data ?? []} selected={heldOut} onChange={setHeldOut} />
         <ErrorAlert error={error} />
         <div className="flex gap-2">
           <Button disabled={busy || !name.trim()} onClick={() => void create()}>

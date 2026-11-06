@@ -1156,6 +1156,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/collections/{collection_id}/held-out": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Collection Held Out */
+        get: operations["collection_held_out"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/collections/{collection_id}/runs": {
         parameters: {
             query?: never;
@@ -2176,6 +2193,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tasks/reads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Get Task Reads */
+        post: operations["get_task_reads"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Task */
+        get: operations["get_task"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/team-policy": {
         parameters: {
             query?: never;
@@ -2893,6 +2944,10 @@ export interface components {
             fixed_labels: {
                 [key: string]: string;
             };
+            /** Held Out Task Ids */
+            held_out_task_ids: string[];
+            /** Held Out Task Keys */
+            held_out_task_keys: string[];
             /** Id */
             id: string;
             /** Members */
@@ -2968,6 +3023,8 @@ export interface components {
             base?: components["schemas"]["CollectionBase"] | null;
             /** Description */
             description?: string | null;
+            /** Held Out Task Ids */
+            held_out_task_ids?: string[] | null;
             /** Name */
             name?: string | null;
             /** Scenario */
@@ -2984,6 +3041,11 @@ export interface components {
              * @default
              */
             description?: string;
+            /**
+             * Held Out Task Ids
+             * @default []
+             */
+            held_out_task_ids?: string[];
             /** Name */
             name: string;
             /**
@@ -3154,6 +3216,11 @@ export interface components {
                 [key: string]: components["schemas"]["ComparisonCell"] | null;
             };
             /**
+             * Held Out
+             * @default false
+             */
+            held_out: boolean;
+            /**
              * Status
              * @enum {string}
              */
@@ -3187,6 +3254,7 @@ export interface components {
             grouping_version: number;
             /** Groups */
             groups: components["schemas"]["FailureGroupCount"][];
+            held_out: components["schemas"]["ComparisonResult"] | null;
             /** Runs */
             runs: components["schemas"]["ComparedRunRow"][];
             /** Set Aside */
@@ -3304,6 +3372,44 @@ export interface components {
              * @description common: tasks every run has; all: every task, no differences
              */
             scope?: ("common" | "all") | null;
+        };
+        /** ComparisonResult */
+        ComparisonResult: {
+            /** All Tasks */
+            all_tasks: number;
+            /** Blockers */
+            blockers: components["schemas"]["ComparisonNotice"][];
+            /** Common Tasks */
+            common_tasks: number;
+            /**
+             * Comparable
+             * @description Same dataset content and scoring contract
+             */
+            comparable: boolean;
+            /** Comparison Version */
+            comparison_version: number;
+            /** Dimensions */
+            dimensions: components["schemas"]["ComparisonDimension"][];
+            /**
+             * Dropped Tasks
+             * @description Common tasks left out: a run had no valid trial
+             */
+            dropped_tasks: number;
+            /** Grouping Version */
+            grouping_version: number;
+            /** Groups */
+            groups: components["schemas"]["FailureGroupCount"][];
+            /** Runs */
+            runs: components["schemas"]["ComparedRunRow"][];
+            /** Set Aside */
+            set_aside: components["schemas"]["SetAsideRun"][];
+            settings: components["schemas"]["ComparisonSettings"];
+            /** Tasks */
+            tasks: components["schemas"]["ComparedTask"][];
+            /** Varying */
+            varying: ("dataset" | "scoring" | "model" | "harness" | "attachments" | "resources" | "repetitions" | "parameters" | "other")[];
+            /** Warnings */
+            warnings: components["schemas"]["ComparisonNotice"][];
         };
         /** ComparisonSettings */
         ComparisonSettings: {
@@ -4309,6 +4415,11 @@ export interface components {
             data: components["schemas"]["SystemStatus"];
             meta: components["schemas"]["Meta"];
         };
+        /** Envelope[TaskDetail] */
+        Envelope_TaskDetail_: {
+            data: components["schemas"]["TaskDetail"];
+            meta: components["schemas"]["Meta"];
+        };
         /** Envelope[TeamPolicy] */
         Envelope_TeamPolicy_: {
             data: components["schemas"]["TeamPolicy"];
@@ -4413,6 +4524,12 @@ export interface components {
             data: components["schemas"]["Harness"][];
             meta: components["schemas"]["Meta"];
         };
+        /** Envelope[list[HeldOutTask]] */
+        Envelope_list_HeldOutTask__: {
+            /** Data */
+            data: components["schemas"]["HeldOutTask"][];
+            meta: components["schemas"]["Meta"];
+        };
         /** Envelope[list[Invitation]] */
         Envelope_list_Invitation__: {
             /** Data */
@@ -4483,6 +4600,12 @@ export interface components {
         Envelope_list_SourceVersion__: {
             /** Data */
             data: components["schemas"]["SourceVersion"][];
+            meta: components["schemas"]["Meta"];
+        };
+        /** Envelope[list[TaskRead]] */
+        Envelope_list_TaskRead__: {
+            /** Data */
+            data: components["schemas"]["TaskRead"][];
             meta: components["schemas"]["Meta"];
         };
         /** Envelope[list[Task]] */
@@ -5034,6 +5157,19 @@ export interface components {
              * @enum {string}
              */
             status: "alive" | "ready" | "maintenance";
+        };
+        /** HeldOutTask */
+        HeldOutTask: {
+            /** Accepted Runs */
+            accepted_runs: number;
+            /** Read Since Creation */
+            read_since_creation: boolean;
+            /** Reads */
+            reads: components["schemas"]["TaskRead"][];
+            /** Task Id */
+            task_id: string;
+            /** Task Key */
+            task_key: string;
         };
         /** HostCapacityView */
         HostCapacityView: {
@@ -7170,6 +7306,16 @@ export interface components {
                 };
             };
             /**
+             * Held Out Task Ids
+             * @default []
+             */
+            held_out_task_ids: string[];
+            /**
+             * Held Out Task Keys
+             * @default []
+             */
+            held_out_task_keys: string[];
+            /**
              * Scenario
              * @enum {string}
              */
@@ -7328,8 +7474,6 @@ export interface components {
             dataset_version_id: string;
             /** Id */
             id: string;
-            /** Instruction */
-            instruction: string;
             local_preparation: components["schemas"]["LocalPreparation"];
             /** Parameters */
             parameters: components["schemas"]["AuthorParameter"][];
@@ -7410,6 +7554,71 @@ export interface components {
             material_digest: string | null;
             /** Resources */
             resources: components["schemas"]["ContentResource"][];
+        };
+        /** TaskDetail */
+        TaskDetail: {
+            admission: components["schemas"]["TaskAdmission"] | null;
+            /** Blockers */
+            blockers: components["schemas"]["TaskBlocker"][];
+            /** Can Submit */
+            can_submit: boolean;
+            content: components["schemas"]["TaskContent"];
+            /** Dataset Version Id */
+            dataset_version_id: string;
+            /** Id */
+            id: string;
+            /** Instruction */
+            instruction: string;
+            local_preparation: components["schemas"]["LocalPreparation"];
+            /** Parameters */
+            parameters: components["schemas"]["AuthorParameter"][];
+            /**
+             * Required Parameters
+             * @default []
+             */
+            required_parameters: string[];
+            /** Required Preparation */
+            required_preparation: components["schemas"]["RequiredPreparation"][];
+            resources: components["schemas"]["TaskResources"];
+            /** Spec Digest */
+            spec_digest: string | null;
+            /** Task Key */
+            task_key: string;
+            timeouts: components["schemas"]["TaskTimeouts"];
+            /** Warnings */
+            warnings: components["schemas"]["TaskWarning"][];
+        };
+        /** TaskRead */
+        TaskRead: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "instruction" | "trial_artifacts";
+            /**
+             * Channel
+             * @enum {string}
+             */
+            channel: "pat" | "web_session";
+            /** Channel Id */
+            channel_id: string;
+            /** Count */
+            count: number;
+            /** First Read At */
+            first_read_at: string;
+            /** Last Read At */
+            last_read_at: string;
+            /** Reader Id */
+            reader_id: string;
+            /** Reader Username */
+            reader_username: string;
+            /** Task Id */
+            task_id: string;
+        };
+        /** TaskReadQuery */
+        TaskReadQuery: {
+            /** Task Ids */
+            task_ids: string[];
         };
         /**
          * TaskResources
@@ -10089,6 +10298,37 @@ export interface operations {
             };
         };
     };
+    collection_held_out: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_list_HeldOutTask__"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     add_collection_runs: {
         parameters: {
             query?: never;
@@ -12322,6 +12562,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Envelope_SystemStatus_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_task_reads: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskReadQuery"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_list_TaskRead__"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_task: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_TaskDetail_"];
                 };
             };
             /** @description Structured error */

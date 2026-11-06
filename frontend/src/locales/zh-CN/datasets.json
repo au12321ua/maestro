@@ -162,6 +162,8 @@
     "sensitive": "敏感",
     "yes": "是",
     "no": "否",
-    "instruction": "任务说明"
+    "instruction": "任务说明",
+    "recordedRead": "打开题面会记录你的账户、会话和读取时间。",
+    "hideInstruction": "收起题面"
   }
 }

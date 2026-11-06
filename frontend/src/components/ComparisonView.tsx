@@ -50,6 +50,7 @@ export function ComparisonView({
   axes,
   evidence,
   csvName = "comparison.csv",
+  heldOut = false,
 }: {
   table: Comparison;
   onChange?: (change: ComparisonSettingsInput) => void;
@@ -58,6 +59,7 @@ export function ComparisonView({
   /** Whether each run's files still open now (a snapshot's numbers are older). */
   evidence?: Record<string, string>;
   csvName?: string;
+  heldOut?: boolean;
 }) {
   // A frozen table may still be laid out differently; that is not saved anywhere.
   const [localLayout, setLocalLayout] = useState<ComparisonLayout | null>(null);
@@ -83,7 +85,7 @@ export function ComparisonView({
       <Card>
         <CardHeader>
           <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-            {t("comparison.view.result")}
+            {t(heldOut ? "comparison.heldOut.title" : table.held_out ? "comparison.heldOut.development" : "comparison.view.result")}
             <span className="text-sm font-normal text-muted-foreground">
               {!table.comparable
                 ? t("comparison.view.notComparable")
@@ -134,6 +136,9 @@ export function ComparisonView({
       {table.tasks.length > 0 && (
         <TaskTable table={table} evidenceOf={evidenceOf} />
       )}
+      {table.held_out && <ComparisonView table={{...table.held_out, held_out: null}} axes={axes} evidence={evidence}
+        onChange={onChange} csvName={`held-out-${csvName}`} heldOut />}
+
     </div>
   );
 }
@@ -854,6 +859,7 @@ function TaskTable({
                 >
                   <TableCell className={cn(STICKY, "max-w-[16rem]")}>
                     <LongName value={task.task_key} prefix={prefix} />
+                    {task.held_out && <Pill tone="warn">{t("comparison.heldOut.title")}</Pill>}
                     {task.status === "no_valid_trials" && (
                       <div className="text-xs">
                         {t("comparison.view.tasks.noValidTrials")}

@@ -167,6 +167,8 @@
     "sensitive": "Sensitive",
     "yes": "Yes",
     "no": "No",
-    "instruction": "Task instruction"
+    "instruction": "Task instruction",
+    "recordedRead": "Opening the instruction records your account, session and read time.",
+    "hideInstruction": "Hide instruction"
   }
 }

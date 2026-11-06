@@ -12,7 +12,8 @@ from maestro.db import schema as t
 from maestro.db.engine import Database
 from maestro.domain import scoring
 from maestro.execution.materials import configuration_blockers, required_parameters
-from maestro.services import deleted, pagination
+from maestro.services import deleted, pagination, task_reads
+from maestro.services.principal import Principal
 
 ADMITTED = "admitted"
 
@@ -164,7 +165,6 @@ def task_view(task, admission, availability: dict, preparation, location_id: str
         ],
         # Values a run must supply; not a blocker of the task itself.
         "required_parameters": required_parameters(definition),
-        "instruction": definition.get("instruction") or "",
         "can_submit": not blockers,
         "blockers": blockers,
         "warnings": warnings,
@@ -286,16 +286,24 @@ class Catalog:
                 raise not_found("Dataset version")
             return self._tasks(conn, version_id)
 
-    def _tasks(self, conn, version_id: str) -> list[dict]:
-        tasks = (
-            conn.execute(
-                select(t.tasks)
-                .where(t.tasks.c.dataset_version_id == version_id)
-                .order_by(t.tasks.c.task_key)
+    def task(self, principal: Principal, task_id: str) -> dict:
+        with self.db.read() as conn:
+            task = conn.execute(select(t.tasks).where(t.tasks.c.id == task_id)).mappings().first()
+            if task is None:
+                raise not_found("Task")
+            deleted.refuse_purged(
+                conn, "dataset_version", task["dataset_version_id"], "Dataset version"
             )
-            .mappings()
-            .all()
-        )
+            view = self._tasks(conn, task["dataset_version_id"], task_id)[0]
+            view["instruction"] = (task["definition_json"] or {}).get("instruction") or ""
+        task_reads.record(self.db, principal, [task_id], "instruction")
+        return view
+
+    def _tasks(self, conn, version_id: str, task_id: str | None = None) -> list[dict]:
+        query = select(t.tasks).where(t.tasks.c.dataset_version_id == version_id)
+        if task_id is not None:
+            query = query.where(t.tasks.c.id == task_id)
+        tasks = conn.execute(query.order_by(t.tasks.c.task_key)).mappings().all()
         admissions = load_admissions(conn, [x["id"] for x in tasks])
         digests = [x["content_digest"] for x in tasks] + [
             d for a in admissions.values() if (d := expected_content(a))

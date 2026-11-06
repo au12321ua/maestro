@@ -1256,14 +1256,34 @@ function TaskDetail({ task }: { task: Task }) {
           </Table>
         )}
       </div>
-      {task.instruction && (
-        <details>
-          <summary className="cursor-pointer">{t("datasets.detail.instruction")}</summary>
-          <pre className="mt-1 max-h-60 overflow-auto whitespace-pre-wrap rounded border bg-background p-2">
-            {task.instruction}
-          </pre>
-        </details>
-      )}
+      <TaskInstruction taskId={task.id} />
     </div>
   );
+}
+
+
+function TaskInstruction({ taskId }: { taskId: string }) {
+  const [open, setOpen] = useState(false);
+  const [instruction, setInstruction] = useState<string>();
+  const [error, setError] = useState<unknown>();
+  const [busy, setBusy] = useState(false);
+  const show = async () => {
+    if (open) { setOpen(false); return; }
+    setBusy(true);
+    setError(undefined);
+    try {
+      const result = await api.get("/tasks/{task_id}", { path: { task_id: taskId } });
+      setInstruction(result.data.instruction);
+      setOpen(true);
+    } catch (err) { setError(err); }
+    finally { setBusy(false); }
+  };
+  return <div>
+    <p>{t("datasets.detail.recordedRead")}</p>
+    <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void show()}>
+      {t(open ? "datasets.detail.hideInstruction" : "datasets.detail.instruction")}
+    </Button>
+    <ErrorAlert error={error} />
+    {open && <pre className="mt-1 max-h-60 overflow-auto whitespace-pre-wrap rounded border bg-background p-2">{instruction}</pre>}
+  </div>;
 }

@@ -25,3 +25,10 @@ class Catalog(_Resource):
 
     def preparation(self, preparation_id: str) -> models.Preparation:
         return self._c._get(f"preparations/{preparation_id}", models.Preparation)
+
+    def task(self, task_id: str) -> models.TaskDetail:
+        """Read the instruction; the service records this content read."""
+        return self._c._get(f"tasks/{task_id}", models.TaskDetail)
+
+    def reads(self, task_ids: list[str]) -> list[models.TaskRead]:
+        return self._c._send("POST", "tasks/reads", list[models.TaskRead], {"task_ids": task_ids})

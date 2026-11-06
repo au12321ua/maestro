@@ -1,8 +1,11 @@
-"""A run's artifacts, or one task's, trial's or attempt's, as a zip streamed on request.
+"""A run's artifacts, or one task's, trial's or attempt's, as a zip download.
 
-Only for runs that have ended, so the selection does not grow while it is sent. Nothing
-is written to disk first and no read pin is taken: a file reclaimed or deleted while
-the archive streams is left out and listed in the manifest, like an expired one.
+Only for runs that have ended, so the selection does not grow while it is packed.
+Nothing is written to disk first and no read pin is taken: a file reclaimed or deleted
+while the archive streams is left out and listed in the manifest, like an expired one.
+Task reads are recorded for every selected trial file before the first byte, so a
+recording failure returns no content; a file that vanishes while streaming may be
+counted as read, which errs on the side of a held-out task looking used.
 """
 
 from __future__ import annotations
@@ -22,8 +25,9 @@ from maestro.core.errors import MaestroError, not_found
 from maestro.db import schema as t
 from maestro.db.engine import Database
 from maestro.domain.states import RUN_TERMINAL
-from maestro.services import deleted
+from maestro.services import deleted, task_reads
 from maestro.services.exports import safe_name
+from maestro.services.principal import Principal
 
 SCHEMA_VERSION = 1
 CHUNK = 1 << 20
@@ -84,6 +88,8 @@ class ArtifactArchives:
         task_key: str | None = None,
         trial_id: str | None = None,
         attempt_id: str | None = None,
+        *,
+        principal: Principal | None = None,
     ) -> tuple[str, Iterator[bytes]]:
         """The archive's file name and its content; errors are raised before the first
         byte, from the scope check and the size limit."""
@@ -97,7 +103,12 @@ class ArtifactArchives:
             trials = {
                 r["id"]: r
                 for r in conn.execute(
-                    select(t.trials.c.id, t.tasks.c.task_key, t.trials.c.repetition_index)
+                    select(
+                        t.trials.c.id,
+                        t.trials.c.task_id,
+                        t.tasks.c.task_key,
+                        t.trials.c.repetition_index,
+                    )
                     .join(t.tasks, t.tasks.c.id == t.trials.c.task_id)
                     .where(t.trials.c.run_id == run_id)
                 ).mappings()
@@ -175,6 +186,13 @@ class ArtifactArchives:
             attempt = attempts.get(item["attempt_id"])
             return f"{path}/attempt-{attempt['attempt_index']}" if attempt else path
 
+        if principal is not None:
+            task_ids = {
+                trials[x["trial_id"]]["task_id"]
+                for x in selected
+                if x["trial_id"] and x["status"] == "available"
+            }
+            task_reads.record(self.db, principal, sorted(task_ids), "trial_artifacts")
         return f"{name}.zip", self._stream(root, scope, selected, folder)
 
     def _stream(self, root, scope, selected, folder) -> Iterator[bytes]:

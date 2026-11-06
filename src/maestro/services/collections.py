@@ -1,4 +1,4 @@
-"""Comparisons, collections and analysis snapshots (section 7).
+"""Comparisons, collections and analysis snapshots.
 
 A comparison is computed on demand from run snapshots and trial records and is never
 stored. A collection is a list of run references the team keeps up; its specification
@@ -35,7 +35,7 @@ from maestro.domain.comparison import (
 )
 from maestro.domain.scoring import contract_for, snapshot_contract
 from maestro.domain.states import RUN_TERMINAL, PatPermission
-from maestro.services import audit, deleted
+from maestro.services import audit, deleted, task_reads
 from maestro.services.configuration import (
     Blocker,
     Resolution,
@@ -345,9 +345,29 @@ def table(
     settings: dict,
     expected_variable=SUBJECT_DIMENSIONS,
     labels: dict | None = None,
+    held_out_keys: list[str] | None = None,
+    task_keys: set[str] | None = None,
+    development: bool = False,
 ) -> dict:
     """The comparison of these runs, in this order. Runs in the recycle bin (or purged)
     are set aside, not computed; they come back when restored."""
+    if held_out_keys:
+        development_result = table(
+            conn,
+            run_ids,
+            settings,
+            expected_variable,
+            labels,
+            task_keys=set(held_out_keys),
+            development=True,
+        )
+        held_out_result = table(
+            conn, run_ids, settings, expected_variable, labels, task_keys=set(held_out_keys)
+        )
+        for task in held_out_result["tasks"]:
+            task["held_out"] = True
+        development_result["held_out"] = held_out_result
+        return development_result
     rows = _run_rows(conn, run_ids)
     deletions = deleted.states(conn, "run", run_ids)
     snapshots = _snapshots(conn, run_ids)
@@ -363,7 +383,22 @@ def table(
     for run_id in kept:
         base = _compared(rows[run_id], snapshots[run_id])
         runs.append(
-            ComparedRun(base.run_id, base.view, base.contract, base.terminal, tuple(trials[run_id]))
+            ComparedRun(
+                base.run_id,
+                base.view,
+                base.contract,
+                base.terminal,
+                tuple(
+                    trial
+                    for trial in trials[run_id]
+                    if task_keys is None
+                    or (
+                        (trial.task_key not in task_keys)
+                        if development
+                        else (trial.task_key in task_keys)
+                    )
+                ),
+            )
         )
     result = compare(
         runs,
@@ -392,6 +427,46 @@ def table(
     result["set_aside"] = set_aside
     result["settings"]["layout"] = settings.get("layout") or default_settings()["layout"]
     return result
+
+
+def _held_out_keys(conn, row) -> list[str]:
+    if not row["held_out_task_ids_json"]:
+        return []
+    return list(
+        conn.execute(
+            select(t.tasks.c.task_key)
+            .where(t.tasks.c.id.in_(row["held_out_task_ids_json"]))
+            .order_by(t.tasks.c.task_key)
+        ).scalars()
+    )
+
+
+def _validate_held_out(conn, version_id, raw) -> list[str]:
+    if not isinstance(raw, (list, tuple)) or not all(isinstance(x, str) for x in raw):
+        raise _invalid(
+            "COLLECTION_INVALID",
+            "Supply held-out task ids",
+            [FieldError("/held_out_task_ids", "TYPE")],
+        )
+    tasks = set(
+        conn.execute(
+            select(t.tasks.c.id).where(t.tasks.c.dataset_version_id == version_id)
+        ).scalars()
+    )
+    ids = sorted(set(raw))
+    if set(ids) - tasks:
+        raise _invalid(
+            "COLLECTION_INVALID",
+            "Held-out tasks must belong to the collection's dataset version; supply new marks when changing versions",
+            [FieldError("/held_out_task_ids", "WRONG_VERSION", x) for x in ids if x not in tasks],
+        )
+    if not tasks - set(ids):
+        raise _invalid(
+            "COLLECTION_INVALID",
+            "Keep at least one development task",
+            [FieldError("/held_out_task_ids", "NO_DEVELOPMENT_TASKS")],
+        )
+    return ids
 
 
 class Comparisons:
@@ -460,7 +535,7 @@ class Collections:
         )
 
     @staticmethod
-    def _public(row, principal: Principal, count: int) -> dict:
+    def _public(conn, row, principal: Principal, count: int) -> dict:
         # The team keeps a collection up together; deleting it is the creator's.
         allowed = ["view", "compare"]
         if _experiment(principal):
@@ -476,6 +551,8 @@ class Collections:
             "scenario": row["scenario"],
             "variable_dimensions": row["variable_json"],
             "fixed": row["fixed_json"],
+            "held_out_task_ids": row["held_out_task_ids_json"],
+            "held_out_task_keys": _held_out_keys(conn, row),
             "fixed_labels": {d: label(d, v) for d, v in row["fixed_json"].items()},
             "template": request_input(row["template_json"]),
             "base_run_id": row["base_run_id"],
@@ -508,7 +585,8 @@ class Collections:
         )
         with self.db.read() as conn:
             return [
-                self._public(r, principal, r["run_count"]) for r in conn.execute(query).mappings()
+                self._public(conn, r, principal, r["run_count"])
+                for r in conn.execute(query).mappings()
             ]
 
     def get(self, principal: Principal, collection_id: str) -> dict:
@@ -518,7 +596,7 @@ class Collections:
             members = self._members(conn, collection_id)
             run_deletions = deleted.states(conn, "run", [m["run_id"] for m in members])
             return {
-                **self._public(row, principal, len(members)),
+                **self._public(conn, row, principal, len(members)),
                 "members": [
                     {
                         "run_id": m["run_id"],
@@ -542,7 +620,7 @@ class Collections:
             members = self._members(conn, collection_id)
             variable = row["variable_json"]
             settings = check_settings(body or None, variable, row["settings_json"])
-            if not members:
+            if not members and not row["held_out_task_ids_json"]:
                 return {**compare([]), "set_aside": [], "settings": settings}
             return table(
                 conn,
@@ -550,7 +628,57 @@ class Collections:
                 settings,
                 expected_variable=variable,
                 labels={m["run_id"]: m["label"] for m in members},
+                held_out_keys=_held_out_keys(conn, row),
             )
+
+    def held_out(self, principal: Principal, collection_id: str) -> list[dict]:
+        with self.db.read() as conn:
+            row = self._row(conn, collection_id)
+            deleted.refuse_purged(conn, "collection", collection_id, "Collection")
+            ids = row["held_out_task_ids_json"]
+            if not ids:
+                return []
+            reads = task_reads.summaries(conn, ids)
+            counts = dict(
+                conn.execute(
+                    select(t.trials.c.task_id, func.count(func.distinct(t.runs.c.id)))
+                    .join(t.runs, t.runs.c.id == t.trials.c.run_id)
+                    .where(t.trials.c.task_id.in_(ids), t.runs.c.accepted_at >= row["created_at"])
+                    .group_by(t.trials.c.task_id)
+                ).all()
+            )
+            receipts = conn.execute(
+                select(t.deletions.c.detail_json)
+                .join(t.runs, t.runs.c.id == t.deletions.c.object_id)
+                .where(
+                    t.deletions.c.object_type == "run",
+                    t.deletions.c.state == deleted.PURGED,
+                    t.runs.c.dataset_version_id == row["template_json"]["dataset_version_id"],
+                    t.runs.c.accepted_at >= row["created_at"],
+                )
+            ).scalars()
+            for receipt in receipts:
+                for task_id in (receipt.get("purged") or {}).get("task_ids", []):
+                    if task_id in ids:
+                        counts[task_id] = counts.get(task_id, 0) + 1
+            tasks = conn.execute(
+                select(t.tasks.c.id, t.tasks.c.task_key)
+                .where(t.tasks.c.id.in_(ids))
+                .order_by(t.tasks.c.task_key)
+            )
+            return [
+                {
+                    "task_id": task.id,
+                    "task_key": task.task_key,
+                    "reads": [r for r in reads if r["task_id"] == task.id],
+                    "read_since_creation": any(
+                        r["task_id"] == task.id and r["last_read_at"] >= row["created_at"]
+                        for r in reads
+                    ),
+                    "accepted_runs": counts.get(task.id, 0),
+                }
+                for task in tasks
+            ]
 
     # --- the specification -----------------------------------------------------------
 
@@ -616,7 +744,16 @@ class Collections:
         with self.db.write() as conn:
             fixed, template, base_run_id = self._base(conn, body.get("base"), variable)
             collection_id = self._insert(
-                conn, principal, text, scenario, variable, fixed, template, base_run_id, settings
+                conn,
+                principal,
+                text,
+                scenario,
+                variable,
+                fixed,
+                template,
+                base_run_id,
+                settings,
+                held_out_task_ids=body.get("held_out_task_ids", []),
             )
             for index, run_id in enumerate(run_ids):
                 self._add(conn, principal, collection_id, fixed, run_id, None, f"/run_ids/{index}")
@@ -634,7 +771,11 @@ class Collections:
         base_run_id,
         settings,
         copied_from=None,
+        held_out_task_ids=(),
     ) -> str:
+        held_out_task_ids = _validate_held_out(
+            conn, template["dataset_version_id"], held_out_task_ids
+        )
         collection_id = new_id("col")
         at = clock.to_text(clock.now())
         conn.execute(
@@ -647,6 +788,7 @@ class Collections:
                 scenario=scenario,
                 variable_json=variable,
                 fixed_json=fixed,
+                held_out_task_ids_json=held_out_task_ids,
                 template_json=template,
                 base_run_id=base_run_id,
                 settings_json=settings,
@@ -847,6 +989,12 @@ class Collections:
         """Name, description and settings; any member may change them. The
         specification never changes: copy the collection to change it."""
         require_experiment(principal)
+        if "held_out_task_ids" in body:
+            raise _invalid(
+                "COLLECTION_INVALID",
+                "Copy the collection to change held-out tasks",
+                [FieldError("/held_out_task_ids", "IMMUTABLE")],
+            )
         text = _check_text(body, partial=True)
         with self.db.write() as conn:
             row = self._live(conn, collection_id)
@@ -912,6 +1060,7 @@ class Collections:
                 base_run_id,
                 settings,
                 copied_from=collection_id,
+                held_out_task_ids=body.get("held_out_task_ids", row["held_out_task_ids_json"]),
             )
             members = self._members(conn, collection_id)
             run_deletions = deleted.states(conn, "run", [m["run_id"] for m in members])
@@ -1235,12 +1384,21 @@ class Snapshots:
                     "scenario": row["scenario"],
                     "variable_dimensions": variable,
                     "fixed": row["fixed_json"],
+                    "held_out_task_ids": row["held_out_task_ids_json"],
+                    "held_out_task_keys": _held_out_keys(conn, row),
                 }
             else:
                 run_ids = _run_ids(body.get("run_ids"))
                 labels, variable, spec = {}, SUBJECT_DIMENSIONS, None
                 settings = check_settings(body.get("settings"))
-            result = table(conn, run_ids, settings, variable, labels)
+            result = table(
+                conn,
+                run_ids,
+                settings,
+                variable,
+                labels,
+                held_out_keys=_held_out_keys(conn, row) if collection_id is not None else None,
+            )
             active = [r["run_id"] for r in result["runs"] if not r["terminal"]]
             if active:
                 raise MaestroError(

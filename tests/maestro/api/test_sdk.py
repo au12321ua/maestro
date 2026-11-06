@@ -350,6 +350,9 @@ NOT_FOR_PATS = (
     "/health/",
 )
 SDK_METHODS = {
+    "get_task": "catalog.task",
+    "get_task_reads": "catalog.reads",
+    "collection_held_out": "collections.held_out",
     "capabilities": "capabilities",
     "get_me": "me",
     "system_status": "system_status",

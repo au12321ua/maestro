@@ -33,11 +33,12 @@ Fill in `AGENTS.md` with the person you work for: service, token file, what you 
 
 ## Improving it
 
-**Read the tasks first.** Before the first attempt, read the instruction of every task you will tune on, and any checks you are allowed to read:
+**Read the tasks first.** Before the first attempt, read the instruction of every task you will tune on (the development tasks, never the held-out ones), and any checks you are allowed to read. Opening a task's instruction or a trial's files is recorded as a read of that task:
 
 ```python
-for task in client.catalog.tasks(version_id):
-    print(task.task_key, task.instruction)
+for task in client.catalog.tasks(version_id):          # keys and ids only, not a read
+    if task.id in development_ids:
+        print(task.task_key, client.catalog.task(task.id).instruction)
 ```
 
 Write down, per task or for the set: the inputs, what the agent must deliver and where, what the score measures, and what you do not know. Most wrong hypotheses come from guessing these.
@@ -61,7 +62,16 @@ aw.build_report(client, c.id, "report")             # report.json / report.md, e
 c = client.collections.create("<name> on <dataset>", "attachments", base_run_id=base_run_id)
 ```
 
-Fix the task list with `task_selection` (`{"mode": "explicit", "task_ids": [...]}`) and use the same list every time: the collection does not check the task range. Keep a held-out set as a second collection if you are tuning on the first.
+Fix the task list with `task_selection` (`{"mode": "explicit", "task_ids": [...]}`) and use the same list every time: the collection does not check the task range.
+
+**Keep held-out tasks.** If you will tune on results, mark some tasks of the dataset as held out when you create the collection; the marks are fixed once it exists:
+
+```python
+c = client.collections.create("<name> on <dataset>", "attachments", base_run_id=base_run_id,
+                              held_out_task_ids=held_out_ids)
+```
+
+Tune on the development tasks only. Do not open the held-out tasks' instructions, trajectories, logs or archives; their scores are fine to see. Submit the held-out tasks at the end, for the snapshot you want to confirm. The platform does not block reads, it records them: before reporting, look at `client.collections.held_out(c.id)` (who read each held-out task and when, `read_since_creation`, `accepted_runs`) and include it, so whoever writes the conclusion can judge whether the held-out tasks were still unseen.
 
 **Each attempt:**
 
@@ -112,6 +122,7 @@ complete = cmp.dropped_tasks == 0 and cmp.common_tasks == cmp.all_tasks and all(
 )
 ```
 
+- With held-out marks, `cmp` is the development tasks and `cmp.held_out` the held-out ones, each with the same fields; judge them separately and never average them together.
 - Not complete (unscored trials, execution failures, missing tasks): rerun or report "not enough evidence". Do not count them as zero and do not narrow to the common tasks.
 - Complete: `r.mean` and `r.difference` are the macro means over the same tasks and repetitions. A valid 0 is a real score.
 - Small differences over few tasks are often noise. Prefer more repetitions or tasks to a confident claim.

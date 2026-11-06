@@ -18,8 +18,12 @@ from maestro.api.models import (
     SourceVersion,
     SourceVersionDetail,
     Task,
+    TaskDetail,
+    TaskRead,
+    TaskReadQuery,
 )
 from maestro.domain.states import PatPermission
+from maestro.services import task_reads
 from maestro.services.principal import Principal
 
 router = APIRouter(prefix="/api/v1", tags=["catalog"])
@@ -99,3 +103,13 @@ def list_tasks(version_id: str, request: Request, _: Principal = Depends(princip
 @router.get("/preparations/{preparation_id}", response_model=Envelope[Preparation])
 def get_preparation(preparation_id: str, request: Request, _: Principal = Depends(principal)):
     return ok(request, maestro(request).catalog.get_preparation(preparation_id))
+
+
+@router.get("/tasks/{task_id}", response_model=Envelope[TaskDetail])
+def get_task(task_id: str, request: Request, who: Principal = Depends(principal)):
+    return ok(request, maestro(request).catalog.task(who, task_id))
+
+
+@router.post("/tasks/reads", response_model=Envelope[list[TaskRead]])
+def get_task_reads(body: TaskReadQuery, request: Request, _: Principal = Depends(principal)):
+    return ok(request, task_reads.query(maestro(request).db, body.task_ids))

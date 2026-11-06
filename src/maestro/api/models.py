@@ -482,11 +482,38 @@ class Task(Model):
     timeouts: TaskTimeouts
     parameters: list[AuthorParameter]
     required_parameters: list[str] = []
-    instruction: str
     can_submit: bool
     blockers: list[TaskBlocker]
     warnings: list[TaskWarning]
     required_preparation: list[RequiredPreparation]
+
+
+class TaskDetail(Task):
+    instruction: str
+
+
+class TaskReadQuery(Model):
+    task_ids: list[str]
+
+
+class TaskRead(Model):
+    task_id: str
+    reader_id: str
+    reader_username: str
+    channel: Literal["pat", "web_session"]
+    channel_id: str
+    category: Literal["instruction", "trial_artifacts"]
+    first_read_at: str
+    last_read_at: str
+    count: int
+
+
+class HeldOutTask(Model):
+    task_id: str
+    task_key: str
+    reads: list[TaskRead]
+    read_since_creation: bool
+    accepted_runs: int
 
 
 class PreparationWaiter(Model):
@@ -1753,6 +1780,7 @@ class ComparisonCell(Model):
 
 
 class ComparedTask(Model):
+    held_out: bool = False
     task_key: str
     status: Literal["compared", "no_valid_trials", "not_common"]
     cells: dict[str, ComparisonCell | None]
@@ -1814,7 +1842,7 @@ class SetAsideRun(Model):
     reason: Literal["deleted"]
 
 
-class Comparison(Model):
+class ComparisonResult(Model):
     comparison_version: int
     grouping_version: int
     settings: ComparisonSettings
@@ -1832,6 +1860,10 @@ class Comparison(Model):
     set_aside: list[SetAsideRun]
 
 
+class Comparison(ComparisonResult):
+    held_out: ComparisonResult | None = None
+
+
 class CollectionBase(Model):
     """Where the fixed values come from: a run, or a full configuration request."""
 
@@ -1847,6 +1879,7 @@ class CollectionCreate(Model):
         None, description="Only for the custom scenario"
     )
     base: CollectionBase
+    held_out_task_ids: list[str] = []
     run_ids: list[str] = []
     settings: ComparisonSettingsInput | None = None
 
@@ -1867,6 +1900,7 @@ class CollectionCopy(Model):
     base: CollectionBase | None = Field(
         None, description="Required when a dimension that varied becomes fixed"
     )
+    held_out_task_ids: list[str] | None = None
     settings: ComparisonSettingsInput | None = None
 
 
@@ -1938,6 +1972,8 @@ class Collection(Model):
     variable_dimensions: list[VariableDimension]
     fixed: dict[str, JsonObject] = Field(description="Fixed dimensions and their values")
     fixed_labels: dict[str, str]
+    held_out_task_ids: list[str]
+    held_out_task_keys: list[str]
     template: PlanTemplate = Field(description="Fills in runs submitted from the collection")
     base_run_id: str | None
     settings: ComparisonSettings
@@ -1973,6 +2009,8 @@ class SnapshotCreate(Model):
 
 
 class SnapshotSpec(Model):
+    held_out_task_ids: list[str] = []
+    held_out_task_keys: list[str] = []
     scenario: Scenario
     variable_dimensions: list[VariableDimension]
     fixed: dict[str, JsonObject]

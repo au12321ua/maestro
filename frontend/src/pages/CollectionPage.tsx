@@ -48,6 +48,7 @@ export function CollectionPage() {
     async () => (await api.get("/collections/{collection_id}", { path })).data,
     [collectionId],
   );
+  const heldOut = useLoad(async () => (await api.get("/collections/{collection_id}/held-out", { path })).data, [collectionId]);
   const [view, setView] = useState<ComparisonSettingsInput>({});
   const table = useLoad(
     async () =>
@@ -219,6 +220,27 @@ export function CollectionPage() {
         />
       )}
       <Spec collection={c} />
+      <ErrorAlert error={heldOut.error} />
+      {!!c.held_out_task_ids.length && <Card>
+        <CardHeader><CardTitle>{t("comparison.heldOut.title")}</CardTitle></CardHeader>
+        <CardContent className="grid gap-3">
+          <Button variant="outline" size="sm" onClick={() => void heldOut.reload()}>{t("comparison.heldOut.refresh")}</Button>
+          {heldOut.data?.map(task => <div key={task.task_id} className="grid gap-2 text-sm">
+            <p className="font-medium">{task.task_key} · {t(task.read_since_creation ? "comparison.heldOut.readSince" : "comparison.heldOut.unreadSince")} · {t("comparison.heldOut.runs", { n: task.accepted_runs })}</p>
+            <div className="overflow-x-auto"><Table>
+              <TableHeader><TableRow>
+                {(["reader", "channel", "category", "first", "last", "count"] as const).map(key => <TableHead key={key}>{t(`comparison.heldOut.${key}`)}</TableHead>)}
+              </TableRow></TableHeader>
+              <TableBody>{task.reads.map(read => <TableRow key={`${read.reader_id}-${read.channel}-${read.channel_id}-${read.category}`}>
+                <TableCell>{read.reader_username}</TableCell>
+                <TableCell>{t(`comparison.heldOut.${read.channel}`)} · {read.channel_id}</TableCell>
+                <TableCell>{t(`comparison.heldOut.${read.category}`)}</TableCell>
+                <TableCell>{fmtTime(read.first_read_at)}</TableCell><TableCell>{fmtTime(read.last_read_at)}</TableCell><TableCell>{read.count}</TableCell>
+              </TableRow>)}</TableBody>
+            </Table></div>
+          </div>)}
+        </CardContent>
+      </Card>}
       {c.current_best && (
         <Card>
           <CardHeader>
