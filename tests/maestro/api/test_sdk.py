@@ -288,6 +288,10 @@ def test_skills_install_and_workspace_init(tmp_path):
     root = maestro_sdk.workspace.init(tmp_path / "work")
     assert (root / "notes").is_dir() and (root / "attachments").is_dir()
     assert "/attachments/" in (root / ".gitignore").read_text()
+    assert not (root / "notes" / "attachments-workflow.md").exists()
+    assert (root / "AGENTS.md").read_text() == (
+        ROOT / "sdk" / "src" / "maestro_sdk" / "templates" / "AGENTS.md"
+    ).read_text()
     shipped = maestro_sdk.skills.names()
     assert {"maestro-sdk", "maestro-package"} <= set(shipped)
     for target in maestro_sdk.skills.TARGETS:
@@ -309,6 +313,27 @@ def test_skills_install_and_workspace_init(tmp_path):
     assert (root / "AGENTS.md").read_text() == "mine"
     assert (root / "notes" / "a.md").read_text() == "note"
     assert not stale.exists() and other.is_dir()
+
+
+def test_workspace_attachment_workflow_adds_notes_without_overwriting(tmp_path):
+    root = maestro_sdk.workspace.init(tmp_path / "work", workflow="attachments")
+    notes = root / "notes" / "attachments-workflow.md"
+    assert "notes/attachments-workflow.md" in (root / "AGENTS.md").read_text()
+    assert "prepare_candidate" in notes.read_text()
+    notes.write_text("my workflow notes")
+    (root / "AGENTS.md").write_text("my context")
+    maestro_sdk.workspace.init(root, workflow="attachments")
+    assert notes.read_text() == "my workflow notes"
+    assert (root / "AGENTS.md").read_text() == "my context"
+
+    plain = maestro_sdk.workspace.init(tmp_path / "plain")
+    context = (plain / "AGENTS.md").read_bytes()
+    maestro_sdk.workspace.init(plain, workflow="attachments")
+    assert (plain / "notes" / "attachments-workflow.md").is_file()
+    assert (plain / "AGENTS.md").read_bytes() == context
+    with pytest.raises(ValueError, match="available workflows: attachments"):
+        maestro_sdk.workspace.init(tmp_path / "unknown", workflow="unknown")
+    assert not (tmp_path / "unknown").exists()
 
 
 # --- contract -----------------------------------------------------------------------------
@@ -444,13 +469,14 @@ def test_sdk_imports_without_the_service():
         "for name in ('maestro', 'fastapi', 'sqlalchemy', 'harbor'):\n"
         "    sys.modules[name] = None\n"
         "import maestro_sdk\n"
+        "import maestro_sdk.workflows.attachments\n"
         "print(maestro_sdk.MaestroClient('http://127.0.0.1:9'))\n"
     )
     result = subprocess.run(
         [sys.executable, "-c", code], capture_output=True, text=True, check=False
     )
     assert result.returncode == 0, result.stderr
-    for path in (ROOT / "sdk" / "src" / "maestro_sdk").glob("*.py"):
+    for path in (ROOT / "sdk" / "src" / "maestro_sdk").rglob("*.py"):
         text = path.read_text()
         assert "from maestro." not in text and "import maestro." not in text, path
 

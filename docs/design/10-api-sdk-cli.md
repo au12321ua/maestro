@@ -104,11 +104,12 @@ client.runs.download_artifacts(submitted.run_id, local_directory)
 
 ### 给 Agent 的本地工具
 
-SDK 也是 Agent 的客户端（U-59、U-60）。平台保存别人要依赖的事实（快照、运行、比较与结论），Agent 的工作过程不规定格式，skill 只给建议。下列工具不连服务：
+SDK 也是 Agent 的客户端（U-59、U-60）。平台保存别人要依赖的事实（快照、运行、比较与结论），Agent 的工作过程不规定格式，skill 只给建议。工作区与 skill 安装不连服务，工作流模块只组合公开 API：
 
 - `maestro_sdk.skills.install(目录)`：把随 wheel 发布的 skill（仓库的 `skills/`）复制到 `.agents/skills/` 与 `.claude/skills/`，同名 skill 整个替换、其他 skill 不动，并在 `.maestro-sdk-version` 记下 SDK 版本。skill 因此与 SDK 同版本，升级 SDK 后重装即同步。
-- `maestro_sdk.workspace.init(目录)`：推荐的工作区，`AGENTS.md` 模板（服务地址、令牌文件位置、可花的预算、命名习惯、当前目标）、自由格式的 `notes/`、每个附件一个 git 仓库的 `attachments/`，以及忽略已安装 skill 与附件仓库的 `.gitignore`；已有文件不覆盖，重复调用只补缺并重装 skill。
-- skill：`maestro-sdk` 讲实验操作与诚实报告；`maestro-package` 讲从已有材料做附件、用附件 A/B 集合改进、在分析快照的结论里记下当前最优的附件（不靠标签），以及中断后只凭平台恢复进度。判断“更好”时建议不剔除失败、核对每个运行的已评分试次等于计划试次，否则说明证据不足；平台不另算一套口径，集合也不核对固定任务列表（U-60）。
+- `maestro_sdk.workspace.init(目录, workflow=None)`：推荐的工作区，`AGENTS.md` 模板（服务地址、令牌文件位置、可花的预算、命名习惯、当前目标）、自由格式的 `notes/`、每个附件一个 git 仓库的 `attachments/`，以及忽略已安装 skill 与附件仓库的 `.gitignore`；已有文件不覆盖，重复调用只补缺并重装 skill。`workflow="attachments"` 另写入该工作流的说明 `notes/attachments-workflow.md`。
+- `maestro_sdk.workflows.attachments`：附件改进的机械活，只组合公开 API、写本地文件，不提交运行、不判断优劣。`write_task_briefs` 把题面与公开元数据写到本地；`prepare_candidate` 按集合固定配置解析一个已发布的候选（不提交），列出计划试次、与父快照的文件差异、阻塞，以及安装能否复用的事实（`bootstrap.sh` 是否相同、父快照在同一 Harness 上的安装记录）；`collect_evidence` 按运行、任务或试次增量下载并校验产物，写出清单与 trace 的事件索引（命令、位置、明确记录的退出码与输出位置，看不懂的格式标为未索引，不分类）；`build_report` 从不剔除失败的集合比较生成 JSON 与 Markdown 报告，完整性按 `maestro-package` skill 的同一口径计算。
+- skill：`maestro-sdk` 讲实验操作与诚实报告；`maestro-package` 讲从已有材料做附件、改进前先读题、给改动分类并按各自的指标判断、提交前写下证据标准、计数前逐条核对 trace 事件、用附件 A/B 集合改进、在分析快照的结论里记下当前最优的附件（不靠标签），以及中断后只凭平台恢复进度。判断“更好”时建议不剔除失败、核对每个运行的已评分试次等于计划试次，否则说明证据不足；平台不另算一套口径，集合也不核对固定任务列表（U-60）。
 
 ## 8. 契约验收
 

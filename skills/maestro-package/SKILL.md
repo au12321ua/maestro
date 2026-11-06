@@ -33,6 +33,15 @@ Fill in `AGENTS.md` with the person you work for: service, token file, what you 
 
 ## Improving it
 
+**Read the tasks first.** Before the first attempt, read the instruction of every task you will tune on, and any checks you are allowed to read:
+
+```python
+for task in client.catalog.tasks(version_id):
+    print(task.task_key, task.instruction)
+```
+
+Write down, per task or for the set: the inputs, what the agent must deliver and where, what the score measures, and what you do not know. Most wrong hypotheses come from guessing these.
+
 **Set up the comparison once.** Run the current best snapshot on the chosen tasks and repetitions, then build an attachment A/B collection from that run, so every later run differs only in the attachment:
 
 ```python
@@ -45,16 +54,28 @@ Fix the task list with `task_selection` (`{"mode": "explicit", "task_ids": [...]
 
 1. Start from a snapshot (the current best or an earlier attempt). Read its results and trajectories, and your notes.
 2. Write the hypothesis and the evidence for it: run, trial, artifact path, and an excerpt of the event. Artifacts expire after the retention period, so excerpts keep your reasons readable later.
-3. Change the files on a branch, commit, and publish with `parent=` the starting snapshot. No label is needed: snapshots are identified by id, and the same content published again returns the existing snapshot.
-4. Submit into the collection with a `client_request_id` you can derive again, such as `<name>-<first 8 characters of the starting snapshot id>-<n>`:
+3. Say what kind of change it is, because each kind is judged by its own measure and one does not prove another:
+   - **installation**: the attachment installs and the agent can find it (install log, the agent reading the skill);
+   - **execution reliability**: fewer crashes, timeouts or tool errors (failure groups, error events);
+   - **delivery**: more trials hand in a valid deliverable (deliverable present and accepted by the checks);
+   - **quality**: better scores on what was delivered (scores over the same tasks and repetitions).
+
+   A reliability or delivery gain is not a quality gain, even if the mean rises with it; say which one you saw.
+4. Before submitting, write down what evidence would support which decision: that the mechanism happened (the agent did the new thing), that the snapshot is worth keeping for now, or that it is better overall. Decide this before the numbers come in. If the starting snapshot has unscored trials, report only the mechanism evidence; do not add trials just to fill the gap unless the person you work for asked for it.
+5. Change the files on a branch, commit, and publish with `parent=` the starting snapshot. No label is needed: snapshots are identified by id, and the same content published again returns the existing snapshot.
+6. Submit into the collection with a `client_request_id` you can derive again, such as `<name>-<first 8 characters of the starting snapshot id>-<n>`:
 
    ```python
    client.runs.submit({"attachments": [snapshot.id], "task_selection": tasks}, name="...",
                       collection_id=c.id, client_request_id="...")
    ```
 
-5. When the runs end, compare against the starting point task by task, and read the new trajectories, not only the means.
-6. Write down what you learned, including what did not work.
+7. When the runs end, compare against the starting point task by task, and read the new trajectories, not only the means.
+8. Write down what you learned, including what did not work.
+
+**Notes hold what the platform does not.** Snapshots, runs, comparisons and frozen snapshots are already kept by the platform; refer to them by id instead of copying their contents into your notes. An attachment A/B collection already guarantees that everything except the attachment is the same, so there is no need to compare configurations yourself.
+
+**Counting events in trajectories.** When a claim rests on how often something happened (errors of a kind, uses of a tool), find each occurrence (file and line), read it to confirm it is what you think, then count. Do not count by pattern alone: one command can span several lines, and similar text can mean different things. Write down how you counted, so someone else can repeat it.
 
 **Judging "better".** Compare with every failure kept and check the evidence is complete before reading the numbers:
 

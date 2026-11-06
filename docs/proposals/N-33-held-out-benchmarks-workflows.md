@@ -1,6 +1,6 @@
 # N-33 留出集、外部 benchmark 与工作流适配
 
-状态：设计中 · 优先级：一 · 2026-11-05 · 相关：[02](../design/02-datasets-preparation.md)、[07](../design/07-artifacts-export.md)、[08](../design/08-collections-comparison.md)、[09](../design/09-identity-security.md)、[10](../design/10-api-sdk-cli.md)、[11](../design/11-web-ui.md)、[15](../design/15-stack-harbor.md)、U-10、U-47、U-59～U-61、U-68、U-69、U-73～U-89 · 取代 [N-28](archive/N-28-datasets-and-evaluation-split.md)、[N-31](archive/N-31-workflow-adaptation.md)、[N-32](archive/N-32-held-out-evaluation.md)
+状态：已确认（U-90），第一部分实施中 · 优先级：一 · 2026-11-05 · 相关：[02](../design/02-datasets-preparation.md)、[07](../design/07-artifacts-export.md)、[08](../design/08-collections-comparison.md)、[09](../design/09-identity-security.md)、[10](../design/10-api-sdk-cli.md)、[11](../design/11-web-ui.md)、[15](../design/15-stack-harbor.md)、U-10、U-47、U-59～U-61、U-68、U-69、U-73～U-90 · 取代 [N-28](archive/N-28-datasets-and-evaluation-split.md)、[N-31](archive/N-31-workflow-adaptation.md)、[N-32](archive/N-32-held-out-evaluation.md)
 
 本提案是总设计稿，取代 N-28、N-31、N-32（U-85）。三份原稿已归档，只作出处；之后的讨论和修改都在本提案上进行。
 
@@ -9,7 +9,7 @@
 - **运行不变**：仍然是“执行，加上 Harbor verifier 当场评分”。
 - **集合不变**：仍然只对应一个数据集。
 
-标了 U 编号的是用户已定的取舍，标“建议”的是 Agent 的方案；原来的待定问题已由 U-89 回答。N-31 原来的确认（U-77）随原稿失效，它的取舍（U-73～U-76）照常有效。本提案确认后，按第 7 节分三部分实施。
+标了 U 编号的是用户已定的取舍，标“建议”的是 Agent 的方案；原来的待定问题已由 U-89 回答。N-31 原来的确认（U-77）随原稿失效，它的取舍（U-73～U-76）照常有效。本提案已确认（U-90），按第 7 节分三部分实施。
 
 ## 1. 问题
 
