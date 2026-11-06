@@ -104,6 +104,8 @@ except TransportError as lost:
 | 实验方案 | `client.plans.create(name, template)`，提交时在配置里写 `plan_id` |
 | 比较几个运行 | `client.comparisons.compare([run_a, run_b])`：条件核对、各运行汇总与逐任务对齐；外部原因的失败默认剔除，其余失败算 0 分，`exclude=[]` 不剔除 |
 | 集合 | `c = client.collections.create(name, "models", base_run_id=run_id, run_ids=[...])`；`client.runs.submit(cfg, name=..., collection_id=c.id)` 按集合填好固定字段并自动加入；`client.collections.compare(c.id)`、`client.collections.candidates(c.id)`（最近不在集合里的运行，`mismatches` 为空的可加入）、`client.collections.add_runs(c.id, [run_id])` |
+| 当前最优 | `client.collections.set_current_best(c.id, attachment_id, reason="证据支持")`；清除时传 `None`，也须给理由，不影响比较默认值 |
+| 工作流记录 | `client.records.create({"type": "collection", "id": c.id}, "attachment-candidate", "候选", {"decision": "pending"}, references=[{"type": "run", "id": run_id}], excerpts=[{"text": "证据摘录"}])`；`client.records.get(id)`、`list("collection", c.id, kind=...)`、`update(id, expected_revision=1, body={...})`、`history(id)`、`delete(id)`；目标也可为运行或附件名（可加 `snapshot_id`），仅作者可编辑 |
 | 快照与结论 | `s = client.snapshots.create(name, collection_id=c.id)`（运行须已结束），`client.snapshots.add_note(s.id, "结论")` |
 | 附件 | `a = client.attachments.publish("path/to/dir", label="v2", parent=old)`（只上传服务端缺少的文件，内容相同返回原快照；跳过 `.git`），或 `client.attachments.publish_commit("path/to/repo", "HEAD", parent=old)` 发布一个 git 提交跟踪的文件（仓库根目录就是附件根目录，可执行位取自 git 的文件模式，未提交的修改不发布并给出提醒），配置里写 `attachments: [a.id]`；`client.attachments.fetch(a.id, "dir")` 只下载有差异的文件，`diff(a.id)` 与父快照比较，`download(a.id, "a.zip")` 整包下载 |
 | 导出 | `e = client.exports.create([run_id])`、`client.operations.wait(e.operation_id)`、`client.exports.download(e.id, "export.zip")` |

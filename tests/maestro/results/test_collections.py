@@ -592,3 +592,123 @@ def test_confirmed_resolution_keeps_collection_provenance(service, version_id, b
         assert provenance["field_sources"]["/repetitions"] == expected
         assert provenance["reference_revisions"]["collection"] == {"id": c["id"]}
         assert admin.get(f"/api/v1/collections/{c['id']}").json()["data"]["run_count"] == 1
+
+
+def test_current_best_requires_a_live_member_run_and_records_every_reason(service, version_id):
+    from support.attachments import attach
+
+    with running(service) as client:
+        admin = setup_admin(service, client)
+        alice = invite_member(service, admin, "alice")
+        model, harness = prepare_model(admin)
+        attachment = attach(alice)
+        unused = attach(alice, name="unused")
+        run_id = run_of(alice, version_id, model, harness, attachments=[attachment])
+        collection = alice.post(
+            "/api/v1/collections",
+            json={
+                "name": "candidates",
+                "scenario": "attachments",
+                "base": {"run_id": run_id},
+                "run_ids": [run_id],
+            },
+            expect=201,
+        ).json()["data"]
+        path = f"/api/v1/collections/{collection['id']}"
+        assert collection["current_best"] is None
+        reader = create_pat(alice, ())
+        assert (
+            reader.put(
+                path + "/current-best", json={"snapshot_id": attachment, "reason": "best"}
+            ).status_code
+            == 403
+        )
+        baseline = reader.post(path + "/comparison").json()["data"]["settings"]["baseline_run_id"]
+        writer = create_pat(alice)
+        for body in (
+            {"snapshot_id": attachment, "reason": " "},
+            {"snapshot_id": None, "reason": ""},
+            {"snapshot_id": attachment, "reason": "x" * 2001},
+            {"snapshot_id": unused, "reason": "not used"},
+            {"snapshot_id": "missing", "reason": "unknown"},
+        ):
+            assert writer.put(path + "/current-best", json=body).status_code == 422
+        assert writer.put(path + "/current-best", json={"snapshot_id": None}).status_code == 422
+        set_best = writer.put(
+            path + "/current-best",
+            json={"snapshot_id": attachment, "reason": "  strongest evidence  "},
+            expect=200,
+        ).json()["data"]
+        assert set_best["current_best"] == {
+            "snapshot_id": attachment,
+            "reason": "strongest evidence",
+            "actor_id": collection["owner_id"],
+            "actor_username": "alice",
+            "pat_id": writer.get("/api/v1/me").json()["data"]["pat_id"],
+            "at": set_best["current_best"]["at"],
+        }
+        assert reader.get(path).json()["data"]["current_best"] == set_best["current_best"]
+        assert (
+            reader.post(path + "/comparison").json()["data"]["settings"]["baseline_run_id"]
+            == baseline
+        )
+        # Recycling the only supporting run blocks a new selection but keeps the fact.
+        entry = alice.delete(f"/api/v1/runs/{run_id}", expect=200).json()["data"]
+        assert (
+            writer.put(
+                path + "/current-best", json={"snapshot_id": attachment, "reason": "deleted run"}
+            ).status_code
+            == 422
+        )
+        assert reader.get(path).json()["data"]["current_best"] == set_best["current_best"]
+        admin.post(f"/api/v1/admin/recycle-bin/{entry['id']}/restore", expect=200)
+        bob = invite_member(service, admin, "bob")
+        bob.put(
+            path + "/current-best",
+            json={"snapshot_id": attachment, "reason": "confirmed"},
+            expect=200,
+        )
+        recycled = alice.delete(f"/api/v1/attachments/{attachment}", expect=200).json()["data"]
+        assert (
+            writer.put(
+                path + "/current-best",
+                json={"snapshot_id": attachment, "reason": "deleted snapshot"},
+            ).status_code
+            == 422
+        )
+        admin.post(f"/api/v1/admin/recycle-bin/{recycled['id']}/restore", expect=200)
+        cleared = bob.put(
+            path + "/current-best",
+            json={"snapshot_id": None, "reason": "more evidence needed"},
+            expect=200,
+        ).json()["data"]
+        assert cleared["current_best"]["snapshot_id"] is None
+        assert cleared["current_best"]["reason"] == "more evidence needed"
+        changes = [
+            e for e in reader.get(path + "/events").json()["data"] if e["action"] == "current_best"
+        ]
+        assert len(changes) == 3
+        assert changes[-1]["actor_username"] == "alice" and changes[-1]["pat_id"]
+        assert changes[0]["actor_username"] == "bob" and changes[0]["pat_id"] is None
+        assert changes[0]["detail"] == {
+            "previous_snapshot_id": attachment,
+            "snapshot_id": None,
+            "reason": "more evidence needed",
+        }
+        copy = bob.post(path + "/copy", json={"name": "fresh decision"}, expect=201).json()["data"]
+        assert copy["current_best"] is None
+        recycled = alice.delete(path, expect=200).json()["data"]
+        assert (
+            writer.put(
+                path + "/current-best", json={"snapshot_id": None, "reason": "blocked"}
+            ).status_code
+            == 409
+        )
+        admin.post(f"/api/v1/admin/recycle-bin/{recycled['id']}/restore", expect=200)
+        writer.delete(path + f"/runs/{run_id}", expect=200)
+        assert (
+            writer.put(
+                path + "/current-best", json={"snapshot_id": attachment, "reason": "removed member"}
+            ).status_code
+            == 422
+        )

@@ -6,7 +6,7 @@ save snapshots and write notes; the creator or an administrator deletes.
 
 from fastapi import APIRouter, Depends, Request
 
-from maestro.api.deps import maestro, ok, principal
+from maestro.api.deps import experiment, maestro, ok, principal
 from maestro.api.models import (
     Collection,
     CollectionCandidate,
@@ -19,6 +19,7 @@ from maestro.api.models import (
     Comparison,
     ComparisonRequest,
     ComparisonSettingsInput,
+    CurrentBestInput,
     Envelope,
     NoteBody,
     RecycleEntry,
@@ -72,6 +73,19 @@ def update_collection(
         maestro(request).collections.update(
             who, collection_id, body.model_dump(exclude_unset=True)
         ),
+    )
+
+
+@router.put("/collections/{collection_id}/current-best", response_model=Envelope[Collection])
+def set_collection_current_best(
+    collection_id: str,
+    body: CurrentBestInput,
+    request: Request,
+    who: Principal = Depends(experiment),
+):
+    return ok(
+        request,
+        maestro(request).collections.set_current_best(who, collection_id, body.model_dump()),
     )
 
 

@@ -168,7 +168,8 @@
     "attachment_version": "附件",
     "experiment_plan": "实验方案",
     "collection": "集合",
-    "analysis_snapshot": "分析快照"
+    "analysis_snapshot": "分析快照",
+    "workflow_record": "工作流记录"
   },
   "storageLevel": {
     "ok": "存储充足",
@@ -263,5 +264,15 @@
     "zh-CN": "中文",
     "en": "English",
     "aiNotice": ""
+  },
+  "records": {
+    "title": "工作流记录",
+    "empty": "暂无记录。通过 API 或 SDK 编写记录。",
+    "body": "展开正文与引用（JSON）",
+    "excerpts": "证据摘录",
+    "updated": "修改于 {{time}}",
+    "snapshot": "固定附件快照：{{id}}",
+    "pat": "PAT",
+    "revisions": "{{count}} 个修订"
   }
 }

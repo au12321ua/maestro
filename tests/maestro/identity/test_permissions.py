@@ -228,3 +228,55 @@ def test_a_token_can_edit_models_but_never_bind_a_key(service):
             "/api/v1/admin/model-configs", json={**body, "name": "m2", "credential_id": "cred_x"}
         )
         assert bound.json()["error"]["code"] == "ADMIN_SESSION_REQUIRED"
+
+
+def test_record_routes_and_current_best_declare_authentication_and_reject_read_pat_writes(
+    service, version_id
+):
+    from maestro.api import routes
+    from maestro.api.deps import experiment, principal
+
+    found = [
+        route
+        for router in routes.routers()
+        for route in router.routes
+        if route.path.startswith("/api/v1/records") or route.path.endswith("/current-best")
+    ]
+    assert sum(len(route.methods) for route in found) == 7
+    for route in found:
+        guard = experiment if route.methods & {"POST", "PUT"} else principal
+        assert any(d.call is guard for d in route.dependant.dependencies), route.path
+    with running(service, run_worker=False) as client:
+        admin = setup_admin(service, client)
+        reader = create_pat(admin, ())
+        run_id = submit(admin, version_id).json()["data"]["run_id"]
+        payload = {
+            "target": {"type": "run", "id": run_id},
+            "kind": "note",
+            "title": "Own note",
+            "body": {},
+        }
+        record = admin.post("/api/v1/records", json=payload, expect=201).json()["data"]
+        path = f"/api/v1/records/{record['id']}"
+        for method, url, body in (
+            ("POST", "/api/v1/records", payload),
+            ("PUT", path, {"expected_revision": 1, "title": "x"}),
+            ("DELETE", path, None),
+            (
+                "PUT",
+                "/api/v1/collections/missing/current-best",
+                {"snapshot_id": None, "reason": "x"},
+            ),
+        ):
+            response = reader.request(method, url, json=body)
+            assert response.status_code == 403
+            assert response.json()["error"]["code"] == "PAT_PERMISSION_INSUFFICIENT"
+        for url in (path, path + "/history", f"/api/v1/records?target_type=run&target_id={run_id}"):
+            reader.get(url, expect=200)
+        client.cookies.clear()
+        for route in found:
+            url = route.path.replace("{record_id}", record["id"]).replace(
+                "{collection_id}", "missing"
+            )
+            response = client.request(next(iter(route.methods)), url, json={})
+            assert response.status_code == 401

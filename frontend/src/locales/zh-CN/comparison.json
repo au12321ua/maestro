@@ -164,7 +164,8 @@
       "remove": "移出",
       "purged": "运行被彻底删除，移出",
       "label": "改列名",
-      "edit": "修改"
+      "edit": "修改",
+      "current_best": "更改当前最优"
     },
     "saveSettingsFailed": "保存设置失败：{{error}}",
     "removeConfirm": "把这个运行移出集合？运行本身不受影响。",
@@ -205,6 +206,11 @@
       "addSelected": "加入所选",
       "selectedCount": "（{{n}}）",
       "mismatched": "不符合规格的运行（{{n}}）"
+    },
+    "currentBest": {
+      "title": "当前最优附件快照",
+      "cleared": "已清除当前最优",
+      "unset": "尚未设置当前最优附件快照。"
     }
   },
   "collections": {

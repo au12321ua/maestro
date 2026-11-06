@@ -1916,6 +1916,18 @@ class CollectionCandidate(Model):
     mismatches: list[Mismatch] = Field(description="Empty when the run can be added")
 
 
+class CurrentBestInput(Model):
+    snapshot_id: str | None = Field(description="An attachment snapshot, or null to clear")
+    reason: str
+
+
+class CurrentBest(CurrentBestInput):
+    actor_id: str
+    actor_username: str
+    pat_id: str | None
+    at: str
+
+
 class Collection(Model):
     id: str
     name: str
@@ -1929,6 +1941,7 @@ class Collection(Model):
     template: PlanTemplate = Field(description="Fills in runs submitted from the collection")
     base_run_id: str | None
     settings: ComparisonSettings
+    current_best: CurrentBest | None
     copied_from: str | None
     run_count: int
     created_at: str
@@ -2001,6 +2014,77 @@ class Snapshot(SnapshotSummary):
     deletion: DeletionState | None
 
 
+# --- workflow records ----------------------------------------------------------------
+
+RecordTargetType = Literal["collection", "run", "attachment"]
+RecordReferenceType = Literal[
+    "run", "trial", "artifact", "attachment_snapshot", "collection", "analysis_snapshot"
+]
+
+
+class RecordTarget(Model):
+    type: RecordTargetType
+    id: str = Field(description="Object id, or the attachment name for an attachment target")
+    snapshot_id: str | None = Field(None, description="Only for attachment targets")
+
+
+class RecordReference(Model):
+    type: RecordReferenceType
+    id: str
+
+
+class RecordExcerpt(Model):
+    text: str
+    reference: RecordReference | None = Field(
+        None, description="Must be in the record's references"
+    )
+
+
+class RecordContent(Model):
+    kind: str
+    title: str
+    body: JsonObject = Field(
+        description="Opaque workflow-owned JSON; the platform does not interpret its schema"
+    )
+    references: list[RecordReference] = []
+    excerpts: list[RecordExcerpt] = []
+
+
+class RecordCreate(RecordContent):
+    target: RecordTarget
+
+
+class RecordUpdate(Model):
+    expected_revision: int
+    kind: str | None = None
+    title: str | None = None
+    body: JsonObject | None = None
+    references: list[RecordReference] | None = None
+    excerpts: list[RecordExcerpt] | None = None
+
+
+class WorkflowRecord(RecordContent):
+    id: str
+    target: RecordTarget
+    author_id: str
+    author_username: str
+    pat_id: str | None = Field(description="The PAT used to create the record")
+    created_at: str
+    updated_at: str
+    revision: int
+    deletion: DeletionState | None
+    target_deletion: DeletionState | None
+    allowed_actions: list[str]
+
+
+class RecordRevision(RecordContent):
+    revision: int
+    actor_id: str
+    actor_username: str
+    pat_id: str | None
+    at: str
+
+
 # --- deletion and recycle bin ---------------------------------------------------------
 
 ObjectType = Literal[
@@ -2017,6 +2101,7 @@ ObjectType = Literal[
     "experiment_plan",
     "collection",
     "analysis_snapshot",
+    "workflow_record",
 ]
 
 

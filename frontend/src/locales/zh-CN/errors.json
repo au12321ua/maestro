@@ -154,6 +154,11 @@
     "USER_DELETED": "账户已删除",
     "VALIDATION_FAILED": "输入校验未通过",
     "WEB_NOT_BUILT": "网页尚未构建",
-    "WEB_SESSION_REQUIRED": "此操作需在网页登录后进行"
+    "WEB_SESSION_REQUIRED": "此操作需在网页登录后进行",
+    "RECORD_INVALID": "工作流记录无效",
+    "RECORD_DELETED": "记录在回收站中",
+    "RECORD_TARGET_DELETED": "记录目标在回收站中",
+    "RECORD_REVISION_CHANGED": "记录已修改，请刷新后重试",
+    "CURRENT_BEST_INVALID": "当前最优快照或理由无效"
   }
 }

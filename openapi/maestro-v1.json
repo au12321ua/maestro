@@ -1971,6 +1971,16 @@
             "title": "Created At",
             "type": "string"
           },
+          "current_best": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CurrentBest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "deletion": {
             "anyOf": [
               {
@@ -2111,6 +2121,7 @@
           "template",
           "base_run_id",
           "settings",
+          "current_best",
           "copied_from",
           "run_count",
           "created_at",
@@ -4518,6 +4529,87 @@
         "title": "CredentialValue",
         "type": "object"
       },
+      "CurrentBest": {
+        "additionalProperties": false,
+        "properties": {
+          "actor_id": {
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "actor_username": {
+            "title": "Actor Username",
+            "type": "string"
+          },
+          "at": {
+            "title": "At",
+            "type": "string"
+          },
+          "pat_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pat Id"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An attachment snapshot, or null to clear",
+            "title": "Snapshot Id"
+          }
+        },
+        "required": [
+          "snapshot_id",
+          "reason",
+          "actor_id",
+          "actor_username",
+          "pat_id",
+          "at"
+        ],
+        "title": "CurrentBest",
+        "type": "object"
+      },
+      "CurrentBestInput": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An attachment snapshot, or null to clear",
+            "title": "Snapshot Id"
+          }
+        },
+        "required": [
+          "snapshot_id",
+          "reason"
+        ],
+        "title": "CurrentBestInput",
+        "type": "object"
+      },
       "Dataset": {
         "additionalProperties": false,
         "properties": {
@@ -6335,6 +6427,23 @@
         "title": "Envelope[User]",
         "type": "object"
       },
+      "Envelope_WorkflowRecord_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/WorkflowRecord"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[WorkflowRecord]",
+        "type": "object"
+      },
       "Envelope_list_Artifact__": {
         "additionalProperties": false,
         "properties": {
@@ -6734,6 +6843,27 @@
         "title": "Envelope[list[Plan]]",
         "type": "object"
       },
+      "Envelope_list_RecordRevision__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/RecordRevision"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[list[RecordRevision]]",
+        "type": "object"
+      },
       "Envelope_list_RecycleEntry__": {
         "additionalProperties": false,
         "properties": {
@@ -6942,6 +7072,27 @@
           "meta"
         ],
         "title": "Envelope[list[User]]",
+        "type": "object"
+      },
+      "Envelope_list_WorkflowRecord__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowRecord"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[list[WorkflowRecord]]",
         "type": "object"
       },
       "EnvironmentResources": {
@@ -11848,6 +11999,363 @@
         "title": "PurgeRequest",
         "type": "object"
       },
+      "RecordCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "description": "Opaque workflow-owned JSON; the platform does not interpret its schema",
+            "title": "Body",
+            "type": "object"
+          },
+          "excerpts": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/RecordExcerpt-Input"
+            },
+            "title": "Excerpts",
+            "type": "array"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "references": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/RecordReference"
+            },
+            "title": "References",
+            "type": "array"
+          },
+          "target": {
+            "$ref": "#/components/schemas/RecordTarget-Input"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "title",
+          "body",
+          "target"
+        ],
+        "title": "RecordCreate",
+        "type": "object"
+      },
+      "RecordExcerpt-Input": {
+        "additionalProperties": false,
+        "properties": {
+          "reference": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecordReference"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Must be in the record's references"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "RecordExcerpt",
+        "type": "object"
+      },
+      "RecordExcerpt-Output": {
+        "additionalProperties": false,
+        "properties": {
+          "reference": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecordReference"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Must be in the record's references"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "reference"
+        ],
+        "title": "RecordExcerpt",
+        "type": "object"
+      },
+      "RecordReference": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "run",
+              "trial",
+              "artifact",
+              "attachment_snapshot",
+              "collection",
+              "analysis_snapshot"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id"
+        ],
+        "title": "RecordReference",
+        "type": "object"
+      },
+      "RecordRevision": {
+        "additionalProperties": false,
+        "properties": {
+          "actor_id": {
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "actor_username": {
+            "title": "Actor Username",
+            "type": "string"
+          },
+          "at": {
+            "title": "At",
+            "type": "string"
+          },
+          "body": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "description": "Opaque workflow-owned JSON; the platform does not interpret its schema",
+            "title": "Body",
+            "type": "object"
+          },
+          "excerpts": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/RecordExcerpt-Output"
+            },
+            "title": "Excerpts",
+            "type": "array"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "pat_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pat Id"
+          },
+          "references": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/RecordReference"
+            },
+            "title": "References",
+            "type": "array"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "title",
+          "body",
+          "references",
+          "excerpts",
+          "revision",
+          "actor_id",
+          "actor_username",
+          "pat_id",
+          "at"
+        ],
+        "title": "RecordRevision",
+        "type": "object"
+      },
+      "RecordTarget-Input": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "Object id, or the attachment name for an attachment target",
+            "title": "Id",
+            "type": "string"
+          },
+          "snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Only for attachment targets",
+            "title": "Snapshot Id"
+          },
+          "type": {
+            "enum": [
+              "collection",
+              "run",
+              "attachment"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id"
+        ],
+        "title": "RecordTarget",
+        "type": "object"
+      },
+      "RecordTarget-Output": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "Object id, or the attachment name for an attachment target",
+            "title": "Id",
+            "type": "string"
+          },
+          "snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Only for attachment targets",
+            "title": "Snapshot Id"
+          },
+          "type": {
+            "enum": [
+              "collection",
+              "run",
+              "attachment"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "snapshot_id"
+        ],
+        "title": "RecordTarget",
+        "type": "object"
+      },
+      "RecordUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/JsonValue"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          },
+          "excerpts": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RecordExcerpt-Input"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excerpts"
+          },
+          "expected_revision": {
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "references": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RecordReference"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "References"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "expected_revision"
+        ],
+        "title": "RecordUpdate",
+        "type": "object"
+      },
       "RecycleEntry": {
         "additionalProperties": false,
         "properties": {
@@ -11905,7 +12413,8 @@
               "attachment_version",
               "experiment_plan",
               "collection",
-              "analysis_snapshot"
+              "analysis_snapshot",
+              "workflow_record"
             ],
             "title": "Object Type",
             "type": "string"
@@ -16490,6 +16999,129 @@
         ],
         "title": "User",
         "type": "object"
+      },
+      "WorkflowRecord": {
+        "additionalProperties": false,
+        "properties": {
+          "allowed_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Actions",
+            "type": "array"
+          },
+          "author_id": {
+            "title": "Author Id",
+            "type": "string"
+          },
+          "author_username": {
+            "title": "Author Username",
+            "type": "string"
+          },
+          "body": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "description": "Opaque workflow-owned JSON; the platform does not interpret its schema",
+            "title": "Body",
+            "type": "object"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "deletion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeletionState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "excerpts": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/RecordExcerpt-Output"
+            },
+            "title": "Excerpts",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "pat_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The PAT used to create the record",
+            "title": "Pat Id"
+          },
+          "references": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/RecordReference"
+            },
+            "title": "References",
+            "type": "array"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "target": {
+            "$ref": "#/components/schemas/RecordTarget-Output"
+          },
+          "target_deletion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeletionState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "title",
+          "body",
+          "references",
+          "excerpts",
+          "id",
+          "target",
+          "author_id",
+          "author_username",
+          "pat_id",
+          "created_at",
+          "updated_at",
+          "revision",
+          "deletion",
+          "target_deletion",
+          "allowed_actions"
+        ],
+        "title": "WorkflowRecord",
+        "type": "object"
       }
     }
   },
@@ -18149,7 +18781,8 @@
                     "attachment_version",
                     "experiment_plan",
                     "collection",
-                    "analysis_snapshot"
+                    "analysis_snapshot",
+                    "workflow_record"
                   ],
                   "type": "string"
                 },
@@ -19747,6 +20380,58 @@
           }
         },
         "summary": "Copy Collection",
+        "tags": [
+          "collections"
+        ]
+      }
+    },
+    "/api/v1/collections/{collection_id}/current-best": {
+      "put": {
+        "operationId": "set_collection_current_best",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CurrentBestInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_Collection_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Set Collection Current Best",
         "tags": [
           "collections"
         ]
@@ -21672,6 +22357,309 @@
         "summary": "Get Preparation",
         "tags": [
           "catalog"
+        ]
+      }
+    },
+    "/api/v1/records": {
+      "get": {
+        "description": "An attachment name lists all its records; snapshot_id selects only pinned ones.\n\nRecycled targets remain readable. Purged targets return an empty list.",
+        "operationId": "list_records",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "target_type",
+            "required": true,
+            "schema": {
+              "enum": [
+                "collection",
+                "run",
+                "attachment"
+              ],
+              "title": "Target Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_id",
+            "required": true,
+            "schema": {
+              "title": "Target Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "snapshot_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Snapshot Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_list_WorkflowRecord__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "List Records",
+        "tags": [
+          "records"
+        ]
+      },
+      "post": {
+        "operationId": "create_record",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_WorkflowRecord_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Create Record",
+        "tags": [
+          "records"
+        ]
+      }
+    },
+    "/api/v1/records/{record_id}": {
+      "delete": {
+        "operationId": "delete_record",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "title": "Record Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_RecycleEntry_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Delete Record",
+        "tags": [
+          "records"
+        ]
+      },
+      "get": {
+        "operationId": "get_record",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "title": "Record Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_WorkflowRecord_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Get Record",
+        "tags": [
+          "records"
+        ]
+      },
+      "put": {
+        "operationId": "update_record",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "title": "Record Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_WorkflowRecord_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Update Record",
+        "tags": [
+          "records"
+        ]
+      }
+    },
+    "/api/v1/records/{record_id}/history": {
+      "get": {
+        "description": "All committed versions, including the current version, in revision order.",
+        "operationId": "record_history",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "title": "Record Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_list_RecordRevision__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Record History",
+        "tags": [
+          "records"
         ]
       }
     },

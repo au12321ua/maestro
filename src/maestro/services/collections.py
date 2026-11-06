@@ -480,6 +480,12 @@ class Collections:
             "template": request_input(row["template_json"]),
             "base_run_id": row["base_run_id"],
             "settings": row["settings_json"],
+            "current_best": {
+                "snapshot_id": row["current_best_snapshot_id"],
+                **row["current_best_json"],
+            }
+            if row["current_best_json"]
+            else None,
             "copied_from": row["copied_from"],
             "run_count": count,
             "created_at": row["created_at"],
@@ -937,6 +943,79 @@ class Collections:
                         {"copied_from": collection_id},
                     )
         return {**self.get(principal, new), "not_carried": not_carried}
+
+    def set_current_best(self, principal: Principal, collection_id: str, body: dict) -> dict:
+        require_experiment(principal)
+        reason = body.get("reason")
+        if (
+            not isinstance(reason, str)
+            or not 1 <= len(reason.strip()) <= limits.CURRENT_BEST_REASON_MAX
+        ):
+            raise _invalid(
+                "CURRENT_BEST_INVALID",
+                "A reason is required",
+                [FieldError("/reason", "LENGTH", limit=limits.CURRENT_BEST_REASON_MAX)],
+            )
+        snapshot_id = body.get("snapshot_id")
+        with self.db.write() as conn:
+            row = self._live(conn, collection_id)
+            if snapshot_id is not None:
+                snapshot = conn.execute(
+                    select(t.attachment_versions.c.id).where(
+                        t.attachment_versions.c.id == snapshot_id,
+                        deleted.visible(t.attachment_versions.c.id, "attachment_version"),
+                    )
+                ).first()
+                used = conn.execute(
+                    select(t.run_attachments.c.run_id)
+                    .join(
+                        t.collection_members,
+                        t.collection_members.c.run_id == t.run_attachments.c.run_id,
+                    )
+                    .where(
+                        t.collection_members.c.collection_id == collection_id,
+                        t.run_attachments.c.attachment_version_id == snapshot_id,
+                        deleted.visible(t.run_attachments.c.run_id, "run"),
+                    )
+                ).first()
+                if snapshot is None or used is None:
+                    raise MaestroError(
+                        "CURRENT_BEST_INVALID",
+                        "Choose a live attachment snapshot used by a live run in this collection",
+                        422,
+                        field_errors=[FieldError("/snapshot_id", "NOT_IN_COLLECTION")],
+                    )
+            detail = {
+                "previous_snapshot_id": row["current_best_snapshot_id"],
+                "snapshot_id": snapshot_id,
+                "reason": reason.strip(),
+            }
+            at = clock.to_text(clock.now())
+            conn.execute(
+                update(t.collections)
+                .where(t.collections.c.id == collection_id)
+                .values(
+                    current_best_snapshot_id=snapshot_id,
+                    current_best_json={
+                        "reason": reason.strip(),
+                        "actor_id": principal.user_id,
+                        "actor_username": principal.username,
+                        "pat_id": principal.pat_id,
+                        "at": at,
+                    },
+                    updated_at=at,
+                )
+            )
+            _event(conn, principal, collection_id, "current_best", None, detail)
+            audit.record(
+                conn,
+                principal,
+                "collection.current_best",
+                object_type="collection",
+                object_id=collection_id,
+                detail=detail,
+            )
+        return self.get(principal, collection_id)
 
     def events(self, principal: Principal, collection_id: str) -> list[dict]:
         with self.db.read() as conn:

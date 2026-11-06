@@ -652,6 +652,37 @@ class CollectionHandler(Handler):
         return Purged({"runs": removed})
 
 
+class RecordHandler(Handler):
+    object_type = "workflow_record"
+    table = t.workflow_records
+
+    def label(self, conn, row):
+        return row["title"]
+
+    def owner(self, row):
+        return row["author_id"]
+
+    def authorize(self, principal, row):
+        require_manage_owned(principal, row["author_id"])
+
+    def purge(self, conn, row, service, actor_id):
+        count = conn.execute(
+            delete(t.workflow_record_revisions).where(
+                t.workflow_record_revisions.c.record_id == row["id"]
+            )
+        ).rowcount
+        conn.execute(
+            update(t.workflow_records)
+            .where(t.workflow_records.c.id == row["id"])
+            .values(
+                body_json={},
+                references_json=[],
+                excerpts_json=[],
+            )
+        )
+        return Purged({"revisions": count})
+
+
 class SnapshotHandler(Handler):
     object_type = "analysis_snapshot"
     table = t.analysis_snapshots
@@ -693,6 +724,7 @@ HANDLERS: dict[str, Handler] = {
         PlanHandler(),
         CollectionHandler(),
         SnapshotHandler(),
+        RecordHandler(),
     )
 }
 

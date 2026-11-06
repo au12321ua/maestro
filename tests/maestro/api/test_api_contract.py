@@ -32,6 +32,11 @@ OPEN_FIELDS = {
     ("Collection", "fixed"): "parts of the effective configuration, by dimension",
     ("SnapshotSpec", "fixed"): "parts of the effective configuration, by dimension",
     ("CollectionEvent", "detail"): "depends on the change",
+    ("RecordContent", "body"): "opaque workflow-owned content",
+    ("RecordCreate", "body"): "opaque workflow-owned content",
+    ("RecordUpdate", "body"): "opaque workflow-owned content",
+    ("WorkflowRecord", "body"): "opaque workflow-owned content",
+    ("RecordRevision", "body"): "opaque workflow-owned content",
 }
 # Objects that carry documented fields plus code-specific extras.
 OPEN_OBJECTS = {"Problem", "SuggestedAction", "ScoringContract", "ScoringContractInput"}

@@ -368,3 +368,49 @@ def test_failed_upgrade_rolls_back_and_restores_foreign_keys(tmp_path, monkeypat
         assert "migration_canary" not in inspect(conn).get_table_names()
         assert conn.exec_driver_sql("SELECT count(*) FROM operations").scalar() == 0
         assert conn.exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
+
+
+def test_workflow_upgrade_keeps_existing_collections_and_events(tmp_path):
+    from sqlalchemy import select, text
+
+    from maestro.db import schema as t
+
+    db = Database.open(tmp_path / "app.db")
+    migrate.upgrade(db, "0007")
+    with db.write() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO users (id, username, display_name, role, status, password_hash, "
+                "revision, created_at, updated_at) VALUES ('usr_1', 'a', 'a', 'member', 'active', 'x', 1, 'x', 'x')"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO collections (id, name, description, owner_id, scenario, variable_json, "
+                "fixed_json, template_json, settings_json, created_at, updated_at) "
+                "VALUES ('col_1', 'existing', '', 'usr_1', 'attachments', '[\"attachments\"]', '{}', '{}', '{}', 'x', 'x')"
+            )
+        )
+        conn.execute(
+            t.collection_events.insert().values(
+                id="cev_1",
+                collection_id="col_1",
+                action="created",
+                actor_id="usr_1",
+                at="x",
+                detail_json={},
+            )
+        )
+    migrate.upgrade(db)
+    with db.read() as conn:
+        collection = conn.execute(select(t.collections)).mappings().one()
+        assert collection["name"] == "existing" and collection["variable_json"] == ["attachments"]
+        assert (
+            collection["current_best_snapshot_id"] is None
+            and collection["current_best_json"] is None
+        )
+        assert conn.execute(select(t.collection_events.c.id)).scalar_one() == "cev_1"
+        assert conn.execute(select(t.workflow_records)).first() is None
+        assert conn.execute(select(t.workflow_record_revisions)).first() is None
+        assert conn.exec_driver_sql("PRAGMA foreign_key_check").all() == []
+    db.dispose()

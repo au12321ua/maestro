@@ -15,7 +15,12 @@ from maestro.application import Maestro
 from maestro.core.errors import MaestroError
 from maestro.domain.states import PatPermission
 from maestro.security import tokens
-from maestro.services.principal import Principal, require_admin, require_admin_session
+from maestro.services.principal import (
+    Principal,
+    require_admin,
+    require_admin_session,
+    require_experiment,
+)
 
 COOKIE = "maestro_session"
 CSRF_HEADER = "X-CSRF-Token"
@@ -65,6 +70,15 @@ def admin_session(who: Principal = Depends(principal)) -> Principal:
 
 
 _ADMIN_GUARDS: dict[PatPermission, object] = {}
+
+
+def experiment(who: Principal = Depends(principal)) -> Principal:
+    """Business writes shared by member sessions and experiment PATs."""
+    require_experiment(who)
+    return who
+
+
+experiment.permission = PatPermission.EXPERIMENT
 
 
 def admin(permission: PatPermission):
