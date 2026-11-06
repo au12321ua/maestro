@@ -23,7 +23,8 @@ import {
   StatusPill,
   TextField,
 } from "@/components/common";
-import { WorkflowRecords } from "@/components/WorkflowRecords";
+import { RecordsJumpButton, WorkflowRecords } from "@/components/WorkflowRecords";
+import { useRecords } from "@/lib/records";
 import { TaskStatusCells } from "@/components/TaskStatusCells";
 import { t, Trans } from "@/i18n";
 import { api, errorText } from "@/lib/api";
@@ -282,7 +283,6 @@ export function DatasetsPage() {
               isAdmin={isAdmin}
               onChange={datasets.reload}
             />
-            <WorkflowRecords targetType="dataset_version" targetId={versionId} />
           </div>
         )}
       </div>
@@ -868,6 +868,7 @@ function VersionTasks({
         .data,
     [versionId],
   );
+  const records = useRecords("dataset_version", versionId);
   const taskPrefix = commonPrefix(tasks.data?.map((t) => t.task_key) ?? []);
   const [open, setOpen] = useState<string>();
   const [operations, setOperations] = useState<{ id: string; label: string }[]>([]);
@@ -908,13 +909,17 @@ function VersionTasks({
   };
 
   return (
+    <>
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">
-          {detail.data
-            ? `${detail.data.namespace}/${detail.data.name}@${detail.data.upstream_ref}`
-            : t("datasets.tasks.title")}
-        </CardTitle>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <CardTitle className="min-w-0 break-words text-base">
+            {detail.data
+              ? `${detail.data.namespace}/${detail.data.name}@${detail.data.upstream_ref}`
+              : t("datasets.tasks.title")}
+          </CardTitle>
+          <RecordsJumpButton records={records} />
+        </div>
         {detail.data && (
           <div className="grid gap-1 text-xs text-muted-foreground">
             <div>{t("datasets.page.source", { kind: detail.data.source_kind })}</div>
@@ -1071,6 +1076,13 @@ function VersionTasks({
         )}
       </CardContent>
     </Card>
+    <WorkflowRecords
+      targetType="dataset_version"
+      targetId={versionId}
+      records={records}
+      readOnly={!!detail.data?.deletion}
+    />
+    </>
   );
 }
 

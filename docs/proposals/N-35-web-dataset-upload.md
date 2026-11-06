@@ -1,6 +1,6 @@
 # N-35 补齐 N-33 的网页一侧：数据集上传与版本管理、工作流记录读写、交付物导出
 
-状态：设计中（设计已按用户的回答定稿，等用户阅读后决定是否实施）· 优先级：二 · 2026-11-06 · 相关：[N-33](N-33-held-out-benchmarks-workflows.md) 第 3.3、4、5 节、[01](../design/01-domain-model.md)、[02](../design/02-datasets-preparation.md)、[03](../design/03-configuration-attachments.md) 第 6 节、[07](../design/07-artifacts-export.md)、[08](../design/08-collections-comparison.md)、[09](../design/09-identity-security.md)、[11](../design/11-web-ui.md)、U-20、U-69、U-74、U-89
+状态：实施中（U-93；第 1 步工作流记录的网页读写已完成）· 优先级：二 · 2026-11-06 · 相关：[N-33](N-33-held-out-benchmarks-workflows.md) 第 3.3、4、5 节、[01](../design/01-domain-model.md)、[02](../design/02-datasets-preparation.md)、[03](../design/03-configuration-attachments.md) 第 6 节、[07](../design/07-artifacts-export.md)、[08](../design/08-collections-comparison.md)、[09](../design/09-identity-security.md)、[11](../design/11-web-ui.md)、U-20、U-69、U-74、U-89
 
 N-33 的数据模型与后端已经实现，但网页一侧漏了几块，版本管理也没有考虑。本提案补上，不改 N-33 的核心模型：上传内容的检查与准入、工作流记录的数据结构都不变。标“已定”的是用户已确认范围的部分（决定记录见 U-92），界面细节由实现时按现有页面风格定；标“用户已答”的是用户在对话中的回答。
 
@@ -188,7 +188,7 @@ Hub 的版本由上游管理，有标签，上游差异也能预览。上传的�
 
 ### 5.3 尚未决定
 
-- **是否实施、何时实施**：设计已定稿，等用户阅读后决定。实施顺序见第 6 节。
+- **是否实施、何时实施**：已决定实施（U-93），按第 6 节的顺序进行。
 
 ## 6. 实施顺序（建议）
 
@@ -205,4 +205,6 @@ Hub 的版本由上游管理，有标签，上游差异也能预览。上传的�
 
 ## 结果
 
-尚未实施。
+实施中。
+
+- 第 1 步（2.5 工作流记录的网页读写与入口）：已完成，结论并入 [11](../design/11-web-ui.md) 第 3 节与 [13](../design/13-testing-plan.md) E2E-OUT-05。
