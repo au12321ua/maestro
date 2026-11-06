@@ -108,7 +108,7 @@ except TransportError as lost:
 | 工作流记录 | `client.records.create({"type": "collection", "id": c.id}, "attachment-candidate", "候选", {"decision": "pending"}, references=[{"type": "run", "id": run_id}], excerpts=[{"text": "证据摘录"}])`；`client.records.get(id)`、`list("collection", c.id, kind=...)`、`update(id, expected_revision=1, body={...})`、`history(id)`、`delete(id)`；目标也可为运行、数据集版本（`dataset_version`）或附件名（可加 `snapshot_id`），仅作者可编辑 |
 | 快照与结论 | `s = client.snapshots.create(name, collection_id=c.id)`（运行须已结束），`client.snapshots.add_note(s.id, "结论")` |
 | 上传数据集 | `op = client.catalog.upload("tasks/", namespace="team", name="benchmark")`；目录下每个子目录是已转换好的 Harbor task，不另加 manifest。需要管理员的 `datasets` 权限；用 `operations.wait(op.id)` 等待导入，结果含版本与首次准备操作的标识，任务检查失败按题报告。相同内容复用版本，只传缺少的内容。来源说明用挂在数据集版本上的工作流记录保存 |
-| 交付物 | `client.runs.download_deliverables(run_id, "deliverables/")` 把最终尝试的 `artifacts/` 原字节文件保存到 `<目录>/<task_key>/<repetition>/<文件>`，校验摘要并返回失败或过期原因。任务写入容器的 `/logs/artifacts/`；平台不定义 benchmark 提交包格式 |
+| 交付物 | `client.runs.download_deliverables(run_id, "deliverables/")` 把最终尝试的交付物按原字节保存到 `<目录>/<task_key>/<repetition>/<文件>`（路径相对于容器的 `/logs/artifacts/`），校验摘要并返回失败或过期原因。任务写入容器的 `/logs/artifacts/`；平台不定义 benchmark 提交包格式 |
 | 附件 | `a = client.attachments.publish("path/to/dir", label="v2", parent=old)`（只上传服务端缺少的文件，内容相同返回原快照；跳过 `.git`），或 `client.attachments.publish_commit("path/to/repo", "HEAD", parent=old)` 发布一个 git 提交跟踪的文件（仓库根目录就是附件根目录，可执行位取自 git 的文件模式，未提交的修改不发布并给出提醒），配置里写 `attachments: [a.id]`；`client.attachments.fetch(a.id, "dir")` 只下载有差异的文件，`diff(a.id)` 与父快照比较，`download(a.id, "a.zip")` 整包下载 |
 | 导出 | `e = client.exports.create([run_id])`、`client.operations.wait(e.operation_id)`、`client.exports.download(e.id, "export.zip")` |
 

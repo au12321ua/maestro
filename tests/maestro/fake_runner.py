@@ -120,11 +120,16 @@ if mode in ("deliverables", "deliverables-retry"):
             else:
                 emit("attempt_started", trial_id=trial_id, attempt=attempt)
             archive = out / "attempts" / trial_id / str(attempt)
-            (archive / "artifacts" / "nested").mkdir(parents=True)
+            # Harbor 0.24 collects the task's /logs/artifacts/ under artifacts/logs/artifacts/
+            # and records the collection in artifacts/manifest.json.
+            collected = archive / "artifacts" / "logs" / "artifacts" / "nested"
+            collected.mkdir(parents=True)
             data = b"api_key=sk-abcdefghijklmnopqrstuv\n" + b"STEP;" * 100
             if attempt == 2:
                 data += b"FINAL"
-            (archive / "artifacts" / "nested" / "output.step").write_bytes(data)
+            (collected / "output.step").write_bytes(data)
+            record = b'[{"source": "/logs/artifacts", "destination": "artifacts/logs/artifacts"}]'
+            (archive / "artifacts" / "manifest.json").write_bytes(record)
             retry = attempt < attempts
             finish_attempt(
                 trial_id,
@@ -134,9 +139,14 @@ if mode in ("deliverables", "deliverables-retry"):
                 retry=retry,
                 files=[
                     {
-                        "path": "artifacts/nested/output.step",
+                        "path": "artifacts/logs/artifacts/nested/output.step",
                         "size": len(data),
                         "sha256": hashlib.sha256(data).hexdigest(),
+                    },
+                    {
+                        "path": "artifacts/manifest.json",
+                        "size": len(record),
+                        "sha256": hashlib.sha256(record).hexdigest(),
                     },
                     {
                         "path": "trial.log",

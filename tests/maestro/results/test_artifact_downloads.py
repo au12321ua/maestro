@@ -211,7 +211,11 @@ def test_deliverables_keep_bytes_and_sdk_reports_failures_and_expiry(
             {"dataset_version_id": version, "execution_mode": "oracle"}, name="delivery"
         )
         assert agent.operations.wait(submitted.operation_id, interval=0.02).status == "succeeded"
-        outputs = [a for a in agent.runs.artifacts(submitted.run_id) if a.kind == "output"]
+        outputs = [
+            a
+            for a in agent.runs.artifacts(submitted.run_id)
+            if a.kind == "output" and a.relative_path.endswith("output.step")
+        ]
         assert len(outputs) == (2 if cap in ("retry", "retry-total") else 1)
         final = agent.runs.trials(submitted.run_id)[0].result.attempt_id
         artifact = next(a for a in outputs if a.attempt_id == final)
@@ -233,6 +237,8 @@ def test_deliverables_keep_bytes_and_sdk_reports_failures_and_expiry(
             raw += b"FINAL"
         expected = destination / task_key / "1" / "nested" / "output.step"
         assert download.path == str(expected) and expected.read_bytes() == raw
+        # Harbor's own collection record is not a deliverable.
+        assert not list(destination.rglob("manifest.json"))
         log = next(
             a for a in agent.runs.artifacts(submitted.run_id) if a.relative_path == "trial.log"
         )

@@ -151,7 +151,12 @@ class Runs(_Resource):
     def download_deliverables(
         self, run_id: str, directory: str | os.PathLike[str]
     ) -> list[Download]:
-        """Download the final attempt's artifacts/ files to task_key/repetition/files.
+        """Download the final attempt's deliverables to task_key/repetition/files.
+
+        Harbor collects the task's /logs/artifacts/ into ``artifacts/logs/artifacts/`` and
+        records what it collected in ``artifacts/manifest.json``; the files land relative
+        to /logs/artifacts/ and that bookkeeping file is left out. Other collected paths
+        keep their place under ``artifacts/``.
 
         Bytes are checked against the indexed digest before replacing a local file.
         Expired and failed files retain their reasons in the returned download report.
@@ -175,6 +180,9 @@ class Runs(_Resource):
             )
             if artifact.attempt_id != final:
                 continue
+            local = _deliverable_path(artifact.relative_path)
+            if local is None:
+                continue
             if artifact.status != "available":
                 results.append(
                     Download(
@@ -186,9 +194,13 @@ class Runs(_Resource):
                 continue
             if not artifact.relative_path.startswith("artifacts/") or not artifact.digest:
                 raise MaestroError(f"Invalid deliverable metadata: {artifact.id}")
-            target = _inside(_inside(root, trial.task_key), str(trial.repetition_index))
-            target = _inside(target, artifact.relative_path.removeprefix("artifacts/"))
+            base = _inside(_inside(root, trial.task_key), str(trial.repetition_index))
+            target = _inside(base, local)
+            # The caller chose ``directory`` and may reach it through links; a link below
+            # it could redirect the write, so none is followed.
             for path in (target, *target.parents):
+                if path == root:
+                    break
                 if path.is_symlink():
                     raise MaestroError(f"Download destination contains a link: {path}")
             try:
@@ -205,6 +217,19 @@ class Runs(_Resource):
                 continue
             results.append(Download(artifact=artifact, path=str(target)))
         return results
+
+
+# Where Harbor puts the task's /logs/artifacts/ directory, and its collection record.
+_COLLECTED = "artifacts/logs/artifacts/"
+_HARBOR_MANIFEST = "artifacts/manifest.json"
+
+
+def _deliverable_path(relative: str) -> str | None:
+    if relative == _HARBOR_MANIFEST:
+        return None
+    if relative.startswith(_COLLECTED):
+        return relative.removeprefix(_COLLECTED)
+    return relative.removeprefix("artifacts/")
 
 
 def _inside(base: Path, relative: str) -> Path:
