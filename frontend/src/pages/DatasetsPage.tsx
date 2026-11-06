@@ -1,6 +1,6 @@
 import { Fragment, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Trash2 } from "lucide-react";
+import { Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,15 +20,16 @@ import {
   PageTitle,
   Pill,
   SelectField,
-  StatusPill,
   TextField,
 } from "@/components/common";
+import { OperationLine } from "@/components/OperationLine";
+import { UploadDataset } from "@/pages/DatasetUpload";
 import { RecordsJumpButton, WorkflowRecords } from "@/components/WorkflowRecords";
 import { useRecords } from "@/lib/records";
 import { TaskStatusCells } from "@/components/TaskStatusCells";
 import { t, Trans } from "@/i18n";
 import { api, errorText } from "@/lib/api";
-import { commonPrefix, fmtTime, OPERATION_STATUS, shortId } from "@/lib/format";
+import { commonPrefix, fmtTime, shortId } from "@/lib/format";
 import { useInterval, useLoad, useSession } from "@/lib/hooks";
 import type {
   Dataset,
@@ -42,69 +43,6 @@ import type {
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { SetupNetworkRevision } from "@/pages/admin/SetupNetworkTab";
-
-const PHASES: Record<string, string> = t("datasets.phase", { returnObjects: true });
-
-const TERMINAL = new Set(["succeeded", "failed", "cancelled", "interrupted"]);
-
-/** Polls one Operation until it ends, then calls `onDone` once. */
-function OperationLine({
-  id,
-  label,
-  onDone,
-}: {
-  id: string;
-  label: string;
-  onDone?: (op: Operation) => void;
-}) {
-  const [notified, setNotified] = useState(false);
-  const op = useLoad(
-    async () => (await api.get("/operations/{operation_id}", { path: { operation_id: id } })).data,
-    [id],
-  );
-  const running = !op.data || !TERMINAL.has(op.data.status);
-  useInterval(() => void op.reload(), 1000, running);
-  if (op.data && !running && !notified) {
-    setNotified(true);
-    onDone?.(op.data);
-  }
-  if (!op.data) return <Loading text={`${label}…`} />;
-  // Imports and first preparations count tasks; other kinds have no task count.
-  const progress =
-    op.data.kind === "dataset_import" || op.data.kind === "preparation_first"
-      ? op.data.progress
-      : null;
-  const prepared = op.data.kind === "preparation_first" ? op.data.progress : null;
-  return (
-    <div className="flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-sm">
-      <span className="font-medium">{label}</span>
-      <StatusPill value={OPERATION_STATUS[op.data.status] ?? [op.data.status, "neutral"]} />
-      {op.data.phase && running && (
-        <span className="text-muted-foreground">{PHASES[op.data.phase] ?? op.data.phase}</span>
-      )}
-      {progress?.tasks_total != null && (
-        <span className="text-xs text-muted-foreground">
-          {t("datasets.operation.tasks", {
-            done: progress.tasks_done ?? 0,
-            count: progress.tasks_total,
-          })}
-          {prepared?.admitted != null &&
-            t("datasets.operation.admitted", { n: prepared.admitted })}
-          {prepared?.failed ? t("datasets.operation.failed", { n: prepared.failed }) : ""}
-        </span>
-      )}
-      {op.data.error && (
-        <span className="text-xs text-destructive">
-          {t("datasets.operation.error", {
-            message: op.data.error.message ?? op.data.error.code,
-            code: op.data.error.code,
-          })}
-        </span>
-      )}
-      <code className="ml-auto text-xs text-muted-foreground">{shortId(op.data.id, 16)}</code>
-    </div>
-  );
-}
 
 export function DatasetsPage() {
   const { me } = useSession();
@@ -125,6 +63,10 @@ export function DatasetsPage() {
     setParams(next, { replace: true });
   };
   const [upstreamOf, setUpstreamOf] = useState<string>();
+  const [adding, setAdding] = useState(false);
+  // "new" for a new uploaded dataset, otherwise the upload dataset getting a version.
+  const [uploadTo, setUploadTo] = useState<string | null>(null);
+  const uploadTarget = datasets.data?.find((d) => d.id === uploadTo) ?? null;
   const upstreamDataset = datasets.data?.find((d) => d.id === upstreamOf);
   const imported = async (id?: string) => {
     await datasets.reload();
@@ -172,7 +114,33 @@ export function DatasetsPage() {
       <p className="mb-4 text-sm text-muted-foreground">
         {t("datasets.page.intro")}
       </p>
-      {isAdmin && <AddDataset datasets={datasets.data ?? []} onImported={imported} />}
+      {isAdmin && (
+        <div className="mb-4 flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setAdding(true)} disabled={adding}>
+            {t("datasets.add.open")}
+          </Button>
+          <Button variant="outline" onClick={() => setUploadTo("new")} disabled={uploadTo === "new"}>
+            <Upload />
+            {t("datasets.upload.open")}
+          </Button>
+        </div>
+      )}
+      {isAdmin && adding && (
+        <AddDataset
+          datasets={datasets.data ?? []}
+          onImported={imported}
+          onClose={() => setAdding(false)}
+        />
+      )}
+      {isAdmin && uploadTo && (
+        <UploadDataset
+          key={uploadTo}
+          datasets={datasets.data ?? []}
+          target={uploadTarget}
+          onImported={imported}
+          onClose={() => setUploadTo(null)}
+        />
+      )}
       {isAdmin && upstreamDataset && (
         <UpstreamVersions
           key={upstreamDataset.id}
@@ -187,7 +155,7 @@ export function DatasetsPage() {
       <div className="grid gap-4 lg:grid-cols-[minmax(260px,1fr)_minmax(0,3fr)]">
         <div className="grid content-start gap-3">
           {datasets.data?.map((dataset) => (
-            <Card key={dataset.id}>
+            <Card key={dataset.id} data-testid="dataset-card">
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center justify-between gap-2 text-base">
                   {dataset.namespace}/{dataset.name}
@@ -224,6 +192,14 @@ export function DatasetsPage() {
                 {dataset.source_kind === "upload" && (
                   <p className="text-xs text-muted-foreground">{t("datasets.page.uploadNoUpstream")}</p>
                 )}
+                {isAdmin && dataset.source_kind === "upload" && (
+                  <div>
+                    <Button size="sm" variant="outline" onClick={() => setUploadTo(dataset.id)}>
+                      <Upload />
+                      {t("datasets.upload.newVersion")}
+                    </Button>
+                  </div>
+                )}
               </CardHeader>
               <CardContent className="grid gap-1">
                 {dataset.versions.length === 0 && (
@@ -239,8 +215,10 @@ export function DatasetsPage() {
                         versionId === version.id ? "border-primary bg-accent" : "hover:bg-muted",
                       )}
                     >
-                      <span>
-                        {version.upstream_ref}
+                      <span className="break-all">
+                        {dataset.source_kind === "upload"
+                          ? shortId(version.upstream_ref, 23)
+                          : version.upstream_ref}
                         <span className="ml-1 text-xs text-muted-foreground">
                           ({version.ref_kind}) {shortId(version.resolved_digest, 15)}
                         </span>
@@ -660,9 +638,11 @@ function SourceVersions({
 function AddDataset({
   datasets,
   onImported,
+  onClose,
 }: {
   datasets: Dataset[];
   onImported: (versionId?: string) => Promise<void>;
+  onClose: () => void;
 }) {
   const sources = useLoad(async () =>
     (await api.get("/dataset-sources")).data.filter((source) => source.kind !== "upload"),
@@ -670,7 +650,6 @@ function AddDataset({
   const credentials = useLoad(async () =>
     (await api.get("/admin/credentials")).data.filter((c) => c.kind === "hub_token" && c.enabled),
   );
-  const [open, setOpen] = useState(false);
   const [kind, setKind] = useState("");
   const [credentialId, setCredentialId] = useState("");
   const [query, setQuery] = useState("");
@@ -703,21 +682,12 @@ function AddDataset({
         d.name === target.name,
     );
 
-  if (!open) {
-    return (
-      <div className="mb-4">
-        <Button variant="outline" onClick={() => setOpen(true)}>
-          {t("datasets.add.title")}
-        </Button>
-      </div>
-    );
-  }
   return (
     <Card className="mb-4">
       <CardHeader>
         <CardTitle className="flex items-center justify-between gap-2 text-base">
           {t("datasets.add.title")}
-          <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+          <Button size="sm" variant="ghost" onClick={onClose}>
             {t("datasets.collapse")}
           </Button>
         </CardTitle>

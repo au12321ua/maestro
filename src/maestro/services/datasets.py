@@ -24,6 +24,7 @@ from maestro.services.attachments import _held
 from maestro.services.preparation import (
     KIND_EVICT,
     KIND_IMPORT,
+    check_dataset_source,
     create_first,
     first_in_progress,
 )
@@ -225,6 +226,7 @@ class Datasets:
             "accept_changed_content": False,
         }
         with self.db.write() as conn:
+            check_dataset_source(conn, "upload", request["namespace"], request["name"])
             held = _held(conn, [f["sha256"] for f in package.files], principal.user_id)
             if any(
                 f["sha256"] not in held or self.store.blob(f["sha256"]) is None
@@ -290,6 +292,7 @@ class Datasets:
             "prepare": body.get("prepare", True) is not False,
         }
         with self.db.write() as conn:
+            check_dataset_source(conn, kind, request["namespace"], request["name"])
             op_id = operations.create(
                 conn,
                 KIND_IMPORT,

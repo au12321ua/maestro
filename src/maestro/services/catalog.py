@@ -7,7 +7,7 @@ never from cache state. A cold cache only adds a warning and a restore hint.
 
 from sqlalchemy import Connection, select
 
-from maestro.core.errors import not_found
+from maestro.core.errors import MaestroError, not_found
 from maestro.db import schema as t
 from maestro.db.engine import Database
 from maestro.domain import scoring
@@ -283,6 +283,39 @@ class Catalog:
                 "deletion": deleted.version_state(conn, version_id),
                 **self._counts(conn, version_id),
             }
+
+    def files(self, version_id: str) -> list[dict]:
+        """Original upload metadata only; listing it does not read task contents."""
+        with self.db.read() as conn:
+            source = conn.execute(
+                select(t.datasets.c.source_kind)
+                .join(t.dataset_versions, t.dataset_versions.c.dataset_id == t.datasets.c.id)
+                .where(t.dataset_versions.c.id == version_id)
+            ).scalar()
+            if source is None:
+                raise not_found("Dataset version")
+            removed = deleted.version_state(conn, version_id)
+            if removed and removed["state"] == deleted.PURGED:
+                raise deleted.purged_error("Dataset version")
+            if source != "upload":
+                raise MaestroError(
+                    "DATASET_VERSION_NOT_UPLOADED",
+                    "Hub versions' contents live upstream; only uploaded versions have a file list",
+                    409,
+                )
+            return [
+                dict(row)
+                for row in conn.execute(
+                    select(
+                        t.dataset_files.c.path,
+                        t.dataset_files.c.sha256,
+                        t.dataset_files.c.executable,
+                        t.dataset_files.c.size.label("size_bytes"),
+                    )
+                    .where(t.dataset_files.c.dataset_version_id == version_id)
+                    .order_by(t.dataset_files.c.path)
+                ).mappings()
+            ]
 
     def list_tasks(self, version_id: str) -> list[dict]:
         with self.db.read() as conn:

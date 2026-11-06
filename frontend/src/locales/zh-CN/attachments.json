@@ -45,20 +45,18 @@
   "publish": {
     "title": "发布快照",
     "description": "选择附件所在的文件夹，根目录里放 manifest.json；可选 bootstrap.sh 由 bash 运行，工作目录是附件目录，环境变量 MAESTRO_ATTACHMENT_DIR 指向它。只上传服务端还没有的文件，发布只检查不运行；文件名只能用字母、数字和 ._+@-，.git 目录不上传。标签可选，在同名附件内唯一，发布后不能改。",
-    "basedOn": "将基于 {{name}} {{snapshot}} 发布；请选择改好的文件夹。",
-    "picked": "{{name}} · {{count}} 个文件 · {{size}}",
     "pickedName": "附件 {{name}}",
     "noName": "没有在 manifest.json 中找到名称",
     "label": "标签（可选）",
     "labelPlaceholder": "例如 v2、try-cache",
     "parent": "父快照",
     "noParent": "无",
-    "modeHint": "浏览器读不到文件权限：勾选需要可执行的文件（默认沿用父快照，否则按是否以 #! 开头判断）。",
     "submit": "上传并发布",
-    "done": "已发布 {{name}} {{snapshot}}（上传 {{count}} 个文件）",
     "exampleSummary": "manifest.json 示例",
     "exampleDescription": "说明（可选）",
-    "exampleNote": "effects 目前支持 model_call、agent_tools、task_environment；改变验证或评分的附件暂不支持。compatible_harnesses 填 Harness 适配器名，或 [\"*\"] 表示任意。provides 用于发现两个附件之间的冲突。快照没有版本号，用发布时的标签区分。"
+    "exampleNote": "effects 目前支持 model_call、agent_tools、task_environment；改变验证或评分的附件暂不支持。compatible_harnesses 填 Harness 适配器名，或 [\"*\"] 表示任意。provides 用于发现两个附件之间的冲突。快照没有版本号，用发布时的标签区分。",
+    "noManifest": "文件夹根目录里没有 manifest.json。",
+    "done": "已发布 {{name}} {{snapshot}}（上传 {{count}} 个文件）"
   },
   "history": {
     "count": "{{count}} 个快照",

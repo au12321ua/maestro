@@ -70,6 +70,10 @@ class Catalog(_Resource):
     def tasks(self, version_id: str) -> list[models.Task]:
         return self._c._get(f"dataset-versions/{version_id}/tasks", list[models.Task])
 
+    def files(self, version_id: str) -> list[models.DatasetVersionFile]:
+        """List an uploaded version's original file metadata without recording a task read."""
+        return self._c._get(f"dataset-versions/{version_id}/files", list[models.DatasetVersionFile])
+
     def preparation(self, preparation_id: str) -> models.Preparation:
         return self._c._get(f"preparations/{preparation_id}", models.Preparation)
 

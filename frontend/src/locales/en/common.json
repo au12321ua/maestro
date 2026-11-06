@@ -304,5 +304,40 @@
     "pat": "PAT",
     "revisions_one": "{{count}} revision",
     "revisions_other": "{{count}} revisions"
+  },
+  "folder": {
+    "choose": "Choose folder",
+    "orDrop": "or drop a folder here",
+    "dropOneFolder": "Drop one folder (not a single file or several folders).",
+    "basedOn": "Based on: {{base}}",
+    "noBase": "Not based on an existing version",
+    "reading": "Reading and hashing",
+    "checking": "Asking which contents the service lacks…",
+    "uploading": "Uploading missing contents",
+    "recording": "Recording…",
+    "summary_one": "{{folder}} · {{count}} file · {{size}}",
+    "summary_other": "{{folder}} · {{count}} files · {{size}}",
+    "taskCount_one": " · {{count}} task",
+    "taskCount_other": " · {{count}} tasks",
+    "diff": "Compared with {{base}} (files): added {{added}} · removed {{removed}} · changed {{changed}} · unchanged {{same}}",
+    "taskDiff": "Compared with {{base}} (tasks): added {{added}} · removed {{removed}} · content changed {{changed}} · unchanged {{same}}",
+    "executables": "Executable files ({{count}})",
+    "executablesHint": "Browsers cannot read file modes; these are inferred and can be changed.",
+    "noExecutables": "No file is marked executable.",
+    "executableOf": "{{path}} is executable",
+    "mode": {
+      "base": "kept from {{base}}",
+      "shebang": "starts with #!",
+      "elf": "ELF program",
+      "none": "",
+      "manual": "set by hand"
+    },
+    "allFiles": "All files ({{count}})",
+    "changedOnly": "Changed files only",
+    "modeHint": "Checked means executable; struck-through files are in the base version but not in this one.",
+    "reset": "Choose again",
+    "tooManyFiles": "{{count}} files exceed the limit of {{max}}; upload with the SDK instead.",
+    "tooLarge": "{{size}} exceeds the limit of {{max}}; upload with the SDK instead.",
+    "fileTooLarge": "{{path}} is {{size}}, over the web limit of {{max}} per file (the browser reads a whole file into memory to hash it); upload with the SDK instead."
   }
 }

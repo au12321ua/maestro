@@ -35,6 +35,7 @@ from maestro.boundaries.environment import (
 )
 from maestro.core import clock
 from maestro.core.digests import digest_json
+from maestro.core.errors import FieldError, MaestroError
 from maestro.core.ids import new_id
 from maestro.db import schema as t
 from maestro.db.engine import Database
@@ -639,7 +640,11 @@ class Preparer:
             definition["source"] = {"locator": task.locator}
             tasks.append((task, material, definition))
         progress("recording", resolved_digest=version.resolved_digest, tasks_total=len(tasks))
-        version_id = self._record_version(op, request, version, tasks)
+        try:
+            version_id = self._record_version(op, request, version, tasks)
+        except MaestroError as error:
+            fail(error.code, error.message)
+            return
         self._import_done(op_id, request, version_id, existing=False)
 
     async def _reverify(self, version_id, version, source, credential, op_id) -> None:
@@ -722,6 +727,7 @@ class Preparer:
     def _record_version(self, op, request, version, tasks) -> str:
         at = _now()
         with self.db.write() as conn:
+            check_dataset_source(conn, request["source_kind"], version.namespace, version.name)
             dataset = live_dataset(conn, request["source_kind"], version.namespace, version.name)
             if dataset is None:
                 dataset = new_id("ds")
@@ -1701,6 +1707,30 @@ def _link_upload(conn: Connection, op_id: str, version_id: str) -> None:
             update(t.dataset_files)
             .where(t.dataset_files.c.operation_id == op_id)
             .values(dataset_version_id=version_id)
+        )
+
+
+def check_dataset_source(conn: Connection, source_kind: str, namespace: str, name: str) -> None:
+    """Reserve a name for one source until its dataset is physically purged.
+
+    Call inside the dataset creation transaction as well as request acceptance,
+    since accepted imports may race while fetching their contents.
+    """
+    other = conn.execute(
+        select(t.datasets.c.source_kind).where(
+            t.datasets.c.namespace == namespace,
+            t.datasets.c.name == name,
+            t.datasets.c.source_kind != source_kind,
+            t.datasets.c.id.not_in(purged_ids("dataset")),
+        )
+    ).scalar()
+    if other is not None:
+        message = f"Dataset {namespace}/{name} already belongs to source {other!r}"
+        raise MaestroError(
+            "DATASET_SOURCE_CONFLICT",
+            message,
+            409,
+            field_errors=[FieldError("/name", "DATASET_SOURCE_CONFLICT", message)],
         )
 
 

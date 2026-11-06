@@ -5,6 +5,8 @@
     "requestFailed": "Request failed"
   },
   "codes": {
+    "DATASET_SOURCE_CONFLICT": "This namespace and name already belong to a dataset from another source; choose a new name",
+    "DATASET_VERSION_NOT_UPLOADED": "Hub version contents live upstream; file lists are available only for uploaded versions",
     "ACCOUNT_DISABLED": "Account is disabled",
     "ACCOUNT_HAS_ACTIVE_RUNS": "Account still has queued or running runs",
     "ADMIN_SESSION_REQUIRED": "Admin actions require a web session",

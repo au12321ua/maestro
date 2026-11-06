@@ -46,22 +46,19 @@
   "publish": {
     "title": "Publish a snapshot",
     "description": "Choose the attachment's folder, with manifest.json at its root; an optional bootstrap.sh runs with bash, in the attachment directory, with the environment variable MAESTRO_ATTACHMENT_DIR pointing to it. Only files the server lacks are uploaded; publishing checks but does not run anything. File names may use only letters, digits and ._+@-; the .git directory is not uploaded. The label is optional, unique among attachments of the same name, and cannot be changed after publishing.",
-    "basedOn": "Will publish based on {{name}} {{snapshot}}; choose the edited folder.",
-    "picked_one": "{{name}} · {{count}} file · {{size}}",
-    "picked_other": "{{name}} · {{count}} files · {{size}}",
     "pickedName": "Attachment {{name}}",
     "noName": "No name found in manifest.json",
     "label": "Label (optional)",
     "labelPlaceholder": "e.g. v2, try-cache",
     "parent": "Parent snapshot",
     "noParent": "None",
-    "modeHint": "Browsers cannot read file permissions: check the files that must be executable (by default kept from the parent snapshot, otherwise guessed from a leading #!).",
     "submit": "Upload and publish",
     "done_one": "Published {{name}} {{snapshot}} ({{count}} file uploaded)",
     "done_other": "Published {{name}} {{snapshot}} ({{count}} files uploaded)",
     "exampleSummary": "manifest.json example",
     "exampleDescription": "Description (optional)",
-    "exampleNote": "effects currently supports model_call, agent_tools and task_environment; attachments that change verification or scoring are not supported yet. compatible_harnesses lists Harness adapter names, or [\"*\"] for any. provides is used to detect conflicts between two attachments. Snapshots have no version number; tell them apart by the label given at publishing."
+    "exampleNote": "effects currently supports model_call, agent_tools and task_environment; attachments that change verification or scoring are not supported yet. compatible_harnesses lists Harness adapter names, or [\"*\"] for any. provides is used to detect conflicts between two attachments. Snapshots have no version number; tell them apart by the label given at publishing.",
+    "noManifest": "The folder has no manifest.json at its top level."
   },
   "history": {
     "count_one": "{{count}} snapshot",

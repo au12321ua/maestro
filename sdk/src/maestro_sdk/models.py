@@ -523,6 +523,16 @@ class DatasetVersion(BaseModel):
     upstream_ref: str
 
 
+class DatasetVersionFile(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    executable: bool
+    path: str
+    sha256: str
+    size_bytes: int
+
+
 class DeletionState(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -2709,6 +2719,14 @@ class EnvelopeListDatasetSource(BaseModel):
         extra="allow",
     )
     data: list[DatasetSource]
+    meta: Meta
+
+
+class EnvelopeListDatasetVersionFile(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: list[DatasetVersionFile]
     meta: Meta
 
 
