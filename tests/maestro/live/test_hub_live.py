@@ -4,15 +4,17 @@ Opt-in: ``MAESTRO_HUB_TESTS=1`` with network access to the Hub (proxy variables 
 passed to the Runner). The import test also needs Docker with buildx: the public
 ``harbor/hello-world`` task builds ``FROM ubuntu:24.04``, which Docker may pull.
 No credential is used; no model is called; prepared images are removed afterwards.
+The local upload parser test can be selected alone; it uses no Hub network or Docker.
 """
 
 import asyncio
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
-from support import ROOT, running, setup_admin, wait_operation
+from support import FIXTURES, ROOT, running, setup_admin, wait_operation
 
 from maestro.application import Maestro
 from maestro.boundaries.dataset_source import SourceError
@@ -109,3 +111,23 @@ def test_import_and_first_preparation_from_the_hub(hub_service):
         assert task["local_preparation"]["cache_state"] == "ready"
         again = admin.post("/api/v1/admin/dataset-imports", json=body, expect=202).json()["data"]
         assert wait_operation(admin, again["id"], timeout=300)["result"]["existing"] is True
+
+
+def test_uploaded_task_validation_uses_the_runner_harbor_without_upstream_access(tmp_path):
+    tree = tmp_path / "tasks"
+    shutil.copytree(FIXTURES / "harbor-tasks", tree)
+    source = HubSource(RUNNER.absolute(), tmp_path / "work")
+    tasks = sorted(tree.iterdir())
+    # An image-only task needs no environment files in the upload.
+    shutil.rmtree(tasks[0] / "environment")
+    with (tasks[0] / "task.toml").open("a") as config:
+        config.write('docker_image = "example.test/prepared:fixed"\n')
+    assert asyncio.run(source.validate_tasks(tree)) is None
+    (tasks[0] / "task.toml").write_text('[environment]\ncpus = "invalid"\n')
+    (tasks[1] / "instruction.md").unlink()
+    with pytest.raises(SourceError) as invalid:
+        asyncio.run(source.validate_tasks(tree))
+    assert {e["task_key"] for e in invalid.value.evidence["task_errors"]} == {
+        tasks[0].name,
+        tasks[1].name,
+    }

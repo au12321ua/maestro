@@ -57,6 +57,10 @@ UI 文案与纯样式变更不写低价值单元测试；优先验证会导致�
 
 覆盖：`datasets/test_datasets.py`（替身）；`live/test_hub_live.py`（真实 Hub）；网页部分在 `frontend/qa/smoke.spec.ts`（替身数据源）。
 
+上传来源的默认测试见 `datasets/test_dataset_uploads.py`：SDK 增量传输、重复内容复用、路径与容量限制、权限、逐任务错误、首次准备失败重试与原始内容恢复均用假 Runner 和独立 state；锁定 Harbor 的本地解析检查放在 `live/test_hub_live.py` 的显式开关下。数据集版本上的工作流记录在 `results/test_records.py` 覆盖。
+
+交付物完整保存与失败回执在 `runner/test_runner_evidence.py` 和 `results/test_artifact_downloads.py` 覆盖：文本交付物不脱敏、不截断，日志仍脱敏，单文件、跨重试累计总量与数量超限不留下部分交付物，SDK 按任务与重复序号下载、核对摘要并报告失败和过期。默认测试不访问模型、Docker 或 Hub。
+
 ### E2E-DS-02 局部失败
 
 前提：假版本含 3 个任务，控制其中 1 个构建失败。

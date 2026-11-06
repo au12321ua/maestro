@@ -251,7 +251,12 @@ class Catalog:
         with self.db.read() as conn:
             row = (
                 conn.execute(
-                    select(t.dataset_versions, t.datasets.c.namespace, t.datasets.c.name)
+                    select(
+                        t.dataset_versions,
+                        t.datasets.c.namespace,
+                        t.datasets.c.name,
+                        t.datasets.c.source_kind,
+                    )
                     .join(t.datasets, t.datasets.c.id == t.dataset_versions.c.dataset_id)
                     .where(t.dataset_versions.c.id == version_id)
                 )
@@ -271,6 +276,7 @@ class Catalog:
                 **self._version(row),
                 "namespace": row["namespace"],
                 "name": row["name"],
+                "source_kind": row["source_kind"],
                 "first_preparation_operation_id": active,
                 "scoring_contract": scoring.contract_for(row["manifest_json"]),
                 # Deleted versions still resolve for runs that reference them.

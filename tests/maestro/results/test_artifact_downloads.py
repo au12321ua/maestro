@@ -3,6 +3,9 @@
 import re
 import urllib.parse
 
+import pytest
+from maestro_sdk import ContentMismatch
+from maestro_sdk import MaestroError as SdkError
 from sqlalchemy import update
 from support import create_pat, invite_member, running, setup_admin, submit, wait_operation
 
@@ -178,3 +181,86 @@ def test_exports_are_limited_per_user_and_paused_while_disk_is_low(service, vers
         assert alice.get("/api/v1/exports", expect=200).json()["data"]
         free["bytes"] = 100 * GIB
         alice.post("/api/v1/exports", json=body, expect=202)
+
+
+@pytest.mark.parametrize("cap", [None, "file", "total", "retry", "retry-total"])
+def test_deliverables_keep_bytes_and_sdk_reports_failures_and_expiry(
+    service, source, runner_python, tmp_path, cap
+):
+    from support.datasets import import_and_prepare
+    from support.executor import make_executor
+    from support.sdk import sdk
+
+    task_key = "deliverables-retry" if cap in ("retry", "retry-total") else "deliverables"
+    source.add("demo", "deliverables", "v1", [task_key])
+    caps = {"max_files": 500, "max_file_bytes": 1000, "max_total_bytes": 2000}
+    if cap == "file":
+        caps["max_file_bytes"] = 100
+    elif cap == "total":
+        caps["max_total_bytes"] = 200
+    elif cap == "retry-total":
+        caps["max_total_bytes"] = 800
+    service.worker.executor = make_executor(
+        runner_python, service.preparer.materials, tmp_path, artifact_limits=caps
+    )
+    with running(service) as client:
+        admin = setup_admin(service, client)
+        version, _ = import_and_prepare(admin, name="deliverables")
+        agent = sdk(create_pat(admin, ("experiment",)))
+        submitted = agent.runs.submit(
+            {"dataset_version_id": version, "execution_mode": "oracle"}, name="delivery"
+        )
+        assert agent.operations.wait(submitted.operation_id, interval=0.02).status == "succeeded"
+        outputs = [a for a in agent.runs.artifacts(submitted.run_id) if a.kind == "output"]
+        assert len(outputs) == (2 if cap in ("retry", "retry-total") else 1)
+        final = agent.runs.trials(submitted.run_id)[0].result.attempt_id
+        artifact = next(a for a in outputs if a.attempt_id == final)
+        destination = tmp_path / "delivery"
+        (download,) = agent.runs.download_deliverables(submitted.run_id, destination)
+        if cap in ("file", "total", "retry-total"):
+            assert artifact.status == "failed" and artifact.status_reason
+            assert download.path is None and download.skipped_reason == artifact.status_reason
+            with service.db.read() as conn:
+                key = (
+                    conn.execute(t.artifacts.select().where(t.artifacts.c.id == artifact.id))
+                    .mappings()
+                    .one()["storage_key"]
+                )
+            assert not service.store.exists(key)
+            return
+        raw = b"api_key=sk-abcdefghijklmnopqrstuv\n" + b"STEP;" * 100
+        if cap == "retry":
+            raw += b"FINAL"
+        expected = destination / task_key / "1" / "nested" / "output.step"
+        assert download.path == str(expected) and expected.read_bytes() == raw
+        log = next(
+            a for a in agent.runs.artifacts(submitted.run_id) if a.relative_path == "trial.log"
+        )
+        assert agent.artifacts.read(log.id) == b"api_key=[REDACTED]\n"
+        with service.db.read() as conn:
+            key = (
+                conn.execute(t.artifacts.select().where(t.artifacts.c.id == artifact.id))
+                .mappings()
+                .one()["storage_key"]
+            )
+        service.store.files[key] = b"corrupted"
+        with pytest.raises(ContentMismatch):
+            agent.runs.download_deliverables(submitted.run_id, destination)
+        assert expected.read_bytes() == raw
+        service.store.files[key] = raw
+        # A local link cannot redirect the helper outside its destination.
+        (destination / task_key / "1" / "nested").rename(destination / "saved")
+        (destination / task_key / "1" / "nested").symlink_to(
+            destination / "saved", target_is_directory=True
+        )
+        with pytest.raises(SdkError, match="contains a link"):
+            agent.runs.download_deliverables(submitted.run_id, destination)
+        with service.db.write() as conn:
+            conn.execute(
+                update(t.artifacts)
+                .where(t.artifacts.c.id == artifact.id)
+                .values(expires_at="2000-01-01T00:00:00Z")
+            )
+        service.artifacts.sweep()
+        (expired,) = agent.runs.download_deliverables(submitted.run_id, tmp_path / "expired")
+        assert expired.path is None and expired.skipped_reason == "RETENTION_EXPIRED"

@@ -21,7 +21,7 @@
   },
   "page": {
     "title": "数据集",
-    "intro": "准入、内容可得性与本机缓存分开显示：缓存被回收的已准入任务仍可提交，运行时按原摘要自动恢复。",
+    "intro": "查看 Hub 与上传的数据集、固定版本和任务准入。Harbor task 目录通过 SDK 上传。",
     "empty": "还没有数据集。",
     "deleteDatasetConfirm": "删除数据集「{{name}}」及其全部版本？它会移入回收站；已有运行记录保留，但不能再用它提交或重跑。",
     "deleteVersionConfirm": "删除版本「{{dataset}} {{ref}}」？它会移入回收站；已有运行记录保留，但不能再用它提交或重跑。",
@@ -37,7 +37,8 @@
     "versionCounts": "可提交 {{submittable}}/{{total}} · 缓存就绪 {{ready}}",
     "deleteVersion": "删除该版本",
     "deleteVersionLabel": "删除版本 {{ref}}",
-    "notListed": "这个版本不在数据集列表中：它已删除或不存在；已删除的版本仍可查看，但不能再用来提交。"
+    "notListed": "这个版本不在数据集列表中：它已删除或不存在；已删除的版本仍可查看，但不能再用来提交。",
+    "uploadNoUpstream": "通过 SDK 上传；没有上游更新检查，不使用 Hub 凭据。"
   },
   "diff": {
     "added": "新增",

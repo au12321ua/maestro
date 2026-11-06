@@ -327,6 +327,7 @@ class ScoringContract(Model):
 
 
 class DatasetVersionDetail(DatasetVersion):
+    source_kind: str
     namespace: str
     name: str
     first_preparation_operation_id: str | None
@@ -1192,6 +1193,20 @@ class AttachmentPublish(Model):
     parent_id: str | None = Field(None, description="The snapshot this one was made from")
 
 
+class DatasetUploadFile(AttachmentFileEntry):
+    path: str = Field(
+        description="Relative task file path; Unicode and spaces allowed; no links or traversal"
+    )
+
+
+class DatasetUpload(Model):
+    namespace: str
+    name: str
+    files: list[DatasetUploadFile] = Field(
+        description="Harbor task directories as relative paths; upload missing attachment contents first"
+    )
+
+
 class AttachmentContents(Model):
     sha256: list[str]
 
@@ -2054,7 +2069,7 @@ class Snapshot(SnapshotSummary):
 
 # --- workflow records ----------------------------------------------------------------
 
-RecordTargetType = Literal["collection", "run", "attachment"]
+RecordTargetType = Literal["collection", "run", "attachment", "dataset_version"]
 RecordReferenceType = Literal[
     "run", "trial", "artifact", "attachment_snapshot", "collection", "analysis_snapshot"
 ]

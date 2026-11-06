@@ -3,22 +3,24 @@
 Listing the source kinds is open to every authenticated caller. Searching a source
 uses the team Hub credential, and adding versions, first preparation and its retry,
 cache eviction and admission revocation change the platform: all of them need an
-administrator's web session. Reading what is already imported is in
+administrator's web session or a datasets-enabled administrator PAT. Reading what is already imported is in
 ``services.catalog``. The long work runs as
 Operations on the worker loop (``services.preparation``); these methods only
 validate, record and return the Operation.
 """
 
-from sqlalchemy import select, update
+from sqlalchemy import insert, select, update
 
 from maestro.boundaries.dataset_source import DatasetSource, SourceError
 from maestro.core import clock
 from maestro.core.errors import FieldError, MaestroError, not_found
 from maestro.db import schema as t
 from maestro.db.engine import Database
-from maestro.domain import scoring
+from maestro.domain import limits, scoring
 from maestro.domain.states import PatPermission
+from maestro.execution.attachments import NAME, PackageError
 from maestro.services import audit, deleted, operations
+from maestro.services.attachments import _held
 from maestro.services.preparation import (
     KIND_EVICT,
     KIND_IMPORT,
@@ -53,10 +55,11 @@ def _source_error(error: SourceError) -> MaestroError:
 
 
 class Datasets:
-    def __init__(self, db: Database, sources: dict[str, DatasetSource], credentials):
+    def __init__(self, db: Database, sources: dict[str, DatasetSource], credentials, store=None):
         self.db = db
         self.sources = sources
         self.credentials = credentials
+        self.store = store
 
     # --- sources ---------------------------------------------------------------------
 
@@ -68,6 +71,15 @@ class Datasets:
         if source is None:
             raise MaestroError("SOURCE_NOT_CONFIGURED", f"No dataset source {kind!r}", 422)
         return source
+
+    @staticmethod
+    def _upstream(kind: str) -> None:
+        if kind == "upload":
+            raise MaestroError(
+                "SOURCE_OPERATION_UNAVAILABLE",
+                "Uploaded datasets have no upstream updates or Hub credentials; upload a directory",
+                422,
+            )
 
     def _check_credential(self, credential_id: str | None) -> None:
         if credential_id is None:
@@ -99,6 +111,7 @@ class Datasets:
         self, principal: Principal, kind: str, query: str, credential_id: str | None
     ) -> list[dict]:
         require_admin(principal, PatPermission.DATASETS)
+        self._upstream(kind)
         if not 1 <= len(query.strip()) <= 128:
             raise MaestroError(
                 "CONFIG_VALIDATION_FAILED",
@@ -115,6 +128,7 @@ class Datasets:
         self, principal: Principal, kind: str, namespace: str, name: str, credential_id: str | None
     ):
         require_admin(principal, PatPermission.DATASETS)
+        self._upstream(kind)
         try:
             return await self._source(kind).list_versions(
                 namespace, name, self._value(credential_id)
@@ -133,6 +147,7 @@ class Datasets:
     ) -> dict:
         """Preview of a fixed version: digest and task list, nothing is recorded."""
         require_admin(principal, PatPermission.DATASETS)
+        self._upstream(kind)
         try:
             version = await self._source(kind).describe(
                 namespace, name, ref, self._value(credential_id)
@@ -166,9 +181,94 @@ class Datasets:
 
     # --- administration ---------------------------------------------------------------
 
+    def request_upload(self, principal: Principal, body: dict) -> dict:
+        """Hold the original file list for a normal import and first preparation."""
+        require_admin(principal, PatPermission.DATASETS)
+        source = self._source("upload")
+        if source.validator.runner_python is None:
+            raise MaestroError(
+                "RUNNER_NOT_CONFIGURED", "Dataset upload validation needs the Runner", 422
+            )
+        for key in ("namespace", "name"):
+            if not isinstance(body.get(key), str) or not NAME.fullmatch(body[key]):
+                raise MaestroError(
+                    "DATASET_UPLOAD_INVALID",
+                    f"Invalid {key}",
+                    422,
+                    field_errors=[FieldError(f"/{key}", "PATTERN")],
+                )
+        try:
+            package = self.store.check(
+                body.get("files"),
+                limits.DATASET_UPLOAD_MAX_FILES,
+                limits.DATASET_UPLOAD_MAX_BYTES,
+                attachment=False,
+            )
+        except PackageError as error:
+            raise MaestroError(
+                "DATASET_UPLOAD_INVALID",
+                str(error),
+                422,
+                field_errors=[FieldError(p, code, message) for p, code, message in error.problems],
+            ) from None
+        if any("/" not in f["path"] for f in package.files):
+            raise MaestroError(
+                "DATASET_UPLOAD_INVALID", "Every file must be inside a task directory", 422
+            )
+        request = {
+            "source_kind": "upload",
+            "namespace": body["namespace"],
+            "name": body["name"],
+            "ref": package.content_digest,
+            "prepare": True,
+            "credential_id": None,
+            "accept_changed_content": False,
+        }
+        with self.db.write() as conn:
+            held = _held(conn, [f["sha256"] for f in package.files], principal.user_id)
+            if any(
+                f["sha256"] not in held or self.store.blob(f["sha256"]) is None
+                for f in package.files
+            ):
+                raise MaestroError(
+                    "DATASET_CONTENT_MISSING", "Upload missing file contents first", 422
+                )
+            op_id = operations.create(
+                conn,
+                KIND_IMPORT,
+                owner_id=principal.user_id,
+                progress={"request": request},
+                phase="queued",
+            )
+            conn.execute(
+                insert(t.dataset_files),
+                [
+                    {**f, "operation_id": op_id, "dataset_digest": package.content_digest}
+                    for f in package.files
+                ],
+            )
+            audit.record(
+                conn,
+                principal,
+                "dataset.upload",
+                object_type="operation",
+                object_id=op_id,
+                detail={
+                    "namespace": body["namespace"],
+                    "name": body["name"],
+                    "digest": package.content_digest,
+                },
+            )
+            return operations.public(
+                conn.execute(select(t.operations).where(t.operations.c.id == op_id))
+                .mappings()
+                .one()
+            )
+
     def request_import(self, principal: Principal, body: dict) -> dict:
         require_admin(principal, PatPermission.DATASETS)
         kind = body.get("source_kind") or "hub"
+        self._upstream(kind)
         self._source(kind)
         errors = []
         for field in ("namespace", "name", "ref"):

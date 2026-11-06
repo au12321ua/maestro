@@ -53,6 +53,9 @@ class RecordingSink:
     async def artifact(self, trial_id, attempt, kind, relative_path, data):
         self.files[(trial_id, attempt, relative_path)] = (kind, data)
 
+    async def artifact_failed(self, trial_id, attempt, kind, relative_path, reason):
+        self._record("artifact_failed", trial_id, attempt, relative_path, reason)
+
     async def run_artifact(self, kind, relative_path, data):
         self.files[("run", relative_path)] = (kind, data)
 

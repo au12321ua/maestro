@@ -28,7 +28,7 @@ from maestro.api.routes.runs import attachment as disposition
 from maestro.core.errors import MaestroError
 from maestro.domain import limits
 from maestro.execution.attachments import SHA256
-from maestro.services.principal import Principal, require_experiment
+from maestro.services.principal import Principal, require_content_upload
 
 router = APIRouter(prefix="/api/v1", tags=["attachments"])
 
@@ -81,7 +81,7 @@ async def upload_content(sha256: str, request: Request, who: Principal = Depends
     if declared and declared.isdigit() and int(declared) > limit:
         raise too_large
     # Before anything is written to disk.
-    require_experiment(who)
+    require_content_upload(who)
     if maestro(request).disk:
         maestro(request).disk.refuse_if_low("attachments")
     service = maestro(request).attachments

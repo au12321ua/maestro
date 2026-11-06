@@ -187,4 +187,25 @@ async def fetch(request: dict) -> dict:
     return {"content_digest": expected, "path": str(destination)}
 
 
-COMMANDS = {"search": search, "versions": versions, "describe": describe, "fetch": fetch}
+async def validate_tasks(request: dict) -> dict:
+    """Parse every local task with Harbor, returning all task errors together."""
+    from harbor.models.task.task import Task
+
+    errors = []
+    for path in sorted(Path(request["directory"]).iterdir()):
+        try:
+            Task(path)
+        except Exception as error:  # noqa: BLE001 - task errors are reported individually
+            errors.append({"task_key": path.name, "message": str(error)[:MESSAGE_LIMIT]})
+    if errors:
+        raise HubError("unsupported", "Uploaded Harbor tasks are invalid", {"task_errors": errors})
+    return {"valid": True}
+
+
+COMMANDS = {
+    "search": search,
+    "versions": versions,
+    "describe": describe,
+    "fetch": fetch,
+    "validate_tasks": validate_tasks,
+}

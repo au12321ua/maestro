@@ -9,7 +9,7 @@ from typing import Any
 
 from maestro_sdk import models
 from maestro_sdk._transport import _body, _key, _query, _Resource, _save
-from maestro_sdk.errors import MaestroError
+from maestro_sdk.errors import ApiError, MaestroError
 from maestro_sdk.results import Download, Submission
 
 
@@ -148,9 +148,72 @@ class Runs(_Resource):
             results.append(Download(artifact=artifact, path=str(target)))
         return results
 
+    def download_deliverables(
+        self, run_id: str, directory: str | os.PathLike[str]
+    ) -> list[Download]:
+        """Download the final attempt's artifacts/ files to task_key/repetition/files.
+
+        Bytes are checked against the indexed digest before replacing a local file.
+        Expired and failed files retain their reasons in the returned download report.
+        Earlier retry attempts are left out. This defines no submission package format.
+        """
+        root = Path(directory).absolute()
+        trials = {trial.id: trial for trial in self.trials(run_id)}
+        results = []
+        for artifact in self.artifacts(run_id):
+            if artifact.kind != "output" or artifact.trial_id not in trials:
+                continue
+            trial = trials[artifact.trial_id]
+            final = (
+                trial.result.attempt_id
+                if trial.result
+                else (
+                    max(trial.attempts, key=lambda a: a.attempt_index).id
+                    if trial.attempts
+                    else None
+                )
+            )
+            if artifact.attempt_id != final:
+                continue
+            if artifact.status != "available":
+                results.append(
+                    Download(
+                        artifact=artifact,
+                        path=None,
+                        skipped_reason=artifact.status_reason or artifact.status,
+                    )
+                )
+                continue
+            if not artifact.relative_path.startswith("artifacts/") or not artifact.digest:
+                raise MaestroError(f"Invalid deliverable metadata: {artifact.id}")
+            target = _inside(_inside(root, trial.task_key), str(trial.repetition_index))
+            target = _inside(target, artifact.relative_path.removeprefix("artifacts/"))
+            for path in (target, *target.parents):
+                if path.is_symlink():
+                    raise MaestroError(f"Download destination contains a link: {path}")
+            try:
+                _save(
+                    self._c,
+                    f"artifacts/{artifact.id}/download",
+                    target,
+                    expected_digest=artifact.digest,
+                )
+            except ApiError as error:
+                if error.status not in (404, 409, 410):
+                    raise
+                results.append(Download(artifact=artifact, path=None, skipped_reason=error.code))
+                continue
+            results.append(Download(artifact=artifact, path=str(target)))
+        return results
+
 
 def _inside(base: Path, relative: str) -> Path:
     parts = PurePosixPath(relative).parts
-    if not parts or PurePosixPath(relative).is_absolute() or ".." in parts:
+    if (
+        not parts
+        or PurePosixPath(relative).is_absolute()
+        or ".." in parts
+        or (os.name == "nt" and ("\\" in relative or any(":" in p for p in parts)))
+    ):
         raise MaestroError(f"Refusing artifact path {relative!r}")
     return base.joinpath(*parts)

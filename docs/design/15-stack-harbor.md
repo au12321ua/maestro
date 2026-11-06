@@ -24,7 +24,7 @@
 ## 3. 两条 schema 边界
 
 1. **平台 API**：由 FastAPI 路由和平台 Pydantic 模型导出 OpenAPI，网页类型、SDK 模型和 API 文档都从这一份生成。
-2. **Harbor 作业**：只在 Runner 内出现。Runner 用锁定版本 Harbor 的 Pydantic 模型（`JobConfig`、`RetryConfig` 等）直接构造作业、解析结果，再转换为平台协议事件。
+2. **Harbor 作业**：只在 Runner 内出现。上传任务的检查也由一次性 Runner 使用 Harbor 的任务模型和目录检查完成，汇总每题错误，不运行转换器。Runner 用锁定版本 Harbor 的 Pydantic 模型（`JobConfig`、`RetryConfig` 等）直接构造作业、解析结果，再转换为平台协议事件。
 
 服务端不向客户端透传 Harbor 的类型、异常类或 job config，升级 Harbor 不直接改变公共 API。
 
@@ -66,9 +66,9 @@ Worker 在服务进程内，负责领取、租约、取消、资源和结果确�
 | stdin | 一个 JSON：protocol_version、命令（`execute` / `hub` / `probe`）、运行规格 | `execute` 的规格含 run_id、任务路径与 trial_ids、Agent、网络计划、标签、重试设置、产物上限、凭据 |
 | stdout | NDJSON 事件，一行一个 | envelope 为 protocol_version、run_id、无间断的 sequence、type、at、payload；Runner 在导入 Harbor 前把 fd 1 留给协议，其余输出全部转到 stderr |
 | stderr | 诊断输出 | 服务持续读取，只保留有界的头尾并脱敏，防止管道阻塞；不作评分依据 |
-| 工作目录 | 每个执行尝试的归档目录 | Runner 按产物上限复制，超限的列为跳过；服务入库时对文本文件脱敏 |
+| 工作目录 | 每个执行尝试的归档目录 | Runner 按产物上限复制，超限的列为跳过；服务入库时对日志与其他产品中的文本脱敏，`artifacts/` 交付物保持原字节，超限或收集不完整时不发布部分交付物 |
 
-`execute` 的事件：started（Harbor 与 Runner 版本、试次数、PID）、network_plan、attempt_started、phase_changed、log、attempt_finished（结果、是否还会重试、归档目录与逐文件摘要清单、用量、耗时、附件安装记录）、heartbeat、cancel_requested、completed。`hub` 与 `probe` 只回一条 result。阶段事件来自 Harbor Job 的试次生命周期钩子（`Job.add_hook`），不解析终端输出；log 事件是 Runner 定期读取 Agent 与验证日志、渲染 Agent 轨迹得到的。
+`execute` 的事件：started（Harbor 与 Runner 版本、试次数、PID）、network_plan、attempt_started、phase_changed、log、attempt_finished（结果、是否还会重试、归档目录与逐文件摘要清单、用量、耗时、附件安装记录）、heartbeat、cancel_requested、completed。`hub`（含本地上传任务检查）与 `probe` 只回一条 result。阶段事件来自 Harbor Job 的试次生命周期钩子（`Job.add_hook`），不解析终端输出；log 事件是 Runner 定期读取 Agent 与验证日志、渲染 Agent 轨迹得到的。
 
 没有单独的结果目录完成标记：平台按 attempt_finished 的清单逐个核对归档文件的摘要后入库。进程退出码（0 完成、2 Runner 错误、3 取消、4 拒绝）不决定业务结果，平台按事件、租约和错误策略决定试次状态；退出码 0 不等于任务通过，非零也不抹去已确认的结果。Runner 长时间无事件（`runner_silence_sec`）视为失联并停止。
 

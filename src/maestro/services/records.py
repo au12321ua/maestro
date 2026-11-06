@@ -18,7 +18,7 @@ from maestro.security.redaction import redact
 from maestro.services import audit, deleted
 from maestro.services.principal import Principal, can_manage_owned, require_experiment
 
-TARGET_TYPES = ("collection", "run", "attachment")
+TARGET_TYPES = ("collection", "run", "attachment", "dataset_version")
 REFERENCE_TABLES = {
     "run": t.runs,
     "trial": t.trials,
@@ -54,7 +54,7 @@ def check_target(raw: dict) -> dict:
         raise _invalid("/target", "Invalid record target")
     kind, identity, snapshot = raw.get("type"), raw.get("id"), raw.get("snapshot_id")
     if kind not in TARGET_TYPES or not isinstance(identity, str) or not 1 <= len(identity) <= 128:
-        raise _invalid("/target", "Choose a collection, run or attachment name")
+        raise _invalid("/target", "Choose a collection, run, attachment name or dataset version")
     if snapshot is not None and (kind != "attachment" or not isinstance(snapshot, str)):
         raise _invalid("/target/snapshot_id", "Only an attachment can pin a snapshot")
     return {"type": kind, "id": identity, "snapshot_id": snapshot}
@@ -65,10 +65,14 @@ def target_state(conn: Connection, target: dict) -> dict | None:
     exist through their snapshots, and remain live while any snapshot is live."""
     kind, identity = target["type"], target["id"]
     if kind != "attachment":
-        table = REFERENCE_TABLES[kind]
+        table = t.dataset_versions if kind == "dataset_version" else REFERENCE_TABLES[kind]
         if conn.execute(select(table.c.id).where(table.c.id == identity)).first() is None:
             raise not_found("Record target")
-        return deleted.state(conn, kind, identity)
+        return (
+            deleted.version_state(conn, identity)
+            if kind == "dataset_version"
+            else deleted.state(conn, kind, identity)
+        )
     query = select(t.attachment_versions.c.id).where(t.attachment_versions.c.name == identity)
     if target["snapshot_id"] is not None:
         query = query.where(t.attachment_versions.c.id == target["snapshot_id"])

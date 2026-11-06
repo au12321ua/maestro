@@ -229,3 +229,43 @@ def test_the_runner_insists_on_sane_artifact_limits():
     assert result.returncode == 0, result.stderr
     (probe,) = [json.loads(line)["payload"] for line in result.stdout.splitlines()]
     assert probe["outcomes"] == ["ok"] + ["RUNNER_INPUT_INVALID"] * 7
+
+
+@pytest.mark.parametrize("case", ["file", "total", "count", "within"])
+def test_deliverables_are_complete_or_failed_without_partial_bytes(trial, case):
+    out, directory, _, _ = trial
+    output = directory / "artifacts"
+    output.mkdir()
+    raw = b"api_key=sk-abcdefghijklmnopqrstuv\nSTEP;"
+    (output / "a.step").write_bytes(raw)
+    (output / "b.step").write_bytes(raw * 3)
+    (directory / "agent" / "log.txt").write_bytes(b"log")
+    limits = {"max_files": 10, "max_file_bytes": 1000, "max_total_bytes": 2000}
+    if case == "file":
+        limits["max_file_bytes"] = len(raw) * 2
+    elif case == "total":
+        limits["max_total_bytes"] = len(raw) * 3
+    elif case == "count":
+        limits["max_files"] = 1
+    (finished,) = [
+        e for e in drive(out, [["finish"]], limits=limits) if e["_type"] == "attempt_finished"
+    ]
+    archive = out / finished["archive"]
+    entries = [f for f in finished["files"] if f["path"].startswith("artifacts/")]
+    if case == "within":
+        assert all(not f.get("skipped") for f in entries)
+        assert (archive / "artifacts" / "b.step").read_bytes() == raw * 3
+    else:
+        assert entries and all(f.get("skipped") and f["reason"] for f in entries)
+        assert not any(p.is_file() for p in (archive / "artifacts").rglob("*"))
+
+
+def test_deliverable_total_budget_is_shared_across_trial_retries(trial):
+    out, directory, _, _ = trial
+    (directory / "artifacts").mkdir()
+    (directory / "artifacts" / "output.step").write_bytes(b"STEP;" * 10)
+    events = drive(out, [["finish"], ["retry"], ["finish"]], limits={"max_total_bytes": 80})
+    first, second = [e for e in events if e["_type"] == "attempt_finished"]
+    assert not first["files"][0].get("skipped")
+    assert second["files"][0]["reason"] == "DELIVERABLES_TOTAL_LIMIT"
+    assert not (out / second["archive"] / "artifacts" / "output.step").exists()

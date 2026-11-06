@@ -226,6 +226,15 @@ def test_binary_and_oversized_files_stay_untouched():
     assert harbor._redacted(big, LIMIT) == big
 
 
+def test_deliverables_are_checked_only_for_this_runs_known_secrets():
+    # Deliverables are stored byte-for-byte, so generic secret shapes stay; a value the
+    # run was given (a model key) makes the file refused instead of stored.
+    step = b"ISO-10303-21;\nDATA;\n#1=CARTESIAN_POINT('sk-abcdefghijklmnopqrstuvwx');\n"
+    assert not harbor._holds_secret(step, ())
+    assert not harbor._holds_secret(step, ("", "other-key"))
+    assert harbor._holds_secret(step + b"real-model-key", ("real-model-key",))
+
+
 # --- live Runner logs -------------------------------------------------------------
 
 

@@ -128,6 +128,10 @@ class HubSource:
     async def search(self, query: str, credential: str | None) -> list[dict]:
         return await self._call("search", {"query": query}, credential, timeout=60)
 
+    async def validate_tasks(self, directory: Path) -> None:
+        """Parse local task inputs with Harbor without contacting a dataset source."""
+        await self._call("validate_tasks", {"directory": str(directory)}, None)
+
     async def list_versions(self, namespace: str, name: str, credential: str | None) -> list:
         return await self._call(
             "versions", {"namespace": namespace, "name": name}, credential, timeout=60

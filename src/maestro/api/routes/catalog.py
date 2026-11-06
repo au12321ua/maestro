@@ -2,7 +2,7 @@
 
 Every authenticated caller may read the datasets, versions, tasks and caches already
 in the platform. Searching the external source uses the team Hub credential, so it
-needs an administrator's web session like the rest of ``admin``.
+needs an administrator session or an administrator PAT with datasets permission.
 """
 
 from fastapi import APIRouter, Depends, Request
@@ -11,8 +11,10 @@ from maestro.api.deps import admin, maestro, ok, principal
 from maestro.api.models import (
     Dataset,
     DatasetSource,
+    DatasetUpload,
     DatasetVersionDetail,
     Envelope,
+    Operation,
     Preparation,
     SourceDataset,
     SourceVersion,
@@ -28,6 +30,16 @@ from maestro.services.principal import Principal
 
 router = APIRouter(prefix="/api/v1", tags=["catalog"])
 ADMIN = [Depends(admin(PatPermission.DATASETS))]
+
+
+@router.post(
+    "/dataset-uploads", response_model=Envelope[Operation], status_code=202, dependencies=ADMIN
+)
+def upload_dataset(body: DatasetUpload, request: Request, who: Principal = Depends(principal)):
+    """Import a file list, validate tasks with the Runner, then start first preparation."""
+    service = maestro(request)
+    service.disk.refuse_if_low("datasets")
+    return ok(request, service.datasets.request_upload(who, body.model_dump()))
 
 
 @router.get("/dataset-sources", response_model=Envelope[list[DatasetSource]])

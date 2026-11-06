@@ -19,6 +19,32 @@ if spec.get("command") == "probe":
         payload = {"status": "ok", "data": {"network_restriction": answer == "network"}}
         print(json.dumps({"protocol_version": 2, "type": "result", "payload": payload}))
     sys.exit(0)
+if spec.get("command") == "hub" and spec.get("op") == "validate_tasks":
+    import tomllib
+
+    errors = []
+    for task in sorted(Path(spec["directory"]).iterdir()):
+        try:
+            config = tomllib.loads((task / "task.toml").read_text())
+            (task / "instruction.md").read_text()
+            if not (task / "environment").is_dir() and not config.get("environment", {}).get(
+                "docker_image"
+            ):
+                raise ValueError("Missing environment directory")
+        except (ValueError, OSError) as error:
+            errors.append({"task_key": task.name, "message": str(error)})
+    payload = (
+        {
+            "status": "error",
+            "kind": "unsupported",
+            "message": "Invalid Harbor tasks",
+            "evidence": {"task_errors": errors},
+        }
+        if errors
+        else {"status": "ok", "data": {"valid": True}}
+    )
+    print(json.dumps({"protocol_version": 2, "type": "result", "payload": payload}))
+    sys.exit(0)
 out = Path(spec["output_dir"])
 mode = spec["tasks"][0]["task_key"]
 # What arrived, for tests that check the request.
@@ -83,7 +109,46 @@ trials = [t for task in spec["tasks"] for t in task["trial_ids"]]
 harbor = "9.9.9" if mode == "harbor-mismatch" else "0.24.0"
 emit("started", harbor_version=harbor, runner_version="fake", n_trials=len(trials))
 
-if mode in ("ok", "flood"):
+if mode in ("deliverables", "deliverables-retry"):
+    import hashlib
+
+    attempts = 2 if mode == "deliverables-retry" else 1
+    for trial_id in trials:
+        for attempt in range(1, attempts + 1):
+            if attempt == 1:
+                run_trial(trial_id)
+            else:
+                emit("attempt_started", trial_id=trial_id, attempt=attempt)
+            archive = out / "attempts" / trial_id / str(attempt)
+            (archive / "artifacts" / "nested").mkdir(parents=True)
+            data = b"api_key=sk-abcdefghijklmnopqrstuv\n" + b"STEP;" * 100
+            if attempt == 2:
+                data += b"FINAL"
+            (archive / "artifacts" / "nested" / "output.step").write_bytes(data)
+            retry = attempt < attempts
+            finish_attempt(
+                trial_id,
+                attempt,
+                None if retry else {"reward": 1.0},
+                exception="ApiRateLimitError" if retry else None,
+                retry=retry,
+                files=[
+                    {
+                        "path": "artifacts/nested/output.step",
+                        "size": len(data),
+                        "sha256": hashlib.sha256(data).hexdigest(),
+                    },
+                    {
+                        "path": "trial.log",
+                        "size": 36,
+                        "sha256": hashlib.sha256(
+                            b"api_key=sk-abcdefghijklmnopqrstuv\n"
+                        ).hexdigest(),
+                    },
+                ],
+            )
+    emit("completed", status="completed")
+elif mode in ("ok", "flood"):
     if mode == "flood":
         chunk = b"x" * 65536 + b"\n"
         for _ in range(320):  # ~20 MiB: the worker must keep draining stderr

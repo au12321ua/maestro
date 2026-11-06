@@ -86,6 +86,18 @@ def _check_path(name: str) -> str | None:
     return name
 
 
+def _check_dataset_path(name: str) -> str | None:
+    """Task files may have spaces and Unicode names, but cannot escape their tree."""
+    if not name or len(name) > PATH_MAX or name.startswith("/") or "\\" in name or name[1:2] == ":":
+        return None
+    parts = name.split("/")
+    if len(parts) > DEPTH_MAX or any(p in {"", ".", ".."} for p in parts):
+        return None
+    if any(ord(c) < 32 for c in name):
+        return None
+    return name
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -246,7 +258,7 @@ class AttachmentStore:
 
     # --- snapshots ---------------------------------------------------------------------
 
-    def check(self, entries, max_files: int, max_bytes: int) -> Package:
+    def check(self, entries, max_files: int, max_bytes: int, *, attachment: bool = True) -> Package:
         """The snapshot a client's file list describes, with every content present.
         ``entries`` are {path, sha256, executable}; sizes come from the stored contents."""
         problems: list[tuple[str, str, str]] = []
@@ -265,9 +277,10 @@ class AttachmentStore:
         total = 0
         for index, entry in enumerate(entries):
             raw = entry.get("path") if isinstance(entry, dict) else None
-            path = _check_path(raw) if isinstance(raw, str) and not raw.endswith("/") else None
+            check_path = _check_path if attachment else _check_dataset_path
+            path = check_path(raw) if isinstance(raw, str) and not raw.endswith("/") else None
             if path is None:
-                problem(str(index), "PATH", "only relative names of letters, digits and ._+@-")
+                problem(str(index), "PATH", "a safe relative file path is required")
                 continue
             sha = entry.get("sha256")
             if not isinstance(sha, str) or not SHA256.fullmatch(sha):
@@ -299,9 +312,9 @@ class AttachmentStore:
             problem("", "TOO_LARGE", f"at most {max_bytes} bytes")
         if problems:
             raise PackageError("The snapshot holds entries that are not allowed", problems)
-        if MANIFEST not in files:
+        if attachment and MANIFEST not in files:
             raise PackageError("The snapshot has no manifest.json", [("/files", "MANIFEST", "")])
-        manifest = _read_manifest(self.blobs / files[MANIFEST]["sha256"])
+        manifest = _read_manifest(self.blobs / files[MANIFEST]["sha256"]) if attachment else {}
         ordered = [files[p] for p in sorted(files)]
         return Package(
             manifest=manifest,

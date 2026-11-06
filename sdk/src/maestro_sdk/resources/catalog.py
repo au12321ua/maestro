@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
+from pathlib import Path
 
 from maestro_sdk import models
 from maestro_sdk._transport import _Resource
+from maestro_sdk.errors import ContentMismatch
+from maestro_sdk.resources.attachments import _describe, files_digest
 
 
 class Catalog(_Resource):
@@ -13,6 +17,49 @@ class Catalog(_Resource):
 
     def sources(self) -> list[models.DatasetSource]:
         return self._c._get("dataset-sources", list[models.DatasetSource])
+
+    def upload(
+        self, directory: str | os.PathLike[str], *, namespace: str, name: str
+    ) -> models.Operation:
+        """Upload Harbor task subdirectories as-is and start import and first preparation.
+
+        Needs an administrator PAT with datasets permission. Wait on the returned
+        operation; its result identifies the dataset version and preparation operation.
+        Repeating the same content resolves to the same version within this dataset.
+        Task validation errors are reported per task in the import operation.
+        """
+        root = Path(directory)
+        if root.is_symlink() or not root.is_dir():
+            raise ValueError(f"Not a regular directory: {root}")
+        files = _describe(root, ())
+        if not files or any("/" not in f["path"] for f in files):
+            raise ValueError("Upload a directory of Harbor task subdirectories")
+        for task in root.iterdir():
+            if task.is_dir() and not any(f["path"].startswith(task.name + "/") for f in files):
+                raise ValueError(f"Task {task.name} is empty")
+        by_sha = {f["sha256"]: f for f in files}
+        missing = self._c._call(
+            "POST", "attachment-contents/missing", json={"sha256": sorted(by_sha)}, retry=True
+        ).json()["data"]["missing"]
+        for sha in missing:
+            self._c._call(
+                "PUT",
+                f"attachment-contents/{sha}",
+                content=by_sha[sha]["source"].read_bytes(),
+                headers={"Content-Type": "application/octet-stream"},
+                retry=True,
+            )
+        listed = [{k: f[k] for k in ("path", "sha256", "executable")} for f in files]
+        response = self._c._call(
+            "POST",
+            "dataset-uploads",
+            retry=True,
+            json={"namespace": namespace, "name": name, "files": listed},
+        )
+        operation = self._c._parse(models.Operation, response.json()["data"])
+        if operation.progress.request.ref != files_digest(listed):
+            raise ContentMismatch("The dataset upload operation has a different content digest")
+        return operation
 
     def datasets(self, *, limit: int | None = None) -> Iterator[models.Dataset]:
         return self._c._iterate("datasets", models.Dataset, limit=limit)

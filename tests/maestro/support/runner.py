@@ -43,6 +43,9 @@ for step, *rest in spec["steps"]:
     elif step == "append":
         with open(rest[0], "a") as handle:
             handle.write(rest[1])
+    elif step == "retry":
+        ex.attempt["t1"] += 1
+        ex.live.add("t1")
     elif step == "finish":
         ex._finish(event, "TRIAL_X")
     elif step == "open_below":

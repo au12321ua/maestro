@@ -22,7 +22,7 @@
   },
   "page": {
     "title": "Datasets",
-    "intro": "Admission, content availability and the local cache are shown separately: admitted tasks whose cache was evicted can still be submitted and are restored from the original digest at run time.",
+    "intro": "Browse Hub and uploaded datasets, fixed versions and task admission. Upload Harbor task directories with the SDK.",
     "empty": "No datasets yet.",
     "deleteDatasetConfirm": "Delete dataset \"{{name}}\" and all its versions? It moves to the recycle bin; existing runs are kept, but it can no longer be used to submit or rerun.",
     "deleteVersionConfirm": "Delete version \"{{dataset}} {{ref}}\"? It moves to the recycle bin; existing runs are kept, but it can no longer be used to submit or rerun.",
@@ -38,7 +38,8 @@
     "versionCounts": "Submittable {{submittable}}/{{total}} · cache ready {{ready}}",
     "deleteVersion": "Delete this version",
     "deleteVersionLabel": "Delete version {{ref}}",
-    "notListed": "This version is not in the dataset list: it was deleted or does not exist. A deleted version can still be viewed, but not used to submit."
+    "notListed": "This version is not in the dataset list: it was deleted or does not exist. A deleted version can still be viewed, but not used to submit.",
+    "uploadNoUpstream": "Uploaded with the SDK. No upstream update check or Hub credential applies."
   },
   "diff": {
     "added": "Added",

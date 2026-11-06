@@ -104,6 +104,12 @@ class ExecutionSink(Protocol):
 
     async def run_artifact(self, kind: str, relative_path: str, data: bytes) -> None: ...
 
+    async def artifact_failed(
+        self, trial_id: str, attempt_index: int, kind: str, relative_path: str, reason: str
+    ) -> None:
+        """Keep the failure receipt without storing any partial content."""
+        ...
+
     async def attempt_finished(
         self, trial_id: str, attempt_index: int, outcome: AttemptOutcome, final: bool
     ) -> None:
