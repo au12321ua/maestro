@@ -7,8 +7,11 @@ import pytest
 from maestro_sdk import ContentMismatch
 from maestro_sdk.workflows.attachments import (
     build_report,
+    candidates,
     collect_evidence,
+    decide_candidate,
     prepare_candidate,
+    save_candidate,
     write_task_briefs,
 )
 from sqlalchemy import select
@@ -490,3 +493,56 @@ def test_report_marks_missing_tasks_incomplete_even_when_all_trials_scored(workf
     assert all(r["scored_trials"] == r["planned_trials"] for r in report["runs"])
     assert report["comparison"]["common_tasks"] < report["comparison"]["all_tasks"]
     assert not report["complete"]
+
+
+def test_candidate_records_keep_every_decision_and_find_their_runs(workflow):
+    client, collection, parent, candidate = workflow
+    parent_run = finish(client, collection, parent)
+    candidate_run = finish(client, collection, candidate)
+    evidence = {"type": "run", "id": parent_run}
+    record = save_candidate(
+        client,
+        collection.id,
+        candidate.id,
+        hypothesis="Explain the delivery path in the skill",
+        parent_snapshot_id=parent.id,
+        change_kind="delivery",
+        references=[evidence, {"type": "attachment_snapshot", "id": candidate.id}],
+        excerpts=[{"text": "no output.step written", "reference": evidence}],
+        self_report={"model": "m", "cost_usd": None},
+    )
+    assert record.kind == "attachment-candidate" and record.target.id == collection.id
+    assert [(r.type, r.id) for r in record.references] == [
+        ("attachment_snapshot", candidate.id),
+        ("attachment_snapshot", parent.id),
+        ("run", parent_run),
+    ]
+    # Saving the same snapshot again (a retry after an interruption) adds nothing.
+    again = save_candidate(client, collection.id, candidate.id, hypothesis="other")
+    assert again.id == record.id and again.revision == 1
+
+    decide_candidate(client, record.id, "undecided", reason="waiting for runs")
+    decided = decide_candidate(
+        client,
+        record.id,
+        "keep",
+        reason="mechanism observed in both trials",
+        evidence_level="mechanism observed",
+        references=[{"type": "run", "id": candidate_run}],
+        excerpts=[{"text": "wrote output.step"}],
+    )
+    assert [d["decision"] for d in decided.model_dump(mode="json")["body"]["decisions"]] == [
+        "undecided",
+        "keep",
+    ]
+    assert len(decided.excerpts) == 2 and decided.revision == 3
+    assert ("run", candidate_run) in [(r.type, r.id) for r in decided.references]
+    assert len(client.records.history(record.id)) == 3
+    with pytest.raises(ValueError, match="decision must be one of"):
+        decide_candidate(client, record.id, "better", reason="x")
+
+    client.collections.set_current_best(collection.id, candidate.id, reason="kept")
+    [listed] = candidates(client, collection.id)
+    assert listed["record_id"] == record.id and listed["current_best"] is True
+    assert listed["decision"]["decision"] == "keep"
+    assert listed["run_ids"] == [candidate_run]

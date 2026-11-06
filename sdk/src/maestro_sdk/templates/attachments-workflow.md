@@ -25,5 +25,11 @@ which snapshot to keep. Follow the installed `maestro-package` skill for decisio
    dropped tasks, all tasks common, and every compared run's scored trials equal its
    planned trials. Unknown usage/cost stays unknown. This does not decide what is better.
 
-Keep hypotheses, decisions and useful excerpts in your own notes. Platform workflow
-record read/write is not provided by these helpers.
+5. `save_candidate(client, collection_id, snapshot_id, hypothesis=..., ...)` records a
+   published snapshot as a candidate of the collection (hypothesis, change kind,
+   evidence references and excerpts); `decide_candidate(client, record_id, decision,
+   reason=...)` appends a decision; `candidates(client, collection_id)` lists them
+   with their latest decision and runs. Point the collection at the best one with
+   `client.collections.set_current_best(collection_id, snapshot_id, reason=...)`.
+
+Your reasoning, dead ends and working notes stay in `notes/`, in any form.
