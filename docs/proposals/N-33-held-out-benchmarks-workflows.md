@@ -1,6 +1,6 @@
 # N-33 留出集、外部 benchmark 与工作流适配
 
-状态：已确认（U-90），三部分都已实现，等用户统一验证后归档 · 优先级：一 · 2026-11-05 · 相关：[02](../design/02-datasets-preparation.md)、[07](../design/07-artifacts-export.md)、[08](../design/08-collections-comparison.md)、[09](../design/09-identity-security.md)、[10](../design/10-api-sdk-cli.md)、[11](../design/11-web-ui.md)、[15](../design/15-stack-harbor.md)、U-10、U-47、U-59～U-61、U-68、U-69、U-73～U-91 · 取代 [N-28](archive/N-28-datasets-and-evaluation-split.md)、[N-31](archive/N-31-workflow-adaptation.md)、[N-32](archive/N-32-held-out-evaluation.md)
+状态：已确认（U-90），三部分都已实现并通过可用性检查，等用户重跑附件改进实验后归档 · 优先级：一 · 2026-11-05 · 相关：[02](../design/02-datasets-preparation.md)、[07](../design/07-artifacts-export.md)、[08](../design/08-collections-comparison.md)、[09](../design/09-identity-security.md)、[10](../design/10-api-sdk-cli.md)、[11](../design/11-web-ui.md)、[15](../design/15-stack-harbor.md)、U-10、U-47、U-59～U-61、U-68、U-69、U-73～U-91 · 取代 [N-28](archive/N-28-datasets-and-evaluation-split.md)、[N-31](archive/N-31-workflow-adaptation.md)、[N-32](archive/N-32-held-out-evaluation.md)
 
 本提案是总设计稿，取代 N-28、N-31、N-32（U-85）。三份原稿已归档，只作出处；之后的讨论和修改都在本提案上进行。
 
@@ -217,6 +217,14 @@ Harbor 限制了执行器能做的事：任务格式、每个试次一个容器�
 | 1 | 工作流适配（第 3 节），**已完成**：系统说明见 [08](../design/08-collections-comparison.md)、[10](../design/10-api-sdk-cli.md) 第 7 节 | 先改 skill；再做 SDK 工作流模块中不依赖记录的部分与 `workspace.init` 的工作流参数；最后做平台的工作流记录、当前最优指针与 `attachment-candidate` |
 | 2 | 留出集（第 4 节），**已完成**：系统说明见 [08](../design/08-collections-comparison.md)、[09](../design/09-identity-security.md) | 集合规格中的留出标记、题目上的读取汇总与各读取接口的接入、集合页与比较的分组、SDK 查询；随后补上 skill 与报告中的留出步骤 |
 | 3 | 外部 benchmark（第 5 节），**已实现**：系统说明见 [02](../design/02-datasets-preparation.md)、[07](../design/07-artifacts-export.md) 第 3 节“交付物完整性”；第 5.4 节的手动验证与验收留到统一验证（U-91） | CADGenBench 真要跑时启动：先做手动验证，再做上传数据集来源与上传检查、交付物的保存，以及工作流记录挂在数据集版本上 |
+
+### 7.1 可用性检查（2026-11-06）
+
+用户要求只做简单的可用性检查。`dev` 在 `639d3e5`～`e311329` 之间：
+
+- auua-lab，全新实例、rootless Docker、真实 Runner（Harbor 0.24.0）：真实 Docker 的 Oracle 测试 16 项通过、6 项（真实模型）跳过；两道手写的 CAD 风格题（`/logs/artifacts/output.step`，verifier 只做有效性门槛）上传、Runner 逐题校验（坏题按题名报错）、首次准备、Oracle 运行得 1 分、交付物原字节下载并拼出提交 zip、任务读取与来源记录，16 项通过。首次运行发现 Harbor 把 `/logs/artifacts/` 存在 `artifacts/logs/artifacts/` 下，SDK 下载已按此修正（PR #26）。
+- 本机 demo 执行器的全新实例：网页冒烟 13 项通过；“复制集合”一项的模拟数据缺少新字段，已补（PR #27）。demo 执行器的容量放不下 agent 运行，集合、留出集与工作流记录未在实例上走通，以单元与接口测试为准。
+- 未做：真实 CADGenBench 数据的转换与评分、真实模型请求、附件改进实验（第 9 节验收，由用户进行）。
 
 ## 8. 影响
 
