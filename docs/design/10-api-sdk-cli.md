@@ -104,7 +104,7 @@ SDK 也是 Agent 的客户端（U-59、U-60）。平台保存别人要依赖的�
 
 - `maestro_sdk.skills.install(目录)`：把随 wheel 发布的 skill（仓库的 `skills/`）复制到 `.agents/skills/` 与 `.claude/skills/`，同名 skill 整个替换、其他 skill 不动，并在 `.maestro-sdk-version` 记下 SDK 版本。skill 因此与 SDK 同版本，升级 SDK 后重装即同步。
 - `maestro_sdk.workspace.init(目录)`：推荐的工作区，`AGENTS.md` 模板（服务地址、令牌文件位置、可花的预算、命名习惯、当前目标）、自由格式的 `notes/`、每个附件一个 git 仓库的 `attachments/`，以及忽略已安装 skill 与附件仓库的 `.gitignore`；已有文件不覆盖，重复调用只补缺并重装 skill。
-- skill：`maestro-sdk` 讲实验操作与诚实报告；`maestro-package` 讲从已有材料做附件、用附件 A/B 集合改进、在分析快照的结论里记下当前最优的附件（不靠标签），以及中断后只凭平台恢复进度。判断“更好”时建议不剔除失败、核对每个运行的已评分试次等于计划试次，否则说明证据不足；平台不另算一套口径，集合也不核对固定任务列表（U-60）。
+- skill：`maestro-sdk` 讲实验操作与诚实报告；`maestro-package` 讲从已有材料做附件、改进前先读题、给改动分类并按各自的指标判断、提交前写下证据标准、计数前逐条核对 trace 事件、用附件 A/B 集合改进、在分析快照的结论里记下当前最优的附件（不靠标签），以及中断后只凭平台恢复进度。判断“更好”时建议不剔除失败、核对每个运行的已评分试次等于计划试次，否则说明证据不足；平台不另算一套口径，集合也不核对固定任务列表（U-60）。
 
 ## 8. 契约验收
 
