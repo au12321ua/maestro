@@ -280,6 +280,13 @@ class MasterKeyRotation(Model):
 # --- catalog ------------------------------------------------------------------------
 
 
+class TaskChanges(Model):
+    added: int
+    removed: int
+    changed: int
+    same: int
+
+
 class DatasetVersion(Model):
     id: str
     dataset_id: str
@@ -291,6 +298,10 @@ class DatasetVersion(Model):
     description: str
     created_at: str
     created_by: str | None
+    created_by_username: str | None
+    label: str | None
+    based_on_version_id: str | None
+    changes_from_base: TaskChanges | None
     operation_id: str | None
     task_count: int
     admitted_task_count: int
@@ -506,11 +517,13 @@ class TaskReadQuery(Model):
 
 class TaskRead(Model):
     task_id: str
+    dataset_version_id: str
+    content_changed: bool
     reader_id: str
     reader_username: str
     channel: Literal["pat", "web_session"]
     channel_id: str
-    category: Literal["instruction", "trial_artifacts"]
+    category: Literal["instruction", "trial_artifacts", "task_files"]
     first_read_at: str
     last_read_at: str
     count: int
@@ -1209,6 +1222,8 @@ class DatasetUploadFile(AttachmentFileEntry):
 class DatasetUpload(Model):
     namespace: str
     name: str
+    label: str | None = None
+    based_on: str | None = None
     files: list[DatasetUploadFile] = Field(
         description="Harbor task directories as relative paths; upload missing attachment contents first"
     )
@@ -1984,6 +1999,11 @@ class CurrentBest(CurrentBestInput):
     at: str
 
 
+class HeldOutNotCarried(Model):
+    task_key: str
+    reason: Literal["changed", "removed", "other_dataset"]
+
+
 class Collection(Model):
     id: str
     name: str
@@ -2009,6 +2029,9 @@ class Collection(Model):
     deletion: DeletionState | None = None
     not_carried: list[NotCarried] | None = Field(
         None, description="After a copy: runs left behind and what differs"
+    )
+    held_out_not_carried: list[HeldOutNotCarried] = Field(
+        default_factory=list, description="After a copy: held-out tasks left behind and why"
     )
 
 
@@ -2277,6 +2300,8 @@ class ImportRequest(Model):
     credential_id: str | None
     accept_changed_content: bool
     prepare: bool
+    label: str | None = None
+    based_on: str | None = None
 
 
 class ImportProgress(Model):
@@ -2289,6 +2314,7 @@ class ImportProgress(Model):
 class ImportResult(Sparse):
     dataset_version_id: str
     existing: bool = Field(description="The same version was imported before")
+    ignored: list[Literal["label", "based_on"]] = Field(default_factory=list)
     preparation_operation_id: str | None = None
 
 

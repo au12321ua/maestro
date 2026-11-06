@@ -1,6 +1,6 @@
 import { Fragment, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Trash2, Upload } from "lucide-react";
+import { Download, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,8 +28,8 @@ import { RecordsJumpButton, WorkflowRecords } from "@/components/WorkflowRecords
 import { useRecords } from "@/lib/records";
 import { TaskStatusCells } from "@/components/TaskStatusCells";
 import { t, Trans } from "@/i18n";
-import { api, errorText } from "@/lib/api";
-import { commonPrefix, fmtTime, shortId } from "@/lib/format";
+import { API, api, errorText } from "@/lib/api";
+import { commonPrefix, fmtTime, shortId, versionName } from "@/lib/format";
 import { useInterval, useLoad, useSession } from "@/lib/hooks";
 import type {
   Dataset,
@@ -40,6 +40,7 @@ import type {
   SourceVersion,
   SourceVersionDetail,
   Task,
+  TaskChanges,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { SetupNetworkRevision } from "@/pages/admin/SetupNetworkTab";
@@ -215,14 +216,35 @@ export function DatasetsPage() {
                         versionId === version.id ? "border-primary bg-accent" : "hover:bg-muted",
                       )}
                     >
-                      <span className="break-all">
-                        {dataset.source_kind === "upload"
-                          ? shortId(version.upstream_ref, 23)
-                          : version.upstream_ref}
-                        <span className="ml-1 text-xs text-muted-foreground">
-                          ({version.ref_kind}) {shortId(version.resolved_digest, 15)}
+                      {dataset.source_kind === "upload" ? (
+                        <>
+                          <span className="break-all">{versionName(version, true)}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {fmtTime(version.created_at)} · {version.created_by_username ?? "—"}
+                          </span>
+                          {version.based_on_version_id && (
+                            <span className="text-xs text-muted-foreground">
+                              {t("datasets.versions.basedOn", {
+                                base: (() => {
+                                  const b = dataset.versions.find(
+                                    (v) => v.id === version.based_on_version_id,
+                                  );
+                                  return b ? versionName(b, true) : "—";
+                                })(),
+                              })}
+                              {version.changes_from_base &&
+                                ` · ${changesText(version.changes_from_base)}`}
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="break-all">
+                          {version.upstream_ref}
+                          <span className="ml-1 text-xs text-muted-foreground">
+                            ({version.ref_kind}) {shortId(version.resolved_digest, 15)}
+                          </span>
                         </span>
-                      </span>
+                      )}
                       <span className="text-xs text-muted-foreground">
                         {t("datasets.page.versionCounts", {
                           submittable: version.submittable_task_count,
@@ -258,6 +280,10 @@ export function DatasetsPage() {
             <VersionTasks
               key={versionId}
               versionId={versionId}
+              siblings={
+                datasets.data?.find((d) => d.versions.some((v) => v.id === versionId))?.versions ??
+                []
+              }
               isAdmin={isAdmin}
               onChange={datasets.reload}
             />
@@ -303,7 +329,18 @@ function newestFirst(versions: DatasetVersion[]): DatasetVersion[] {
 }
 
 /** Tasks added, removed and changed (same key, other content) against a local version. */
-function TaskDiff({ preview, local }: { preview: SourceVersionDetail; local: DatasetVersion[] }) {
+function TaskDiff({
+  after,
+  local,
+  uploaded = false,
+  id = "diff-base",
+}: {
+  /** The tasks being compared: key and content digest. */
+  after: { task_key: string; digest: string }[];
+  local: DatasetVersion[];
+  uploaded?: boolean;
+  id?: string;
+}) {
   const [baseId, setBaseId] = useState(newestFirst(local)[0]?.id ?? "");
   const base = useLoad(
     async () =>
@@ -315,10 +352,10 @@ function TaskDiff({ preview, local }: { preview: SourceVersionDetail; local: Dat
   );
   if (local.length === 0) return null;
   const before = new Map((base.data ?? []).map((t) => [t.task_key, t.content.digest]));
-  const after = new Map(preview.tasks.map((t) => [t.task_key, t.content_digest]));
-  const added = [...after.keys()].filter((k) => !before.has(k)).sort();
-  const removed = [...before.keys()].filter((k) => !after.has(k)).sort();
-  const changed = [...after.keys()].filter((k) => before.has(k) && before.get(k) !== after.get(k)).sort();
+  const now = new Map(after.map((t) => [t.task_key, t.digest]));
+  const added = [...now.keys()].filter((k) => !before.has(k)).sort();
+  const removed = [...before.keys()].filter((k) => !now.has(k)).sort();
+  const changed = [...now.keys()].filter((k) => before.has(k) && before.get(k) !== now.get(k)).sort();
   const groups: { id: string; title: string; heading: string; keys: string[] }[] = [
     {
       id: "added",
@@ -342,18 +379,18 @@ function TaskDiff({ preview, local }: { preview: SourceVersionDetail; local: Dat
   return (
     <div className="grid gap-1">
       <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <label htmlFor="diff-base" className="shrink-0 text-muted-foreground">
+        <label htmlFor={id} className="shrink-0 text-muted-foreground">
           {t("datasets.diff.compareWith")}
         </label>
         <select
-          id="diff-base"
+          id={id}
           className="h-8 min-w-0 max-w-full rounded-md border border-input bg-background px-2 text-sm"
           value={baseId}
           onChange={(e) => setBaseId(e.target.value)}
         >
           {newestFirst(local).map((v) => (
             <option key={v.id} value={v.id}>
-              {t("datasets.diff.localOption", { ref: v.upstream_ref, time: fmtTime(v.created_at) })}
+              {t("datasets.diff.localOption", { ref: versionName(v, uploaded), time: fmtTime(v.created_at) })}
             </option>
           ))}
         </select>
@@ -366,7 +403,7 @@ function TaskDiff({ preview, local }: { preview: SourceVersionDetail; local: Dat
             {[
               ...groups.map(({ title, keys }) => `${title} ${keys.length}`),
               t("datasets.diff.unchanged", {
-                count: preview.tasks.length - added.length - changed.length,
+                count: after.length - added.length - changed.length,
               }),
             ].join(" · ")}
           </div>
@@ -578,7 +615,11 @@ function SourceVersions({
           </div>
           {preview.description && <p className="text-muted-foreground">{preview.description}</p>}
           {local.length > 0 ? (
-            <TaskDiff key={preview.resolved_digest} preview={preview} local={local} />
+            <TaskDiff
+              key={preview.resolved_digest}
+              after={preview.tasks.map((t) => ({ task_key: t.task_key, digest: t.content_digest }))}
+              local={local}
+            />
           ) : (
             <div className="max-h-40 overflow-auto font-mono text-xs text-muted-foreground">
               {preview.tasks.map((t) => (
@@ -820,10 +861,13 @@ function UpstreamVersions({
 
 function VersionTasks({
   versionId,
+  siblings,
   isAdmin,
   onChange,
 }: {
   versionId: string;
+  /** Every listed version of the same dataset, this one included. */
+  siblings: DatasetVersion[];
   isAdmin: boolean;
   onChange: () => Promise<void>;
 }) {
@@ -885,7 +929,7 @@ function VersionTasks({
         <div className="flex flex-wrap items-start justify-between gap-2">
           <CardTitle className="min-w-0 break-words text-base">
             {detail.data
-              ? `${detail.data.namespace}/${detail.data.name}@${detail.data.upstream_ref}`
+              ? `${detail.data.namespace}/${detail.data.name}@${versionName(detail.data, detail.data.source_kind === "upload")}`
               : t("datasets.tasks.title")}
           </CardTitle>
           <RecordsJumpButton records={records} />
@@ -915,6 +959,25 @@ function VersionTasks({
                 ready: detail.data.cache_ready_task_count,
               })}
             </div>
+            {detail.data.source_kind === "upload" && (
+              <UploadedVersion version={detail.data} siblings={siblings} />
+            )}
+            {siblings.length > 1 && tasks.data && (
+              <details className="text-sm text-foreground" data-testid="version-compare">
+                <summary className="cursor-pointer text-xs">{t("datasets.versions.compare")}</summary>
+                <div className="mt-1">
+                  <TaskDiff
+                    id={`compare-${versionId}`}
+                    after={tasks.data.map((task) => ({
+                      task_key: task.task_key,
+                      digest: task.content.digest,
+                    }))}
+                    local={siblings.filter((v) => v.id !== versionId)}
+                    uploaded={detail.data.source_kind === "upload"}
+                  />
+                </div>
+              </details>
+            )}
             <ScoringContract
               versionId={versionId}
               contract={detail.data.scoring_contract}
@@ -1276,4 +1339,48 @@ function TaskInstruction({ taskId }: { taskId: string }) {
     <ErrorAlert error={error} />
     {open && <pre className="mt-1 max-h-60 overflow-auto whitespace-pre-wrap rounded border bg-background p-2">{instruction}</pre>}
   </div>;
+}
+
+/** "新增 1 · 删除 0 · 内容变化 2 · 未变 5" against the version it is based on. */
+function changesText(changes: TaskChanges): string {
+  return t("datasets.versions.changes", { ...changes });
+}
+
+/** An uploaded version's label, uploader, base and whole-version download. */
+function UploadedVersion({
+  version,
+  siblings,
+}: {
+  version: DatasetVersion;
+  siblings: DatasetVersion[];
+}) {
+  const base = siblings.find((v) => v.id === version.based_on_version_id);
+  return (
+    <div className="grid gap-1 text-xs" data-testid="uploaded-version">
+      <div>
+        {t("datasets.versions.uploadedBy", {
+          label: version.label ?? t("datasets.versions.noLabel"),
+          user: version.created_by_username ?? "—",
+          time: fmtTime(version.created_at),
+        })}
+      </div>
+      {version.based_on_version_id && (
+        <div>
+          {t("datasets.versions.basedOn", {
+            base: base ? versionName(base, true) : version.based_on_version_id,
+          })}
+          {version.changes_from_base && ` · ${changesText(version.changes_from_base)}`}
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button asChild size="sm" variant="outline" className="h-7">
+          <a href={`${API}/dataset-versions/${encodeURIComponent(version.id)}/archive`}>
+            <Download />
+            {t("datasets.versions.download")}
+          </a>
+        </Button>
+        <span className="text-muted-foreground">{t("datasets.versions.downloadHint")}</span>
+      </div>
+    </div>
+  );
 }

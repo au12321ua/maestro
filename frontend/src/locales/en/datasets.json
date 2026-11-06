@@ -194,6 +194,21 @@
     "tasksInvalid_other": "{{count}} tasks failed the check:",
     "taskError": "{{task}}: {{message}}",
     "failed": "Import failed: {{message}}",
-    "notRecorded": "No version was recorded; fix the tasks and upload again — files already uploaded are not sent again."
+    "notRecorded": "No version was recorded; fix the tasks and upload again — files already uploaded are not sent again.",
+    "label": "Label (optional)",
+    "labelPlaceholder": "e.g. v2, fix-task-3",
+    "basedOn": "Based on version",
+    "newest": " (newest)",
+    "noBase": "Not based on an existing version",
+    "ignored": "Same content as an existing version: the label and base given this time were not applied."
+  },
+  "versions": {
+    "compare": "Compare with another version of this dataset",
+    "changes": "added {{added}} · removed {{removed}} · content changed {{changed}} · unchanged {{same}}",
+    "uploadedBy": "Label {{label}} · uploaded by {{user}} · {{time}}",
+    "noLabel": "(none)",
+    "basedOn": "Based on {{base}}",
+    "download": "Download whole version (zip)",
+    "downloadHint": "Includes every task's instruction, reference solution and verifier; downloading records a read of each task in this version for you (visible to held-out tracking). Unzip, edit and upload again."
   }
 }

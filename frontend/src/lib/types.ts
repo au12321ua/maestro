@@ -33,6 +33,7 @@ export type CredentialName = S["CredentialName"];
 export type MasterKeyStatus = S["MasterKeyStatus"];
 
 export type DatasetVersion = S["DatasetVersion"];
+export type TaskChanges = S["TaskChanges"];
 export type Dataset = S["Dataset"];
 export type DeletionState = S["DeletionState"];
 export type DatasetVersionDetail = S["DatasetVersionDetail"];

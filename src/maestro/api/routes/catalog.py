@@ -6,6 +6,8 @@ needs an administrator session or an administrator PAT with datasets permission.
 """
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 
 from maestro.api.deps import admin, maestro, ok, principal
 from maestro.api.models import (
@@ -121,6 +123,24 @@ def list_dataset_version_files(
 ):
     """List original upload metadata without reading or returning task contents."""
     return ok(request, maestro(request).catalog.files(version_id))
+
+
+@router.get(
+    "/dataset-versions/{version_id}/archive",
+    response_class=FileResponse,
+    responses={200: {"content": {"application/zip": {}}}},
+)
+def download_dataset_version_archive(
+    version_id: str, request: Request, who: Principal = Depends(principal)
+):
+    """Download original uploaded files and record a task_files read for every task."""
+    path, name = maestro(request).catalog.archive(who, version_id)
+    return FileResponse(
+        path,
+        media_type="application/zip",
+        filename=name,
+        background=BackgroundTask(path.unlink, missing_ok=True),
+    )
 
 
 @router.get("/preparations/{preparation_id}", response_model=Envelope[Preparation])

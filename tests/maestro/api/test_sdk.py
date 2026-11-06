@@ -362,6 +362,7 @@ SDK_METHODS = {
     "get_dataset_version": "catalog.version",
     "list_tasks": "catalog.tasks",
     "list_dataset_version_files": "catalog.files",
+    "download_dataset_version_archive": "catalog.download",
     "get_preparation": "catalog.preparation",
     "list_model_configs": "configs.models",
     "get_model_config": "configs.model",

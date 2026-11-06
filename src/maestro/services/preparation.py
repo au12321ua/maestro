@@ -48,6 +48,7 @@ from maestro.execution.materials import (
 )
 from maestro.security.redaction import redact
 from maestro.services import deleted, operations, setup_network
+from maestro.services.dataset_versions import check_upload_metadata
 
 log = logging.getLogger(__name__)
 
@@ -641,11 +642,11 @@ class Preparer:
             tasks.append((task, material, definition))
         progress("recording", resolved_digest=version.resolved_digest, tasks_total=len(tasks))
         try:
-            version_id = self._record_version(op, request, version, tasks)
+            version_id, existing = self._record_version(op, request, version, tasks)
         except MaestroError as error:
             fail(error.code, error.message)
             return
-        self._import_done(op_id, request, version_id, existing=False)
+        self._import_done(op_id, request, version_id, existing=existing)
 
     async def _reverify(self, version_id, version, source, credential, op_id) -> None:
         """Importing a known version again re-checks task content marked unavailable:
@@ -724,11 +725,13 @@ class Preparer:
                     {"reverified_by": op_id, "spec_digest": ctx.spec_digest},
                 )
 
-    def _record_version(self, op, request, version, tasks) -> str:
+    def _record_version(self, op, request, version, tasks) -> tuple[str, bool]:
         at = _now()
         with self.db.write() as conn:
             check_dataset_source(conn, request["source_kind"], version.namespace, version.name)
             dataset = live_dataset(conn, request["source_kind"], version.namespace, version.name)
+            if dataset is not None and deleted.state(conn, "dataset", dataset):
+                raise MaestroError("DATASET_RECYCLED", "Restore the dataset before importing", 409)
             if dataset is None:
                 dataset = new_id("ds")
                 conn.execute(
@@ -757,9 +760,15 @@ class Preparer:
                 )
             ).scalar()
             if found:  # a concurrent import of the same content won
+                if deleted.state(conn, "dataset_version", found):
+                    raise MaestroError(
+                        "DATASET_VERSION_RECYCLED", "Restore the version before importing", 409
+                    )
                 if request["source_kind"] == "upload":
                     _link_upload(conn, op["id"], found)
-                return found
+                return found, True
+            if request["source_kind"] == "upload":
+                check_upload_metadata(conn, dataset, request.get("label"), request.get("based_on"))
             version_id = new_id("dsv")
             materials = [m for _, m, _ in tasks if m]
             conn.execute(
@@ -770,6 +779,10 @@ class Preparer:
                     ref_kind=version.ref_kind,
                     resolved_digest=version.resolved_digest,
                     materialization_digest=digest_json(sorted(materials)),
+                    label=request.get("label") if request["source_kind"] == "upload" else None,
+                    based_on_version_id=(
+                        request.get("based_on") if request["source_kind"] == "upload" else None
+                    ),
                     manifest_json={
                         "converter_version": CONVERTER_VERSION,
                         "description": version.description,
@@ -817,10 +830,16 @@ class Preparer:
                         "available",
                         {"verified_by": op["id"], "material_digest": material},
                     )
-        return version_id
+        return version_id, False
 
     def _import_done(self, op_id: str, request: dict, version_id: str, existing: bool) -> None:
-        result = {"dataset_version_id": version_id, "existing": existing}
+        result = {
+            "dataset_version_id": version_id,
+            "existing": existing,
+            "ignored": [
+                key for key in ("label", "based_on") if existing and request.get(key) is not None
+            ],
+        }
         with self.db.write() as conn:
             if request["source_kind"] == "upload":
                 _link_upload(conn, op_id, version_id)

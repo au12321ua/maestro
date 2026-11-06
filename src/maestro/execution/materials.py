@@ -203,7 +203,9 @@ class TaskMaterials:
             if tree_digest(copy) != material:
                 raise SourceError(MISMATCH, "task content changed while it was being copied")
             try:
-                if target.exists():
+                # A matching concurrent install must stay in place: importers may
+                # already be inspecting it. Only replace a different material copy.
+                if target.exists() and not self.verified(content_digest, material):
                     os.rename(target, staging / "old")
                 os.rename(copy, target)
             except OSError:

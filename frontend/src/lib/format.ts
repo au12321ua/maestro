@@ -235,3 +235,12 @@ export const STORAGE_LEVEL: Labels = labels(t("common.storageLevel", { returnObj
   accept_paused: "warn",
   dispatch_paused: "bad",
 });
+
+/** A dataset version's name: its label, else an uploaded version's short digest or the Hub
+ * reference. */
+export function versionName(
+  version: { label?: string | null; upstream_ref: string },
+  uploaded: boolean,
+): string {
+  return version.label ?? (uploaded ? shortId(version.upstream_ref, 23) : version.upstream_ref);
+}

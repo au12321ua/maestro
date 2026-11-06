@@ -24,7 +24,14 @@
     "copyName": "{{name}}（副本）",
     "failed": "复制失败",
     "busy": "复制中…",
-    "submit": "建立副本"
+    "submit": "建立副本",
+    "heldOutDropped": "换到这个版本后，下列留出题没有沿用（不是同一道题），请在下面重新选择：",
+    "heldOutDroppedItem": "{{task}}（{{reason}}）",
+    "heldOutReason": {
+      "changed": "内容已变",
+      "removed": "新版本没有这道题",
+      "other_dataset": "不同的数据集"
+    }
   },
   "fromCollection": "从集合 <link>{{name}}</link> 新建：固定的维度（{{dimensions}}）已按集合填好并锁住，只需选可变的维度、任务和并发。提交后自动加入集合；与集合不符的配置在“检查配置”时就会指出。",
   "fromRun": "基于运行 <link>{{id}}</link> 修改：表单按原运行实际用的值填好（团队默认与模型修订已固定）。提交后会记录与原运行的差异。",

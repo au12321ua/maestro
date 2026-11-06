@@ -6,17 +6,18 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ErrorAlert, TextField } from "@/components/common";
+import { ErrorAlert, SelectField, TextField } from "@/components/common";
 import { FolderUpload, type Chosen, type FolderBase } from "@/components/FolderUpload";
 import { OperationLine } from "@/components/OperationLine";
 import { t } from "@/i18n";
 import { api } from "@/lib/api";
 import { entries, type ModedFile } from "@/lib/folder";
-import { shortId } from "@/lib/format";
+import { fmtTime, versionName } from "@/lib/format";
 import { limit, useSession } from "@/lib/hooks";
 import type { Dataset, Operation } from "@/lib/types";
 
 const NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
+const NONE = "none";
 
 interface TaskError {
   task_key: string;
@@ -49,28 +50,33 @@ export function UploadDataset({
   const { capabilities } = useSession();
   const [namespace, setNamespace] = useState(target?.namespace ?? "");
   const [name, setName] = useState(target?.name ?? "");
+  const [label, setLabel] = useState("");
+  // "" until chosen: the dataset's newest version; NONE for no base.
+  const [basedOn, setBasedOn] = useState("");
   const [base, setBase] = useState<FolderBase>();
   const [baseError, setBaseError] = useState<unknown>();
   const [operation, setOperation] = useState<string>();
   const [failed, setFailed] = useState<{ op: Operation; tasks: TaskError[] }>();
 
   const existing = datasets.find((d) => d.namespace === namespace && d.name === name);
-  const latest =
+  const own =
     existing?.source_kind === "upload"
-      ? [...existing.versions].sort((a, b) => (a.created_at < b.created_at ? 1 : -1))[0]
-      : undefined;
+      ? [...existing.versions].sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
+      : [];
+  const chosenBase =
+    basedOn === NONE ? undefined : (own.find((v) => v.id === basedOn) ?? own[0]);
 
   useEffect(() => {
     let current = true;
     setBase(undefined);
     setBaseError(undefined);
-    if (!latest) return;
+    if (!chosenBase) return;
     api
-      .get("/dataset-versions/{version_id}/files", { path: { version_id: latest.id } })
+      .get("/dataset-versions/{version_id}/files", { path: { version_id: chosenBase.id } })
       .then((res) => {
         if (current)
           setBase({
-            label: `${existing!.namespace}/${existing!.name}@${shortId(latest.upstream_ref, 15)}`,
+            label: `${existing!.namespace}/${existing!.name}@${versionName(chosenBase, true)}`,
             files: res.data,
           });
       })
@@ -79,7 +85,7 @@ export function UploadDataset({
       current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [latest?.id]);
+  }, [chosenBase?.id]);
 
   const blocked = !NAME.test(namespace) || !NAME.test(name)
     ? t("datasets.upload.nameNeeded")
@@ -90,7 +96,13 @@ export function UploadDataset({
   const submit = async ({ files }: Chosen) => {
     setFailed(undefined);
     const op = await api.post("/dataset-uploads", {
-      body: { namespace, name, files: entries(files) },
+      body: {
+        namespace,
+        name,
+        files: entries(files),
+        label: label.trim() || null,
+        based_on: chosenBase?.id ?? null,
+      },
     });
     setOperation(op.data.id);
   };
@@ -102,6 +114,7 @@ export function UploadDataset({
       toast.success(
         imported?.existing ? t("datasets.upload.existing") : t("datasets.upload.added"),
       );
+      if (imported?.ignored?.length) toast.info(t("datasets.upload.ignored"));
       void onImported(imported?.dataset_version_id);
       onClose();
     } else {
@@ -143,6 +156,40 @@ export function UploadDataset({
           <p className="text-xs">{t("datasets.upload.addsVersion")}</p>
         )}
         <ErrorAlert error={baseError} />
+        {own.length > 0 && (
+          <div className="grid gap-3 md:grid-cols-2">
+            <TextField
+              id="upload-label"
+              label={t("datasets.upload.label")}
+              value={label}
+              placeholder={t("datasets.upload.labelPlaceholder")}
+              onChange={(e) => setLabel(e.target.value)}
+            />
+            <SelectField
+              id="upload-based-on"
+              label={t("datasets.upload.basedOn")}
+              value={chosenBase?.id ?? NONE}
+              onChange={(e) => setBasedOn(e.target.value)}
+            >
+              {own.map((v, i) => (
+                <option key={v.id} value={v.id}>
+                  {versionName(v, true)} · {fmtTime(v.created_at)}
+                  {i === 0 ? t("datasets.upload.newest") : ""}
+                </option>
+              ))}
+              <option value={NONE}>{t("datasets.upload.noBase")}</option>
+            </SelectField>
+          </div>
+        )}
+        {own.length === 0 && (
+          <TextField
+            id="upload-label"
+            label={t("datasets.upload.label")}
+            value={label}
+            placeholder={t("datasets.upload.labelPlaceholder")}
+            onChange={(e) => setLabel(e.target.value)}
+          />
+        )}
         <FolderUpload
           base={base}
           tasks

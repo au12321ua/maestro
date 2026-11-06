@@ -49,10 +49,13 @@ SDK 要求 api_version 为 v1 且所需功能开启，否则抛 UNSUPPORTED_CAPA
 
 关键约定：
 
-- 上传数据集复用附件的 missing / PUT 内容通道，`POST /dataset-uploads` 提交 Harbor task 目录的文件清单并返回导入 Operation。`client.catalog.upload(directory, namespace=..., name=...)` 上传缺失内容、核对受理摘要后返回 Operation；等待导入可取得版本标识和首次准备 Operation。同一名称下相同内容复用原版本，错误在导入 Operation 中按任务列出。
+- 上传数据集复用附件的 missing / PUT 内容通道，`POST /dataset-uploads` 提交 Harbor task 目录的文件清单并返回导入 Operation。`client.catalog.upload(directory, namespace=..., name=..., label=None, based_on=None)` 上传缺失内容、核对受理摘要后返回 Operation；等待导入可取得版本标识和首次准备 Operation。`DatasetUpload` 可选 `label` 与版本标识 `based_on`，标签和基于校验失败为 422 `DATASET_UPLOAD_INVALID`，字段指向 `/label` 或 `/based_on`；已占用标签为 409 `DATASET_LABEL_TAKEN`，字段 `/label`。登记事务再次检查，竞争失败的 Operation 使用同一码。同一名称下相同内容复用原版本，`ImportResult.ignored` 列出未应用的 `label`、`based_on`（未忽略时为空）；回收站同内容仍为 `DATASET_VERSION_RECYCLED`，其他任务错误在导入 Operation 中逐题列出。
 
 - 数据集来源在创建时固定；Hub 导入与上传在受理前及登记事务中检查同名跨来源冲突，返回 409 `DATASET_SOURCE_CONFLICT` 并用 `field_errors` 指向 `/name`、说明已占用的来源；受理后竞争失败的导入 Operation 使用同一错误码。回收站中的数据集仍占用名称，物理删除数据集才释放。`Dataset` 列表项与 `DatasetVersionDetail` 均返回 `source_kind`。
 - `GET /api/v1/dataset-versions/{version_id}/files` 返回 `Envelope[list[DatasetVersionFile]]`；`client.catalog.files(version_id)` 返回 `list[models.DatasetVersionFile]`。文件项为 `path`、`sha256`、`executable`、`size_bytes`，按路径排序，所有认证主体（含只读 PAT）可读，不返回内容、不记录任务读取。Hub 版本返回 409 `DATASET_VERSION_NOT_UPLOADED`（内容在上游）；回收站版本可读，物理删除返回 410 `OBJECT_PURGED`，不存在返回 404。上传上限由 capabilities 的 `limits.dataset_upload_max_files` 与 `limits.dataset_upload_max_bytes` 提供。
+
+- `DatasetVersion`（列表与 `DatasetVersionDetail` 共用）返回 `label`、`based_on_version_id`、`created_by_username` 和 `changes_from_base: TaskChanges | null`。`TaskChanges` 是按任务键与内容摘要比较的 `added`、`removed`、`changed`、`same` 数量；无基于关系或基于版本已物理删除时为空。Hub 的自定义标签与基于字段为空，上游标签仍是 `upstream_ref`。
+- `GET /api/v1/dataset-versions/{version_id}/archive` 返回流式发送的 `application/zip`，`Content-Disposition` 文件名为 `<name>-<label 或摘要前 12 位>.zip`。包内以 `<name>/` 为顶层，保留原相对路径、字节与可执行位，不附 manifest。`client.catalog.download(version_id, destination) -> Path` 保存 zip 文件，权限、删除状态与 Hub 错误和原始文件清单一致；发送前先为每道题提交 `task_files` 读取，失败不返回 zip。
 
 - 附件增量发布（[03](03-configuration-attachments.md) 第 6 节）：`POST /attachment-contents/missing` 问出缺哪些文件内容，逐个 `PUT /attachment-contents/{sha256}` 上传，再 `POST /attachments` 提交文件清单，同步返回快照；内容相同返回 200 与原快照。单个文件、整包 zip 与两份快照的文件差异分别在 `/attachments/{id}/files/{path}`、`/archive`、`/diff`。SDK 的 `attachments.publish(目录)`、`publish_commit(仓库, 提交)` 与 `fetch(快照, 目录)` 都只传差异的文件。
 - 日志也是产物，通过 `GET /artifacts/{id}/download` 读取，可带 offset / length 分段读（单段上限 1 MiB）。已结束运行的产物可按运行、任务、试次或尝试打成 zip（`GET /runs/{id}/artifacts/archive`，[07](07-artifacts-export.md) 第 5 节），SDK 为 `runs.download_archive`。`content=all` 默认包含全部产物，`content=deliverables` 只包含最终尝试的交付物，按 `<任务键>/<重复序号>/<文件>` 排列并在根目录附 manifest；两种模式都在传输前检查大小并提交所含试次的任务读取汇总，不创建 Operation。
@@ -64,7 +67,7 @@ SDK 要求 api_version 为 v1 且所需功能开启，否则抛 UNSUPPORTED_CAPA
 
 `PUT /collections/{id}/current-best` 设置或清除附件快照指针，两种操作都要求理由并写集合修改记录；清除用 null，最近清除的理由仍由集合 GET 返回。SDK 提供 `client.records.create/get/list/update/history/delete` 与 `client.collections.set_current_best(id, snapshot_id, reason=...)`。记录使用 `experiment` 写权限，编辑只限作者，删除沿用归属与 `override`；所有 PAT 都可读取目标可读的记录。
 
-目录任务列表只返回公开元数据，不带题面；单题读取才取题面并记录。SDK 的 `client.catalog.task` 读取完整单题，`client.catalog.reads` 按任务列表查询读取汇总。集合创建与复制支持留出标记，`client.collections.held_out` 返回留出题的读取汇总及团队运行数；具体参数与响应以生成契约为准。读取汇总不改变只读 PAT 的读权限，也不混入写操作审计。
+目录任务列表只返回公开元数据，不带题面；单题读取才取题面并记录。SDK 的 `client.catalog.task` 读取完整单题，`client.catalog.reads` 按任务列表查询读取汇总。集合创建与复制支持留出标记，`client.collections.held_out` 返回留出题的读取汇总及团队运行数；具体参数与响应以生成契约为准。`TaskRead` 返回实际记录的 `task_id`、`dataset_version_id` 与相对查询任务的 `content_changed`，类别包含 `task_files`。查询时纳入同数据集其他未物理删除版本（含回收站）的同键读取；同内容沿用读取事实，不同内容仅提示变化，不计入集合建立后的同题读取。批量查询返回原始汇总行的并集；匹配任一查询任务内容的行标为未变。留出视图按同一身份统计受理运行；集合复制换版本且未显式指定标记时只沿用未变任务，并在 `held_out_not_carried: list[HeldOutNotCarried]` 返回 `task_key` 及 `reason`（`changed`、`removed`、`other_dataset`）。读取汇总不改变只读 PAT 的读权限，也不混入写操作审计。
 
 ### 任务准入与本机缓存响应
 

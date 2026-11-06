@@ -6,6 +6,7 @@ from sqlalchemy.dialects.sqlite import insert
 from maestro.core import clock
 from maestro.core.errors import FieldError, MaestroError
 from maestro.db import schema as t
+from maestro.services import task_identity
 from maestro.services.principal import Channel, Principal
 
 
@@ -42,20 +43,55 @@ def record(db, principal: Principal, task_ids, category: str) -> None:
             )
 
 
-def summaries(conn, task_ids) -> list[dict]:
-    rows = conn.execute(
-        select(t.task_reads, t.users.c.username.label("reader_username"))
-        .join(t.users, t.users.c.id == t.task_reads.c.reader_id)
-        .where(t.task_reads.c.task_id.in_(task_ids))
-        .order_by(
-            t.task_reads.c.task_id,
-            t.task_reads.c.reader_id,
-            t.task_reads.c.channel,
-            t.task_reads.c.channel_id,
-            t.task_reads.c.category,
+def by_task(conn, task_ids, relationships=None) -> dict[str, list[dict]]:
+    relationships = (
+        relationships if relationships is not None else task_identity.related(conn, task_ids)
+    )
+    origin_ids = {origin for origins in relationships.values() for origin in origins}
+    rows = (
+        conn.execute(
+            select(
+                t.task_reads,
+                t.users.c.username.label("reader_username"),
+                t.tasks.c.dataset_version_id,
+            )
+            .join(t.users, t.users.c.id == t.task_reads.c.reader_id)
+            .join(t.tasks, t.tasks.c.id == t.task_reads.c.task_id)
+            .where(t.task_reads.c.task_id.in_(origin_ids))
+            .order_by(
+                t.task_reads.c.task_id,
+                t.task_reads.c.reader_id,
+                t.task_reads.c.channel,
+                t.task_reads.c.channel_id,
+                t.task_reads.c.category,
+            )
         )
-    ).mappings()
-    return [dict(row) for row in rows]
+        .mappings()
+        .all()
+    )
+    return {
+        target: [
+            {**row, "content_changed": origins[row["task_id"]]}
+            for row in rows
+            if row["task_id"] in origins
+        ]
+        for target, origins in relationships.items()
+    }
+
+
+def summaries(conn, task_ids) -> list[dict]:
+    # A batch returns the union of original rows. If content matches any requested
+    # identity, that row is unchanged relative to the batch.
+    result = {}
+    for rows in by_task(conn, task_ids).values():
+        for row in rows:
+            key = tuple(
+                row[field]
+                for field in ("task_id", "reader_id", "channel", "channel_id", "category")
+            )
+            if key not in result or not row["content_changed"]:
+                result[key] = row
+    return list(result.values())
 
 
 def query(db, task_ids: list[str]) -> list[dict]:

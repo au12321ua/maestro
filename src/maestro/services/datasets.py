@@ -21,12 +21,14 @@ from maestro.domain.states import PatPermission
 from maestro.execution.attachments import NAME, PackageError
 from maestro.services import audit, deleted, operations
 from maestro.services.attachments import _held
+from maestro.services.dataset_versions import check_upload_metadata
 from maestro.services.preparation import (
     KIND_EVICT,
     KIND_IMPORT,
     check_dataset_source,
     create_first,
     first_in_progress,
+    live_dataset,
 )
 from maestro.services.principal import Principal, require_admin
 
@@ -224,9 +226,15 @@ class Datasets:
             "prepare": True,
             "credential_id": None,
             "accept_changed_content": False,
+            "label": body.get("label"),
+            "based_on": body.get("based_on"),
         }
         with self.db.write() as conn:
             check_dataset_source(conn, "upload", request["namespace"], request["name"])
+            dataset = live_dataset(conn, "upload", request["namespace"], request["name"])
+            check_upload_metadata(
+                conn, dataset, request["label"], request["based_on"], package.content_digest
+            )
             held = _held(conn, [f["sha256"] for f in package.files], principal.user_id)
             if any(
                 f["sha256"] not in held or self.store.blob(f["sha256"]) is None

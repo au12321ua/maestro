@@ -134,6 +134,24 @@ def test_two_threads_installing_the_same_digest_both_succeed(tmp_path):
     assert results == [tree_digest(sources[0])] * 2
 
 
+def test_a_concurrent_matching_install_stays_available_to_existing_readers(tmp_path):
+    first, second = make_task(tmp_path / "a"), make_task(tmp_path / "b")
+    store = TaskMaterials(tmp_path / "cache")
+    real_copy = m.shutil.copytree
+    published = []
+
+    def copy(source, target, *args, **kwargs):
+        result = real_copy(source, target, *args, **kwargs)
+        if source == first:
+            store.install(second, DIGEST)
+            published.append(store.path_for(DIGEST).stat().st_ino)
+        return result
+
+    with mock.patch.object(m.shutil, "copytree", copy):
+        digest = store.install(first, DIGEST)
+    assert store.verified(DIGEST, digest).stat().st_ino == published[0]
+
+
 def test_a_failed_rename_that_left_nothing_usable_still_raises(tmp_path):
     store = TaskMaterials(tmp_path / "cache")
     source = make_task(tmp_path / "a")

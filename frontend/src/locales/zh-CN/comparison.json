@@ -275,6 +275,12 @@
     "web_session": "网页会话",
     "instruction": "题面",
     "trial_artifacts": "试次产物",
-    "runHint": "默认只选开发题；若要运行留出题，请逐题勾选。"
+    "runHint": "默认只选开发题；若要运行留出题，请逐题勾选。",
+    "version": "版本",
+    "thisVersion": "本版本",
+    "otherVersion": "另一版本",
+    "contentChanged": "内容已变，不算读过本题",
+    "task_files": "题目文件（整版下载）",
+    "sameTask": "同一道题"
   }
 }

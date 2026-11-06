@@ -32,14 +32,7 @@ import {
 } from "@/components/common";
 import { Trans, t } from "@/i18n";
 import { ApiError, api } from "@/lib/api";
-import {
-  CONFIG_BLOCKER,
-  SOURCE_LAYER,
-  blockerText,
-  commonPrefix,
-  fmtTime,
-  snapshotName,
-} from "@/lib/format";
+import { CONFIG_BLOCKER, SOURCE_LAYER, blockerText, commonPrefix, fmtTime, snapshotName, versionName } from "@/lib/format";
 import { limit, useLoad, useSession } from "@/lib/hooks";
 import { DIMENSION, SCENARIO } from "@/lib/comparison";
 import type {
@@ -136,6 +129,8 @@ function defaultVersion(dataset: Dataset): DatasetVersion | undefined {
 function numberOrNull(text: string): number | null {
   return text.trim() === "" ? null : Number(text);
 }
+
+type DropReason = "changed" | "removed" | "other_dataset";
 
 export function NewRunPage() {
   const { capabilities } = useSession();
@@ -441,6 +436,49 @@ export function NewRunPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [collection.data]);
 
+  // Copying to another version: a held-out mark carries over to the same task there (same
+  // key and content in the same dataset); the others are listed to be chosen again.
+  const copiedFrom = copyCollectionId ? collection.data?.template.dataset_version_id : undefined;
+  const originalTasks = useLoad(
+    async () =>
+      copiedFrom
+        ? (await api.get("/dataset-versions/{version_id}/tasks", { path: { version_id: copiedFrom } }))
+            .data
+        : undefined,
+    [copiedFrom],
+  );
+  const [heldOutDropped, setHeldOutDropped] = useState<{ task_key: string; reason: DropReason }[]>([]);
+  const carriedFor = useRef("");
+  useEffect(() => {
+    const c = collection.data;
+    if (!copyCollectionId || !c || !copiedFrom || !originalTasks.data || !tasks.data) return;
+    if (tasks.loading || (tasks.data[0] && tasks.data[0].dataset_version_id !== versionId)) return;
+    if (carriedFor.current === versionId) return;
+    carriedFor.current = versionId;
+    if (versionId === copiedFrom) {
+      setHeldOut(c.held_out_task_ids);
+      setHeldOutDropped([]);
+      return;
+    }
+    const datasetOf = (id: string) => versions.find((v) => v.version.id === id)?.dataset.id;
+    const sameDataset = datasetOf(versionId) === datasetOf(copiedFrom);
+    const now = new Map(tasks.data.map((task) => [task.task_key, task]));
+    const kept: string[] = [];
+    const dropped: { task_key: string; reason: DropReason }[] = [];
+    for (const id of c.held_out_task_ids) {
+      const old = originalTasks.data.find((task) => task.id === id);
+      if (!old) continue;
+      const match = now.get(old.task_key);
+      if (!sameDataset) dropped.push({ task_key: old.task_key, reason: "other_dataset" });
+      else if (!match) dropped.push({ task_key: old.task_key, reason: "removed" });
+      else if (match.content.digest !== old.content.digest)
+        dropped.push({ task_key: old.task_key, reason: "changed" });
+      else kept.push(match.id);
+    }
+    setHeldOut(kept);
+    setHeldOutDropped(dropped);
+  }, [copyCollectionId, collection.data, copiedFrom, originalTasks.data, tasks.data, tasks.loading, versionId, versions]);
+
   const developmentApplied = useRef(false);
   useEffect(() => {
     const c = collection.data;
@@ -739,6 +777,24 @@ export function NewRunPage() {
                     setCollectionVariable(v);
                   }}
                 />
+                {heldOutDropped.length > 0 && (
+                  <div
+                    className="grid gap-1 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900"
+                    data-testid="held-out-dropped"
+                  >
+                    <p>{t("newRun.copy.heldOutDropped")}</p>
+                    <ul className="grid gap-0.5">
+                      {heldOutDropped.map((d) => (
+                        <li key={d.task_key} className="break-all">
+                          {t("newRun.copy.heldOutDroppedItem", {
+                            task: d.task_key,
+                            reason: t(`newRun.copy.heldOutReason.${d.reason}`),
+                          })}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 <HeldOutPicker tasks={tasks.data ?? []} selected={heldOut} onChange={setHeldOut} />
                 <SelectField
                   id="copy-base-run"
@@ -943,7 +999,7 @@ export function NewRunPage() {
                     disabled={v.submittable_task_count === 0 && v.id !== versionId}
                   >
                     {t("newRun.basic.versionOption", {
-                      ref: v.upstream_ref,
+                      ref: versionName(v, dataset?.source_kind === "upload"),
                       time: fmtTime(v.created_at),
                       submittable: v.submittable_task_count,
                       total: v.task_count,

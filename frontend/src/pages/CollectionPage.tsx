@@ -23,6 +23,7 @@ import {
   Loading,
   PageTitle,
   StatusPill,
+  Pill,
 } from "@/components/common";
 import { SaveSnapshot } from "@/pages/ComparePage";
 import { SnapshotList } from "@/pages/CollectionsPage";
@@ -232,12 +233,24 @@ export function CollectionPage() {
             <p className="font-medium">{task.task_key} · {t(task.read_since_creation ? "comparison.heldOut.readSince" : "comparison.heldOut.unreadSince")} · {t("comparison.heldOut.runs", { n: task.accepted_runs })}</p>
             <div className="overflow-x-auto"><Table>
               <TableHeader><TableRow>
-                {(["reader", "channel", "category", "first", "last", "count"] as const).map(key => <TableHead key={key}>{t(`comparison.heldOut.${key}`)}</TableHead>)}
+                {(["reader", "channel", "category", "version", "first", "last", "count"] as const).map(key => <TableHead key={key}>{t(`comparison.heldOut.${key}`)}</TableHead>)}
               </TableRow></TableHeader>
-              <TableBody>{task.reads.map(read => <TableRow key={`${read.reader_id}-${read.channel}-${read.channel_id}-${read.category}`}>
+              <TableBody>{task.reads.map(read => <TableRow key={`${read.task_id}-${read.reader_id}-${read.channel}-${read.channel_id}-${read.category}`} className={read.content_changed ? "text-muted-foreground" : undefined}>
                 <TableCell>{read.reader_username}</TableCell>
                 <TableCell>{t(`comparison.heldOut.${read.channel}`)} · {read.channel_id}</TableCell>
                 <TableCell>{t(`comparison.heldOut.${read.category}`)}</TableCell>
+                <TableCell>
+                  {read.task_id === task.task_id ? (
+                    t("comparison.heldOut.thisVersion")
+                  ) : (
+                    <Link className="text-primary underline" to={`/datasets?version=${read.dataset_version_id}`}>
+                      {t("comparison.heldOut.otherVersion")}
+                    </Link>
+                  )}
+                  {read.task_id !== task.task_id && (read.content_changed
+                    ? <> · <Pill tone="warn">{t("comparison.heldOut.contentChanged")}</Pill></>
+                    : ` · ${t("comparison.heldOut.sameTask")}`)}
+                </TableCell>
                 <TableCell>{fmtTime(read.first_read_at)}</TableCell><TableCell>{fmtTime(read.last_read_at)}</TableCell><TableCell>{read.count}</TableCell>
               </TableRow>)}</TableBody>
             </Table></div>
