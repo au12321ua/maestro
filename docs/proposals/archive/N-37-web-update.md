@@ -1,6 +1,6 @@
 # N-37 网页检查与触发更新，带排空
 
-状态：实施中（已确认，U-98） · 范围已答（U-96） · 优先级：二 · 2026-11-07 · 相关：[12](../design/12-operations.md) 第 1、5 节、[部署指南](../guides/deployment.md)、[11](../design/11-web-ui.md)、U-29、U-48、U-96；取代 N-12
+状态：完成（U-96、U-98） · 优先级：二 · 2026-11-07 · 相关：[12](../../design/12-operations.md) 第 1、5 节、[部署指南](../../guides/deployment.md)、[11](../../design/11-web-ui.md)、U-29、U-48、U-96；取代 N-12
 
 ## 问题
 
@@ -47,7 +47,7 @@
 - 运维：`ops/maestroctl.py` 增加 `update --release`、`maestro-update.path` 与 `.service` 两个单元（`install`、`update` 时写入，`uninstall` 删除，`check` 与 `status` 报告）、`/var/lib/maestro/update/` 目录；配置增加检查开关与 GitHub 仓库。
 - 服务：调度器在待更新时不派发、Operation 拒绝启动；管理员接口：查询与检查更新、发起、取消、立即更新、读取结果；数据库记录待更新状态（新迁移）。
 - 网页：管理页新增“更新”分区；工作台与系统状态显示待更新。
-- 系统说明：[12](../design/12-operations.md) 第 1、3、5、9 节（删去“网页不发起维护动作”“不排空”），[11](../design/11-web-ui.md) 管理分区，[05](../design/05-scheduling-execution.md) 派发条件，[13](../design/13-testing-plan.md)，[部署指南](../guides/deployment.md)“更新”。
+- 系统说明：[12](../../design/12-operations.md) 第 1、3、5、9 节（删去“网页不发起维护动作”“不排空”），[11](../../design/11-web-ui.md) 管理分区，[05](../../design/05-scheduling-execution.md) 派发条件，[13](../../design/13-testing-plan.md)，[部署指南](../../guides/deployment.md)“更新”。
 - 提案索引：N-12 移入“被取代”。
 
 ## 验收
@@ -67,4 +67,11 @@
 
 ## 结果
 
-尚未实施。
+完成（2026-11-07）。行为见 [12](../../design/12-operations.md) 第 5 节、[05](../../design/05-scheduling-execution.md) 第 3 节、[11](../../design/11-web-ui.md) 第 5 节、[部署指南](../../guides/deployment.md)“更新”，验收见 [13](../../design/13-testing-plan.md) 的 E2E-OPS-01。
+
+与方案的差别与补充：
+
+- 待更新期间除导入与首次准备外，回收缓存也拒绝启动；在途工作的定义与 `maestro activity` 共用，排空后的更新不会被命令行一侧拒绝。
+- 只能更新到最近一次检查查到的那个版本；更新任务先把请求改名占下，此后取消被拒绝。状态停在 `running` 而更新任务的进程已不存在时按失败结束，不让派发一直暂停。
+- 无人值守的路径下载 Python 包也走服务的代理；`update_check = false` 时更新任务拒绝网页请求。
+- 发布说明中标题含“破坏性变更”“更新后”等字样的小节排在页面前面，发布指南要求按此写小节。

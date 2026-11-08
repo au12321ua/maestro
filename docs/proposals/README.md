@@ -25,7 +25,6 @@
 | 编号 | 提案 | 状态 | 要点 |
 | --- | --- | --- | --- |
 | N-33 | [留出集、外部 benchmark 与工作流适配](N-33-held-out-benchmarks-workflows.md) | 已确认（U-90），三部分都已实现并通过可用性检查，等用户重跑附件改进实验后归档 | 取代 N-28、N-31、N-32。运行与集合的模型不变，分三部分、各自走短期分支：① 工作流适配（原 N-31：skill、SDK 工作流模块、挂在集合 / 运行 / 附件上的工作流记录、当前最优指针）；② 留出集：建集合时在规格中标出留出题，读取汇总落在题目上，比较分开统计开发题与留出题；③ 外部 benchmark：本地转换成 Harbor task 后上传，从产物导出提交包。评测拆分暂缓（U-86） |
-| N-37 | [网页检查与触发更新，带排空](N-37-web-update.md) | 实施中（U-98） | 管理页检查 GitHub 正式版并一键更新：先排空（排队照常、暂停派发、等在途工作结束），再由 root 的一次性 systemd 任务下载、核对并执行现有 `maestroctl update`；开发预览仍走命令行；取代 N-12 |
 
 ### 由用户测试后再推进
 
@@ -68,6 +67,7 @@
 
 | 编号 | 状态 | 提案 |
 | --- | --- | --- |
+| N-37 | 完成 | [网页检查与触发更新，带排空](archive/N-37-web-update.md)（U-96、U-98）→ [12](../design/12-operations.md)、[05](../design/05-scheduling-execution.md)、[11](../design/11-web-ui.md)、[部署指南](../guides/deployment.md) |
 | N-36 | 完成 | [工作流记录：给人读写的文字与可跳转的引用](archive/N-36-record-text.md)（U-95、U-97）→ [01](../design/01-domain-model.md)、[10](../design/10-api-sdk-cli.md)、[11](../design/11-web-ui.md) |
 | N-35 | 完成 | [补齐 N-33 的网页一侧：数据集上传与版本管理、工作流记录读写、交付物导出](archive/N-35-web-dataset-upload.md)（U-92、U-93）→ [02](../design/02-datasets-preparation.md)、[08](../design/08-collections-comparison.md)、[11](../design/11-web-ui.md) |
 | N-30 | 完成 | [问题记录与测试目录](archive/N-30-issues-and-test-layout.md)（U-70～U-72）→ [开发与协作](../guides/development-workflow.md)“问题与修复”、[开发验证](../guides/testing.md)“测试的组织” |
