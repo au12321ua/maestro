@@ -12,6 +12,7 @@ export const ADMIN_SECTIONS = [
   { id: "datasets", label: t("admin.sections.datasets") },
   { id: "recycle-bin", label: t("admin.sections.recycleBin") },
   { id: "audit", label: t("admin.sections.audit") },
+  { id: "update", label: t("admin.sections.update") },
   { id: "maintenance", label: t("admin.sections.maintenance") },
 ] as const;
 

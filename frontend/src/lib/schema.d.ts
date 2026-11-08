@@ -7468,6 +7468,8 @@ export interface components {
             created_at: string;
             /** Finished At */
             finished_at: string | null;
+            /** @description Who cancelled it, for a cancelled one */
+            finished_by: components["schemas"]["UpdateUser"] | null;
             /** From Version */
             from_version: string;
             /** Id */

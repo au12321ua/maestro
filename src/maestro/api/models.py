@@ -2609,6 +2609,7 @@ class ServiceUpdate(Model):
     )
     from_version: str
     requested_by: UpdateUser | None
+    finished_by: UpdateUser | None = Field(description="Who cancelled it, for a cancelled one")
     created_at: str
     requested_at: str | None = Field(description="When the request was handed to the host")
     finished_at: str | None

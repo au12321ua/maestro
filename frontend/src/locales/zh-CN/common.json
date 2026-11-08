@@ -62,7 +62,8 @@
     "CAPACITY_CPU": "等待空闲 CPU",
     "CAPACITY_MEMORY": "等待空闲内存",
     "PROVIDER_LIMIT": "等待模型提供商并发额度",
-    "STORAGE_LOW": "存储空间不足，暂停启动"
+    "STORAGE_LOW": "存储空间不足，暂停启动",
+    "UPDATE_PENDING": "等待系统更新完成或取消"
   },
   "invitationState": {
     "pending": "待使用",
@@ -347,5 +348,10 @@
     "tooManyFiles": "共 {{count}} 个文件，超过 {{max}} 个的上限；请改用 SDK 上传。",
     "tooLarge": "共 {{size}}，超过 {{max}} 的上限；请改用 SDK 上传。",
     "fileTooLarge": "{{path}} 有 {{size}}，超过网页单个文件 {{max}} 的上限（浏览器计算摘要要把整份文件读入内存）；请改用 SDK 上传。"
+  },
+  "updateNotice": {
+    "draining": "管理员已发起更新到 {{version}}：运行照常受理和排队，暂不开始，在途工作结束后更新",
+    "requested": "正在更新到 {{version}}，服务即将重启",
+    "manage": "查看更新"
   }
 }

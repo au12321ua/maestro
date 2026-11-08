@@ -387,9 +387,12 @@ class Updates:
         return data if isinstance(data, dict) else None
 
     def _public(self, conn: Connection, row) -> dict:
-        user = conn.execute(
-            select(t.users.c.id, t.users.c.username).where(t.users.c.id == row["requested_by"])
-        ).first()
+        def user(user_id):
+            found = conn.execute(
+                select(t.users.c.id, t.users.c.username).where(t.users.c.id == user_id)
+            ).first()
+            return {"id": found.id, "username": found.username} if found else None
+
         release = row["release_json"] or {}
         progress = None
         if row["state"] == REQUESTED:
@@ -406,7 +409,8 @@ class Updates:
             "state": row["state"],
             "interrupt_running": row["interrupt_running"],
             "from_version": row["from_version"],
-            "requested_by": {"id": user.id, "username": user.username} if user else None,
+            "requested_by": user(row["requested_by"]),
+            "finished_by": user(row["finished_by"]) if row["finished_by"] else None,
             "created_at": row["created_at"],
             "requested_at": row["requested_at"],
             "finished_at": row["finished_at"],

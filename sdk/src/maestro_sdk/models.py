@@ -3558,6 +3558,9 @@ class ServiceUpdate(BaseModel):
     )
     created_at: str
     finished_at: str | None
+    finished_by: Annotated[
+        UpdateUser | None, Field(description="Who cancelled it, for a cancelled one")
+    ]
     from_version: str
     id: str
     interrupt_running: Annotated[

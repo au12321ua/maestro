@@ -15644,6 +15644,17 @@
             ],
             "title": "Finished At"
           },
+          "finished_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UpdateUser"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who cancelled it, for a cancelled one"
+          },
           "from_version": {
             "title": "From Version",
             "type": "string"
@@ -15725,6 +15736,7 @@
           "interrupt_running",
           "from_version",
           "requested_by",
+          "finished_by",
           "created_at",
           "requested_at",
           "finished_at",

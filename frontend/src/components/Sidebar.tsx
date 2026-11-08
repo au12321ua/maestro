@@ -83,7 +83,7 @@ export function Sidebar({
   footer: ReactNode;
   collapsedFooter: ReactNode;
 }) {
-  const { me } = useSession();
+  const { me, capabilities } = useSession();
   const { pathname } = useLocation();
   const [folded, setFolded] = useState(readFolded);
   const [drawer, setDrawer] = useState(false);
@@ -118,7 +118,7 @@ export function Sidebar({
                   aria-label={t("common.nav.admin")}
                   className="ml-4 grid gap-0.5 border-l border-sidebar-border pl-2"
                 >
-                  {ADMIN_SECTIONS.map((s) => (
+                  {ADMIN_SECTIONS.filter((s) => s.id !== "update" || capabilities?.features.web_update === true).map((s) => (
                     <NavLink
                       key={s.id}
                       to={`/admin/${s.id}`}

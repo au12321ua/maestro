@@ -37,6 +37,7 @@ import {
 } from "@/lib/format";
 import { limit, useLoad, useSession } from "@/lib/hooks";
 import { HarnessesTab, ModelsTab, PolicyTab } from "@/pages/admin/ConfigurationTabs";
+import { UpdateTab } from "@/pages/admin/UpdateTab";
 import { SetupNetworkTab } from "@/pages/admin/SetupNetworkTab";
 import { ADMIN_SECTIONS, type AdminSection } from "@/pages/admin/sections";
 import { Trans, t } from "@/i18n";
@@ -78,14 +79,16 @@ const RENDER: Record<AdminSection, () => ReactNode> = {
   datasets: () => <DatasetImportsTab />,
   "recycle-bin": () => <RecycleBinTab />,
   audit: () => <AuditTab />,
+  update: () => <UpdateTab />,
   maintenance: () => <MaintenanceTab />,
 };
 
 /** Administration: each section has its own URL (/admin/<id>), reached from the sidebar. */
 export function AdminPage() {
   const { section } = useParams();
+  const { capabilities } = useSession();
   const current = ADMIN_SECTIONS.find((s) => s.id === section);
-  if (!current) return <Navigate to="/admin/members" replace />;
+  if (!current || (current.id === "update" && capabilities?.features.web_update !== true)) return <Navigate to="/admin/members" replace />;
   return (
     <div>
       <PageTitle title={t("admin.pageTitle", { section: current.label })} />

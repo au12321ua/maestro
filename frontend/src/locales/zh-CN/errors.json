@@ -162,6 +162,13 @@
     "RECORD_DELETED": "记录在回收站中",
     "RECORD_TARGET_DELETED": "记录目标在回收站中",
     "RECORD_REVISION_CHANGED": "记录已修改，请刷新后重试",
-    "CURRENT_BEST_INVALID": "当前最优快照或理由无效"
+    "CURRENT_BEST_INVALID": "当前最优快照或理由无效",
+    "UPDATE_PENDING": "待更新期间暂不能开始此操作",
+    "UPDATE_ALREADY_PENDING": "已有待更新请求",
+    "UPDATE_NOT_PENDING": "当前没有待更新请求",
+    "UPDATE_IN_PROGRESS": "更新已经开始，无法取消",
+    "UPDATE_TARGET_UNKNOWN": "更新目标未知，请先检查更新",
+    "UPDATE_NOT_NEWER": "目标版本不比当前版本新",
+    "UPDATE_CHECK_DISABLED": "配置已关闭更新检查"
   }
 }

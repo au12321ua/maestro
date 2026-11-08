@@ -292,6 +292,7 @@ def test_cancelling_resumes_dispatching_until_the_host_has_taken_the_request(
     service_updates.request(admin, "0.6.0", False)
     status = service_updates.cancel(admin)
     assert status["pending"] is None and status["last"]["state"] == "cancelled"
+    assert status["last"]["finished_by"]["username"] == "admin"
     with pytest.raises(MaestroError) as nothing:
         service_updates.cancel(admin)
     assert nothing.value.code == "UPDATE_NOT_PENDING"
