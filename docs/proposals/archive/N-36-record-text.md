@@ -1,6 +1,6 @@
 # N-36 工作流记录：给人读写的文字与可跳转的引用
 
-状态：设计中（范围与待定问题已答，U-95；等用户读后确认是否实施） · 优先级：二 · 2026-11-07 · 相关：[01](../design/01-domain-model.md)、[10](../design/10-api-sdk-cli.md)、[11](../design/11-web-ui.md) 第 3 节、[N-35](archive/N-35-web-dataset-upload.md)、U-74、U-95
+状态：完成（范围 U-95，确认实施 U-97） · 优先级：二 · 2026-11-07 · 相关：[01](../../design/01-domain-model.md)、[10](../../design/10-api-sdk-cli.md)、[11](../../design/11-web-ui.md) 第 3 节、[N-35](N-35-web-dataset-upload.md)、U-74、U-95、U-97
 
 ## 问题
 
@@ -66,7 +66,7 @@
 - 数据库：`workflow_records` 与 `workflow_record_revisions` 各加 `text` 列（默认空串），新增一个迁移。
 - 接口与 SDK：记录的创建、修改与返回多出 `text`，`body` 可省略；返回的试次、产物引用带所属运行。OpenAPI、SDK 模型与网页类型随之生成。
 - 网页：`WorkflowRecords` 组件的显示、表单与引用链接；附件页按快照定位的地址；新增一个 Markdown 渲染依赖（第三方许可证清单随之更新）。
-- 系统说明：[01](../design/01-domain-model.md) 工作流记录一行、[10](../design/10-api-sdk-cli.md) 记录一段、[11](../design/11-web-ui.md) 第 3 节记录区与第 1 节数据集上传中“来源说明”的写法、[13](../design/13-testing-plan.md) E2E-OUT-05。
+- 系统说明：[01](../../design/01-domain-model.md) 工作流记录一行、[10](../../design/10-api-sdk-cli.md) 记录一段、[11](../../design/11-web-ui.md) 第 3 节记录区与第 1 节数据集上传中“来源说明”的写法、[13](../../design/13-testing-plan.md) E2E-OUT-05。
 - skill：`maestro-package` 中关于候选记录的建议加一句 `text` 与 `body` 的分工。
 
 ## 验收
@@ -83,4 +83,8 @@
 
 ## 结果
 
-尚未实施。
+2026-11-07 按本提案实现，结论已并入 [01](../../design/01-domain-model.md)、[02](../../design/02-datasets-preparation.md)、[08](../../design/08-collections-comparison.md)、[10](../../design/10-api-sdk-cli.md)、[11](../../design/11-web-ui.md) 第 1、3 节与 [13](../../design/13-testing-plan.md) E2E-OUT-05。与方案的差别：
+
+- 试次与产物引用的所属运行放在记录的 `reference_locations` 里返回，而不是加进引用对象：SDK 的 `decide_candidate` 会把读到的引用与摘录原样写回，引用对象多出字段会被修改接口拒绝。
+- 附件页已有 `?snapshot=<id>` 地址，只补了滚到该快照，以及快照不在列表中（回收站或已删除）时的说明。
+- Markdown 渲染用 `react-markdown` 与 `remark-gfm`（MIT），网页脚本因此增大约 170 KB（未压缩）。

@@ -30,7 +30,6 @@
 
 | 编号 | 提案 | 状态 | 要点 |
 | --- | --- | --- | --- |
-| N-36 | [工作流记录：给人读写的文字与可跳转的引用](N-36-record-text.md) | 设计中（待定问题已答，U-95；等用户读后确认） | 记录新增 Markdown 的 `text` 字段给人读写，JSON 正文留给程序；正文改为通用的可读显示，引用做成链接；同一事实只写一处，不做两份同步 |
 | N-37 | [网页检查与触发更新，带排空](N-37-web-update.md) | 设计中（范围已答，U-96；等用户读后确认） | 管理页检查 GitHub 正式版并一键更新：先排空（排队照常、暂停派发、等在途工作结束），再由 root 的一次性 systemd 任务下载、核对并执行现有 `maestroctl update`；开发预览仍走命令行；取代 N-12 |
 
 ### 由用户测试后再推进
@@ -74,6 +73,7 @@
 
 | 编号 | 状态 | 提案 |
 | --- | --- | --- |
+| N-36 | 完成 | [工作流记录：给人读写的文字与可跳转的引用](archive/N-36-record-text.md)（U-95、U-97）→ [01](../design/01-domain-model.md)、[10](../design/10-api-sdk-cli.md)、[11](../design/11-web-ui.md) |
 | N-35 | 完成 | [补齐 N-33 的网页一侧：数据集上传与版本管理、工作流记录读写、交付物导出](archive/N-35-web-dataset-upload.md)（U-92、U-93）→ [02](../design/02-datasets-preparation.md)、[08](../design/08-collections-comparison.md)、[11](../design/11-web-ui.md) |
 | N-30 | 完成 | [问题记录与测试目录](archive/N-30-issues-and-test-layout.md)（U-70～U-72）→ [开发与协作](../guides/development-workflow.md)“问题与修复”、[开发验证](../guides/testing.md)“测试的组织” |
 | N-29 | 完成 | [细粒度 PAT](archive/N-29-fine-grained-pats.md)（U-69）→ [09](../design/09-identity-security.md) 第 2、3 节 |

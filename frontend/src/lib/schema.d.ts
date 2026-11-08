@@ -6353,9 +6353,10 @@ export interface components {
         RecordCreate: {
             /**
              * Body
-             * @description Opaque workflow-owned JSON; the platform does not interpret its schema
+             * @description Opaque workflow-owned JSON for programs; the platform does not interpret its schema
+             * @default {}
              */
-            body: {
+            body?: {
                 [key: string]: components["schemas"]["JsonValue"];
             };
             /**
@@ -6371,6 +6372,12 @@ export interface components {
              */
             references?: components["schemas"]["RecordReference"][];
             target: components["schemas"]["RecordTarget-Input"];
+            /**
+             * Text
+             * @description Markdown written for people; the platform does not derive it from the body or the body from it
+             * @default
+             */
+            text?: string;
             /** Title */
             title: string;
         };
@@ -6398,6 +6405,26 @@ export interface components {
              */
             type: "run" | "trial" | "artifact" | "attachment_snapshot" | "collection" | "analysis_snapshot";
         };
+        /**
+         * RecordReferenceLocation
+         * @description Where a trial or artifact reference lives, for opening it on its run's page.
+         */
+        RecordReferenceLocation: {
+            /** Id */
+            id: string;
+            /** Run Id */
+            run_id: string;
+            /**
+             * Trial Id
+             * @description None for an artifact of the run itself
+             */
+            trial_id: string | null;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "trial" | "artifact";
+        };
         /** RecordRevision */
         RecordRevision: {
             /** Actor Id */
@@ -6408,7 +6435,8 @@ export interface components {
             at: string;
             /**
              * Body
-             * @description Opaque workflow-owned JSON; the platform does not interpret its schema
+             * @description Opaque workflow-owned JSON for programs; the platform does not interpret its schema
+             * @default {}
              */
             body: {
                 [key: string]: components["schemas"]["JsonValue"];
@@ -6429,6 +6457,12 @@ export interface components {
             references: components["schemas"]["RecordReference"][];
             /** Revision */
             revision: number;
+            /**
+             * Text
+             * @description Markdown written for people; the platform does not derive it from the body or the body from it
+             * @default
+             */
+            text: string;
             /** Title */
             title: string;
         };
@@ -6482,6 +6516,8 @@ export interface components {
             kind?: string | null;
             /** References */
             references?: components["schemas"]["RecordReference"][] | null;
+            /** Text */
+            text?: string | null;
             /** Title */
             title?: string | null;
         };
@@ -8070,7 +8106,8 @@ export interface components {
             author_username: string;
             /**
              * Body
-             * @description Opaque workflow-owned JSON; the platform does not interpret its schema
+             * @description Opaque workflow-owned JSON for programs; the platform does not interpret its schema
+             * @default {}
              */
             body: {
                 [key: string]: components["schemas"]["JsonValue"];
@@ -8093,6 +8130,11 @@ export interface components {
              */
             pat_id: string | null;
             /**
+             * Reference Locations
+             * @description The run of each trial and artifact reference that still exists
+             */
+            reference_locations: components["schemas"]["RecordReferenceLocation"][];
+            /**
              * References
              * @default []
              */
@@ -8101,6 +8143,12 @@ export interface components {
             revision: number;
             target: components["schemas"]["RecordTarget-Output"];
             target_deletion: components["schemas"]["DeletionState"] | null;
+            /**
+             * Text
+             * @description Markdown written for people; the platform does not derive it from the body or the body from it
+             * @default
+             */
+            text: string;
             /** Title */
             title: string;
             /** Updated At */

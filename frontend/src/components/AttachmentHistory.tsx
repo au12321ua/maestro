@@ -254,7 +254,11 @@ function Tree({
     }
   };
   useEffect(() => {
-    if (focus?.snapshot) void show(focus.snapshot);
+    if (!focus?.snapshot) return;
+    void show(focus.snapshot);
+    document
+      .getElementById(`snapshot-${focus.snapshot}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus?.snapshot]);
   const toggle = (id: string) => {
@@ -283,7 +287,7 @@ function Tree({
           ? t("attachments.history.separate")
           : t("attachments.history.first");
     return (
-      <li key={a.id} className="relative">
+      <li key={a.id} id={`snapshot-${a.id}`} className="relative scroll-mt-4">
         <span
           className={cn(
             "absolute top-1.5 -left-[1.72rem] size-2.5 rounded-full border-2 border-background ring-1 ring-border",
@@ -497,6 +501,11 @@ export function AttachmentHistory({
   };
   return (
     <div className="grid gap-3">
+      {focus?.snapshot && !byId.has(focus.snapshot) && (
+        <p role="status" className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
+          {t("attachments.list.snapshotNotListed", { id: focus.snapshot })}
+        </p>
+      )}
       {groups.map((g) => (
         <GroupBlock
           key={g.name}

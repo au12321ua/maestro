@@ -12570,7 +12570,8 @@
             "additionalProperties": {
               "$ref": "#/components/schemas/JsonValue"
             },
-            "description": "Opaque workflow-owned JSON; the platform does not interpret its schema",
+            "default": {},
+            "description": "Opaque workflow-owned JSON for programs; the platform does not interpret its schema",
             "title": "Body",
             "type": "object"
           },
@@ -12597,6 +12598,12 @@
           "target": {
             "$ref": "#/components/schemas/RecordTarget-Input"
           },
+          "text": {
+            "default": "",
+            "description": "Markdown written for people; the platform does not derive it from the body or the body from it",
+            "title": "Text",
+            "type": "string"
+          },
           "title": {
             "title": "Title",
             "type": "string"
@@ -12605,7 +12612,6 @@
         "required": [
           "kind",
           "title",
-          "body",
           "target"
         ],
         "title": "RecordCreate",
@@ -12689,6 +12695,48 @@
         "title": "RecordReference",
         "type": "object"
       },
+      "RecordReferenceLocation": {
+        "additionalProperties": false,
+        "description": "Where a trial or artifact reference lives, for opening it on its run's page.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "trial_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None for an artifact of the run itself",
+            "title": "Trial Id"
+          },
+          "type": {
+            "enum": [
+              "trial",
+              "artifact"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "run_id",
+          "trial_id"
+        ],
+        "title": "RecordReferenceLocation",
+        "type": "object"
+      },
       "RecordRevision": {
         "additionalProperties": false,
         "properties": {
@@ -12708,7 +12756,8 @@
             "additionalProperties": {
               "$ref": "#/components/schemas/JsonValue"
             },
-            "description": "Opaque workflow-owned JSON; the platform does not interpret its schema",
+            "default": {},
+            "description": "Opaque workflow-owned JSON for programs; the platform does not interpret its schema",
             "title": "Body",
             "type": "object"
           },
@@ -12747,6 +12796,12 @@
             "title": "Revision",
             "type": "integer"
           },
+          "text": {
+            "default": "",
+            "description": "Markdown written for people; the platform does not derive it from the body or the body from it",
+            "title": "Text",
+            "type": "string"
+          },
           "title": {
             "title": "Title",
             "type": "string"
@@ -12755,6 +12810,7 @@
         "required": [
           "kind",
           "title",
+          "text",
           "body",
           "references",
           "excerpts",
@@ -12903,6 +12959,17 @@
               }
             ],
             "title": "References"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
           },
           "title": {
             "anyOf": [
@@ -17834,7 +17901,8 @@
             "additionalProperties": {
               "$ref": "#/components/schemas/JsonValue"
             },
-            "description": "Opaque workflow-owned JSON; the platform does not interpret its schema",
+            "default": {},
+            "description": "Opaque workflow-owned JSON for programs; the platform does not interpret its schema",
             "title": "Body",
             "type": "object"
           },
@@ -17880,6 +17948,14 @@
             "description": "The PAT used to create the record",
             "title": "Pat Id"
           },
+          "reference_locations": {
+            "description": "The run of each trial and artifact reference that still exists",
+            "items": {
+              "$ref": "#/components/schemas/RecordReferenceLocation"
+            },
+            "title": "Reference Locations",
+            "type": "array"
+          },
           "references": {
             "default": [],
             "items": {
@@ -17905,6 +17981,12 @@
               }
             ]
           },
+          "text": {
+            "default": "",
+            "description": "Markdown written for people; the platform does not derive it from the body or the body from it",
+            "title": "Text",
+            "type": "string"
+          },
           "title": {
             "title": "Title",
             "type": "string"
@@ -17917,11 +17999,13 @@
         "required": [
           "kind",
           "title",
+          "text",
           "body",
           "references",
           "excerpts",
           "id",
           "target",
+          "reference_locations",
           "author_id",
           "author_username",
           "pat_id",

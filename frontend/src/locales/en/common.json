@@ -277,8 +277,8 @@
     "kindInvalid": "Use lowercase letters, digits and hyphens, starting with a letter, such as note or provenance.",
     "recordTitle": "Title",
     "titleRequired": "Enter a title.",
-    "bodyLabel": "Body (JSON object)",
-    "bodyHint": "The platform does not interpret the body. References and evidence excerpts are checked against the objects they cite; write them with the SDK.",
+    "bodyLabel": "Body (JSON object, optional)",
+    "bodyHint": "For programs to read and write; the platform does not interpret its structure. Do not repeat it in the text. References and evidence excerpts are checked against the objects they cite; write them with the SDK.",
     "bodyNotJson": "The body is not valid JSON.",
     "bodyNotObject": "The body must be a JSON object ({…}).",
     "provenanceTitle": "Provenance",
@@ -295,7 +295,6 @@
     "reload": "Reload records",
     "history": "Revision history",
     "revisionLine": "Revision {{revision}} · {{actor}} · {{time}}",
-    "body": "Expand body (JSON)",
     "references_one": "{{count}} reference",
     "references_other": "{{count}} references",
     "excerpts": "Evidence excerpts",
@@ -303,7 +302,20 @@
     "snapshot": "Pinned attachment snapshot: {{id}}",
     "pat": "PAT",
     "revisions_one": "{{count}} revision",
-    "revisions_other": "{{count}} revisions"
+    "revisions_other": "{{count}} revisions",
+    "textLabel": "Text (Markdown)",
+    "textHint": "Written for people. Links within the site work, such as [that run](/runs/<id>); the platform does not check them, so write references that need checking with the SDK.",
+    "provenanceHint": "Describe where this version came from: the upstream repository, the revision (commit or tag), the converter and its version, and any choices made while converting.",
+    "advanced": "Advanced: body (JSON)",
+    "viewJson": "View JSON",
+    "referenceType": {
+      "run": "Run",
+      "trial": "Trial",
+      "artifact": "Artifact",
+      "attachment_snapshot": "Attachment snapshot",
+      "collection": "Collection",
+      "analysis_snapshot": "Analysis snapshot"
+    }
   },
   "folder": {
     "choose": "Choose folder",

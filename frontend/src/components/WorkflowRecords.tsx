@@ -1,14 +1,18 @@
 // Workflow records on a run, collection, attachment name or dataset version: read like a
 // comment thread, written by any member. Only the author edits (with the revision they saw,
 // so a concurrent edit is refused instead of overwritten); deleting moves a record to the
-// recycle bin. References and evidence excerpts are checked against the objects they cite
-// and are written through the SDK; here they are only shown.
+// recycle bin. A record has Markdown text written for people and a JSON body for programs;
+// the body is shown as a readable outline with the raw JSON behind a toggle, and is only
+// edited under "advanced". References and evidence excerpts are checked against the
+// objects they cite and are written through the SDK; here they are shown as links.
 import { useId, useState, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { History, MessageSquareText, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyNote, ErrorAlert, Loading } from "@/components/common";
+import { Markdown, ReadableJson } from "@/components/Markdown";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { t } from "@/i18n";
@@ -20,8 +24,53 @@ import type { RecordRevision, RecordTargetType, WorkflowRecord } from "@/lib/typ
 
 const KIND = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 
-/** A dataset version's provenance: key names are a convention, the platform reads none. */
-const PROVENANCE = { upstream_repo: "", revision: "", converter_version: "" };
+type Reference = WorkflowRecord["references"][number];
+type Location = WorkflowRecord["reference_locations"][number];
+
+/** Where a reference opens. Trials and artifacts need their run, which the record
+ * supplies; without it (the object is gone) the reference is shown as plain text. */
+function referenceHref(ref: Reference, locations: Location[]): string | null {
+  const id = encodeURIComponent(ref.id);
+  const at = locations.find((l) => l.type === ref.type && l.id === ref.id);
+  switch (ref.type) {
+    case "run":
+      return `/runs/${id}`;
+    case "collection":
+      return `/collections/${id}`;
+    case "analysis_snapshot":
+      return `/snapshots/${id}`;
+    case "attachment_snapshot":
+      return `/attachments?snapshot=${id}`;
+    case "trial":
+      return at ? `/runs/${encodeURIComponent(at.run_id)}?trial=${id}` : null;
+    case "artifact": {
+      if (!at) return null;
+      const query = new URLSearchParams({ tab: "artifacts" });
+      if (at.trial_id) query.set("artifacts_of", at.trial_id);
+      return `/runs/${encodeURIComponent(at.run_id)}?${query}`;
+    }
+    default:
+      return null;
+  }
+}
+
+function ReferenceLink({ value, locations }: { value: Reference; locations: Location[] }) {
+  const href = referenceHref(value, locations);
+  const label = (
+    <>
+      {t(`common.records.referenceType.${value.type}`, { defaultValue: value.type })}
+      {" · "}
+      <code>{value.id}</code>
+    </>
+  );
+  return href ? (
+    <Link to={href} className="break-all text-primary underline-offset-2 hover:underline">
+      {label}
+    </Link>
+  ) : (
+    <span className="break-all">{label}</span>
+  );
+}
 
 /** "Records (n)" at the top of a page whose records section is further down. */
 export function RecordsJumpButton({ records }: { records: Loaded<WorkflowRecord[]> }) {
@@ -44,19 +93,21 @@ export function RecordsJumpButton({ records }: { records: Loaded<WorkflowRecord[
 interface Draft {
   kind: string;
   title: string;
+  text: string;
+  /** JSON text; empty means an empty body. */
   body: string;
 }
 
-type Content = { kind: string; title: string; body: Record<string, unknown> };
+type Content = { kind: string; title: string; text: string; body: Record<string, unknown> };
 
 function emptyDraft(targetType: RecordTargetType): Draft {
   return targetType === "dataset_version"
-    ? {
-        kind: "provenance",
-        title: t("common.records.provenanceTitle"),
-        body: JSON.stringify(PROVENANCE, null, 2),
-      }
-    : { kind: "note", title: "", body: "{}" };
+    ? { kind: "provenance", title: t("common.records.provenanceTitle"), text: "", body: "" }
+    : { kind: "note", title: "", text: "", body: "" };
+}
+
+function bodyText(body: Record<string, unknown>) {
+  return Object.keys(body).length === 0 ? "" : JSON.stringify(body, null, 2);
 }
 
 export function WorkflowRecords({
@@ -122,6 +173,7 @@ export function WorkflowRecords({
         {adding && (
           <RecordForm
             initial={emptyDraft(targetType)}
+            textHint={targetType === "dataset_version" ? t("common.records.provenanceHint") : undefined}
             kinds={kinds}
             submitLabel={t("common.records.save")}
             onSubmit={create}
@@ -189,7 +241,8 @@ function RecordItem({
           initial={{
             kind: record.kind,
             title: record.title,
-            body: JSON.stringify(record.body, null, 2),
+            text: record.text,
+            body: bodyText(record.body),
           }}
           kinds={kinds}
           submitLabel={t("common.records.saveEdit")}
@@ -243,7 +296,8 @@ function RecordItem({
           </div>
         )}
       </div>
-      <JsonPre value={record.body} />
+      {record.text && <Markdown className="mt-2">{record.text}</Markdown>}
+      <RecordBody value={record.body} />
       {record.references.length > 0 && (
         <details className="mt-2">
           <summary className="cursor-pointer text-xs">
@@ -251,8 +305,8 @@ function RecordItem({
           </summary>
           <ul className="mt-1 grid gap-0.5 text-xs">
             {record.references.map((ref) => (
-              <li key={`${ref.type}:${ref.id}`} className="break-all">
-                {ref.type} · <code>{ref.id}</code>
+              <li key={`${ref.type}:${ref.id}`}>
+                <ReferenceLink value={ref} locations={record.reference_locations} />
               </li>
             ))}
           </ul>
@@ -267,8 +321,8 @@ function RecordItem({
                 {excerpt.text}
               </pre>
               {excerpt.reference && (
-                <p className="break-all text-xs text-muted-foreground">
-                  {excerpt.reference.type} · {excerpt.reference.id}
+                <p className="text-xs text-muted-foreground">
+                  <ReferenceLink value={excerpt.reference} locations={record.reference_locations} />
                 </p>
               )}
             </blockquote>
@@ -280,21 +334,21 @@ function RecordItem({
   );
 }
 
-/** A short body is shown in full; a long one opens on request. An empty one is left out. */
-function JsonPre({ value }: { value: unknown }) {
-  const text = JSON.stringify(value, null, 2);
-  if (text === "{}") return null;
-  const pre = (
-    <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted p-3 text-xs">
-      {text}
-    </pre>
-  );
-  if (text.split("\n").length <= 12) return pre;
+/** The body as a readable outline, with its JSON behind a toggle. An empty one is left out. */
+function RecordBody({ value }: { value: Record<string, unknown> }) {
+  if (Object.keys(value).length === 0) return null;
   return (
-    <details className="mt-2">
-      <summary className="cursor-pointer text-xs">{t("common.records.body")}</summary>
-      {pre}
-    </details>
+    <div className="mt-2 grid gap-1 rounded-md bg-muted/40 p-3" data-testid="record-body">
+      <ReadableJson value={value} />
+      <details className="mt-1">
+        <summary className="cursor-pointer text-xs text-muted-foreground">
+          {t("common.records.viewJson")}
+        </summary>
+        <pre className="mt-1 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded bg-muted p-2 text-xs">
+          {JSON.stringify(value, null, 2)}
+        </pre>
+      </details>
+    </div>
   );
 }
 
@@ -339,9 +393,8 @@ function RevisionList({ recordId }: { recordId: string }) {
             <span className="text-muted-foreground">{rev.kind} · </span>
             {rev.title}
           </p>
-          <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-muted p-2 text-xs">
-            {JSON.stringify(rev.body, null, 2)}
-          </pre>
+          {rev.text && <Markdown className="mt-1 text-xs">{rev.text}</Markdown>}
+          <RecordBody value={rev.body} />
         </div>
       ))}
     </div>
@@ -350,6 +403,7 @@ function RevisionList({ recordId }: { recordId: string }) {
 
 function RecordForm({
   initial,
+  textHint,
   kinds,
   submitLabel,
   onSubmit,
@@ -357,6 +411,8 @@ function RecordForm({
   onReload,
 }: {
   initial: Draft;
+  /** What the text usually says for this kind of target. */
+  textHint?: string;
   kinds: string[];
   submitLabel: string;
   onSubmit: (content: Content) => Promise<void>;
@@ -377,11 +433,13 @@ function RecordForm({
     const kind = draft.kind.trim();
     if (!KIND.test(kind)) found.kind = t("common.records.kindInvalid");
     if (!draft.title.trim()) found.title = t("common.records.titleRequired");
-    let body: unknown;
-    try {
-      body = JSON.parse(draft.body);
-    } catch {
-      found.body = t("common.records.bodyNotJson");
+    let body: unknown = {};
+    if (draft.body.trim()) {
+      try {
+        body = JSON.parse(draft.body);
+      } catch {
+        found.body = t("common.records.bodyNotJson");
+      }
     }
     if (!found.body && (body === null || typeof body !== "object" || Array.isArray(body))) {
       found.body = t("common.records.bodyNotObject");
@@ -391,7 +449,12 @@ function RecordForm({
     setBusy(true);
     setError(undefined);
     try {
-      await onSubmit({ kind, title: draft.title.trim(), body: body as Record<string, unknown> });
+      await onSubmit({
+        kind,
+        title: draft.title.trim(),
+        text: draft.text,
+        body: body as Record<string, unknown>,
+      });
     } catch (err) {
       setError(err);
     } finally {
@@ -430,20 +493,40 @@ function RecordForm({
         </Field>
       </div>
       <Field
-        id={`${id}-body`}
-        label={t("common.records.bodyLabel")}
-        hint={t("common.records.bodyHint")}
-        error={problems.body}
+        id={`${id}-text`}
+        label={t("common.records.textLabel")}
+        hint={textHint ?? t("common.records.textHint")}
       >
         <textarea
-          id={`${id}-body`}
-          className="min-h-32 rounded-md border bg-background p-2 font-mono text-xs"
-          value={draft.body}
-          spellCheck={false}
-          onChange={(e) => set("body")(e.target.value)}
-          aria-invalid={problems.body ? true : undefined}
+          id={`${id}-text`}
+          className="min-h-32 rounded-md border bg-background p-2 text-sm"
+          value={draft.text}
+          onChange={(e) => set("text")(e.target.value)}
         />
       </Field>
+      <details open={!!initial.body || !!problems.body} className="grid gap-2">
+        <summary className="cursor-pointer text-xs text-muted-foreground">
+          {t("common.records.advanced")}
+        </summary>
+        <div className="mt-2">
+          <Field
+            id={`${id}-body`}
+            label={t("common.records.bodyLabel")}
+            hint={t("common.records.bodyHint")}
+            error={problems.body}
+          >
+            <textarea
+              id={`${id}-body`}
+              className="min-h-24 rounded-md border bg-background p-2 font-mono text-xs"
+              value={draft.body}
+              spellCheck={false}
+              placeholder="{}"
+              onChange={(e) => set("body")(e.target.value)}
+              aria-invalid={problems.body ? true : undefined}
+            />
+          </Field>
+        </div>
+      </details>
       {conflict ? (
         <div
           role="alert"

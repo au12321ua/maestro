@@ -41,7 +41,8 @@
     "disabledDone": "Disabled",
     "enabledDone": "Enabled",
     "delete": "Delete",
-    "deleted": "Moved to the recycle bin"
+    "deleted": "Moved to the recycle bin",
+    "snapshotNotListed": "The attachment snapshot {{id}} in the address is not listed: it is in the recycle bin or was deleted."
   },
   "publish": {
     "title": "Publish a snapshot",

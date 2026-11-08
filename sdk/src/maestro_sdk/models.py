@@ -1329,6 +1329,20 @@ class RecordReference(BaseModel):
     ]
 
 
+class RecordReferenceLocation(BaseModel):
+    """
+    Where a trial or artifact reference lives, for opening it on its run's page.
+    """
+
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    id: str
+    run_id: str
+    trial_id: Annotated[str | None, Field(description="None for an artifact of the run itself")]
+    type: Literal["trial", "artifact"]
+
+
 class RecordTargetInput(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -3140,13 +3154,21 @@ class RecordRevision(BaseModel):
     at: str
     body: Annotated[
         dict[str, JsonValue],
-        Field(description="Opaque workflow-owned JSON; the platform does not interpret its schema"),
+        Field(
+            description="Opaque workflow-owned JSON for programs; the platform does not interpret its schema"
+        ),
     ]
     excerpts: list[RecordExcerptOutput]
     kind: str
     pat_id: str | None
     references: list[RecordReference]
     revision: int
+    text: Annotated[
+        str,
+        Field(
+            description="Markdown written for people; the platform does not derive it from the body or the body from it"
+        ),
+    ]
     title: str
 
 
@@ -3159,6 +3181,7 @@ class RecordUpdate(BaseModel):
     expected_revision: int
     kind: str | None = None
     references: list[RecordReference] | None = None
+    text: str | None = None
     title: str | None = None
 
 
@@ -3468,7 +3491,9 @@ class WorkflowRecord(BaseModel):
     author_username: str
     body: Annotated[
         dict[str, JsonValue],
-        Field(description="Opaque workflow-owned JSON; the platform does not interpret its schema"),
+        Field(
+            description="Opaque workflow-owned JSON for programs; the platform does not interpret its schema"
+        ),
     ]
     created_at: str
     deletion: DeletionState | None
@@ -3476,10 +3501,20 @@ class WorkflowRecord(BaseModel):
     id: str
     kind: str
     pat_id: Annotated[str | None, Field(description="The PAT used to create the record")]
+    reference_locations: Annotated[
+        list[RecordReferenceLocation],
+        Field(description="The run of each trial and artifact reference that still exists"),
+    ]
     references: list[RecordReference]
     revision: int
     target: RecordTargetOutput
     target_deletion: DeletionState | None
+    text: Annotated[
+        str,
+        Field(
+            description="Markdown written for people; the platform does not derive it from the body or the body from it"
+        ),
+    ]
     title: str
     updated_at: str
 
@@ -4090,13 +4125,22 @@ class RecordCreate(BaseModel):
         extra="allow",
     )
     body: Annotated[
-        dict[str, JsonValue],
-        Field(description="Opaque workflow-owned JSON; the platform does not interpret its schema"),
-    ]
+        dict[str, JsonValue] | None,
+        Field(
+            description="Opaque workflow-owned JSON for programs; the platform does not interpret its schema",
+            validate_default=True,
+        ),
+    ] = {}
     excerpts: Annotated[list[RecordExcerptInput] | None, Field(validate_default=True)] = []
     kind: str
     references: Annotated[list[RecordReference] | None, Field(validate_default=True)] = []
     target: RecordTargetInput
+    text: Annotated[
+        str | None,
+        Field(
+            description="Markdown written for people; the platform does not derive it from the body or the body from it"
+        ),
+    ] = ""
     title: str
 
 

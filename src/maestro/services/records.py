@@ -1,4 +1,7 @@
-"""Opaque workflow notes attached to team objects, with immutable attributed versions."""
+"""Workflow notes attached to team objects, with immutable attributed versions.
+
+A record carries Markdown text written for people and an opaque JSON body for programs;
+the platform interprets neither and does not derive one from the other."""
 
 from __future__ import annotations
 
@@ -27,7 +30,7 @@ REFERENCE_TABLES = {
     "collection": t.collections,
     "analysis_snapshot": t.analysis_snapshots,
 }
-CONTENT_FIELDS = ("kind", "title", "body", "references", "excerpts")
+CONTENT_FIELDS = ("kind", "title", "text", "body", "references", "excerpts")
 
 
 def _invalid(path: str, message: str, limit: int | None = None) -> MaestroError:
@@ -121,6 +124,12 @@ def _content(conn: Connection, body: dict, *, check_references: bool = True) -> 
         raise _invalid("/kind", "Kind is too long", limits.RECORD_KIND_MAX)
     if not isinstance(title, str) or not 1 <= len(title.strip()) <= limits.RECORD_TITLE_MAX:
         raise _invalid("/title", "A title is required", limits.RECORD_TITLE_MAX)
+    prose = body.get("text", "")
+    if not isinstance(prose, str):
+        raise _invalid("/text", "Text must be a string")
+    _size(prose, "/text", limits.RECORD_TEXT_MAX_BYTES)
+    if raw is None:
+        raw = {}
     if not isinstance(raw, dict):
         raise _invalid("/body", "Body must be a JSON object")
     try:
@@ -159,6 +168,7 @@ def _content(conn: Connection, body: dict, *, check_references: bool = True) -> 
     return {
         "kind": kind,
         "title": title.strip(),
+        "text": prose,
         "body": raw,
         "references": refs,
         "excerpts": found,
@@ -169,6 +179,7 @@ def _values(content: dict) -> dict:
     return {
         "kind": content["kind"],
         "title": content["title"],
+        "text": content["text"],
         **{f + "_json": content[f] for f in ("body", "references", "excerpts")},
     }
 
@@ -177,8 +188,33 @@ def _from_row(row) -> dict:
     return {
         "kind": row["kind"],
         "title": row["title"],
+        "text": row["text"],
         **{f: row[f + "_json"] for f in ("body", "references", "excerpts")},
     }
+
+
+def _locations(conn: Connection, references: list[dict]) -> list[dict]:
+    """The run (and trial) each trial or artifact reference belongs to, so a reader can
+    open it in place; references whose rows are gone are left out."""
+    trials = [r["id"] for r in references if r["type"] == "trial"]
+    artifacts = [r["id"] for r in references if r["type"] == "artifact"]
+    found = []
+    if trials:
+        rows = conn.execute(
+            select(t.trials.c.id, t.trials.c.run_id).where(t.trials.c.id.in_(trials))
+        )
+        found += [{"type": "trial", "id": i, "run_id": run, "trial_id": i} for i, run in rows]
+    if artifacts:
+        rows = conn.execute(
+            select(t.artifacts.c.id, t.artifacts.c.run_id, t.artifacts.c.trial_id).where(
+                t.artifacts.c.id.in_(artifacts)
+            )
+        )
+        found += [
+            {"type": "artifact", "id": i, "run_id": run, "trial_id": trial}
+            for i, run, trial in rows
+        ]
+    return found
 
 
 def _target(row) -> dict:
@@ -228,6 +264,7 @@ class Records:
             "id": row["id"],
             "target": _target(row),
             **_from_row(row),
+            "reference_locations": _locations(conn, row["references_json"]),
             "author_id": row["author_id"],
             "author_username": row["author_username"],
             "pat_id": row["pat_id"],

@@ -2126,8 +2126,15 @@ class RecordExcerpt(Model):
 class RecordContent(Model):
     kind: str
     title: str
+    text: str = Field(
+        "",
+        description="Markdown written for people; the platform does not derive it from the "
+        "body or the body from it",
+    )
     body: JsonObject = Field(
-        description="Opaque workflow-owned JSON; the platform does not interpret its schema"
+        {},
+        description="Opaque workflow-owned JSON for programs; the platform does not interpret "
+        "its schema",
     )
     references: list[RecordReference] = []
     excerpts: list[RecordExcerpt] = []
@@ -2141,14 +2148,27 @@ class RecordUpdate(Model):
     expected_revision: int
     kind: str | None = None
     title: str | None = None
+    text: str | None = None
     body: JsonObject | None = None
     references: list[RecordReference] | None = None
     excerpts: list[RecordExcerpt] | None = None
 
 
+class RecordReferenceLocation(Model):
+    """Where a trial or artifact reference lives, for opening it on its run's page."""
+
+    type: Literal["trial", "artifact"]
+    id: str
+    run_id: str
+    trial_id: str | None = Field(description="None for an artifact of the run itself")
+
+
 class WorkflowRecord(RecordContent):
     id: str
     target: RecordTarget
+    reference_locations: list[RecordReferenceLocation] = Field(
+        description="The run of each trial and artifact reference that still exists"
+    )
     author_id: str
     author_username: str
     pat_id: str | None = Field(description="The PAT used to create the record")

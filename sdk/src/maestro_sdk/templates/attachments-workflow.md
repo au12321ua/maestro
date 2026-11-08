@@ -28,7 +28,8 @@ which snapshot to keep. Follow the installed `maestro-package` skill for decisio
 
 5. `save_candidate(client, collection_id, snapshot_id, hypothesis=..., ...)` records a
    published snapshot as a candidate of the collection (hypothesis, change kind,
-   evidence references and excerpts); `decide_candidate(client, record_id, decision,
+   evidence references and excerpts, read back by programs; an optional Markdown
+   `text` is a note for people); `decide_candidate(client, record_id, decision,
    reason=...)` appends a decision; `candidates(client, collection_id)` lists them
    with their latest decision and runs. Point the collection at the best one with
    `client.collections.set_current_best(collection_id, snapshot_id, reason=...)`.

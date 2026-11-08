@@ -93,6 +93,8 @@ Tune on the development tasks only. Do not open the held-out tasks' instructions
                               references=[{"type": "run", "id": run_id}],
                               excerpts=[{"text": "<the lines that show it>"}])
    ```
+
+   The fields above go in the record body, which `candidates` and `decide_candidate` read. If people need more than they say, pass `text="..."` (Markdown) as a note for them; do not repeat the body in it.
 6. Submit into the collection with a `client_request_id` you can derive again, such as `<name>-<first 8 characters of the starting snapshot id>-<n>`:
 
    ```python

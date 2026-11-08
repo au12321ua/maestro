@@ -147,29 +147,53 @@ test("setup, run, PAT, admin and invitation flow", async ({ page, browser }) => 
   }
   await page.screenshot({ path: `${shots}/run-artifacts.png`, fullPage: true });
 
-  // Workflow records: a tab of their own on the run. A member adds one like a comment; the
-  // author edits it and sees its history (others get no edit button, checked below).
+  // Workflow records: a tab of their own on the run. A member adds one like a comment, in
+  // Markdown, with an optional JSON body under "advanced"; the author edits it and sees its
+  // history (others get no edit button, checked below).
   await page.getByRole("tab", { name: "记录（0）" }).click();
   await expect(page.getByText("还没有记录。")).toBeVisible();
   await page.getByRole("button", { name: "添加记录" }).click();
   await page.getByLabel("标题").fill("smoke note");
-  await page.getByLabel("正文（JSON 对象）").fill("[1]");
+  const runPath = new URL(runUrl).pathname;
+  await page
+    .getByLabel("文字（Markdown）")
+    .fill(`**Baseline** looks fine, <b>raw html</b>, see [this run](${runPath}).`);
+  await page.getByText("高级：正文（JSON）").click();
+  await page.getByLabel("正文（JSON 对象，可留空）").fill("[1]");
   await page.getByRole("button", { name: "添加", exact: true }).click();
   await expect(page.getByText("正文必须是 JSON 对象（{…}）。")).toBeVisible();
-  await page.getByLabel("正文（JSON 对象）").fill('{"finding": "baseline"}');
+  await page.getByLabel("正文（JSON 对象，可留空）").fill('{"finding": "baseline"}');
   await page.getByRole("button", { name: "添加", exact: true }).click();
   await expect(page.getByRole("tab", { name: "记录（1）" })).toBeVisible();
   const record = page.getByTestId("workflow-record");
   await expect(record.getByText("smoke note")).toBeVisible();
-  await expect(record.getByText('"finding": "baseline"')).toBeVisible();
+  const text = record.getByTestId("markdown").first();
+  await expect(text.locator("strong")).toHaveText("Baseline");
+  // Raw HTML stays text.
+  await expect(text).toContainText("<b>raw html</b>");
+  await expect(text.locator("b")).toHaveCount(0);
+  // The body reads as labels and values, its JSON one click away.
+  const body = record.getByTestId("record-body");
+  await expect(body.getByText("finding", { exact: true })).toBeVisible();
+  await expect(body.getByText("baseline", { exact: true })).toBeVisible();
+  await expect(body.getByText('"finding": "baseline"')).toBeHidden();
+  await body.getByText("查看 JSON").click();
+  await expect(body.getByText('"finding": "baseline"')).toBeVisible();
   await record.getByRole("button", { name: "编辑" }).click();
   await page.getByLabel("标题").fill("smoke note v2");
+  await page.getByLabel("文字（Markdown）").fill(`Second look, see [this run](${runPath}).`);
   await page.getByRole("button", { name: "保存修改" }).click();
   await expect(record.getByText("smoke note v2")).toBeVisible();
+  await expect(record.getByText("Second look")).toBeVisible();
   await expect(record.getByText("2 个修订")).toBeVisible();
   await record.getByText("修改历史").click();
   await expect(record.getByTestId("record-revision")).toHaveCount(2);
+  await expect(record.getByTestId("record-revision").last().locator("strong")).toHaveText("Baseline");
   await page.screenshot({ path: `${shots}/run-records.png`, fullPage: true });
+  // A link written in the text opens in the app.
+  await record.getByRole("link", { name: "this run" }).first().click();
+  await expect(page).toHaveURL(new RegExp(`${runPath}$`));
+  await expect(page.getByRole("tab", { name: "执行" })).toHaveAttribute("aria-selected", "true");
 
   // The workbench: my recent runs with their score coverage, pending items, system status.
   await nav(page, "工作台").click();
@@ -930,13 +954,27 @@ test("held-out marks across dataset versions", async ({ page }) => {
 });
 
 // Records sections further down a page are reached from a button at its top; a dataset
-// version's new record starts from the provenance template; an edit that lost a race says
-// so instead of overwriting.
-test("workflow records: jump button, provenance template, edit conflict", async ({ page }) => {
+// version's new record asks for a provenance paragraph; references open where they live;
+// an edit that lost a race says so instead of overwriting.
+test("workflow records: jump button, provenance hint, reference links, edit conflict", async ({ page }) => {
+  const references = [
+    { type: "run", id: "run_1" },
+    { type: "trial", id: "trl_1" },
+    { type: "artifact", id: "art_1" },
+    { type: "collection", id: "col_1" },
+    { type: "analysis_snapshot", id: "snap_1" },
+    { type: "attachment_snapshot", id: "att_1" },
+  ];
   const record = {
     id: "rec_1", target: { type: "dataset_version", id: "dsv_1", snapshot_id: null },
-    kind: "provenance", title: "where it came from", body: { upstream_repo: "x" },
-    references: [], excerpts: [], author_id: "usr_1", author_username: "u", pat_id: null,
+    kind: "provenance", title: "where it came from", text: "From **upstream**.",
+    body: { upstream_repo: "x", steps: ["convert", { tool: "c", version: 2 }] },
+    references, excerpts: [{ text: "quoted", reference: references[2] }],
+    reference_locations: [
+      { type: "trial", id: "trl_1", run_id: "run_1", trial_id: "trl_1" },
+      { type: "artifact", id: "art_1", run_id: "run_1", trial_id: "trl_1" },
+    ],
+    author_id: "usr_1", author_username: "u", pat_id: null,
     created_at: "2026-10-22T00:00:00Z", updated_at: "2026-10-22T00:00:00Z", revision: 1,
     deletion: null, target_deletion: null, allowed_actions: ["view", "edit", "delete"],
   };
@@ -982,9 +1020,26 @@ test("workflow records: jump button, provenance template, edit conflict", async 
   await expect(section).not.toBeInViewport();
   await jump.click();
   await expect(section).toBeInViewport();
+  const shown = page.getByTestId("workflow-record");
+  await expect(shown.locator("strong")).toHaveText("upstream");
+  await expect(shown.getByTestId("record-body").getByText("convert", { exact: true })).toBeVisible();
+  await shown.getByText("引用（6）").click();
+  const hrefs = {
+    "运行 · run_1": "/runs/run_1",
+    "试次 · trl_1": "/runs/run_1?trial=trl_1",
+    "产物 · art_1": "/runs/run_1?tab=artifacts&artifacts_of=trl_1",
+    "集合 · col_1": "/collections/col_1",
+    "分析快照 · snap_1": "/snapshots/snap_1",
+    "附件快照 · att_1": "/attachments?snapshot=att_1",
+  };
+  for (const [name, href] of Object.entries(hrefs)) {
+    await expect(shown.getByRole("link", { name, exact: true }).first()).toHaveAttribute("href", href);
+  }
   await page.getByRole("button", { name: "添加记录" }).click();
   await expect(page.getByLabel("类型")).toHaveValue("provenance");
-  await expect(page.getByLabel("正文（JSON 对象）")).toHaveValue(/"converter_version"/);
+  await expect(page.getByLabel("文字（Markdown）")).toHaveValue("");
+  await expect(page.getByText("写一段来源说明")).toBeVisible();
+  await expect(page.getByLabel("正文（JSON 对象，可留空）")).toBeHidden();
   await page.getByRole("button", { name: "取消" }).click();
   await page.getByTestId("workflow-record").getByRole("button", { name: "编辑" }).click();
   await page.getByLabel("标题").fill("changed title");

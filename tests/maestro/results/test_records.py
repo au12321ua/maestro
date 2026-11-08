@@ -57,6 +57,47 @@ def test_service_keeps_opaque_content_and_every_attributed_version(service, owne
     assert forbidden.value.status == 403
 
 
+def test_text_records_need_no_body_and_keep_text_as_written_in_every_version(
+    service, owner, version_id
+):
+    run_id = run(service, owner, version_id)
+    excerpt = [{"text": "quoted evidence"}]
+    note = "## Finding\n\napi_key=written-by-a-person, see [the run](/runs/x)"
+    first = service.records.create(
+        owner,
+        {
+            "target": {"type": "run", "id": run_id},
+            "kind": "note",
+            "title": "Note",
+            "text": note,
+            "excerpts": excerpt,
+        },
+    )
+    assert first["text"] == note and first["body"] == {}
+    assert first["excerpts"] == [{"text": "quoted evidence", "reference": None}]
+    assert first["reference_locations"] == []
+    legacy = service.records.create(owner, record_body(run_id))
+    assert legacy["text"] == ""
+    changed = service.records.update(
+        owner, first["id"], {"expected_revision": 1, "text": "Second thoughts"}
+    )
+    assert changed["text"] == "Second thoughts" and changed["body"] == {}
+    # Leaving text out of an edit keeps it; the body may be cleared back to empty.
+    kept = service.records.update(owner, first["id"], {"expected_revision": 2, "title": "Kept"})
+    assert kept["text"] == "Second thoughts"
+    cleared = service.records.update(
+        owner, legacy["id"], {"expected_revision": 1, "body": None, "text": "Now text"}
+    )
+    assert cleared["body"] == {} and cleared["text"] == "Now text"
+    history = service.records.history(owner, first["id"])
+    assert [v["text"] for v in history] == [note, "Second thoughts", "Second thoughts"]
+    exact = "é" * (limits.RECORD_TEXT_MAX_BYTES // 2)
+    assert (
+        service.records.update(owner, first["id"], {"expected_revision": 3, "text": exact})["text"]
+        == exact
+    )
+
+
 @pytest.mark.parametrize(
     "change",
     [
@@ -66,6 +107,8 @@ def test_service_keeps_opaque_content_and_every_attributed_version(service, owne
         {"title": " "},
         {"title": "x" * (limits.RECORD_TITLE_MAX + 1)},
         {"body": []},
+        {"text": 5},
+        {"text": "é" * (limits.RECORD_TEXT_MAX_BYTES // 2 + 1)},
         {"body": {"x": "x" * limits.RECORD_BODY_MAX_BYTES}},
         {"excerpts": [{"text": "é" * (limits.RECORD_EXCERPT_MAX_BYTES // 2 + 1)}]},
         {"excerpts": [{"text": "x" * limits.RECORD_EXCERPT_MAX_BYTES}] * 5},
@@ -162,6 +205,16 @@ def test_api_checks_all_reference_types_and_retains_excerpts_after_expiry(servic
             == 422
         )
         assert record["pat_id"] and record["references"] == refs
+        # Trial and artifact references say which run (and trial) to open them on.
+        assert record["reference_locations"] == [
+            {"type": "trial", "id": trial["id"], "run_id": run_id, "trial_id": trial["id"]},
+            {
+                "type": "artifact",
+                "id": artifact["id"],
+                "run_id": run_id,
+                "trial_id": artifact["trial_id"],
+            },
+        ]
         assert record["excerpts"][0]["text"] == "Authorization: [REDACTED]"
         reader = create_pat(admin, ())
         assert reader.get(f"/api/v1/records/{record['id']}", expect=200).json()[

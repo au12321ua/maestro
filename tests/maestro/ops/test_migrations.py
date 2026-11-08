@@ -571,3 +571,40 @@ def test_version_metadata_upgrade_preserves_existing_files_tasks_and_reads(tmp_p
         assert conn.exec_driver_sql("PRAGMA foreign_key_check").all() == []
         assert conn.exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
     db.dispose()
+
+
+def test_record_text_upgrade_leaves_existing_records_and_revisions_with_empty_text(tmp_path):
+    from sqlalchemy import select, text
+
+    from maestro.db import schema as t
+
+    db = Database.open(tmp_path / "app.db")
+    migrate.upgrade(db, "0011")
+    with db.write() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO users (id, username, display_name, role, status, password_hash, revision, created_at, updated_at) "
+                "VALUES ('usr_1', 'writer', 'Writer', 'admin', 'active', 'x', 1, 'x', 'x')"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO workflow_records (id, target_type, target_id, kind, title, body_json, "
+                "references_json, excerpts_json, author_id, revision, created_at, updated_at) "
+                "VALUES ('rec_1', 'run', 'run_1', 'note', 'Old', '{\"a\": 1}', '[]', '[]', "
+                "'usr_1', 1, 'x', 'x')"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO workflow_record_revisions (record_id, revision, kind, title, body_json, "
+                "references_json, excerpts_json, actor_id, at) "
+                "VALUES ('rec_1', 1, 'note', 'Old', '{\"a\": 1}', '[]', '[]', 'usr_1', 'x')"
+            )
+        )
+    migrate.upgrade(db)
+    with db.read() as conn:
+        record = conn.execute(select(t.workflow_records)).mappings().one()
+        revision = conn.execute(select(t.workflow_record_revisions)).mappings().one()
+    assert record["text"] == revision["text"] == ""
+    assert record["body_json"] == revision["body_json"] == {"a": 1}
