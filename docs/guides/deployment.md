@@ -18,6 +18,7 @@
 | `/var/cache/maestro/` | 可重建的任务材料缓存 | `maestro`，0700 |
 | `/var/backups/maestro/` | `maestroctl backup` 与更新前的自动备份 | `maestro`，0700 |
 | `maestro.service` | systemd 系统服务；日志进 journald | — |
+| `maestro-update.path`、`maestro-update.service` | 网页发起的更新：服务在 `/var/lib/maestro/update/` 写下请求后，由它以 root 执行更新 | — |
 | `/usr/local/sbin/maestroctl` | 指向当前版本的 `maestroctl` | — |
 
 服务以专用系统账户 `maestro` 运行，由安装器创建并加入系统 Docker 套接字所属的组（通常是 `docker`）。**这个组约等于 root**：服务一旦被攻破，攻击者可以借 Docker 拿到整机权限。这是在“受邀的可信团队”前提下接受的取舍；以后可增加“专用账户使用自己的 rootless Docker”的备选。
@@ -96,7 +97,29 @@ sudo maestroctl restore /var/backups/maestro/<时间> [--include-files]
 
 ## 更新
 
+### 在网页上更新
+
+管理员在“管理 · 更新”里能看到比当前新的正式版和它的发布说明，点“更新到 X”即可，不用登录服务器：
+
+1. 服务进入**待更新**：运行照常提交和排队，但暂不开始；新的数据集导入、首次准备会被拒绝，已经开始的照常做完。页面列出还在执行的运行和操作及其提交者。
+2. 在途工作都结束后，服务交给主机上 root 的更新任务（`maestro-update.path` 触发的 `maestro-update.service`）：从 GitHub 下载该版本的发布包与 `SHA256SUMS` 并核对，然后执行与下面命令行相同的更新（备份、迁移、就绪检查、失败回滚）。它不挂在浏览器或终端上，关掉页面不影响。
+3. 服务重启期间页面显示“正在重启”，恢复后显示结果：成功是新版本号；失败是已回到旧版本及原因。不论成功、失败，排队的运行随后接着执行。
+
+等不及时可以点“立即更新”：在途的运行标为中断，已得的评分保留。也可以随时取消待更新。更新任务的输出用 `journalctl -u maestro-update` 查看；`maestroctl status` 显示它是否在监视以及最近一次的结果。
+
+只检查正式版，不提示开发预览（`dev-` 包仍用下面的命令行）。获取源与开关在 `/etc/maestro/config.toml` 里，网页不能改：
+
+```toml
+update_check = true                     # false：不检查，网页上没有更新入口
+update_repository = "au12321ua/maestro"  # GitHub 的 owner/name
+```
+
+查询与下载走服务的代理（`/etc/maestro/environment`）。网页更新从带有这项功能的版本起可用，更早的版本先用命令行更新一次。
+
+### 在命令行更新
+
 ```bash
+sudo maestroctl update --release <新版本>                       # 从 GitHub 下载该正式版并核对后更新
 sudo maestroctl update maestro-<新版本>.tar.gz                  # 下载 Python 包直连
 sudo maestroctl update maestro-<新版本>.tar.gz --download-proxy # 下载沿用服务的代理
 ```
