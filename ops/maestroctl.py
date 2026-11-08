@@ -1875,6 +1875,8 @@ def cmd_uninstall(layout: Layout, args) -> int:
         if path.exists():
             host.systemctl("disable", "--now", path.name, check=False, capture=True)
             path.unlink()
+        # A failed update task stays listed as failed after its unit file is gone.
+        host.systemctl("reset-failed", path.name, check=False, capture=True)
     host.systemctl("daemon-reload")
     if layout.ctl_link.is_symlink():
         layout.ctl_link.unlink()

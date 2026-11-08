@@ -849,7 +849,7 @@ def test_uninstall_removes_all_units_and_purge_lists_them_before_confirmation(
     assert ctl.cmd_uninstall(layout, args) == 0
     assert not any(p.exists() for p in layout.unit_paths)
     for name in (layout.unit_name, layout.update_path_name, layout.update_service_name):
-        assert ("disable", "--now", name) in calls
+        assert ("disable", "--now", name) in calls and ("reset-failed", name) in calls
     assert calls.count(("daemon-reload",)) == 1
     assert layout.data.exists()
 
