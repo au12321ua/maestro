@@ -1955,6 +1955,81 @@ class TrialResult(BaseModel):
     verifier_status: str | None
 
 
+class UpdateHighlight(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    text: str
+    title: str
+
+
+class UpdateNotice(BaseModel):
+    """
+    An update an administrator started: runs are accepted and queued, none starts.
+    """
+
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    since: str
+    state: Annotated[
+        Literal["draining", "requested"],
+        Field(description="draining: waiting for in-flight work; requested: handed to the host"),
+    ]
+    version: str
+
+
+class UpdateProgress(BaseModel):
+    """
+    What the host's update task last reported.
+    """
+
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    phase: str
+    started_at: str | None
+    state: str
+
+
+class UpdateRelease(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    name: str
+    published_at: str | None
+    url: str
+
+
+class UpdateRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    interrupt_running: Annotated[
+        bool | None,
+        Field(description="Do not wait: interrupt in-flight work as a restart would"),
+    ] = False
+    version: Annotated[str, Field(description="The newest formal release found by the last check")]
+
+
+class UpdateResult(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    from_build: str | None
+    message: str
+    rolled_back: bool
+    to_build: str | None
+
+
+class UpdateUser(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    id: str
+    username: str
+
+
 class UpstreamRelease(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -2918,6 +2993,42 @@ class ImportProgress(BaseModel):
     tasks_total: int | None
 
 
+class InFlightOperation(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    created_at: str
+    id: str
+    kind: str
+    owner: UpdateUser | None
+    phase: str | None
+
+
+class InFlightRun(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    id: str
+    name: str
+    owner: UpdateUser
+    started_at: str | None
+    state: str
+
+
+class InFlightWork(BaseModel):
+    """
+    Work a restart would interrupt; a pending update waits for it.
+    """
+
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    active_runs: int
+    operations: list[InFlightOperation]
+    queued_runs: int
+    runs: list[InFlightRun]
+
+
 class LayoutInput(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -3197,6 +3308,26 @@ class ReferenceRevisions(BaseModel):
     team_policy: int | None = None
 
 
+class ReleaseInfo(BaseModel):
+    """
+    A formal release of the configured repository.
+    """
+
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    highlights: Annotated[
+        list[UpdateHighlight],
+        Field(description="Sections of the notes on breaking changes or work around the update"),
+    ]
+    name: str
+    notes: Annotated[str, Field(description="Release notes (Markdown)")]
+    published_at: str | None
+    tag: str
+    url: str
+    version: str
+
+
 class RestoreOperation(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -3421,6 +3552,29 @@ class RunSummary(BaseModel):
     usage: UsageSummary
 
 
+class ServiceUpdate(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    created_at: str
+    finished_at: str | None
+    from_version: str
+    id: str
+    interrupt_running: Annotated[
+        bool,
+        Field(description="In-flight work is interrupted as a restart would, scores kept"),
+    ]
+    progress: UpdateProgress | None
+    release: UpdateRelease
+    requested_at: Annotated[
+        str | None, Field(description="When the request was handed to the host")
+    ]
+    requested_by: UpdateUser | None
+    result: UpdateResult | None
+    state: Literal["draining", "requested", "succeeded", "failed", "cancelled"]
+    version: str
+
+
 class StorageStatus(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -3441,6 +3595,7 @@ class SystemDetail(BaseModel):
     needs_setup: bool | None
     schema_: Annotated[SchemaState, Field(alias="schema")]
     storage: StorageStatus
+    update: Annotated[UpdateNotice | None, Field(description="A pending update, if any")]
     worker_running: bool
 
 
@@ -3480,6 +3635,24 @@ class TaskBlocker(BaseModel):
     parameters: list[str] | None = None
     resource_kind: str | None = None
     value: int | float | None = None
+
+
+class UpdateStatus(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    check_error: str | None
+    checked_at: str | None
+    current_version: str
+    enabled: Annotated[bool, Field(description="config.toml allows update checks and web updates")]
+    in_flight: InFlightWork
+    last: Annotated[ServiceUpdate | None, Field(description="The most recent finished update")]
+    latest: ReleaseInfo | None
+    pending: ServiceUpdate | None
+    repository: Annotated[
+        str, Field(description="GitHub repository releases come from (config.toml)")
+    ]
+    update_available: bool
 
 
 class WorkflowRecord(BaseModel):
@@ -3862,6 +4035,14 @@ class EnvelopeSystemStatus(BaseModel):
         extra="allow",
     )
     data: SystemStatus
+    meta: Meta
+
+
+class EnvelopeUpdateStatus(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: UpdateStatus
     meta: Meta
 
 

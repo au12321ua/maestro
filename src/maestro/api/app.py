@@ -99,11 +99,12 @@ def public_openapi(app: FastAPI) -> dict:
 def create_app(maestro: Maestro, *, run_worker: bool = True) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        task = upkeep = None
+        task = upkeep = updating = None
         if run_worker and maestro.schema_state()["compatible"]:
             # Reconcile stored files before anything can write new ones.
             maestro.maintenance.start()
             upkeep = asyncio.create_task(maestro.maintenance.run_forever())
+            updating = asyncio.create_task(maestro.updates.run_forever())
             if maestro.worker is not None:
                 # Before anything is accepted for execution: model runs need it.
                 await maestro.executor.probe()
@@ -119,7 +120,9 @@ def create_app(maestro: Maestro, *, run_worker: bool = True) -> FastAPI:
                 await maestro.worker.stop()
             if upkeep is not None:
                 await maestro.maintenance.stop()
-            for running in (task, upkeep):
+            if updating is not None:
+                await maestro.updates.stop()
+            for running in (task, upkeep, updating):
                 if running is None:
                     continue
                 running.cancel()

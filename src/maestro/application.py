@@ -37,6 +37,7 @@ from maestro.services.records import Records
 from maestro.services.recycle import Recycle
 from maestro.services.runs import Runs
 from maestro.services.setup_network import SetupNetworks
+from maestro.services.updates import Updates
 from maestro.services.upstream import UpstreamVersions
 from maestro.services.worker import Worker
 
@@ -69,6 +70,7 @@ class Maestro:
     maintenance: Maintenance
     disk: DiskWatch
     capacity: Capacity
+    updates: Updates
     store: ArtifactStore
     executor: Executor | None
     worker: Worker | None
@@ -138,6 +140,15 @@ class Maestro:
             db, store, settings.exports_dir, runs, disk, max_bytes=settings.export_max_bytes
         )
         attachments = Attachments(db, attachment_store, adapters)
+        updates = Updates(
+            db,
+            enabled=settings.update_check,
+            repository=settings.update_repository,
+            api_url=settings.update_api_url,
+            directory=settings.update_dir,
+        )
+        if worker is not None:
+            updates.wake = worker.wake
         return cls(
             settings=settings,
             db=db,
@@ -172,6 +183,7 @@ class Maestro:
             maintenance=Maintenance(artifacts, exports, attachments, runs),
             disk=disk,
             capacity=Capacity(db, host),
+            updates=updates,
             store=store,
             executor=executor,
             worker=worker,

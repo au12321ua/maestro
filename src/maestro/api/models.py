@@ -2532,6 +2532,16 @@ class SchemaState(Model):
     compatible: bool
 
 
+class UpdateNotice(Model):
+    """An update an administrator started: runs are accepted and queued, none starts."""
+
+    state: Literal["draining", "requested"] = Field(
+        description="draining: waiting for in-flight work; requested: handed to the host"
+    )
+    version: str
+    since: str
+
+
 class SystemDetail(Model):
     storage: StorageStatus
     database: SchemaState = Field(alias="schema")
@@ -2539,6 +2549,117 @@ class SystemDetail(Model):
     executor: str | None
     worker_running: bool
     needs_setup: bool | None
+    update: UpdateNotice | None = Field(description="A pending update, if any")
+
+
+# --- updates from the web pages ----------------------------------------------------
+
+
+class UpdateHighlight(Model):
+    title: str
+    text: str
+
+
+class ReleaseInfo(Model):
+    """A formal release of the configured repository."""
+
+    version: str
+    tag: str
+    name: str
+    url: str
+    published_at: str | None
+    notes: str = Field(description="Release notes (Markdown)")
+    highlights: list[UpdateHighlight] = Field(
+        description="Sections of the notes on breaking changes or work around the update"
+    )
+
+
+class UpdateRelease(Model):
+    name: str
+    url: str
+    published_at: str | None
+
+
+class UpdateUser(Model):
+    id: str
+    username: str
+
+
+class UpdateProgress(Model):
+    """What the host's update task last reported."""
+
+    state: str
+    phase: str
+    started_at: str | None
+
+
+class UpdateResult(Model):
+    message: str
+    rolled_back: bool
+    to_build: str | None
+    from_build: str | None
+
+
+class ServiceUpdate(Model):
+    id: str
+    version: str
+    state: Literal["draining", "requested", "succeeded", "failed", "cancelled"]
+    interrupt_running: bool = Field(
+        description="In-flight work is interrupted as a restart would, scores kept"
+    )
+    from_version: str
+    requested_by: UpdateUser | None
+    created_at: str
+    requested_at: str | None = Field(description="When the request was handed to the host")
+    finished_at: str | None
+    release: UpdateRelease
+    progress: UpdateProgress | None
+    result: UpdateResult | None
+
+
+class InFlightRun(Model):
+    id: str
+    name: str
+    state: str
+    started_at: str | None
+    owner: UpdateUser
+
+
+class InFlightOperation(Model):
+    id: str
+    kind: str
+    phase: str | None
+    created_at: str
+    owner: UpdateUser | None
+
+
+class InFlightWork(Model):
+    """Work a restart would interrupt; a pending update waits for it."""
+
+    runs: list[InFlightRun]
+    operations: list[InFlightOperation]
+    active_runs: int
+    queued_runs: int
+
+
+class UpdateStatus(Model):
+    enabled: bool = Field(description="config.toml allows update checks and web updates")
+    repository: str = Field(description="GitHub repository releases come from (config.toml)")
+    current_version: str
+    checked_at: str | None
+    check_error: str | None
+    latest: ReleaseInfo | None
+    update_available: bool
+    pending: ServiceUpdate | None
+    last: ServiceUpdate | None = Field(description="The most recent finished update")
+    in_flight: InFlightWork
+
+
+class UpdateRequest(Model):
+    version: str = Field(description="The newest formal release found by the last check")
+    interrupt_running: bool = Field(
+        default=False, description="Do not wait: interrupt in-flight work as a restart would"
+    )
 
 
 class SystemStatus(Health):

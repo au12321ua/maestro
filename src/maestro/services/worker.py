@@ -53,7 +53,7 @@ from maestro.execution.policy import (
     legal_score,
 )
 from maestro.security.redaction import redact
-from maestro.services import setup_network
+from maestro.services import setup_network, updates
 from maestro.services.artifacts import expiry_for, stamp_expiry
 from maestro.services.capacity import HostCapacity, provider_of, reservation, waiting_reason
 from maestro.services.instance import instance_id
@@ -832,19 +832,21 @@ class Worker:
         """First queued run that fits current capacity; later small runs may pass a
         large one that does not fit yet. Waiting runs show why."""
         lease = secrets.token_urlsafe(24)
-        if self.disk and not self.disk.dispatching():
-            with self.db.write() as conn:
+        paused = "STORAGE_LOW" if self.disk and not self.disk.dispatching() else None
+        with self.db.write() as conn:
+            if paused is None and updates.dispatch_paused(conn):
+                paused = "UPDATE_PENDING"
+            if paused is not None:
                 conn.execute(
                     update(t.runs)
                     .where(
                         t.runs.c.state == RunState.QUEUED,
                         t.runs.c.lease_token.is_(None),
-                        t.runs.c.queue_reason.is_distinct_from("STORAGE_LOW"),
+                        t.runs.c.queue_reason.is_distinct_from(paused),
                     )
-                    .values(queue_reason="STORAGE_LOW")
+                    .values(queue_reason=paused)
                 )
-            return None
-        with self.db.write() as conn:
+                return None
             queued = (
                 conn.execute(
                     select(t.runs.c.id, t.runs.c.concurrency, t.runs.c.queue_reason)

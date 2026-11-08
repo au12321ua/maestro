@@ -724,6 +724,101 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Update Status
+         * @description Installed and newest formal version, a pending update and what it waits for.
+         */
+        get: operations["get_update_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/update/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Update */
+        post: operations["cancel_update"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/update/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Check For Update */
+        post: operations["check_for_update"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/update/now": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Update Now
+         * @description Stop waiting for in-flight work; it is interrupted as a restart would.
+         */
+        post: operations["update_now"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/update/request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request Update
+         * @description Pause dispatching and update once in-flight work is done (or at once, interrupting
+         *     it); runs keep being accepted and queued.
+         */
+        post: operations["request_update"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/analysis-snapshots": {
         parameters: {
             query?: never;
@@ -4550,6 +4645,11 @@ export interface components {
             data: components["schemas"]["TeamPolicy"];
             meta: components["schemas"]["Meta"];
         };
+        /** Envelope[UpdateStatus] */
+        Envelope_UpdateStatus_: {
+            data: components["schemas"]["UpdateStatus"];
+            meta: components["schemas"]["Meta"];
+        };
         /** Envelope[UpstreamVersions] */
         Envelope_UpstreamVersions_: {
             data: components["schemas"]["UpstreamVersions"];
@@ -5365,6 +5465,44 @@ export interface components {
             ignored?: ("label" | "based_on")[];
             /** Preparation Operation Id */
             preparation_operation_id?: string | null;
+        };
+        /** InFlightOperation */
+        InFlightOperation: {
+            /** Created At */
+            created_at: string;
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            owner: components["schemas"]["UpdateUser"] | null;
+            /** Phase */
+            phase: string | null;
+        };
+        /** InFlightRun */
+        InFlightRun: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            owner: components["schemas"]["UpdateUser"];
+            /** Started At */
+            started_at: string | null;
+            /** State */
+            state: string;
+        };
+        /**
+         * InFlightWork
+         * @description Work a restart would interrupt; a pending update waits for it.
+         */
+        InFlightWork: {
+            /** Active Runs */
+            active_runs: number;
+            /** Operations */
+            operations: components["schemas"]["InFlightOperation"][];
+            /** Queued Runs */
+            queued_runs: number;
+            /** Runs */
+            runs: components["schemas"]["InFlightRun"][];
         };
         /** Invitation */
         Invitation: {
@@ -6576,6 +6714,32 @@ export interface components {
             /** Team Policy */
             team_policy?: number | null;
         };
+        /**
+         * ReleaseInfo
+         * @description A formal release of the configured repository.
+         */
+        ReleaseInfo: {
+            /**
+             * Highlights
+             * @description Sections of the notes on breaking changes or work around the update
+             */
+            highlights: components["schemas"]["UpdateHighlight"][];
+            /** Name */
+            name: string;
+            /**
+             * Notes
+             * @description Release notes (Markdown)
+             */
+            notes: string;
+            /** Published At */
+            published_at: string | null;
+            /** Tag */
+            tag: string;
+            /** Url */
+            url: string;
+            /** Version */
+            version: string;
+        };
         /** RequiredPreparation */
         RequiredPreparation: {
             /**
@@ -7298,6 +7462,38 @@ export interface components {
             /** Unit */
             unit?: string | null;
         };
+        /** ServiceUpdate */
+        ServiceUpdate: {
+            /** Created At */
+            created_at: string;
+            /** Finished At */
+            finished_at: string | null;
+            /** From Version */
+            from_version: string;
+            /** Id */
+            id: string;
+            /**
+             * Interrupt Running
+             * @description In-flight work is interrupted as a restart would, scores kept
+             */
+            interrupt_running: boolean;
+            progress: components["schemas"]["UpdateProgress"] | null;
+            release: components["schemas"]["UpdateRelease"];
+            /**
+             * Requested At
+             * @description When the request was handed to the host
+             */
+            requested_at: string | null;
+            requested_by: components["schemas"]["UpdateUser"] | null;
+            result: components["schemas"]["UpdateResult"] | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "draining" | "requested" | "succeeded" | "failed" | "cancelled";
+            /** Version */
+            version: string;
+        };
         /** SessionInfo */
         SessionInfo: {
             /**
@@ -7631,6 +7827,8 @@ export interface components {
             needs_setup: boolean | null;
             schema: components["schemas"]["SchemaState"];
             storage: components["schemas"]["StorageStatus"];
+            /** @description A pending update, if any */
+            update: components["schemas"]["UpdateNotice"] | null;
             /** Worker Running */
             worker_running: boolean;
         };
@@ -8009,6 +8207,108 @@ export interface components {
             score: number | null;
             /** Verifier Status */
             verifier_status: string | null;
+        };
+        /** UpdateHighlight */
+        UpdateHighlight: {
+            /** Text */
+            text: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * UpdateNotice
+         * @description An update an administrator started: runs are accepted and queued, none starts.
+         */
+        UpdateNotice: {
+            /** Since */
+            since: string;
+            /**
+             * State
+             * @description draining: waiting for in-flight work; requested: handed to the host
+             * @enum {string}
+             */
+            state: "draining" | "requested";
+            /** Version */
+            version: string;
+        };
+        /**
+         * UpdateProgress
+         * @description What the host's update task last reported.
+         */
+        UpdateProgress: {
+            /** Phase */
+            phase: string;
+            /** Started At */
+            started_at: string | null;
+            /** State */
+            state: string;
+        };
+        /** UpdateRelease */
+        UpdateRelease: {
+            /** Name */
+            name: string;
+            /** Published At */
+            published_at: string | null;
+            /** Url */
+            url: string;
+        };
+        /** UpdateRequest */
+        UpdateRequest: {
+            /**
+             * Interrupt Running
+             * @description Do not wait: interrupt in-flight work as a restart would
+             * @default false
+             */
+            interrupt_running?: boolean;
+            /**
+             * Version
+             * @description The newest formal release found by the last check
+             */
+            version: string;
+        };
+        /** UpdateResult */
+        UpdateResult: {
+            /** From Build */
+            from_build: string | null;
+            /** Message */
+            message: string;
+            /** Rolled Back */
+            rolled_back: boolean;
+            /** To Build */
+            to_build: string | null;
+        };
+        /** UpdateStatus */
+        UpdateStatus: {
+            /** Check Error */
+            check_error: string | null;
+            /** Checked At */
+            checked_at: string | null;
+            /** Current Version */
+            current_version: string;
+            /**
+             * Enabled
+             * @description config.toml allows update checks and web updates
+             */
+            enabled: boolean;
+            in_flight: components["schemas"]["InFlightWork"];
+            /** @description The most recent finished update */
+            last: components["schemas"]["ServiceUpdate"] | null;
+            latest: components["schemas"]["ReleaseInfo"] | null;
+            pending: components["schemas"]["ServiceUpdate"] | null;
+            /**
+             * Repository
+             * @description GitHub repository releases come from (config.toml)
+             */
+            repository: string;
+            /** Update Available */
+            update_available: boolean;
+        };
+        /** UpdateUser */
+        UpdateUser: {
+            /** Id */
+            id: string;
+            /** Username */
+            username: string;
         };
         /** UpstreamRelease */
         UpstreamRelease: {
@@ -9543,6 +9843,155 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Envelope_list_TeamPolicyRevision__"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_update_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_UpdateStatus_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    cancel_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_UpdateStatus_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    check_for_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_UpdateStatus_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_now: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_UpdateStatus_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    request_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_UpdateStatus_"];
                 };
             };
             /** @description Structured error */

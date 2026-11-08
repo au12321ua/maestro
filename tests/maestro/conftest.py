@@ -70,6 +70,8 @@ def settings(tmp_path):
         storage_accept_min_free_percent=0,
         storage_dispatch_min_free_gb=0,
         storage_dispatch_min_free_percent=0,
+        # Never ask GitHub from a test; test_updates turns it on with a fake source.
+        update_check=False,
     )
 
 
