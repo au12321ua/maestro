@@ -953,6 +953,29 @@ service_epochs = Table(
     _json("process_identity_json"),
 )
 
+# Updates an administrator started in the web pages. At most one is pending (draining or
+# requested); finished ones stay as the history the admin page shows the last of.
+service_updates = Table(
+    "service_updates",
+    metadata,
+    _id(),
+    Column("version", String(32), nullable=False),
+    Column("from_version", String(64), nullable=False),
+    _json("release_json"),
+    Column("interrupt_running", Boolean, nullable=False),
+    Column("state", String(16), nullable=False),
+    _ref("requested_by", "users"),
+    _ref("finished_by", "users", nullable=True),
+    _time("created_at"),
+    _time("requested_at", nullable=True),
+    _time("finished_at", nullable=True),
+    _json("result_json", nullable=True),
+    Index("ix_service_updates_state", "state", "created_at"),
+    CheckConstraint(
+        "state IN ('draining','requested','succeeded','failed','cancelled')", name="state"
+    ),
+)
+
 
 # Original uploaded dataset content, held during import and until version purge.
 dataset_files = Table(

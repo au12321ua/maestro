@@ -6798,6 +6798,23 @@
         "title": "Envelope[TeamPolicy]",
         "type": "object"
       },
+      "Envelope_UpdateStatus_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/UpdateStatus"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[UpdateStatus]",
+        "type": "object"
+      },
       "Envelope_UpstreamVersions_": {
         "additionalProperties": false,
         "properties": {
@@ -9494,6 +9511,129 @@
           "existing"
         ],
         "title": "ImportResult",
+        "type": "object"
+      },
+      "InFlightOperation": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UpdateUser"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "phase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phase"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "phase",
+          "created_at",
+          "owner"
+        ],
+        "title": "InFlightOperation",
+        "type": "object"
+      },
+      "InFlightRun": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owner": {
+            "$ref": "#/components/schemas/UpdateUser"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "state",
+          "started_at",
+          "owner"
+        ],
+        "title": "InFlightRun",
+        "type": "object"
+      },
+      "InFlightWork": {
+        "additionalProperties": false,
+        "description": "Work a restart would interrupt; a pending update waits for it.",
+        "properties": {
+          "active_runs": {
+            "title": "Active Runs",
+            "type": "integer"
+          },
+          "operations": {
+            "items": {
+              "$ref": "#/components/schemas/InFlightOperation"
+            },
+            "title": "Operations",
+            "type": "array"
+          },
+          "queued_runs": {
+            "title": "Queued Runs",
+            "type": "integer"
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/InFlightRun"
+            },
+            "title": "Runs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "runs",
+          "operations",
+          "active_runs",
+          "queued_runs"
+        ],
+        "title": "InFlightWork",
         "type": "object"
       },
       "Invitation": {
@@ -13197,6 +13337,63 @@
         "title": "ReferenceRevisions",
         "type": "object"
       },
+      "ReleaseInfo": {
+        "additionalProperties": false,
+        "description": "A formal release of the configured repository.",
+        "properties": {
+          "highlights": {
+            "description": "Sections of the notes on breaking changes or work around the update",
+            "items": {
+              "$ref": "#/components/schemas/UpdateHighlight"
+            },
+            "title": "Highlights",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "description": "Release notes (Markdown)",
+            "title": "Notes",
+            "type": "string"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "tag": {
+            "title": "Tag",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "tag",
+          "name",
+          "url",
+          "published_at",
+          "notes",
+          "highlights"
+        ],
+        "title": "ReleaseInfo",
+        "type": "object"
+      },
       "RequiredPreparation": {
         "additionalProperties": false,
         "properties": {
@@ -15429,6 +15626,127 @@
         "title": "ScoringContractInput",
         "type": "object"
       },
+      "ServiceUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "finished_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UpdateUser"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who cancelled it, for a cancelled one"
+          },
+          "from_version": {
+            "title": "From Version",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "interrupt_running": {
+            "description": "In-flight work is interrupted as a restart would, scores kept",
+            "title": "Interrupt Running",
+            "type": "boolean"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UpdateProgress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "release": {
+            "$ref": "#/components/schemas/UpdateRelease"
+          },
+          "requested_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the request was handed to the host",
+            "title": "Requested At"
+          },
+          "requested_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UpdateUser"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UpdateResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "enum": [
+              "draining",
+              "requested",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "state",
+          "interrupt_running",
+          "from_version",
+          "requested_by",
+          "finished_by",
+          "created_at",
+          "requested_at",
+          "finished_at",
+          "release",
+          "progress",
+          "result"
+        ],
+        "title": "ServiceUpdate",
+        "type": "object"
+      },
       "SessionInfo": {
         "additionalProperties": false,
         "properties": {
@@ -16386,6 +16704,17 @@
           "storage": {
             "$ref": "#/components/schemas/StorageStatus"
           },
+          "update": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UpdateNotice"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A pending update, if any"
+          },
           "worker_running": {
             "title": "Worker Running",
             "type": "boolean"
@@ -16397,7 +16726,8 @@
           "master_key_available",
           "executor",
           "worker_running",
-          "needs_setup"
+          "needs_setup",
+          "update"
         ],
         "title": "SystemDetail",
         "type": "object"
@@ -17641,6 +17971,294 @@
           "attempt_id"
         ],
         "title": "TrialResult",
+        "type": "object"
+      },
+      "UpdateHighlight": {
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "text"
+        ],
+        "title": "UpdateHighlight",
+        "type": "object"
+      },
+      "UpdateNotice": {
+        "additionalProperties": false,
+        "description": "An update an administrator started: runs are accepted and queued, none starts.",
+        "properties": {
+          "since": {
+            "title": "Since",
+            "type": "string"
+          },
+          "state": {
+            "description": "draining: waiting for in-flight work; requested: handed to the host",
+            "enum": [
+              "draining",
+              "requested"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "version",
+          "since"
+        ],
+        "title": "UpdateNotice",
+        "type": "object"
+      },
+      "UpdateProgress": {
+        "additionalProperties": false,
+        "description": "What the host's update task last reported.",
+        "properties": {
+          "phase": {
+            "title": "Phase",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "phase",
+          "started_at"
+        ],
+        "title": "UpdateProgress",
+        "type": "object"
+      },
+      "UpdateRelease": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "url",
+          "published_at"
+        ],
+        "title": "UpdateRelease",
+        "type": "object"
+      },
+      "UpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "interrupt_running": {
+            "default": false,
+            "description": "Do not wait: interrupt in-flight work as a restart would",
+            "title": "Interrupt Running",
+            "type": "boolean"
+          },
+          "version": {
+            "description": "The newest formal release found by the last check",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "UpdateRequest",
+        "type": "object"
+      },
+      "UpdateResult": {
+        "additionalProperties": false,
+        "properties": {
+          "from_build": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Build"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "rolled_back": {
+            "title": "Rolled Back",
+            "type": "boolean"
+          },
+          "to_build": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Build"
+          }
+        },
+        "required": [
+          "message",
+          "rolled_back",
+          "to_build",
+          "from_build"
+        ],
+        "title": "UpdateResult",
+        "type": "object"
+      },
+      "UpdateStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "check_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Check Error"
+          },
+          "checked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked At"
+          },
+          "current_version": {
+            "title": "Current Version",
+            "type": "string"
+          },
+          "enabled": {
+            "description": "config.toml allows update checks and web updates",
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "in_flight": {
+            "$ref": "#/components/schemas/InFlightWork"
+          },
+          "last": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ServiceUpdate"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The most recent finished update"
+          },
+          "latest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReleaseInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pending": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ServiceUpdate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "repository": {
+            "description": "GitHub repository releases come from (config.toml)",
+            "title": "Repository",
+            "type": "string"
+          },
+          "update_available": {
+            "title": "Update Available",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled",
+          "repository",
+          "current_version",
+          "checked_at",
+          "check_error",
+          "latest",
+          "update_available",
+          "pending",
+          "last",
+          "in_flight"
+        ],
+        "title": "UpdateStatus",
+        "type": "object"
+      },
+      "UpdateUser": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "username"
+        ],
+        "title": "UpdateUser",
         "type": "object"
       },
       "UpstreamRelease": {
@@ -20011,6 +20629,174 @@
         "summary": "List Policy Revisions",
         "tags": [
           "configuration",
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/update": {
+      "get": {
+        "description": "Installed and newest formal version, a pending update and what it waits for.",
+        "operationId": "get_update_status",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_UpdateStatus_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Get Update Status",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/update/cancel": {
+      "post": {
+        "operationId": "cancel_update",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_UpdateStatus_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Cancel Update",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/update/check": {
+      "post": {
+        "operationId": "check_for_update",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_UpdateStatus_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Check For Update",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/update/now": {
+      "post": {
+        "description": "Stop waiting for in-flight work; it is interrupted as a restart would.",
+        "operationId": "update_now",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_UpdateStatus_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Update Now",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/update/request": {
+      "post": {
+        "description": "Pause dispatching and update once in-flight work is done (or at once, interrupting\nit); runs keep being accepted and queued.",
+        "operationId": "request_update",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_UpdateStatus_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Request Update",
+        "tags": [
           "admin"
         ]
       }

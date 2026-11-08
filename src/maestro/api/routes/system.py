@@ -19,6 +19,11 @@ def contract_digest(app) -> str:
     return app.state.contract_digest
 
 
+def _update_notice(service) -> dict | None:
+    with service.db.read() as conn:
+        return service.updates.notice(conn)
+
+
 def readiness(request: Request) -> dict:
     service = maestro(request)
     schema = service.schema_state()
@@ -39,6 +44,7 @@ def readiness(request: Request) -> dict:
             "executor": service.executor.executor_id if service.executor else None,
             "worker_running": executing,
             "needs_setup": service.accounts.needs_setup() if ready else None,
+            "update": _update_notice(service) if ready else None,
         },
     }
 
@@ -99,6 +105,8 @@ def capabilities(request: Request):
                 "collection_current_best": True,
                 "dataset_import": True,
                 "dataset_upload": True,
+                # Off when config.toml turns update checks off: no update entry on the web.
+                "web_update": service.updates.enabled,
             },
             "limits": {
                 **limits.structural(),
@@ -138,6 +146,7 @@ def capabilities(request: Request):
                 "admin.model_configs": admin("models"),
                 "admin.harness_versions": admin("models"),
                 "admin.team_policy": admin("operations"),
+                "admin.update": session_admin,
                 "config.resolve": read,
                 "config.read": read,
                 "credentials.names": read,

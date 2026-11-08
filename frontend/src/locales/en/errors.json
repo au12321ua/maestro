@@ -162,6 +162,13 @@
     "RECORD_DELETED": "Record is in the recycle bin",
     "RECORD_TARGET_DELETED": "Record target is in the recycle bin",
     "RECORD_REVISION_CHANGED": "Record changed; reload and retry",
-    "CURRENT_BEST_INVALID": "Invalid current best snapshot or reason"
+    "CURRENT_BEST_INVALID": "Invalid current best snapshot or reason",
+    "UPDATE_PENDING": "This operation cannot start while an update is pending",
+    "UPDATE_ALREADY_PENDING": "An update is already pending",
+    "UPDATE_NOT_PENDING": "No update is pending",
+    "UPDATE_IN_PROGRESS": "The update has started and cannot be cancelled",
+    "UPDATE_TARGET_UNKNOWN": "Unknown update target; check for updates first",
+    "UPDATE_NOT_NEWER": "The target version is not newer than the installed version",
+    "UPDATE_CHECK_DISABLED": "Update checks are disabled in the configuration"
   }
 }

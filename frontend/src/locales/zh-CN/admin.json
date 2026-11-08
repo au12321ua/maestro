@@ -10,7 +10,8 @@
     "datasets": "数据集导入",
     "recycleBin": "回收站",
     "audit": "审计",
-    "maintenance": "维护"
+    "maintenance": "维护",
+    "update": "更新"
   },
   "pageTitle": "管理 · {{section}}",
   "role": {
@@ -217,7 +218,58 @@
     "policyVersion": "错误策略版本",
     "contractDigest": "契约摘要（OpenAPI）",
     "teamPolicyRevision": "团队策略修订",
-    "notInWeb": "更新、排空、备份与恢复不在网页中提供（P0 未实现），由部署脚本处理；完整的服务状态见",
+    "notInWeb": "备份与恢复由主机上的部署脚本处理；完整的服务状态见",
     "statusDetails": "system-status 详情"
+  },
+  "update": {
+    "versionTitle": "版本",
+    "version": "版本",
+    "installed": "当前安装版本",
+    "repository": "发布仓库",
+    "repositoryHint": "发布仓库由 /etc/maestro/config.toml 设置，只读。",
+    "checkedAt": "上次检查时间",
+    "checkError": "检查更新失败：{{error}}",
+    "check": "检查更新",
+    "latest": "最新正式版",
+    "releaseName": "发布名称",
+    "publishedAt": "发布时间",
+    "releaseLink": "在 GitHub 查看发布页",
+    "notes": "完整发布说明",
+    "updateTo": "更新到 {{version}}",
+    "readNotes": "我已阅读发布说明",
+    "confirmRequest": "更新到 {{version}}？运行继续受理和排队，但暂不开始；新的导入与首次准备须等待更新完成或取消。在途工作结束后会自动更新。服务将重启，页面会短暂不可用；失败时恢复更新前的版本和数据库。",
+    "dismiss": "返回",
+    "upToDate": "已是最新正式版",
+    "preview": "当前是开发预览；正式版 {{version}} 发布后才会提示",
+    "draining": "等待在途工作结束后更新到 {{version}}",
+    "requested": "更新中",
+    "requestedBy": "发起人",
+    "createdAt": "发起时间",
+    "finishedAt": "结束时间",
+    "cancelledBy": "取消人",
+    "system": "系统",
+    "counts": "执行中运行：{{active}} · 排队运行：{{queued}}",
+    "runs": "在途运行",
+    "operations": "在途操作",
+    "none": "无",
+    "phase": "更新进度",
+    "restartHint": "服务将重启，页面会短暂不可用，恢复后自动显示更新结果。",
+    "restarting": "服务正在重启，稍后自动刷新",
+    "cancel": "取消待更新",
+    "confirmCancel": "取消待更新并恢复运行派发？",
+    "now": "立即更新（中断在途工作）",
+    "confirmNow": "立即更新？在途运行将标为中断，已经记录的评分会保留；在途操作也会中断。服务将重启，页面会短暂不可用。",
+    "last": "上一次更新",
+    "rolledBack": "已回到更新前的版本与数据库",
+    "states": {
+      "succeeded": "成功",
+      "failed": "失败",
+      "cancelled": "已取消"
+    },
+    "phases": {
+      "downloading": "下载中",
+      "installing": "安装中",
+      "done": "完成"
+    }
   }
 }

@@ -19,7 +19,7 @@ UI 文案与纯样式变更不写低价值单元测试；优先验证会导致�
 | 真实 Docker | Oracle 全链路、镜像在本机仓库中的保存与恢复、独立验证器与 Compose 辅助服务、取消与杀进程后的清理、网络收紧、附件在试次容器内安装 | `live/test_harbor_docker.py`，需 `MAESTRO_DOCKER_TESTS=1`；只用本地 fixture 任务与已有基础镜像，不调用模型和 Hub（辅助服务拉取 `ubuntu:22.04` 时会问 Docker Hub）；每个模块启动一个临时镜像仓库容器，每个测试用独立实例标签与 `<仓库>/maestro-prep/<实例>` 镜像名，结束时核对清空 |
 | 真实 Hub | 目录调用、失败分类、导入与首次准备 | `live/test_hub_live.py`，需 `MAESTRO_HUB_TESTS=1`；匿名读取公开数据集 |
 | 真实模型冒烟 | Terminus-2、OpenCode（1.x 与 2.x）、Codex、Claude Code 各一个试次 | `live/test_harbor_docker.py -k real_model`，需 `MAESTRO_MODEL_TESTS=1` 及模型地址、key 文件；Codex 与 Claude Code 另需各自的 Responses / Messages 地址，并在 setup 中真实安装（见交接）；会产生费用，须核对当前授权与预算 |
-| 安装运维 | 安装、更新、失败回退、备份恢复、卸载与清除 | `live/test_install.py`，需 `MAESTRO_INSTALL_TESTS=1`；用隐藏参数 `--test-root` 把布局放进临时目录，以 systemd 用户单元运行；规则部分在 `ops/test_maestroctl.py`、`ops/test_backup.py`，默认运行 |
+| 安装运维 | 安装、更新、网页发起的更新、失败回退、备份恢复、卸载与清除 | `live/test_install.py`，需 `MAESTRO_INSTALL_TESTS=1`；用隐藏参数 `--test-root` 把布局放进临时目录，以 systemd 用户单元运行；规则部分在 `ops/test_maestroctl.py`、`ops/test_backup.py`，默认运行 |
 | 发布工具 | 许可证规则、SDK 版本戳、Gitea Releases 与包仓库的上传、重跑与保留、GitHub Pages 的 SDK 索引 | `ops/test_release_tools.py`（模拟接口），默认运行；真实发布只在 CI 中发生，发布后按第 9 节核对 |
 | 网页 | 关键路径冒烟 | `frontend/qa/smoke.spec.ts`（Playwright），需要全新的一次性 state 与 `serve --demo-executor`；按中文界面定位元素，另有一项以英文浏览器逐页确认没有残留中文、显示 AI 翻译说明，并能切回中文。语言文件的一致性与代码里没有写死文字由 `npm run check:i18n` 检查（CI） |
 | CI | lint、文档链接、默认 pytest（含契约与 SDK 模型漂移）、网页 lint / `check:api` / `check:i18n` / build、第三方许可证 | `.gitea/workflows/verify.yml`，触发条件与环境隔离见开发验证指南；另核对 `src/maestro/static/` 与网页源码一致。`dev` 与版本 tag 通过后发布（[12](12-operations.md) 第 1 节）。真实 Docker、Hub、模型与安装测试不在 CI，手动运行 |
@@ -39,7 +39,7 @@ UI 文案与纯样式变更不写低价值单元测试；优先验证会导致�
 | ANA-01～ANA-06 | [08](08-collections-comparison.md) | E2E-OUT-02～03 |
 | IAM-01～IAM-06 | [09](09-identity-security.md) | E2E-DS-03、E2E-RUN-04、F-13 / 25、第 8 节 |
 | API-01～API-06 | [10](10-api-sdk-cli.md) | E2E-RUN-01～02 / 05～06、E2E-DS-04～05、F-20 |
-| OPS-01～OPS-07 | [12](12-operations.md) | 12 第 9 节、E2E-RUN-07、F-08、F-14～15、第 9 节的升级检查 |
+| OPS-01～OPS-07 | [12](12-operations.md) | 12 第 9 节、E2E-RUN-07、E2E-OPS-01、F-08、F-14～15、第 9 节的升级检查 |
 
 网页需求由 [11](11-web-ui.md) 的页面与流程承接上述业务编号，不另造与服务端不一致的规则；布局（长内容不撑宽页面、长任务名省略共同前缀）、中英文界面与各页的关键路径由 `frontend/qa/smoke.spec.ts` 覆盖。
 
@@ -186,6 +186,16 @@ UI 文案与纯样式变更不写低价值单元测试；优先验证会导致�
 预期：准备与执行开始时读当前版本，执行尝试与镜像构建记下所用版本，修改只影响之后开始的工作、不需要重启；代理只给镜像构建参数与容器内的 setup，其他阶段拿不到；版本提示经安装网络查询，查不到时如实给出错误；发布固定确切的上游版本，运行带着这个版本；模型 key 只以文件进容器、只在 Agent 运行期间存在，Agent 阶段只能连到模型主机。
 
 覆盖：`configuration/test_setup_network.py`、`configuration/test_harness_upstream.py`、`runner/test_runner_container_harnesses.py`；真实安装见第 2 节的真实模型冒烟。
+
+### E2E-OPS-01 在网页上更新
+
+前提：`maestroctl` 安装的实例（测试中用 `--test-root` 与 systemd 用户单元）；`config.toml` 的 `update_api_url` 指向本机伪造的 GitHub 接口，它发布一个比当前新的正式版。
+
+步骤：管理员在管理页检查更新 → 有在途工作时发起更新 → 排队一个运行、尝试新的导入 → 在途工作结束 → 等待更新完成；另做取消待更新、立即更新，以及摘要不符、版本不比当前新、迁移或就绪失败的更新。
+
+预期：预发布、草稿与更旧的版本不提示，查询失败只显示原因；待更新期间运行照常受理但不派发（`UPDATE_PENDING`），新的导入与首次准备被拒绝；在途工作结束后由 root 的更新任务完成更新，新版本启动后排队的运行接着执行；取消后恢复派发，立即更新时在途运行标为中断、评分保留；失败时不切换版本或回到旧版本与旧数据库，网页显示原因并恢复派发；关闭浏览器或断开终端不影响更新。
+
+覆盖：`ops/test_web_update.py`（服务一侧）、`ops/test_maestroctl.py`（请求、状态文件与 Release 解析）、`live/test_install.py`（路径单元、下载核对、排空与回滚）。
 
 ## 6. 故事三：查询与导出
 

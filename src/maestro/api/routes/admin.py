@@ -1,5 +1,5 @@
 """Administrator web-session endpoints: members, invitations, credentials, master key,
-execution capacity, deployment settings (read only), dataset imports, first preparation, cache eviction, admission,
+execution capacity, deployment settings (read only), updates, dataset imports, first preparation, cache eviction, admission,
 deletion of team objects and the recycle bin."""
 
 import dataclasses
@@ -34,6 +34,8 @@ from maestro.api.models import (
     ScoringContract,
     ScoringContractInput,
     StatusChange,
+    UpdateRequest,
+    UpdateStatus,
     User,
 )
 from maestro.domain.states import PatPermission, Role, UserStatus
@@ -215,6 +217,36 @@ def get_deployment(request: Request, who: Principal = Depends(principal)):
         request,
         {"values": values, "retired": list(settings.retired), "service_proxy": proxy},
     )
+
+
+@router.get("/update", dependencies=SESSION, response_model=Envelope[UpdateStatus])
+def get_update_status(request: Request, who: Principal = Depends(principal)):
+    """Installed and newest formal version, a pending update and what it waits for."""
+    return ok(request, maestro(request).updates.status(who))
+
+
+@router.post("/update/check", dependencies=SESSION, response_model=Envelope[UpdateStatus])
+def check_for_update(request: Request, who: Principal = Depends(principal)):
+    return ok(request, maestro(request).updates.check(who))
+
+
+@router.post("/update/request", dependencies=SESSION, response_model=Envelope[UpdateStatus])
+def request_update(body: UpdateRequest, request: Request, who: Principal = Depends(principal)):
+    """Pause dispatching and update once in-flight work is done (or at once, interrupting
+    it); runs keep being accepted and queued."""
+    service = maestro(request).updates
+    return ok(request, service.request(who, body.version, body.interrupt_running))
+
+
+@router.post("/update/cancel", dependencies=SESSION, response_model=Envelope[UpdateStatus])
+def cancel_update(request: Request, who: Principal = Depends(principal)):
+    return ok(request, maestro(request).updates.cancel(who))
+
+
+@router.post("/update/now", dependencies=SESSION, response_model=Envelope[UpdateStatus])
+def update_now(request: Request, who: Principal = Depends(principal)):
+    """Stop waiting for in-flight work; it is interrupted as a restart would."""
+    return ok(request, maestro(request).updates.interrupt(who))
 
 
 @router.put(

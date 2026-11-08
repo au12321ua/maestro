@@ -27,6 +27,7 @@ import pwd
 import re
 import shutil
 import socket
+import stat
 import subprocess
 import sys
 import tarfile
@@ -35,6 +36,7 @@ import time
 import tomllib
 import urllib.error
 import urllib.request
+from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -56,6 +58,8 @@ DEFAULT_REGISTRY = "127.0.0.1:8425"
 COMPOSE_MIN = (2, 24)
 RELEASE_FILE = "RELEASE.json"
 COMPLETE = ".complete"
+FINAL_VERSION = r"[0-9]+\.[0-9]+\.[0-9]+"
+UPDATE_ID = r"[A-Za-z0-9_-]{1,64}"
 
 
 class CtlError(Exception):
@@ -142,6 +146,10 @@ class Layout:
         return self.data / "home"
 
     @property
+    def update_dir(self) -> Path:
+        return self.data / "update"
+
+    @property
     def cache(self) -> Path:
         return self._at("/var/cache/maestro")
 
@@ -177,6 +185,26 @@ class Layout:
             return Path("/etc/systemd/system") / self.unit_name
         base = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
         return base / "systemd" / "user" / self.unit_name
+
+    @property
+    def update_path_name(self) -> str:
+        return self.unit_name.removesuffix(".service") + "-update.path"
+
+    @property
+    def update_service_name(self) -> str:
+        return self.unit_name.removesuffix(".service") + "-update.service"
+
+    @property
+    def update_path(self) -> Path:
+        return self.unit_path.with_name(self.update_path_name)
+
+    @property
+    def update_service_path(self) -> Path:
+        return self.unit_path.with_name(self.update_service_name)
+
+    @property
+    def unit_paths(self) -> tuple[Path, ...]:
+        return self.unit_path, self.update_path, self.update_service_path
 
     def removable(self) -> set[Path]:
         """The only directories this tool ever deletes as a whole."""
@@ -352,15 +380,16 @@ def own_release() -> Release:
     return Release.load(Path(__file__).resolve().parent)
 
 
-def unpack(package: Path, layout: Layout) -> Path:
+def unpack(package: Path, layout: Layout, *, incoming: Path | None = None) -> Path:
     """A release directory from a package path: an unpacked directory or a ``.tar.gz``."""
     package = package.absolute()
     if package.is_dir():
         return package
     if not tarfile.is_tarfile(package):
         raise CtlError(f"{package} is neither a release directory nor a release package")
-    layout.incoming.mkdir(parents=True, exist_ok=True, mode=0o700)
-    target = Path(tempfile.mkdtemp(prefix="release-", dir=layout.incoming))
+    incoming = incoming or layout.incoming
+    incoming.mkdir(parents=True, exist_ok=True, mode=0o700)
+    target = Path(tempfile.mkdtemp(prefix="release-", dir=incoming))
     with tarfile.open(package) as archive:
         archive.extractall(target, filter="data")
     tops = [p for p in target.iterdir() if p.is_dir()]
@@ -550,13 +579,18 @@ def read_config(layout: Layout) -> dict:
         raise CtlError(f"cannot read {layout.config}: {error}") from None
 
 
-def render_unit(layout: Layout) -> str:
-    venv = layout.current / "venv" / "bin" / "maestro"
+def unit_search_path(layout: Layout) -> str:
     path = "/usr/local/bin:/usr/bin:/bin"
     if layout.test:
         docker = shutil.which("docker")
         if docker and str(Path(docker).parent) not in path.split(":"):
             path = f"{Path(docker).parent}:{path}"
+    return path
+
+
+def render_unit(layout: Layout) -> str:
+    venv = layout.current / "venv" / "bin" / "maestro"
+    path = unit_search_path(layout)
     lines = [
         "# Written by maestroctl and rewritten on update; local changes belong in an",
         f"# override: systemctl edit {layout.unit_name}",
@@ -602,13 +636,63 @@ def render_unit(layout: Layout) -> str:
     return "\n".join(lines) + "\n"
 
 
+def render_update_path(layout: Layout) -> str:
+    return "\n".join(
+        [
+            "[Unit]",
+            "Description=Maestro update requests from the web pages",
+            "[Path]",
+            f"PathExists={layout.update_dir / 'request.json'}",
+            f"Unit={layout.update_service_name}",
+            "[Install]",
+            f"WantedBy={'default.target' if layout.test else 'paths.target'}",
+            "",
+        ]
+    )
+
+
+def render_update_service(layout: Layout) -> str:
+    command = f"{sys.executable} -I {layout.current / 'maestroctl'}"
+    if layout.test:
+        command += f" --test-root {layout.root}"
+    lines = [
+        "[Unit]",
+        "Description=Maestro update requested from the web pages",
+        "[Service]",
+        "Type=oneshot",
+        f"ExecStart={command} update --request",
+        "TimeoutStartSec=3h",
+        "Environment=LANG=C.UTF-8",
+    ]
+    if layout.test:
+        lines.append(f"Environment=PATH={unit_search_path(layout)}")
+    return "\n".join(lines) + "\n"
+
+
 def write_unit(host: Host) -> None:
-    path = host.layout.unit_path
-    path.parent.mkdir(parents=True, exist_ok=True)
-    staged = path.with_name(path.name + ".new")
-    staged.write_text(render_unit(host.layout))
-    os.chmod(staged, 0o644)
-    os.replace(staged, path)
+    layout = host.layout
+    for path, text in zip(
+        layout.unit_paths,
+        (render_unit(layout), render_update_path(layout), render_update_service(layout)),
+        strict=True,
+    ):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        staged = path.with_name(path.name + ".new")
+        staged.write_text(text)
+        os.chmod(staged, 0o644)
+        os.replace(staged, path)
+    host.systemctl("daemon-reload")
+    host.systemctl("enable", "--now", layout.update_path_name, capture=True)
+
+
+def restore_units(host: Host, previous: dict[Path, str | None]) -> None:
+    if previous[host.layout.update_path] is None:
+        host.systemctl("disable", "--now", host.layout.update_path_name, check=False, capture=True)
+    for path, text in previous.items():
+        if text is None:
+            path.unlink(missing_ok=True)
+        else:
+            path.write_text(text)
     host.systemctl("daemon-reload")
 
 
@@ -778,6 +862,17 @@ def run_checks(layout: Layout, args, *, installing: bool) -> list[Check]:
         )
     )
     if not installing and layout.config.exists():
+        watching = update_watching(Host(layout))
+        add(
+            Check(
+                "web updates",
+                "ok" if watching else "warn",
+                f"{layout.update_path_name}: {'active' if watching else 'not active'}",
+                ""
+                if watching
+                else f"maestroctl update or systemctl enable --now {layout.update_path_name}",
+            )
+        )
         address = registry_address(layout)
         ready = registry_ready(address)
         add(
@@ -896,6 +991,7 @@ def make_directories(host: Host) -> None:
         (layout.secrets, 0o700),
         (layout.data, 0o700),
         (layout.home, 0o700),
+        (layout.update_dir, 0o700),
         (layout.cache, 0o700),
         (layout.backups, 0o700),
     ):
@@ -906,14 +1002,21 @@ def make_directories(host: Host) -> None:
 SERVICE_PROXY = "service"
 
 
-def service_proxy(layout: Layout) -> str | None:
-    """The proxy the installed service uses (HTTPS_PROXY in the environment file)."""
+def service_proxies(layout: Layout) -> dict[str, str]:
+    proxies = {}
     with contextlib.suppress(OSError):
         for line in layout.environment.read_text().splitlines():
             name, _, value = line.partition("=")
-            if name.strip() in ("HTTPS_PROXY", "https_proxy") and value.strip():
-                return value.strip()
-    return None
+            name = name.strip().lower()
+            if name in ("https_proxy", "http_proxy", "no_proxy") and value.strip():
+                proxies[name.removesuffix("_proxy")] = value.strip()
+    return proxies
+
+
+def service_proxy(layout: Layout) -> str | None:
+    """Prefer the service's HTTPS proxy, falling back to its HTTP proxy."""
+    proxies = service_proxies(layout)
+    return proxies.get("https") or proxies.get("http")
 
 
 def download_env(args, service: str | None) -> dict:
@@ -1160,6 +1263,18 @@ def cmd_status(layout: Layout, args) -> int:
     health = probe(layout) if state == "active" else None
     say(f"version:  {version.name}")
     say(f"service:  {state} ({layout.unit_name})")
+    enabled, repository, _ = update_settings(layout)
+    say(
+        f"update:   watching ({repository})"
+        if enabled and update_watching(host)
+        else "update:   not watching"
+    )
+    with contextlib.suppress(OSError, ValueError, AttributeError):
+        last = json.loads((layout.update_dir / "status.json").read_text())
+        say(
+            f"last web update: {last.get('version')} {last.get('state')} "
+            f"at {last.get('finished_at') or last.get('started_at')}: {last.get('message', '')}"
+        )
     if health:
         say(
             f"health:   {health.get('status')}, accepting runs: {'yes' if health.get('accepting_runs') else 'no'}"
@@ -1178,6 +1293,11 @@ def cmd_status(layout: Layout, args) -> int:
     if record.get("updated_at"):
         say(f"updated:  {record['updated_at']}")
     return 0 if state == "active" else 3
+
+
+def update_watching(host: Host) -> bool:
+    result = host.systemctl("is-active", host.layout.update_path_name, check=False, capture=True)
+    return result.returncode == 0 and result.stdout.strip() == "active"
 
 
 def cmd_service(layout: Layout, args) -> int:
@@ -1286,21 +1406,323 @@ def simulated(point: str) -> None:
         raise CtlError(f"simulated failure at {point}")
 
 
+def version_key(version: str) -> tuple[int, ...]:
+    if not isinstance(version, str):
+        raise CtlError(f"unsupported release version: {version!r}")
+    found = re.fullmatch(
+        r"([0-9]+)\.([0-9]+)\.([0-9]+)(?:(\.dev|a|b|rc)([0-9]+))?(?:\+[^\s]+)?",
+        version,
+    )
+    if not found:
+        raise CtlError(f"unsupported release version: {version!r}")
+    stage = {".dev": 0, "a": 1, "b": 2, "rc": 3, None: 4}[found[4]]
+    return *(int(found[i]) for i in (1, 2, 3)), stage, int(found[5] or 0)
+
+
+def update_settings(layout: Layout) -> tuple[bool, str, str]:
+    config = read_config(layout)
+    enabled = config.get("update_check", True)
+    repository = config.get("update_repository", "au12321ua/maestro")
+    api = config.get("update_api_url", "https://api.github.com")
+    if type(enabled) is not bool:
+        raise CtlError("update_check must be a bool")
+    if not isinstance(repository, str) or not re.fullmatch(
+        r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+", repository
+    ):
+        raise CtlError("update_repository must be a GitHub owner/name")
+    if not isinstance(api, str) or not api.startswith(("http://", "https://")):
+        raise CtlError("update_api_url must start with http:// or https://")
+    return enabled, repository, api.rstrip("/")
+
+
+class ServiceProxyHandler(urllib.request.ProxyHandler):
+    """The service's proxies with the service's bypass list, for every request including
+    redirects (GitHub sends downloads to another host)."""
+
+    def __init__(self, proxies: dict[str, str]):
+        self.no_proxy = proxies.get("no", "")
+        super().__init__({k: v for k, v in proxies.items() if k in ("http", "https")})
+
+    def proxy_open(self, req, proxy, type):
+        if urllib.request.proxy_bypass_environment(req.host, {"no": self.no_proxy}):
+            return None
+        return super().proxy_open(req, proxy, type)
+
+
+def release_download(opener, url: str, target: Path, limit: int, build: str) -> None:
+    if not isinstance(url, str) or not url.startswith(("http://", "https://")):
+        raise CtlError("release download URL must use HTTP(S)")
+    request = urllib.request.Request(
+        url,
+        headers={"Accept": "application/vnd.github+json", "User-Agent": f"maestroctl/{build}"},
+    )
+    try:
+        with opener.open(request, timeout=30) as response, target.open("wb") as output:
+            size = 0
+            while chunk := response.read(min(1 << 20, limit - size + 1)):
+                size += len(chunk)
+                if size > limit:
+                    raise CtlError(f"release download exceeds {limit} bytes: {target.name}")
+                output.write(chunk)
+    except (OSError, ValueError, urllib.error.URLError) as error:
+        raise CtlError(f"cannot download {target.name}: {error}") from None
+
+
+@contextlib.contextmanager
+def downloaded_release(layout: Layout, version: str):
+    old = require_installed(layout)
+    if not isinstance(version, str) or not re.fullmatch(FINAL_VERSION, version):
+        raise CtlError("--release must be a final version X.Y.Z")
+    _, repository, api = update_settings(layout)
+    installed = Release.load(old)
+    layout.incoming.mkdir(parents=True, exist_ok=True, mode=0o700)
+    work = Path(tempfile.mkdtemp(prefix="download-", dir=layout.incoming))
+    try:
+        opener = urllib.request.build_opener(ServiceProxyHandler(service_proxies(layout)))
+        metadata = work / "release.json"
+        release_download(
+            opener,
+            f"{api}/repos/{repository}/releases/tags/v{version}",
+            metadata,
+            1 << 20,
+            installed.build,
+        )
+        try:
+            info = json.loads(metadata.read_bytes())
+        except ValueError:
+            raise CtlError("GitHub returned an invalid release description") from None
+        if (
+            not isinstance(info, dict)
+            or info.get("draft")
+            or info.get("prerelease")
+            or info.get("tag_name") != f"v{version}"
+        ):
+            raise CtlError(f"GitHub release v{version} is not the requested final release")
+        assets = info.get("assets", [])
+        if not isinstance(assets, list) or any(not isinstance(a, dict) for a in assets):
+            raise CtlError("GitHub returned invalid release assets")
+        packages = [
+            a
+            for a in assets
+            if isinstance(a.get("name"), str)
+            and re.fullmatch(rf"maestro-{re.escape(version)}-[A-Za-z0-9._+-]+\.tar\.gz", a["name"])
+        ]
+        sums = [a for a in assets if a.get("name") == "SHA256SUMS"]
+        if len(packages) != 1 or len(sums) != 1:
+            raise CtlError("release must have exactly one Maestro package and one SHA256SUMS asset")
+        package = work / packages[0]["name"]
+        checksums = work / "SHA256SUMS"
+        for asset, path, limit in ((packages[0], package, 2 << 30), (sums[0], checksums, 64 << 10)):
+            release_download(
+                opener, asset.get("browser_download_url"), path, limit, installed.build
+            )
+        try:
+            digests = [
+                match[1].lower()
+                for line in checksums.read_text().splitlines()
+                if (match := re.fullmatch(r"([A-Fa-f0-9]{64})  (.+)", line))
+                and match[2] == package.name
+            ]
+        except UnicodeError:
+            digests = []
+        if len(digests) != 1 or sha256_file(package) != digests[0]:
+            raise CtlError(f"digest mismatch for {package.name} in SHA256SUMS")
+        release = Release.load(unpack(package, layout, incoming=work))
+        if release.info.get("version") != version:
+            raise CtlError(f"downloaded release version does not match {version}")
+        release.verify()
+        installed_version = installed.info.get("version", "")
+        if version_key(version) <= version_key(installed_version):
+            raise CtlError(f"{version} is not newer than the installed {installed_version}")
+        yield release
+    finally:
+        shutil.rmtree(work)
+
+
+@dataclass
+class HandoverResult:
+    returncode: int
+    message: str = ""
+    rolled_back: bool = False
+
+
+def hand_over(layout: Layout, release: Release, args, *, capture: bool = False) -> HandoverResult:
+    # The new package's installer owns the migration and rollback procedure.
+    command = [sys.executable, "-I", str(release.directory / "maestroctl")]
+    if layout.test:
+        command += ["--test-root", str(layout.root)]
+    command += ["update", str(release.directory), "--ready-timeout", str(args.ready_timeout)]
+    if args.interrupt_running:
+        command.append("--interrupt-running")
+    if args.download_proxy:
+        command += ["--download-proxy", args.download_proxy]
+    if args.uv:
+        command += ["--uv", args.uv]
+    if not capture:
+        return HandoverResult(subprocess.call(command))
+    tail = deque(maxlen=100)
+    message = ""
+    rolled_back = False
+    with subprocess.Popen(
+        command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+    ) as child:
+        for line in child.stdout:
+            say(line.rstrip("\n"))
+            line = line.strip()
+            tail.append(line)
+            if line.startswith(("maestroctl: ", "!! update failed: ")):
+                message = line
+            if "rolled back:" in line:
+                rolled_back = True
+        code = child.wait()
+    return HandoverResult(code, message or next((s for s in reversed(tail) if s), ""), rolled_back)
+
+
+def update_timestamp() -> str:
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def write_update_status(host: Host, status: dict) -> None:
+    # Never truncate a service-controlled path: replace it with a new owned inode.
+    descriptor, name = tempfile.mkstemp(dir=host.layout.update_dir)
+    try:
+        with os.fdopen(descriptor, "w") as output:
+            json.dump(status, output)
+            output.write("\n")
+            os.fchmod(output.fileno(), 0o644)
+            host.own(Path(name), 0o644)
+        os.replace(name, host.layout.update_dir / "status.json")
+    finally:
+        Path(name).unlink(missing_ok=True)
+
+
+def read_update_request(path: Path, status: dict) -> dict:
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(descriptor, "rb") as source:
+            file_stat = os.fstat(source.fileno())
+            if not stat.S_ISREG(file_stat.st_mode):
+                raise CtlError("update request must be a regular file")
+            if file_stat.st_size > 4096:
+                raise CtlError("update request exceeds 4096 bytes")
+            raw = source.read(4096)
+            if os.fstat(source.fileno()).st_size > 4096:
+                raise CtlError("update request exceeds 4096 bytes")
+        request = json.loads(raw)
+    except (OSError, ValueError) as error:
+        raise CtlError(f"cannot read update request: {error}") from None
+    if not isinstance(request, dict):
+        raise CtlError("update request must be a JSON object")
+    identifier = request.get("id")
+    if isinstance(identifier, str) and re.fullmatch(UPDATE_ID, identifier):
+        status["id"] = identifier
+    version = request.get("version")
+    if isinstance(version, str) and re.fullmatch(FINAL_VERSION, version):
+        status["version"] = version
+    if type(request.get("format")) is not int or request["format"] != 1:
+        raise CtlError("update request format must be 1")
+    if status["id"] is None:
+        raise CtlError("update request id is invalid")
+    if status["version"] is None:
+        raise CtlError("update request version must be a final version X.Y.Z")
+    if type(request.get("interrupt_running")) is not bool:
+        raise CtlError("update request interrupt_running must be a bool")
+    return request
+
+
+def update_release(layout: Layout, args, version: str, status: dict | None = None) -> int:
+    with downloaded_release(layout, version) as release:
+        if status is not None:
+            status.update(phase="installing", message="Installing release")
+            write_update_status(Host(layout), status)
+        result = hand_over(layout, release, args, capture=status is not None)
+        if status is not None:
+            status.update(
+                to_build=release.build if result.returncode == 0 else None,
+                rolled_back=result.rolled_back,
+                message=(
+                    f"Updated to {release.build}"
+                    if result.returncode == 0
+                    else result.message or f"update failed ({result.returncode})"
+                ),
+            )
+        return result.returncode
+
+
+def update_request(layout: Layout, args) -> int:
+    taken = layout.update_dir / "request.taken.json"
+    try:
+        os.rename(layout.update_dir / "request.json", taken)
+    except FileNotFoundError:
+        return 0
+    host = Host(layout)
+    old = current_version(layout)
+    status = {
+        "format": 1,
+        "id": None,
+        "version": None,
+        "pid": os.getpid(),
+        "state": "running",
+        "phase": "downloading",
+        "from_build": old.name if old else None,
+        "to_build": None,
+        "rolled_back": False,
+        "message": "Downloading release",
+        "started_at": update_timestamp(),
+        "finished_at": None,
+    }
+    code = 1
+    try:
+        write_update_status(host, status)
+        try:
+            request = read_update_request(taken, status)
+        finally:
+            with contextlib.suppress(OSError):
+                taken.unlink(missing_ok=True)
+        status["from_build"] = require_installed(layout).name
+        if not update_settings(layout)[0]:
+            raise CtlError("web updates are turned off (update_check = false in config.toml)")
+        write_update_status(host, status)
+        forwarded = argparse.Namespace(**vars(args))
+        forwarded.interrupt_running = request["interrupt_running"]
+        if service_proxy(layout):
+            forwarded.download_proxy = SERVICE_PROXY
+        code = update_release(layout, forwarded, request["version"], status)
+    except Exception as error:  # noqa: BLE001
+        # A crashed downloader or child must still leave a terminal result for the web.
+        status["message"] = str(error) or type(error).__name__
+        say(f"maestroctl: {status['message']}")
+    finally:
+        with contextlib.suppress(OSError):
+            taken.unlink(missing_ok=True)
+        status.update(
+            state="succeeded" if code == 0 else "failed",
+            phase="done",
+            finished_at=update_timestamp(),
+        )
+        write_update_status(host, status)
+    return 0 if code == 0 else 1
+
+
 def cmd_update(layout: Layout, args) -> int:
     require_root(layout)
+    if getattr(args, "request", False):
+        return update_request(layout, args)
+    if getattr(args, "release", None):
+        require_installed(layout)
+        return update_release(layout, args, args.release)
     if args.package:
         directory = unpack(Path(args.package), layout)
         release = Release.load(directory)
         if release.directory.resolve() != own_release().directory.resolve():
-            # The new release knows how to install itself: hand over to its maestroctl.
-            forwarded = [a for a in sys.argv[1:] if a != args.package]
-            return subprocess.call(
-                [sys.executable, "-I", str(directory / "maestroctl"), *forwarded]
-            )
+            return hand_over(layout, release, args).returncode
     release = own_release()
     old = require_installed(layout)
     host = Host(layout)
+    layout.update_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    host.own(layout.update_dir, 0o700)
     if old.name == release.build:
+        write_unit(host)
         say(f"already at {release.build}")
         return 0
     record = read_record(layout)
@@ -1315,7 +1737,9 @@ def cmd_update(layout: Layout, args) -> int:
             "are in progress. Wait for them, or pass --interrupt-running: they are marked "
             "interrupted (scores already recorded stay). Queued runs always wait for the new version."
         )
-    previous_unit = layout.unit_path.read_text() if layout.unit_path.exists() else None
+    previous_units = {
+        path: path.read_text() if path.exists() else None for path in layout.unit_paths
+    }
     step("Stopping the service")
     host.systemctl("stop", layout.unit_name)
     step("Backing up the database")
@@ -1342,9 +1766,7 @@ def cmd_update(layout: Layout, args) -> int:
         host.systemctl("stop", layout.unit_name, check=False)
         if switched:
             switch_current(layout, old)
-            if previous_unit is not None:
-                layout.unit_path.write_text(previous_unit)
-                host.systemctl("daemon-reload")
+            restore_units(host, previous_units)
         restore_database(host, old, backup)
         host.start()
         wait_ready(host, args.ready_timeout)
@@ -1442,16 +1864,20 @@ def cmd_uninstall(layout: Layout, args) -> int:
                 say(f"  Docker {kind}s of instance {instance}: {len(items)}")
         if not layout.test:
             say(f"  system account and group {SERVICE_USER}")
-        say(f"  {layout.unit_path}")
+        for path in layout.unit_paths:
+            say(f"  {path}")
         expected = instance or "maestro"
         if args.confirm != expected:
             say(f"Nothing was removed. To go ahead run again with: --purge --confirm {expected}")
             return 1
     step("Stopping and removing the service")
-    if layout.unit_path.exists():
-        host.systemctl("disable", "--now", layout.unit_name, check=False, capture=True)
-        layout.unit_path.unlink()
-        host.systemctl("daemon-reload")
+    for path in (layout.update_path, layout.update_service_path, layout.unit_path):
+        if path.exists():
+            host.systemctl("disable", "--now", path.name, check=False, capture=True)
+            path.unlink()
+        # A failed update task stays listed as failed after its unit file is gone.
+        host.systemctl("reset-failed", path.name, check=False, capture=True)
+    host.systemctl("daemon-reload")
     if layout.ctl_link.is_symlink():
         layout.ctl_link.unlink()
     remove_registry(layout)  # its data stays under data_dir unless purged
@@ -1549,7 +1975,12 @@ def parser() -> argparse.ArgumentParser:
     restore.add_argument("--include-files", action="store_true")
     restore.add_argument("--allow-missing-key", action="store_true")
     update = with_download(with_ready(sub.add_parser("update", help="update to a release package")))
-    update.add_argument("package", nargs="?", help="release .tar.gz or directory")
+    source = update.add_mutually_exclusive_group()
+    source.add_argument("package", nargs="?", help="release .tar.gz or directory")
+    source.add_argument(
+        "--release", metavar="VERSION", help="download a newer final GitHub release"
+    )
+    source.add_argument("--request", action="store_true", help=argparse.SUPPRESS)
     update.add_argument("--interrupt-running", action="store_true")
     update.add_argument("--uv")
     uninstall = sub.add_parser("uninstall", help="remove the service; data is kept")

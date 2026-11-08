@@ -21,6 +21,7 @@ from maestro.config import Settings
 from maestro.core import clock
 from maestro.core.errors import MaestroError
 from maestro.core.lock import InstanceLock
+from maestro.services import updates
 
 FORMAT = 1
 MANIFEST = "manifest.json"
@@ -224,6 +225,10 @@ def restore(
     }
 
 
+def _marks(values: tuple) -> str:
+    return ",".join("?" * len(values))
+
+
 def activity(settings: Settings) -> dict:
     """Work that a stop would interrupt, read straight from the database (the service may
     be running). Updates refuse while any of it is in progress unless told otherwise.
@@ -232,16 +237,20 @@ def activity(settings: Settings) -> dict:
     connection = sqlite3.connect(f"file:{settings.database}?mode=ro", uri=True)
     try:
         connection.execute("PRAGMA busy_timeout=5000")
+        states = ("queued", *updates.ACTIVE_RUN_STATES)
         runs = dict(
             connection.execute(
-                "SELECT state, count(*) FROM runs WHERE state IN "
-                "('queued','preparing','running','finalizing') GROUP BY state"
+                f"SELECT state, count(*) FROM runs WHERE state IN ({_marks(states)}) "
+                "GROUP BY state",
+                states,
             ).fetchall()
         )
+        statuses, kinds = updates.ACTIVE_OPERATION_STATUSES, updates.UNINTERRUPTED_KINDS
         operations = dict(
             connection.execute(
-                "SELECT kind, count(*) FROM operations WHERE status IN ('accepted','running') "
-                "AND kind NOT IN ('run','batch','export') GROUP BY kind"
+                f"SELECT kind, count(*) FROM operations WHERE status IN ({_marks(statuses)}) "
+                f"AND kind NOT IN ({_marks(kinds)}) GROUP BY kind",
+                (*statuses, *kinds),
             ).fetchall()
         )
     finally:

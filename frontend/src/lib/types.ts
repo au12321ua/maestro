@@ -150,3 +150,10 @@ export type VariableDimension = Collection["variable_dimensions"][number];
 export type Snapshot = S["Snapshot"];
 export type SnapshotSummary = S["SnapshotSummary"];
 export type SnapshotNote = S["SnapshotNote"];
+
+export type UpdateStatus = S["UpdateStatus"];
+export type ServiceUpdate = S["ServiceUpdate"];
+export type ReleaseInfo = S["ReleaseInfo"];
+export type InFlightWork = S["InFlightWork"];
+export type UpdateRequest = S["UpdateRequest"];
+export type UpdateNotice = S["UpdateNotice"];

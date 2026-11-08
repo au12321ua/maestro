@@ -8,7 +8,7 @@
 
 所有分支 push 检查源码，PR 复用对应提交结果；正式 tag 读取准确 SHA 的成功 `verify` 任务及必需步骤，独立 `publish` 任务构建和验证实际 wheel，上传失败不改变源码检查结论（U-67）。dev 通过后发 Gitea 预览，正式 tag 发 Gitea Release 与同版本 SDK 包；GitHub 从相同 tag 重建并验证 Release，再更新 Pages 正式 SDK 索引（U-42、U-62）。预览 Release 与 `.dev<CI运行号>` SDK 各留最近 10 个，正式版不清理。
 
-包附 SDK wheel、许可证清单与 `SHA256SUMS`，manifest 固定源码 SHA 与文件摘要；构建输入锁定、归档元数据规范化，同一输入可重建。发布先准备草稿，附件齐全后公开；缺失补传，同摘要跳过，异摘要或 tag 改指向则停止。两端附件、SDK 包仓库和 Pages 全部核对后，正式准备与下一开发版本一起推回 dev，保留并发提交。各渠道没有原子事务，入口按实际状态续跑，不把部分成功报告为完成。操作见[发布指南](../guides/releasing.md)。不自动部署：管理员下载包后执行 `maestroctl update`。
+包附 SDK wheel、许可证清单与 `SHA256SUMS`，manifest 固定源码 SHA 与文件摘要；构建输入锁定、归档元数据规范化，同一输入可重建。发布先准备草稿，附件齐全后公开；缺失补传，同摘要跳过，异摘要或 tag 改指向则停止。两端附件、SDK 包仓库和 Pages 全部核对后，正式准备与下一开发版本一起推回 dev，保留并发提交。各渠道没有原子事务，入口按实际状态续跑，不把部分成功报告为完成。操作见[发布指南](../guides/releasing.md)。不自动部署：管理员在管理页检查并发起正式版更新，或在主机上执行 `maestroctl update`（第 5 节）。
 
 布局是系统级的（U-13）：
 
@@ -29,6 +29,7 @@
 /var/lib/maestro/work/              Runner 工作目录，归档为产物前的暂存
 /var/lib/maestro/exports/           临时导出包
 /var/lib/maestro/home/              服务账号的家目录（Docker 客户端与 buildx 的状态）
+/var/lib/maestro/update/            网页发起的更新：服务写的请求、更新任务写回的状态（第 5 节）
 /var/cache/maestro/tasks/           按上游内容摘要保存的任务材料
 /var/backups/maestro/<时间>/        备份集（含更新前的自动备份）
 journald                            服务标准输出 / 错误
@@ -38,7 +39,7 @@ journald                            服务标准输出 / 错误
 
 安装器把 `maestro` 加入系统 Docker 套接字所属的组。这个组约等于 root，在可信团队前提下接受（U-29）；专用账户使用自己的 rootless Docker 是以后的备选。Docker 能力只由平台使用，不挂进任务容器。
 
-管理入口只有命令行 `maestroctl`：check、install、status、start / stop / restart、logs、backup、restore、update、registry-gc、uninstall、version。网页不发起维护动作（U-29）。
+管理入口是命令行 `maestroctl`：check、install、status、start / stop / restart、logs、backup、restore、update、registry-gc、uninstall、version。网页只发起一种维护动作：更新到获取源里比当前新的正式版，由 root 的更新任务执行（第 5 节，U-96）；其余维护只在命令行。
 
 **本机镜像仓库**（N-01、U-56）：准备好的镜像存在 Docker 官方 `registry` 镜像（按 digest 固定版本）运行的容器 `maestro-registry` 里，只绑定 `127.0.0.1`（默认端口 8425，安装时 `--registry-port` 指定，写入配置 `image_registry`），重启策略 `unless-stopped`，以服务账户身份运行、数据挂在 `/var/lib/maestro/registry`。Docker 默认信任 `127.0.0.0/8` 上的 HTTP 仓库，不改守护进程配置。`install` 与 `update` 在启动服务前创建或重建这个容器；`status` 与 `check` 报告它是否应答；`uninstall` 删除容器、保留数据，`--purge` 连数据一起删。
 
@@ -54,7 +55,7 @@ journald                            服务标准输出 / 错误
 | OPS-04 | 每次启动先对账，完成前不受理（第 4 节） |
 | OPS-05 | 卸载默认保留数据与配置，彻底删除需列出范围并确认实例编号（第 7 节） |
 | OPS-06 | 未满足：兼容信息只有发布包的 `RELEASE.json`（版本、提交、数据库结构版本、Harbor 版本、Runner 修订、文件摘要），没有经验证的发行版与 CPU 架构支持清单 |
-| OPS-07 | 同机更新带自动备份与失败回退（第 5 节）；不排空（暂缓，U-48） |
+| OPS-07 | 同机更新带自动备份与失败回退；网页发起的更新先排空（第 5 节，U-96） |
 
 安装检查不改全机 Docker 配置（守护进程没有代理时只提醒）。nftables 只查内核模块；网络收紧是否真正生效由服务启动时经 Runner 探测（第 4 节）。
 
@@ -93,6 +94,7 @@ journald                            服务标准输出 / 错误
 
 - `root_path` 可配置，但网页写死 `/api/v1` 与根路径路由（`frontend/src/lib/api.ts`），子路径部署目前不能用。
 - 部署配置在网页上只读，`config.toml` 仍须在主机上修改并重启。
+- 更新的获取源（`update_repository`，GitHub 的 `owner/name`，默认 `au12321ua/maestro`）与是否检查更新（`update_check`）只在 `config.toml` 里设置：获取源决定 root 的更新任务执行哪份代码，网页不能改（U-96）。
 
 ## 4. systemd 与启动对账
 
@@ -104,11 +106,13 @@ journald                            服务标准输出 / 错误
 
 网络探测结论为不能限制时，模型运行在受理时即被拒绝（阻塞项 `NETWORK_POLICY_UNSUPPORTED`，不扣额度），能力接口的 `features.restricted_network` 报告结果；探测失败按不能处理，Runner 在每个运行开始时的检查仍是最后一道。
 
-计划停机没有排空：`stop` / `restart` 会中断在途工作并如实记为中断。带排空的维护暂缓（U-48）。
+`stop` / `restart` 不排空：在途工作被中断并如实记为中断。排空只用于网页发起的更新（第 5 节）。
 
 ## 5. 版本更新
 
-`maestroctl update <包>`（同一台主机，命令行，U-29）：
+### 命令行
+
+`maestroctl update <包>`（同一台主机，U-29）：
 
 1. 包里的 `maestroctl` 与当前执行的不是同一版本时，交给新包的 `maestroctl` 执行；目标已是当前版本时直接结束。
 2. 在当前版本旁边装好新版本，服务照常运行；Harbor 与 Runner 修订不变时复用已有环境。
@@ -120,9 +124,25 @@ journald                            服务标准输出 / 错误
 
 回退必须连同数据库一起恢复：迁移可能与旧程序不兼容，只切换 `current` 不算回滚。新版本不改写共享 Harbor 环境或旧版本的锁文件。
 
+`maestroctl update --release <版本>` 省去手动下载：按 `config.toml` 的获取源取该版本的 GitHub Release（拒绝草稿与预发布），下载发布包与 `SHA256SUMS` 并核对摘要，确认版本比当前新（不降级、不重装），再交给包里的 `maestroctl` 走上面的流程。访问 GitHub 走服务的代理（`/etc/maestro/environment`），下载 Python 包仍按 `--download-proxy`。终端里的更新不排空，有在途工作时照旧拒绝或按 `--interrupt-running` 中断。
+
+### 网页发起（U-96）
+
+服务每天查询一次获取源最新的正式版（GitHub `releases/latest`，经服务进程的代理），管理员也可以在管理页“更新”中立即检查；只有比当前安装版本新的正式版才提示，所以装着开发预览（`.dev`）的实例在下一个正式版出来前不会被提示降级。页面显示发布说明，标题含“破坏性变更”“迁移”“更新后”“首次准备”等字样的段落列在前面。查询失败只显示原因，保留上一次成功查到的结果。`update_check = false` 时不查询，网页没有更新入口（`features.web_update`）。开发预览只走命令行。
+
+1. 管理员确认发布说明后发起“更新到 X”（只能是最近一次检查查到的那个版本），服务进入**待更新**。待更新是数据库里的一条记录（`service_updates`），重启后仍然有效：运行照常受理和排队，但不派发，排队原因 `UPDATE_PENDING`（[05](05-scheduling-execution.md) 第 3 节）；新的导入、首次准备与回收缓存拒绝启动（`UPDATE_PENDING`），已开始的继续做完。所有成员看到横幅，管理页列出还在执行的运行与 Operation 及其提交者。
+2. 管理员可以随时取消待更新，恢复派发；也可以“立即更新”，在途工作按重启语义中断，已得评分保留（与 `--interrupt-running` 相同）。
+3. 在途工作——执行中的运行，以及导入、首次准备等 Operation（与 `maestro activity` 同一定义）——全部结束，或选了立即更新后，服务把请求原子写入 `/var/lib/maestro/update/request.json`：格式版本、请求编号、目标版本、是否中断、操作者与时间。服务只能写版本号，不能给下载地址或文件。
+4. root 的 `maestro-update.path` 监视这个文件，触发一次性的 `maestro-update.service`，执行当前版本的 `maestroctl update --request`：先把请求改名占下（此后取消会被拒绝，`UPDATE_IN_PROGRESS`），严格校验内容（不跟随符号链接、大小与字段格式），再走 `--release` 的流程；没有交互的这条路径下载 Python 包也走服务的代理。更新任务不挂在终端或服务进程上，断线、关掉浏览器或服务停止都不影响它。
+5. 进度与结果写进同目录的 `status.json`（`running` 的下载 / 安装阶段，最后 `succeeded` 或 `failed`，带是否已回滚与最后一条错误），详细输出进 journald 的 `maestro-update` 单元。服务读到本次请求的最终结果就结束待更新、恢复派发：成功时由新版本读到，失败回滚后由旧版本读到（更新前的备份里同样有这条待更新）；状态停在 `running` 而更新任务的进程已不存在时按失败结束。
+
+`maestroctl install` 与 `update` 写入并启用这两个单元，`uninstall` 删除；更新失败回滚时单元文件一起换回。`check` 报告路径单元是否在监视，`status` 报告它和最近一次网页更新的结果。
+
+安全边界：服务能做的只是“请求更新到获取源里比当前新的某个正式版”，获取源与是否开启都在 root 所有的配置里。`SHA256SUMS` 与发布包来自同一个 Release，只防传输损坏，不防发布源本身被篡改，信任落在 GitHub 仓库与发布流程上。`maestro` 账户在 Docker 组里，本来约等于 root（U-29），这套机制不明显扩大服务被攻破时的影响；更新任务以 root 读取服务可写目录里的文件，所以只改名、不跟随链接，状态文件经临时文件替换写入。
+
 数据库迁移在单个事务里执行，失败整体回滚。重建被其他表引用的表时，开启外键检查会让替换父表的语句因历史引用而失败，所以迁移连接在事务开始前临时关闭外键检查，提交前对整个数据库做一次外键校验，有悬空引用（包括迁移前就存在的）则回滚并让升级失败。成功或失败后都恢复外键检查，日常服务连接始终强制检查。迁移期间外键关闭，`ON DELETE CASCADE` 与 `SET NULL` 不会触发，迁移须自行处理子表数据，漏掉的悬空行会被提交前的校验拦下。
 
-已知限制：有运行在跑时只能等待或中断，没有排空和维护模式（暂缓，U-48）。
+已知限制：终端里的 `maestroctl update` 不排空；`stop`、`restart` 与 `restore` 也没有维护模式。发布包只核对与它同一 Release 的 `SHA256SUMS`，没有构建来源证明。
 
 ## 6. 备份与恢复
 
@@ -155,7 +175,7 @@ journald                            服务标准输出 / 错误
 
 ## 9. 验收
 
-- 安装、初始化、本机镜像仓库容器、启停、日志、更新、失败回退、同机备份恢复、保留数据卸载与彻底删除：`tests/maestro/live/test_install.py`（需 `MAESTRO_INSTALL_TESTS=1`，在临时根目录以 systemd 用户单元运行）；布局、单元文件与删除边界：`tests/maestro/ops/test_maestroctl.py`；备份集与恢复检查：`tests/maestro/ops/test_backup.py`。
+- 安装、初始化、本机镜像仓库容器、启停、日志、更新、失败回退、网页发起的更新（伪造的 GitHub 接口、路径单元、排空、摘要不符的失败）、同机备份恢复、保留数据卸载与彻底删除：`tests/maestro/live/test_install.py`（需 `MAESTRO_INSTALL_TESTS=1`，在临时根目录以 systemd 用户单元运行）；布局、单元文件、请求与状态文件、Release 解析与删除边界：`tests/maestro/ops/test_maestroctl.py`；备份集与恢复检查：`tests/maestro/ops/test_backup.py`；版本比较、发布说明、待更新期间的派发与 Operation、请求与结果、取消与立即更新、权限：`tests/maestro/ops/test_web_update.py`。
 - 非正常终止后按规则标记中断、保留评分并清理本实例遗留容器：见 [13](13-testing-plan.md) 的 F-08。
 - 普通重启不更新版本。
-- 带在途工作的排空更新与异机恢复不在当前范围：前者暂缓（U-48），后者见 [N-21](../proposals/N-21-offhost-restore.md)。
+- 异机恢复不在当前范围，见 [N-21](../proposals/N-21-offhost-restore.md)。

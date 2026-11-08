@@ -98,6 +98,13 @@ class Settings:
     storage_accept_min_free_percent: float = 15
     storage_dispatch_min_free_gb: float = 10
     storage_dispatch_min_free_percent: float = 8
+    # Updates from the web pages: the newest formal release of ``update_repository`` on
+    # GitHub is looked up daily and an administrator may install it. Only this file names
+    # the source, because the host's root update task installs what it points at.
+    # ``update_api_url`` is the GitHub API, replaced only by tests.
+    update_check: bool = True
+    update_repository: str = "au12321ua/maestro"
+    update_api_url: str = "https://api.github.com"
     # Retired keys found in the file (``RETIRED``); reported by ``advice``.
     retired: tuple[str, ...] = ()
 
@@ -168,6 +175,11 @@ class Settings:
         return notes
 
     @property
+    def update_dir(self) -> Path:
+        """Update requests to the host's root update task, and its reports back."""
+        return self.data_dir / "update"
+
+    @property
     def lock_file(self) -> Path:
         return self.data_dir / "maestro.lock"
 
@@ -188,6 +200,18 @@ class Settings:
             raise MaestroError("CONFIG_INVALID", "master_key_dir must be outside data_dir", 500)
         if not re.fullmatch(r"[A-Za-z0-9.-]+:[0-9]{1,5}", self.image_registry):
             raise MaestroError("CONFIG_INVALID", "image_registry must be host:port", 500)
+        if not isinstance(self.update_check, bool):
+            raise MaestroError("CONFIG_INVALID", "update_check must be true or false", 500)
+        if not isinstance(self.update_repository, str) or not re.fullmatch(
+            r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+", self.update_repository
+        ):
+            raise MaestroError("CONFIG_INVALID", "update_repository must be owner/name", 500)
+        if not isinstance(self.update_api_url, str) or not re.fullmatch(
+            r"https?://[^\s/]+(/[^\s]*)?", self.update_api_url
+        ):
+            raise MaestroError("CONFIG_INVALID", "update_api_url must be an http(s) URL", 500)
+        if self.update_api_url.endswith("/"):
+            object.__setattr__(self, "update_api_url", self.update_api_url.rstrip("/"))
         self._check_limits()
         return self
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AlertTriangle, LogOut } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -310,7 +310,9 @@ function SystemIndicator({
 }
 
 function SystemNotice({ health }: { health: SystemStatus | null }) {
-  if (!health || (health.accepting_runs && health.status === "ready")) return null;
+  const { me } = useSession();
+  if (!health) return null;
+  const problem = !health.accepting_runs || health.status !== "ready";
   const detail = health.detail;
   const reasons: string[] = [];
   if (health.status !== "ready") reasons.push(t("common.app.reason.health", { status: health.status }));
@@ -319,19 +321,33 @@ function SystemNotice({ health }: { health: SystemStatus | null }) {
   if (detail.worker_running === false) reasons.push(t("common.app.reason.worker"));
   if (detail.storage.level !== "ok") reasons.push(t("common.app.reason.storage"));
   return (
-    <div className="border-b border-amber-300 bg-amber-50 text-amber-900">
-      <div className="flex items-start gap-2 px-4 py-2 text-sm md:px-6">
-        <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-        <div className="min-w-0">
-          <b>{t("common.app.banner.title")}</b>{" "}
-          {reasons.join(t("common.format.listSeparator")) || t("common.app.reason.unknown")}
-          {t("common.app.banner.tail")}
-          <details className="mt-1">
-            <summary className="cursor-pointer text-xs">{t("common.app.banner.details")}</summary>
-            <pre className="overflow-x-auto text-xs">{JSON.stringify(detail, null, 2)}</pre>
-          </details>
+    <>
+      {detail.update && (
+        <div role="status" className="border-b border-blue-200 bg-blue-50 px-4 py-2 text-sm text-blue-900 md:px-6">
+          {t(`common.updateNotice.${detail.update.state}`, { version: detail.update.version })}{" "}
+          {me.role === "admin" && (
+            <Link to="/admin/update" className="underline">
+              {t("common.updateNotice.manage")}
+            </Link>
+          )}
         </div>
-      </div>
-    </div>
+      )}
+      {problem && (
+        <div className="border-b border-amber-300 bg-amber-50 text-amber-900">
+          <div className="flex items-start gap-2 px-4 py-2 text-sm md:px-6">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+            <div className="min-w-0">
+              <b>{t("common.app.banner.title")}</b>{" "}
+              {reasons.join(t("common.format.listSeparator")) || t("common.app.reason.unknown")}
+              {t("common.app.banner.tail")}
+              <details className="mt-1">
+                <summary className="cursor-pointer text-xs">{t("common.app.banner.details")}</summary>
+                <pre className="overflow-x-auto text-xs">{JSON.stringify(detail, null, 2)}</pre>
+              </details>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

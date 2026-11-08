@@ -244,6 +244,7 @@ function SystemCard({ health }: { health: SystemStatus }) {
         <span className="text-xs text-muted-foreground">
           {t("workbench.system.hint", { status: health.status })}
         </span>
+        {health.detail.update && <p className="basis-full text-blue-900">{t(`common.updateNotice.${health.detail.update.state}`, { version: health.detail.update.version })}</p>}
       </CardContent>
     </Card>
   );

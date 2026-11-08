@@ -62,7 +62,8 @@
     "CAPACITY_CPU": "Waiting for free CPU",
     "CAPACITY_MEMORY": "Waiting for free memory",
     "PROVIDER_LIMIT": "Waiting for model provider concurrency",
-    "STORAGE_LOW": "Storage low, starts paused"
+    "STORAGE_LOW": "Storage low, starts paused",
+    "UPDATE_PENDING": "Waiting for the system update to finish or be cancelled"
   },
   "invitationState": {
     "pending": "Unused",
@@ -351,5 +352,10 @@
     "tooManyFiles": "{{count}} files exceed the limit of {{max}}; upload with the SDK instead.",
     "tooLarge": "{{size}} exceeds the limit of {{max}}; upload with the SDK instead.",
     "fileTooLarge": "{{path}} is {{size}}, over the web limit of {{max}} per file (the browser reads a whole file into memory to hash it); upload with the SDK instead."
+  },
+  "updateNotice": {
+    "draining": "An admin has requested an update to {{version}}. Runs are still accepted and queued, but will not start. The update will begin once in-flight work finishes.",
+    "requested": "Updating to {{version}}. The service will restart shortly.",
+    "manage": "View update"
   }
 }

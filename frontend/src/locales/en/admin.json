@@ -10,7 +10,8 @@
     "datasets": "Dataset imports",
     "recycleBin": "Recycle bin",
     "audit": "Audit",
-    "maintenance": "Maintenance"
+    "maintenance": "Maintenance",
+    "update": "Updates"
   },
   "pageTitle": "Admin · {{section}}",
   "role": {
@@ -218,7 +219,58 @@
     "policyVersion": "Error policy version",
     "contractDigest": "Contract digest (OpenAPI)",
     "teamPolicyRevision": "Team policy revision",
-    "notInWeb": "Updates, draining, backup and restore are not available in the web UI (not implemented in P0) and are handled by deployment scripts; full service status in",
+    "notInWeb": "Backup and restore are handled by deployment scripts on the host; full service status in",
     "statusDetails": "system-status details"
+  },
+  "update": {
+    "versionTitle": "Version",
+    "version": "Version",
+    "installed": "Installed version",
+    "repository": "Release repository",
+    "repositoryHint": "The release repository is set in /etc/maestro/config.toml and is read-only here.",
+    "checkedAt": "Last checked",
+    "checkError": "Update check failed: {{error}}",
+    "check": "Check for updates",
+    "latest": "Latest formal release",
+    "releaseName": "Release name",
+    "publishedAt": "Published",
+    "releaseLink": "View release on GitHub",
+    "notes": "Full release notes",
+    "updateTo": "Update to {{version}}",
+    "readNotes": "I have read the release notes",
+    "confirmRequest": "Update to {{version}}? Runs will still be accepted and queued, but none will start. New imports and first preparations must wait until the update finishes or is cancelled. The update starts automatically once in-flight work finishes. The service will restart and this page will be briefly unavailable. If the update fails, the previous version and database will be restored.",
+    "dismiss": "Back",
+    "upToDate": "Already on the latest formal release",
+    "preview": "This is a development preview; an update will be offered when formal release {{version}} is published",
+    "draining": "Waiting for in-flight work to finish before updating to {{version}}",
+    "requested": "Updating",
+    "requestedBy": "Requested by",
+    "createdAt": "Requested at",
+    "finishedAt": "Finished at",
+    "cancelledBy": "Cancelled by",
+    "system": "System",
+    "counts": "Active runs: {{active}} · Queued runs: {{queued}}",
+    "runs": "In-flight runs",
+    "operations": "In-flight operations",
+    "none": "None",
+    "phase": "Update progress",
+    "restartHint": "The service will restart and this page will be briefly unavailable. The result will appear automatically when the service returns.",
+    "restarting": "The service is restarting. This page will refresh automatically shortly.",
+    "cancel": "Cancel pending update",
+    "confirmCancel": "Cancel the pending update and resume dispatching runs?",
+    "now": "Update now (interrupt in-flight work)",
+    "confirmNow": "Update now? In-flight runs will be marked interrupted and scores already recorded will be kept. In-flight operations will also be interrupted. The service will restart and this page will be briefly unavailable.",
+    "last": "Last update",
+    "rolledBack": "The previous version and database have been restored",
+    "states": {
+      "succeeded": "Succeeded",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "phases": {
+      "downloading": "Downloading",
+      "installing": "Installing",
+      "done": "Done"
+    }
   }
 }

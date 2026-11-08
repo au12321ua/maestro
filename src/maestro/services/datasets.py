@@ -19,7 +19,7 @@ from maestro.db.engine import Database
 from maestro.domain import limits, scoring
 from maestro.domain.states import PatPermission
 from maestro.execution.attachments import NAME, PackageError
-from maestro.services import audit, deleted, operations
+from maestro.services import audit, deleted, operations, updates
 from maestro.services.attachments import _held
 from maestro.services.dataset_versions import check_upload_metadata
 from maestro.services.preparation import (
@@ -230,6 +230,7 @@ class Datasets:
             "based_on": body.get("based_on"),
         }
         with self.db.write() as conn:
+            updates.refuse_while_pending(conn)
             check_dataset_source(conn, "upload", request["namespace"], request["name"])
             dataset = live_dataset(conn, "upload", request["namespace"], request["name"])
             check_upload_metadata(
@@ -300,6 +301,7 @@ class Datasets:
             "prepare": body.get("prepare", True) is not False,
         }
         with self.db.write() as conn:
+            updates.refuse_while_pending(conn)
             check_dataset_source(conn, kind, request["namespace"], request["name"])
             op_id = operations.create(
                 conn,
@@ -325,6 +327,7 @@ class Datasets:
         """First preparation, or a retry of the tasks whose first preparation failed."""
         require_admin(principal, PatPermission.DATASETS)
         with self.db.write() as conn:
+            updates.refuse_while_pending(conn)
             if not conn.execute(
                 select(t.dataset_versions.c.id).where(t.dataset_versions.c.id == version_id)
             ).first():
@@ -368,6 +371,7 @@ class Datasets:
     def request_eviction(self, principal: Principal, preparation_id: str) -> dict:
         require_admin(principal, PatPermission.DATASETS)
         with self.db.write() as conn:
+            updates.refuse_while_pending(conn)
             row = conn.execute(
                 select(t.preparations.c.cache_state).where(t.preparations.c.id == preparation_id)
             ).first()

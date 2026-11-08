@@ -12,7 +12,7 @@ The project is in 0.x: anything may change between versions, and the detailed do
 - Layered run configuration (team defaults, experiment plans, per-run values) with model configurations, team-held provider credentials (encrypted, never sent back to the browser) and harnesses: Terminus-2, OpenCode, Codex and Claude Code.
 - Content-addressed attachments, runs and batches, reruns, live execution pages, scoring that keeps a valid zero, a missing score and an execution failure apart, artifacts and exports, a recycle bin.
 - Comparison across runs, collections and frozen analysis snapshots.
-- `maestroctl` for a system-wide install, updates, backup and restore on one Linux host.
+- `maestroctl` for a system-wide install, updates, backup and restore on one Linux host; administrators can also check for and install a formal release from the web pages, after running work has finished.
 
 ## Install
 
