@@ -539,10 +539,14 @@ def test_sdk_records_and_current_best_use_the_public_contract(service, version_i
             "attachment-candidate",
             "Candidate",
             {"workflow": {"decision": "pending"}},
+            text="Why this **candidate**",
             references=[ref],
             excerpts=[models.RecordExcerptInput(text="api_key=do-not-store", reference=ref)],
         )
         assert record.revision == 1 and record.excerpts[0].text == "api_key=[REDACTED]"
+        assert record.text == "Why this **candidate**"
+        note = agent.records.create({"type": "run", "id": run_id}, "note", "Note", text="Only text")
+        assert note.text == "Only text" and note.model_dump(mode="json")["body"] == {}
         assert agent.records.get(record.id).id == record.id
         assert [
             r.id for r in agent.records.list("collection", collection.id, kind=record.kind)
@@ -554,7 +558,7 @@ def test_sdk_records_and_current_best_use_the_public_contract(service, version_i
             references=[ref],
             excerpts=[models.RecordExcerptInput(text="sk-abcdefghijklmnopqrstuvwx", reference=ref)],
         )
-        assert updated.revision == 2
+        assert updated.revision == 2 and updated.text == record.text
         assert updated.excerpts[0].text == "[REDACTED]"
         versions = agent.records.history(record.id)
         assert [v.revision for v in versions] == [1, 2]

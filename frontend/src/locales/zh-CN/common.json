@@ -277,8 +277,8 @@
     "kindInvalid": "类型用小写字母、数字和连字符，以字母开头，如 note、provenance。",
     "recordTitle": "标题",
     "titleRequired": "请填写标题。",
-    "bodyLabel": "正文（JSON 对象）",
-    "bodyHint": "平台不解释正文的结构。引用与证据摘录要核对所引用的对象，请用 SDK 填写。",
+    "bodyLabel": "正文（JSON 对象，可留空）",
+    "bodyHint": "给程序读写，平台不解释它的结构；同一件事不要在文字里再写一遍。引用与证据摘录要核对所引用的对象，请用 SDK 填写。",
     "bodyNotJson": "正文不是有效的 JSON。",
     "bodyNotObject": "正文必须是 JSON 对象（{…}）。",
     "provenanceTitle": "来源说明",
@@ -295,13 +295,25 @@
     "reload": "刷新记录",
     "history": "修改历史",
     "revisionLine": "修订 {{revision}} · {{actor}} · {{time}}",
-    "body": "展开正文（JSON）",
     "references": "引用（{{count}}）",
     "excerpts": "证据摘录",
     "updated": "修改于 {{time}}",
     "snapshot": "固定附件快照：{{id}}",
     "pat": "PAT",
-    "revisions": "{{count}} 个修订"
+    "revisions": "{{count}} 个修订",
+    "textLabel": "文字（Markdown）",
+    "textHint": "写给人读。可以写站内链接，如 [那次运行](/runs/<id>)；平台不核对链接的对象，需要核对的引用请用 SDK 写。",
+    "provenanceHint": "写一段来源说明：上游仓库、修订（提交或 tag）、转换器及其版本，以及转换时做过的取舍。",
+    "advanced": "高级：正文（JSON）",
+    "viewJson": "查看 JSON",
+    "referenceType": {
+      "run": "运行",
+      "trial": "试次",
+      "artifact": "产物",
+      "attachment_snapshot": "附件快照",
+      "collection": "集合",
+      "analysis_snapshot": "分析快照"
+    }
   },
   "folder": {
     "choose": "选择文件夹",

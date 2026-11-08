@@ -692,6 +692,7 @@ class RecordHandler(Handler):
             update(t.workflow_records)
             .where(t.workflow_records.c.id == row["id"])
             .values(
+                text="",
                 body_json={},
                 references_json=[],
                 excerpts_json=[],

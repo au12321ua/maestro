@@ -1,4 +1,4 @@
-"""Opaque workflow records and their attributed revision history."""
+"""Workflow records (text for people, an opaque body for programs) and their history."""
 
 from __future__ import annotations
 
@@ -15,13 +15,16 @@ class Records(_Resource):
         target: models.RecordTargetInput | Mapping[str, Any],
         kind: str,
         title: str,
-        body: Mapping[str, Any],
+        body: Mapping[str, Any] | None = None,
         *,
+        text: str = "",
         references: list[models.RecordReference | Mapping[str, Any]] | None = None,
         excerpts: list[models.RecordExcerptInput | Mapping[str, Any]] | None = None,
     ) -> models.WorkflowRecord:
         """Target uses type/id and optional snapshot_id; attachment ids are names.
         Dataset provenance can target a dataset_version id.
+        ``text`` is Markdown for people to read; ``body`` is JSON for programs. Write each
+        fact in one of them: the service does not derive one from the other.
         Excerpts are redacted on the service and retained after artifact expiry."""
         return self._c._send(
             "POST",
@@ -31,7 +34,8 @@ class Records(_Resource):
                 "target": _body(target),
                 "kind": kind,
                 "title": title,
-                "body": dict(body),
+                "text": text,
+                "body": dict(body or {}),
                 "references": [_body(r) for r in references or []],
                 "excerpts": [_body(e) for e in excerpts or []],
             },
@@ -69,7 +73,7 @@ class Records(_Resource):
         expected_revision: int,
         **changes: Any,
     ) -> models.WorkflowRecord:
-        """Change kind/title/body/references/excerpts; the target and author stay fixed."""
+        """Change kind/title/text/body/references/excerpts; the target and author stay fixed."""
         for field in ("references", "excerpts"):
             if field in changes and changes[field] is not None:
                 changes[field] = [_body(value) for value in changes[field]]

@@ -505,6 +505,7 @@ def test_candidate_records_keep_every_decision_and_find_their_runs(workflow):
         collection.id,
         candidate.id,
         hypothesis="Explain the delivery path in the skill",
+        text="A note for **people**",
         parent_snapshot_id=parent.id,
         change_kind="delivery",
         references=[evidence, {"type": "attachment_snapshot", "id": candidate.id}],
@@ -512,6 +513,8 @@ def test_candidate_records_keep_every_decision_and_find_their_runs(workflow):
         self_report={"model": "m", "cost_usd": None},
     )
     assert record.kind == "attachment-candidate" and record.target.id == collection.id
+    assert record.text == "A note for **people**"
+    assert "A note" not in str(record.model_dump(mode="json")["body"])
     assert [(r.type, r.id) for r in record.references] == [
         ("attachment_snapshot", candidate.id),
         ("attachment_snapshot", parent.id),
@@ -536,6 +539,7 @@ def test_candidate_records_keep_every_decision_and_find_their_runs(workflow):
         "keep",
     ]
     assert len(decided.excerpts) == 2 and decided.revision == 3
+    assert decided.text == record.text
     assert ("run", candidate_run) in [(r.type, r.id) for r in decided.references]
     assert len(client.records.history(record.id)) == 3
     with pytest.raises(ValueError, match="decision must be one of"):

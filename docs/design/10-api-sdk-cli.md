@@ -63,7 +63,7 @@ SDK 要求 api_version 为 v1 且所需功能开启，否则抛 UNSUPPORTED_CAPA
 - 维护（更新、备份、恢复）不在 HTTP API 中（[12](12-operations.md)）。
 - 比较是只计算不保存的 `POST /comparisons`；集合的比较用 `POST /collections/{id}/comparison`，请求体为空时用集合保存的设置（[08](08-collections-comparison.md)）。
 
-工作流记录用 `/records` 创建、按目标列举，`/records/{id}` 读取、修改或放进回收站，`/history` 返回从初稿到当前的完整修订及编辑者、PAT 与时间。修改要求 `expected_revision`；目标与作者不可改。目标可为集合、运行、附件或数据集版本，用 `type`、`id`，附件的 `id` 是名称，另可固定 `snapshot_id`；附件名列表包括固定快照的记录，给出快照筛选时只列出固定该快照的记录，可再按 `kind` 筛选。正文为不解释的 JSON 对象，显式引用与脱敏摘录另列。目标进回收站后只读，物理删除后列表为空、单条与历史返回 410，记录自身仍可回收与清除（[01](01-domain-model.md)）。
+工作流记录用 `/records` 创建、按目标列举，`/records/{id}` 读取、修改或放进回收站，`/history` 返回从初稿到当前的完整修订及编辑者、PAT 与时间。修改要求 `expected_revision`；目标与作者不可改。目标可为集合、运行、附件或数据集版本，用 `type`、`id`，附件的 `id` 是名称，另可固定 `snapshot_id`；附件名列表包括固定快照的记录，给出快照筛选时只列出固定该快照的记录，可再按 `kind` 筛选。记录有给人读写的 Markdown `text` 与给程序读写的 JSON 对象 `body`，都可省略（`body` 存为 `{}`），平台都不解释；显式引用与脱敏摘录另列。返回的记录附 `reference_locations`，给出试次与产物引用所属的运行（与试次），供网页拼链接；对象已不存在的引用不在其中。目标进回收站后只读，物理删除后列表为空、单条与历史返回 410，记录自身仍可回收与清除（[01](01-domain-model.md)）。
 
 `PUT /collections/{id}/current-best` 设置或清除附件快照指针，两种操作都要求理由并写集合修改记录；清除用 null，最近清除的理由仍由集合 GET 返回。SDK 提供 `client.records.create/get/list/update/history/delete` 与 `client.collections.set_current_best(id, snapshot_id, reason=...)`。记录使用 `experiment` 写权限，编辑只限作者，删除沿用归属与 `override`；所有 PAT 都可读取目标可读的记录。
 
@@ -119,8 +119,8 @@ SDK 也是 Agent 的客户端（U-59、U-60）。平台保存别人要依赖的�
 
 - `maestro_sdk.skills.install(目录)`：把随 wheel 发布的 skill（仓库的 `skills/`）复制到 `.agents/skills/` 与 `.claude/skills/`，同名 skill 整个替换、其他 skill 不动，并在 `.maestro-sdk-version` 记下 SDK 版本。skill 因此与 SDK 同版本，升级 SDK 后重装即同步。
 - `maestro_sdk.workspace.init(目录, workflow=None)`：推荐的工作区，`AGENTS.md` 模板（服务地址、令牌文件位置、可花的预算、命名习惯、当前目标）、自由格式的 `notes/`、每个附件一个 git 仓库的 `attachments/`，以及忽略已安装 skill 与附件仓库的 `.gitignore`；已有文件不覆盖，重复调用只补缺并重装 skill。`workflow="attachments"` 另写入该工作流的说明 `notes/attachments-workflow.md`。
-- `maestro_sdk.workflows.attachments`：附件改进的机械活，只组合公开 API、写本地文件，不提交运行、不判断优劣。`write_task_briefs` 仅对明确选择的任务调用单题读取，把题面与公开元数据写到本地；`prepare_candidate` 按集合固定配置解析一个已发布的候选（不提交），列出计划试次、与父快照的文件差异、阻塞，以及安装能否复用的事实（`bootstrap.sh` 是否相同、父快照在同一 Harness 上的安装记录）；`collect_evidence` 按运行、任务或试次增量下载并校验产物，写出清单与 trace 的事件索引（命令、位置、明确记录的退出码与输出位置，看不懂的格式标为未索引，不分类）；`build_report` 从不剔除失败的集合比较生成 JSON 与 Markdown 报告，完整性依据任务对齐、剔除与已评分试次数计算；存在留出结果时，分别报告开发题与留出题成绩，各自计算完整性，并附上留出题的读取汇总及受理运行次数。`save_candidate`、`decide_candidate`、`candidates` 读写挂在集合上的 `attachment-candidate` 工作流记录：父候选、假设、改动类别、证据引用与摘录、每次决定（未决 / 保留 / 放弃 / 证据不足）及改进 Agent 自报的信息；关联的运行按快照从集合成员查出，不存进记录。
-- skill：`maestro-sdk` 讲实验操作与诚实报告；`maestro-package` 讲从已有材料做附件、改进前先读题、给改动分类并按各自的指标判断、提交前写下证据标准、计数前逐条核对 trace 事件、用附件 A/B 集合改进、建集合时标出留出题、只在开发题上调、报告附上留出题的读取汇总，把候选与决定记成工作流记录、用集合的当前最优指针标出最优的附件（不靠标签），以及中断后只凭平台恢复进度。判断“更好”时建议不剔除失败、核对每个运行的已评分试次等于计划试次，否则说明证据不足；平台不另算一套口径，集合也不核对固定任务列表（U-60）。
+- `maestro_sdk.workflows.attachments`：附件改进的机械活，只组合公开 API、写本地文件，不提交运行、不判断优劣。`write_task_briefs` 仅对明确选择的任务调用单题读取，把题面与公开元数据写到本地；`prepare_candidate` 按集合固定配置解析一个已发布的候选（不提交），列出计划试次、与父快照的文件差异、阻塞，以及安装能否复用的事实（`bootstrap.sh` 是否相同、父快照在同一 Harness 上的安装记录）；`collect_evidence` 按运行、任务或试次增量下载并校验产物，写出清单与 trace 的事件索引（命令、位置、明确记录的退出码与输出位置，看不懂的格式标为未索引，不分类）；`build_report` 从不剔除失败的集合比较生成 JSON 与 Markdown 报告，完整性依据任务对齐、剔除与已评分试次数计算；存在留出结果时，分别报告开发题与留出题成绩，各自计算完整性，并附上留出题的读取汇总及受理运行次数。`save_candidate`、`decide_candidate`、`candidates` 读写挂在集合上的 `attachment-candidate` 工作流记录：父候选、假设、改动类别、证据引用与摘录、每次决定（未决 / 保留 / 放弃 / 证据不足）及改进 Agent 自报的信息，这些都在正文里；调用方可另给一段 `text` 写给人看，不从正文生成；关联的运行按快照从集合成员查出，不存进记录。
+- skill：`maestro-sdk` 讲实验操作与诚实报告；`maestro-package` 讲从已有材料做附件、改进前先读题、给改动分类并按各自的指标判断、提交前写下证据标准、计数前逐条核对 trace 事件、用附件 A/B 集合改进、建集合时标出留出题、只在开发题上调、报告附上留出题的读取汇总，把候选与决定记成工作流记录（给人看的话写 `text`，程序要读的写 `body`）、用集合的当前最优指针标出最优的附件（不靠标签），以及中断后只凭平台恢复进度。判断“更好”时建议不剔除失败、核对每个运行的已评分试次等于计划试次，否则说明证据不足；平台不另算一套口径，集合也不核对固定任务列表（U-60）。
 
 ## 8. 契约验收
 

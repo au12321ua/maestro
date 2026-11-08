@@ -368,6 +368,7 @@ def save_candidate(
     snapshot_id: str,
     *,
     hypothesis: str,
+    text: str = "",
     parent_snapshot_id: str | None = None,
     change_kind: str | None = None,
     invalid_if: str | None = None,
@@ -380,7 +381,9 @@ def save_candidate(
     ``change_kind`` is free text (for example installation, execution reliability,
     delivery, quality). ``references`` and ``excerpts`` carry the source evidence;
     excerpts outlive the artifacts they quote. ``self_report`` is what the improving
-    agent says about itself, such as its model and cost. A snapshot already recorded
+    agent says about itself, such as its model and cost. These go in the record body,
+    which ``candidates`` reads; ``text`` is an optional Markdown note for people, written
+    by the caller and never generated from the body. A snapshot already recorded
     in this collection returns the existing record unchanged, so a retry after an
     interruption does not create a second one; change it with ``decide_candidate``
     or ``client.records.update``.
@@ -406,6 +409,7 @@ def save_candidate(
         CANDIDATE,
         f"Candidate {snapshot_id}",
         body,
+        text=text,
         references=_unique([*linked, *map(dict, references)]),
         excerpts=[dict(e) for e in excerpts],
     )
