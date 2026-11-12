@@ -629,6 +629,52 @@ test("attachment snapshots", async ({ page }) => {
   await page.screenshot({ path: `${shots}/attachments.png`, fullPage: true });
 });
 
+test("submission package and submission scoring run", async ({ page }) => {
+  test.skip(!token, "MAESTRO_SETUP_TOKEN not set");
+  const folder = join(mkdtempSync(join(tmpdir(), "maestro-smoke-")), "smoke-submission");
+  mkdirSync(join(folder, "submissions", "add-01"), { recursive: true });
+  const manifest = { schema_version: 1, kind: "submission", name: "smoke-submission" };
+  writeFileSync(join(folder, "manifest.json"), JSON.stringify(manifest));
+  writeFileSync(
+    join(folder, "bootstrap.sh"),
+    '#!/bin/bash\ntest -d "submissions/$MAESTRO_TASK_NAME" || exit 1\n',
+  );
+  writeFileSync(join(folder, "submissions", "add-01", "answer"), "2\n");
+
+  await page.goto("/");
+  await page.getByLabel("用户名").fill("admin");
+  await page.getByLabel("密码").fill(password);
+  await page.getByRole("button", { name: "登录" }).click();
+  await nav(page, "附件").click();
+  // The package kind is chosen next to the list and must match the manifest.
+  await page.getByLabel("包类别（列表与上传）").selectOption("submission");
+  await page.locator('input[type="file"]').setInputFiles(folder);
+  await page.getByLabel("标签（可选）").fill("v1");
+  await page.getByRole("button", { name: "上传并发布" }).click();
+  await expect(page.getByText("已发布 smoke-submission v1（上传 3 个文件）")).toBeVisible();
+
+  await newRun(page);
+  // Oracle may carry attachments, with a warning that no harness is installed.
+  await page.getByLabel(/^Oracle/).check();
+  await expect(
+    page.getByText("没有安装 Harness，依赖 Harness 文件或命令的脚本可能失败。"),
+  ).toBeVisible();
+  await page.locator("#run-dataset").selectOption({ label: "demo/arith" });
+  await page.getByLabel("运行名称").fill("smoke submission");
+  await page.getByLabel("手动选择").check();
+  await page.getByLabel("选择 add-01").check();
+  await page.getByLabel(/^提交评分/).check();
+  const option = page.locator("#run-submission option", { hasText: "smoke-submission" });
+  await page.locator("#run-submission").selectOption((await option.getAttribute("value"))!);
+  await page.getByRole("button", { name: "检查配置" }).click();
+  await page.getByRole("button", { name: "按此配置提交运行" }).click();
+  await expect(page).toHaveURL(/\/runs\/(?!new$)[^/]+$/);
+  await expect(page.getByText("已结束")).toBeVisible({ timeout: 60_000 });
+  // Shown as submission scoring, never as Oracle.
+  await expect(page.getByText("提交评分").first()).toBeVisible();
+  await page.screenshot({ path: `${shots}/submission-run.png`, fullPage: true });
+});
+
 // Uploading converted Harbor tasks from the datasets page. Needs the service to validate
 // tasks with the Runner (`runner_python` in its config); skipped otherwise.
 test("dataset upload: bad task, new dataset, new version, source boundary", async ({ page }) => {

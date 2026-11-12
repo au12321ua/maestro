@@ -80,4 +80,4 @@ Oracle 运行不检查附件的 `compatible_harnesses`，任何附件都可以�
 
 ## 结果
 
-已实现 Oracle 附件安装：复用有序复制、摘要校验、限时脚本与安装记录；跳过 Harness 兼容检查并提示，无附件 Oracle 保持原路径。有附件时下发并记录 setup 网络，作用域结束后参考解与 verifier 不继承安装变量。配置、SDK、网页与 Runner 回归通过；新增真实 Docker 用例已收集并默认跳过，Docker 现场验证待执行。
+已实现 Oracle 附件安装：复用有序复制、摘要校验、限时脚本与安装记录；跳过 Harness 兼容检查并提示，无附件 Oracle 保持原路径。有附件时下发并记录 setup 网络，作用域结束后参考解与 verifier 不继承安装变量。配置、SDK、网页与 Runner 回归通过；真实 Docker 验证（2026-11-12，提交 `70e5564`，Harbor 0.24.0，rootless Docker）：新增用例通过，整份 `live/test_harbor_docker.py` 串行 20 通过、6 个真实模型用例跳过，结束后无残留容器、镜像、网络或卷；`-n 4` 并行时两个既有用例因共用本机镜像互相干扰而失败，串行通过。未调用真实模型。

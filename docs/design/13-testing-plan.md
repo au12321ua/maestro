@@ -161,7 +161,7 @@ UI 文案与纯样式变更不写低价值单元测试；优先验证会导致�
 
 Oracle 附件与提交评分的配置、包类别互斥、兼容性警告、快照与重跑由 `configuration/test_attachments.py` 覆盖；安装网络输入和版本记录在 `configuration/test_setup_network.py`；生成契约与 SDK 提交在 `api/test_sdk.py`；非 agent 的比较与集合拒绝在 `results/test_comparison.py`、`results/test_collections.py`。
 
-Runner 的 `runner/test_runner_attachments.py` 使用锁定 Harbor 的真实 Trial 顺序与环境替身，检查 Oracle 安装后执行参考解、提交评分跳过参考解、任务名变量、setup 环境作用域，以及安装失败、超时时不运行 verifier、容器内副本不符时按沙箱失败处理。真实 Docker 用例在 `live/test_harbor_docker.py`：Oracle 两个有序附件；提交评分的有效 1、有效 0 与缺题安装失败。默认收集并跳过，须显式开启 `MAESTRO_DOCKER_TESTS=1`。这些新增 Docker 用例的现场验证待执行；网页新增交互的浏览器冒烟也待执行。
+Runner 的 `runner/test_runner_attachments.py` 使用锁定 Harbor 的真实 Trial 顺序与环境替身，检查 Oracle 安装后执行参考解、提交评分跳过参考解、任务名变量、setup 环境作用域，以及安装失败、超时时不运行 verifier、容器内副本不符时按沙箱失败处理。真实 Docker 用例在 `live/test_harbor_docker.py`：Oracle 两个有序附件；提交评分的有效 1、有效 0 与缺题安装失败。默认收集并跳过，须显式开启 `MAESTRO_DOCKER_TESTS=1`。
 
 ### E2E-RUN-05 附件快照的增量发布与取回
 
