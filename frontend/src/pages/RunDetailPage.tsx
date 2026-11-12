@@ -278,7 +278,11 @@ function RunDetailView({ runId }: { runId: string }) {
             </Link>
           </Button>
         )}
-        {run.allowed_actions.includes("modify") && <AddToCollection runIds={[run.id]} />}
+        {/* Collections compare model runs only; Oracle and submission scoring never join. */}
+        {run.allowed_actions.includes("modify") &&
+          run.snapshot.effective.execution_mode === "agent" && (
+            <AddToCollection runIds={[run.id]} />
+          )}
         {run.allowed_actions.includes("delete") && (
           <Button size="sm" variant="outline" disabled={busy} onClick={() => void remove()}>
             <Trash2 />
