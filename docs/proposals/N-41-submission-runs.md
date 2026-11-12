@@ -1,6 +1,6 @@
 # N-41 给已有提交评分
 
-状态：设计中（构想已定，U-100；是否实施待用户决定） · 优先级：建议二 · 2026-11-11 · 相关：[03 配置与附件](../design/03-configuration-attachments.md)、[05 调度与执行](../design/05-scheduling-execution.md)、[06 结果与评分](../design/06-results-scoring.md)、[08 集合与比较](../design/08-collections-comparison.md)、[N-40](N-40-oracle-attachments.md)、[N-33](archive/N-33-held-out-benchmarks-workflows.md) 第 6.1 节、U-86
+状态：实施中（U-101） · 优先级：建议二 · 2026-11-11 · 相关：[03 配置与附件](../design/03-configuration-attachments.md)、[05 调度与执行](../design/05-scheduling-execution.md)、[06 结果与评分](../design/06-results-scoring.md)、[08 集合与比较](../design/08-collections-comparison.md)、[N-40](N-40-oracle-attachments.md)、[N-33](archive/N-33-held-out-benchmarks-workflows.md) 第 6.1 节、U-86
 
 ## 问题
 
@@ -81,7 +81,7 @@ submissions/
 
 ## 待定问题
 
-构想已定（U-100），首版范围按上文。是否确认实施由用户读后决定；实施依赖 N-40 的无 Harness 安装包装，两者可同批实施。
+构想已定（U-100），首版范围按上文。已确认实施（U-101）；依赖 N-40 的无 Harness 安装包装，两者一起实施。
 
 ## 结果
 
