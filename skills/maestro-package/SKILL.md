@@ -19,7 +19,7 @@ Fill in `AGENTS.md` with the person you work for: service, token file, what you 
 ## Making an attachment
 
 1. **Read the material** (a local directory, a path in an online repository, or an existing snapshot: `client.attachments.fetch(id, dir)`). Note where it came from, the commit and the license in your notes.
-2. **Choose what goes in.** Only the skill and the tools it needs. No datasets, answers or solutions to tasks, credentials, caches or large files. The repository root is the attachment root, and every tracked file is published.
+2. **Choose what goes in.** Only the skill and the tools it needs. No datasets, answers or solutions to tasks, credentials, caches or large files. The repository root is the attachment root, and every tracked file is published. For system dependencies or task environment files, read [datasets and task environments](../maestro-sdk/references/datasets.md) before choosing an attachment.
 3. **Write `manifest.json`** at the root: `{"schema_version": 1, "name": "<name>", "description": "...", "effects": ["agent_tools"], "compatible_harnesses": ["*"]}`. `effects` may also hold `model_call` and `task_environment`; `provides` (`{"tools": [...], "env": [...]}`) declares names that must not clash with other attachments. There is no `version` field: a snapshot is identified by its id.
 4. **Write `bootstrap.sh` if something must be installed.** The platform runs `bash bootstrap.sh` in the attachment's directory inside the container (also in `$MAESTRO_ATTACHMENT_DIR`), as the task's agent user, under the install time limit, with the deployment's install proxy if any. What it must do depends on the harness: find out where the harness under test reads skills or tools (its documentation, or a smoke run that lists candidate directories) and install there. A failing or slow script makes the trial `attachment_failed`, never a model zero.
 5. **Commit and publish:**
@@ -76,7 +76,7 @@ Tune on the development tasks only. Do not open the held-out tasks' instructions
 **Each attempt:**
 
 1. Start from a snapshot (the current best or an earlier attempt). Read its results and trajectories, and your notes.
-2. Write the hypothesis and the evidence for it: run, trial, artifact path, and an excerpt of the event. Artifacts expire after the retention period, so excerpts keep your reasons readable later.
+2. Write the hypothesis and the evidence for it: run, trial, artifact path, and an excerpt of the event. Changing the task environment changes the experiment conditions and is not an attachment-only candidate; follow [datasets and task environments](../maestro-sdk/references/datasets.md) for upload and comparison limits. Artifacts expire after the retention period, so excerpts keep your reasons readable later.
 3. Say what kind of change it is, because each kind is judged by its own measure and one does not prove another:
    - **installation**: the attachment installs and the agent can find it (install log, the agent reading the skill);
    - **execution reliability**: fewer crashes, timeouts or tool errors (failure groups, error events);

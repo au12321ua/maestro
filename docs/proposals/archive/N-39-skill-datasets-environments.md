@@ -1,6 +1,6 @@
 # N-39 skill 补上数据集上传与任务环境
 
-状态：实施中（U-101） · 优先级：建议二 · 2026-11-11 · 相关：[02 数据集与准备](../design/02-datasets-preparation.md)、[03 配置与附件](../design/03-configuration-attachments.md)、[08 集合与比较](../design/08-collections-comparison.md)、[10 API 与 SDK](../design/10-api-sdk-cli.md)、U-69、U-89、U-92
+状态：完成（U-99、U-101） · 优先级：建议二 · 2026-11-11 · 相关：[02 数据集与准备](../../design/02-datasets-preparation.md)、[03 配置与附件](../../design/03-configuration-attachments.md)、[08 集合与比较](../../design/08-collections-comparison.md)、[10 API 与 SDK](../../design/10-api-sdk-cli.md)、U-69、U-89、U-92
 
 ## 问题
 
@@ -12,7 +12,7 @@ mesh2cad 附件实验后登记的想法（`764d601`）指出：两个 skill 都�
 - `skills/maestro-package/SKILL.md` 讲了附件安装，没有说明什么时候应改任务环境、怎样上传修改后的数据集。
 - 环境镜像由平台首次准备时构建或拉取，再存入本机镜像仓库；这些规则已在系统说明 02 第 6 节和 `src/maestro/execution/{materials,preparation}.py` 中实现。
 
-本提案只补齐已有能力的使用指导。下文是建议范围，本轮不修改 skill 或运行行为。
+本提案只补齐已有能力的使用指导。实施范围为使用指导，不修改运行行为。
 
 ## 方案
 
@@ -62,7 +62,7 @@ mesh2cad 附件实验后登记的想法（`764d601`）指出：两个 skill 都�
 ## 影响
 
 - 修改范围是 `skills/maestro-sdk/`、`skills/maestro-package/`，以及确有旧说法的 SDK 工作区模板；随 SDK 发布。
-- 实施时核对 [10](../design/10-api-sdk-cli.md) 的 skill 导航说明。数据集、准备、比较的系统行为已存在，不为本提案另增规则。
+- 实施时核对 [10](../../design/10-api-sdk-cli.md) 的 skill 导航说明。数据集、准备、比较的系统行为已存在，不为本提案另增规则。
 - 不新增接口、数据库字段、部署配置或镜像推送流程。
 
 ## 验收
@@ -79,4 +79,6 @@ mesh2cad 附件实验后登记的想法（`764d601`）指出：两个 skill 都�
 
 ## 结果
 
-本轮从想法整理为提案，尚未实施。
+已新增 SDK 数据集参考页，并从两个 skill 与系统说明链接；修正 SDK 介绍的管理边界。参考页按当前 SDK 与准备源码说明上传、准入、来源记录、环境构建及版本比较限制，包含 Dockerfile 与 Compose 辅助服务示例。工作区模板没有重复旧说法，无需修改；附件 Smoke run 保持原文。
+
+验证：Python lint、API / SDK 测试、四进程全量测试、文档链接检查与 diff 空白检查均通过；技能安装测试同时核对参考页内容。未执行 Docker、真实模型或真实 state 验证。

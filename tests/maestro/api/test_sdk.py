@@ -300,6 +300,10 @@ def test_skills_install_and_workspace_init(tmp_path):
             assert (skill / "SKILL.md").read_text() == (
                 maestro_sdk.skills.source() / name / "SKILL.md"
             ).read_text()
+            for reference in (maestro_sdk.skills.source() / name / "references").glob("*.md"):
+                assert (
+                    skill / "references" / reference.name
+                ).read_bytes() == reference.read_bytes()
             assert maestro_sdk.skills.installed_version(skill) == maestro_sdk.skills.version()
 
     # Again: the person's files stay, the skills are replaced as a whole.

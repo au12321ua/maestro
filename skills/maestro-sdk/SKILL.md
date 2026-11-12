@@ -1,6 +1,6 @@
 ---
 name: maestro-sdk
-description: Run, watch, compare and rerun team experiments on a Maestro service with the maestro_sdk Python client and a personal access token (PAT). Use when asked to browse Maestro datasets, submit or rerun runs, wait for results, read scores and logs, download artifacts or export runs. Not for administering the service (members, credentials, models, dataset import), which is web-only.
+description: Run, watch, compare and rerun team experiments on a Maestro service with the maestro_sdk Python client and a personal access token (PAT). Use when asked to browse or upload Maestro datasets, choose task environments, submit or rerun runs, wait for results, read scores and logs, download artifacts or export runs. Dataset upload needs an administrator PAT with datasets permission. Manage members, credentials and models on the web.
 ---
 
 # Maestro SDK
@@ -31,7 +31,7 @@ client = MaestroClient.from_env()      # MAESTRO_URL plus MAESTRO_TOKEN or MAEST
 
 1. **Check the service.** Run `client.require("runs", "execution")`; it raises `UnsupportedCapability` when a feature is off. Read `caps.limits` for team limits. A `ContractDriftWarning` means the SDK and service versions differ; tell the user.
 2. **Find inputs.**
-   - Datasets: `client.catalog.datasets()` returns an iterator; then `client.catalog.tasks(version_id)`.
+   - Datasets: `client.catalog.datasets()` returns an iterator; then `client.catalog.tasks(version_id)`. To upload local tasks or change task environments, read [references/datasets.md](references/datasets.md) first.
    - Models and harnesses: `client.configs.models()` and `client.configs.harnesses()`.
    - Attachments: `client.attachments.list()`. Plans: `client.plans.list()`.
    - Choose by name and id. If the choice is ambiguous, ask.
@@ -66,6 +66,7 @@ Example config: `{"dataset_version_id": ..., "execution_mode": "agent", "model_c
 
 Read the file that matches the task before acting on it:
 
+- [references/datasets.md](references/datasets.md): upload tasks with an administrator PAT, wait for import and preparation, record provenance, choose task environments, and understand version and comparison limits.
 - [references/follow-up-runs.md](references/follow-up-runs.md): rerun a run, change a configuration and run it again, submit several configurations together, use plans, filter runs, export runs for analysis.
 - [references/comparing.md](references/comparing.md): compare runs, keep a collection, record a conclusion in a snapshot, and how to report comparison numbers.
 - [references/attachments.md](references/attachments.md): publish tools for the agent under test from a directory or a git commit, restore a snapshot to edit it, see what changed. To make or improve an attachment, use the `maestro-package` skill.
