@@ -93,6 +93,8 @@ test("setup, run, PAT, admin and invitation flow", async ({ page, browser }) => 
   const runUrl = page.url();
   await expect(page.getByText("每 2 秒自动刷新")).toBeVisible();
   await expect(page.getByText("已结束")).toBeVisible({ timeout: 60_000 });
+  // Oracle is a test mode: the run page offers no way into a collection.
+  await expect(page.getByRole("button", { name: "加入集合" })).toHaveCount(0);
   for (const title of ["生命周期", "评分覆盖", "产物保存", "环境清理"]) {
     await expect(page.getByText(title, { exact: true })).toBeVisible();
   }
@@ -670,8 +672,9 @@ test("submission package and submission scoring run", async ({ page }) => {
   await page.getByRole("button", { name: "按此配置提交运行" }).click();
   await expect(page).toHaveURL(/\/runs\/(?!new$)[^/]+$/);
   await expect(page.getByText("已结束")).toBeVisible({ timeout: 60_000 });
-  // Shown as submission scoring, never as Oracle.
+  // Shown as submission scoring, never as Oracle, and never offered to a collection.
   await expect(page.getByText("提交评分").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "加入集合" })).toHaveCount(0);
   await page.screenshot({ path: `${shots}/submission-run.png`, fullPage: true });
 });
 
