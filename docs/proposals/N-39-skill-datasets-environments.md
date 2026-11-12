@@ -1,6 +1,6 @@
 # N-39 skill 补上数据集上传与任务环境
 
-状态：设计中（范围已定，U-99；是否实施待用户决定） · 优先级：建议二 · 2026-11-11 · 相关：[02 数据集与准备](../design/02-datasets-preparation.md)、[03 配置与附件](../design/03-configuration-attachments.md)、[08 集合与比较](../design/08-collections-comparison.md)、[10 API 与 SDK](../design/10-api-sdk-cli.md)、U-69、U-89、U-92
+状态：实施中（U-101） · 优先级：建议二 · 2026-11-11 · 相关：[02 数据集与准备](../design/02-datasets-preparation.md)、[03 配置与附件](../design/03-configuration-attachments.md)、[08 集合与比较](../design/08-collections-comparison.md)、[10 API 与 SDK](../design/10-api-sdk-cli.md)、U-69、U-89、U-92
 
 ## 问题
 
@@ -75,7 +75,7 @@ mesh2cad 附件实验后登记的想法（`764d601`）指出：两个 skill 都�
 
 ## 待定问题
 
-范围按以上纯指导确定（U-99）；是否确认实施由用户读后决定。镜像凭据管理、运行模式变更分别不在本项范围内。
+范围按以上纯指导确定（U-99）；已确认实施（U-101），单独实施。镜像凭据管理、运行模式变更分别不在本项范围内。
 
 ## 结果
 

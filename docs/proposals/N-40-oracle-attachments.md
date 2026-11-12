@@ -1,6 +1,6 @@
 # N-40 Oracle 运行带附件
 
-状态：设计中（待定问题已定，U-99；是否实施待用户决定） · 优先级：建议二 · 2026-11-11 · 相关：[03 配置与附件](../design/03-configuration-attachments.md)、[05 调度与执行](../design/05-scheduling-execution.md)、[06 结果与评分](../design/06-results-scoring.md)、[09 身份与安全](../design/09-identity-security.md)、[11 网页](../design/11-web-ui.md)、[15 Harbor 集成](../design/15-stack-harbor.md)、[N-39](N-39-skill-datasets-environments.md)、[N-41](N-41-submission-runs.md)
+状态：实施中（U-101） · 优先级：建议二 · 2026-11-11 · 相关：[03 配置与附件](../design/03-configuration-attachments.md)、[05 调度与执行](../design/05-scheduling-execution.md)、[06 结果与评分](../design/06-results-scoring.md)、[09 身份与安全](../design/09-identity-security.md)、[11 网页](../design/11-web-ui.md)、[15 Harbor 集成](../design/15-stack-harbor.md)、[N-39](N-39-skill-datasets-environments.md)、[N-41](N-41-submission-runs.md)
 
 ## 问题
 
@@ -76,7 +76,7 @@ Oracle 运行不检查附件的 `compatible_harnesses`，任何附件都可以�
 
 ## 待定问题
 
-兼容规则与安装网络已定（U-99）。是否确认实施由用户读后决定；本提案的成稿不表示启用新运行行为。
+兼容规则与安装网络已定（U-99）。已确认实施（U-101），与 N-41 一起实施。
 
 ## 结果
 
