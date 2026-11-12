@@ -108,9 +108,9 @@
 | U-96 | 2026-11-07 | 管理员可在网页检查并触发更新：只检查 GitHub 的正式版 Release，开发预览仍用现有渠道（下载包后 `maestroctl update`）；获取源只能在服务器配置文件里改；更新前排空（暂停派发、等在途工作结束），N-12 并入并被取代。取代 U-29 中“不做网页一键更新”与 U-48 的暂缓。只写提案，是否实施由用户读后决定 | [N-37](../proposals/archive/N-37-web-update.md)；下方“N-37 的决定来源” |
 | U-97 | 2026-11-07 | 确认实施 N-36，按提案实现 | [N-36](../proposals/archive/N-36-record-text.md) 已完成并归档；下方“N-36 的决定来源” |
 | U-98 | 2026-11-07 | 确认实施 N-37，按提案实现；提案中按建议写入的三项（每天检查一次、待更新期间拒绝新的 Operation、立即更新沿用 `--interrupt-running` 的中断语义）一并确认；可由 Agent 借助 Codex（gpt-6.1-sol，思考强度 medium～max）完成 | [N-37](../proposals/archive/N-37-web-update.md) 已完成并归档；下方“N-37 的决定来源” |
-| U-99 | 2026-11-11 | N-39 按纯指导范围；N-40 的两个待定问题：Oracle 运行不检查附件的 Harness 兼容声明，任何附件都能安装，页面提示没有安装 Harness；有附件的 Oracle 在 setup 阶段使用部署的安装网络，参考解与 verifier 不继承。是否实施由用户读后决定 | [N-39](../proposals/N-39-skill-datasets-environments.md)、[N-40](../proposals/N-40-oracle-attachments.md) 第 2、4 节；下方“N-39～N-41 的决定来源” |
+| U-99 | 2026-11-11 | N-39 按纯指导范围；N-40 的两个待定问题：Oracle 运行不检查附件的 Harness 兼容声明，任何附件都能安装，页面提示没有安装 Harness；有附件的 Oracle 在 setup 阶段使用部署的安装网络，参考解与 verifier 不继承。是否实施由用户读后决定 | [N-39](../proposals/archive/N-39-skill-datasets-environments.md)、[N-40](../proposals/N-40-oracle-attachments.md) 第 2、4 节；下方“N-39～N-41 的决定来源” |
 | U-100 | 2026-11-11 | N-41 改为附件的一个类别“待评提交”：复用附件的上传、快照、安装与删除，由包里的脚本按任务名放好文件；平台不检查它是否真的起到答案的作用，只提供更明确的语义。新执行方式“提交评分”，页面不显示为 Oracle（避免名不副实）：不调模型、不跑参考解，装好后直接跑 verifier，不参与比较与集合。不做初稿中的逐文件映射、逐试次来源与输入独立保留；U-86 的评测拆分仍暂缓。是否实施由用户读后决定 | [N-41](../proposals/N-41-submission-runs.md)；下方“N-39～N-41 的决定来源” |
-| U-101 | 2026-11-11 | 确认实施 N-39、N-40、N-41，按 U-99、U-100 定下的范围；N-39 单独实施，N-40 与 N-41 一起实施。可由 Agent 借助 Codex（gpt-6.1-sol，思考强度 medium～max）完成，作为常备工具，主要为节省账号额度，也可以不用。每步检查通过后由 Agent 合入 `dev`；网络不通时先在本地合并，网络恢复后再推送 | [N-39](../proposals/N-39-skill-datasets-environments.md)、[N-40](../proposals/N-40-oracle-attachments.md)、[N-41](../proposals/N-41-submission-runs.md) 状态改为实施中；下方“N-39～N-41 的决定来源” |
+| U-101 | 2026-11-11 | 确认实施 N-39、N-40、N-41，按 U-99、U-100 定下的范围；N-39 单独实施，N-40 与 N-41 一起实施。可由 Agent 借助 Codex（gpt-6.1-sol，思考强度 medium～max）完成，作为常备工具，主要为节省账号额度，也可以不用。每步检查通过后由 Agent 合入 `dev`；网络不通时先在本地合并，网络恢复后再推送 | [N-39](../proposals/archive/N-39-skill-datasets-environments.md)、[N-40](../proposals/N-40-oracle-attachments.md)、[N-41](../proposals/N-41-submission-runs.md) 状态改为实施中；下方“N-39～N-41 的决定来源” |
 
 ### 本次文档整理的决定来源
 

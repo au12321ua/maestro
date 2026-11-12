@@ -1,6 +1,6 @@
 # Maestro Python SDK
 
-用一个个人访问令牌（PAT）在 Maestro 上查看数据集、解析配置、提交和重跑运行、等待结果、读取评分并下载证据。SDK 只发 HTTP 请求，不需要服务器目录、服务端代码或 Harbor；网页上能做的实验操作，SDK 都能做（管理与账号设置除外，它们只在网页里）。
+用一个个人访问令牌（PAT）在 Maestro 上查看数据集、解析配置、提交和重跑运行、等待结果、读取评分并下载证据。SDK 只发 HTTP 请求，不需要服务器目录、服务端代码或 Harbor；网页上能做的实验操作，SDK 都能做。数据集上传需要带 `datasets` 权限的管理员 PAT；成员、凭据、模型管理与账号设置仍在网页完成。
 
 让 Agent 代为操作时，给它加载仓库里的 skill [`skills/maestro-sdk/`](../skills/maestro-sdk/SKILL.md)（`SKILL.md` 写工作流程、诚实报告结果的规则、丢失回答后的恢复，`references/` 按任务细分），本页是完整参考。
 
