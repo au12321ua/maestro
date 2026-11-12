@@ -29,7 +29,43 @@ Fill in `AGENTS.md` with the person you work for: service, token file, what you 
    ```
 
    It publishes what the commit tracks, read from git (never untracked or ignored files), with executable bits from git's file modes, and checks the snapshot's digest. It warns about uncommitted changes, which it leaves out. `client.attachments.publish(dir)` publishes a directory as it is, for quick trials.
-6. **Smoke run.** Oracle runs cannot carry attachments, so use one task with the real model and harness (it costs money; see `AGENTS.md`). In the artifacts, confirm the install log shows `bootstrap.sh` succeeded and the agent actually read the skill or used the tools. If it did not, the attachment is not done.
+6. **Smoke run.** First submit an Oracle run with `execution_mode="oracle"`, `attachments=[snapshot.id]` and a small explicit task selection. It calls no model and incurs no model cost: check that `bootstrap.sh` installed successfully and the task still passes with its reference solution. Oracle installs no Harness and skips Harness compatibility checks; scripts that depend on Harness files or commands may fail. Then use a small real-model run with the intended Harness to check that it finds, loads and uses the attachment. That run costs money; keep it within the authorized task scope and budget. Installation alone does not prove the Harness used it.
+
+## Scoring an existing submission
+
+Download the deliverables from the source trial (for example with `client.runs.download_deliverables(source_run_id, directory)`, then select the source trial's `<task>/<repetition>/` directory), inspect their paths, and arrange the chosen files in a package:
+
+```text
+manifest.json
+bootstrap.sh
+submissions/<task name>/...
+```
+
+Use `{"schema_version": 1, "kind": "submission", "name": "replay-files", "description": "Source run/trial and any edits"}` for the manifest. Omit `effects`, `compatible_harnesses` and `provides`. Record the source and any edits in the description or accompanying notes; the platform does not track per-trial provenance. `bootstrap.sh` is required. Adapt its destination to where this task's verifier reads deliverables:
+
+```bash
+#!/bin/bash
+set -euo pipefail
+source_dir="$MAESTRO_ATTACHMENT_DIR/submissions/$MAESTRO_TASK_NAME"
+if [ ! -d "$source_dir" ]; then
+    echo "Missing submission for task: $MAESTRO_TASK_NAME" >&2
+    exit 1
+fi
+# Replace /app/output with the directory the task's verifier reads.
+mkdir -p /app/output
+cp -a "$source_dir/." /app/output/
+```
+
+Every install receives `MAESTRO_TASK_NAME` next to `MAESTRO_ATTACHMENT_DIR`: the `name` under `[task]` in `task.toml` when the task sets one (it may contain `/`, which simply nests the directory), otherwise the task's key in the dataset. A missing task must exit non-zero: installation then fails with no score and no verifier run, instead of an empty submission being mistaken for a valid 0. Files placed successfully but rejected by the verifier may receive a valid 0.
+
+Publish with `published = client.attachments.publish(directory)`, then submit:
+
+```python
+client.runs.submit({"execution_mode": "submission", "dataset_version_id": version_id,
+                    "submission": published.id, "attachments": []}, name="Score existing files")
+```
+
+Submission scoring calls no model and never runs the reference solution. To check another environment or verifier, select another dataset version with the same package. These runs cannot participate in comparisons or collections; inspect their individual scores and logs manually. The platform does not check whether the package really represents an answer.
 
 ## Improving it
 

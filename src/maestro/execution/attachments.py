@@ -73,6 +73,12 @@ def files_digest(files: list[dict]) -> str:
     return digest_json([[f["path"], f["sha256"], f["executable"]] for f in files])
 
 
+def installed_packages(effective: dict) -> list[dict]:
+    """The packages installed in a trial, in order, for either kind of run."""
+    submission = effective.get("submission")
+    return [submission] if submission else list(effective.get("attachments") or [])
+
+
 def _check_path(name: str) -> str | None:
     """A relative path made of safe parts, or None. Directory entries end with '/'."""
     name = name.removesuffix("/").removeprefix("./")
@@ -156,6 +162,7 @@ def check_manifest(manifest: dict) -> dict:
         problems.append((f"/manifest/{key}", code, message))
 
     known = {
+        "kind",
         "schema_version",
         "name",
         "description",
@@ -177,6 +184,21 @@ def check_manifest(manifest: dict) -> dict:
     description = manifest.get("description", "")
     if not isinstance(description, str) or len(description) > 512:
         bad("description", "LENGTH", "at most 512 characters")
+    kind = manifest.get("kind", "attachment")
+    if kind not in ("attachment", "submission"):
+        bad("kind", "ENUM", "attachment or submission")
+    if kind == "submission":
+        for key in ("effects", "compatible_harnesses", "provides"):
+            if key in manifest:
+                bad(key, "UNSUPPORTED", "only meaningful for model harness attachments")
+        if problems:
+            raise PackageError("manifest.json is not valid", problems)
+        return {
+            "schema_version": 1,
+            "kind": kind,
+            "name": manifest["name"],
+            "description": description,
+        }
     effects = manifest.get("effects")
     if not _names(effects, re.compile("|".join(EFFECTS))) or not effects:
         bad("effects", "ENUM", ", ".join(EFFECTS))
@@ -194,13 +216,14 @@ def check_manifest(manifest: dict) -> dict:
     if not isinstance(provides, dict) or set(provides) - {"tools", "env"}:
         bad("provides", "INVALID", '{"tools": [...], "env": [...]}')
     else:
-        for kind in ("tools", "env"):
-            if not _names(provides.get(kind, []), PROVIDED):
-                bad(f"provides/{kind}", "INVALID", "a list of distinct names")
+        for provided_kind in ("tools", "env"):
+            if not _names(provides.get(provided_kind, []), PROVIDED):
+                bad(f"provides/{provided_kind}", "INVALID", "a list of distinct names")
     if problems:
         raise PackageError("manifest.json is not valid", problems)
     return {
         "schema_version": 1,
+        "kind": kind,
         "name": manifest["name"],
         "description": description,
         "effects": sorted(effects),
@@ -315,6 +338,10 @@ class AttachmentStore:
         if attachment and MANIFEST not in files:
             raise PackageError("The snapshot has no manifest.json", [("/files", "MANIFEST", "")])
         manifest = _read_manifest(self.blobs / files[MANIFEST]["sha256"]) if attachment else {}
+        if manifest.get("kind") == "submission" and BOOTSTRAP not in files:
+            raise PackageError(
+                "A submission requires bootstrap.sh", [("/files", "BOOTSTRAP_REQUIRED", "")]
+            )
         ordered = [files[p] for p in sorted(files)]
         return Package(
             manifest=manifest,

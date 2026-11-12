@@ -21,6 +21,8 @@ class Container:
 
     def __init__(self, root: Path, agents, corrupt: bool = False):
         self.root = root
+        self.environment_dir = root / "environment"
+        agents.TASK_NAMES[str(self.environment_dir.resolve())] = "author-task"
         self.prefixes = {agents.TARGET: root / "opt", agents.LOG_DIR: root / "logs"}
         self.corrupt = corrupt
         self.default_user = None
@@ -176,3 +178,245 @@ def test_setup_time_covers_installing(agents, tmp_path):
     assert agents.setup_timeout(360) == 360
     prepare(agents, [stored(tmp_path, "sdk", "#!/bin/bash\n")], timeout_sec=600)
     assert agents.setup_timeout(360) == 360 + 600 + agents.TRANSFER_SEC
+
+
+WRAPPER_DRIVER = r"""
+import asyncio, contextlib, json, sys
+from pathlib import Path
+from types import SimpleNamespace
+sys.path.insert(0, sys.argv[1])
+from maestro_runner import agents
+from harbor.agents.oracle import OracleAgent
+from harbor.models.agent.context import AgentContext
+from harbor.models.task.task import Task
+from harbor.models.trial.paths import TrialPaths
+from harbor.trial.trial import Trial
+from harbor.trial.single_step import SingleStepTrial
+
+root, task_dir, mode, exit_code, corrupt = Path(sys.argv[2]), Path(sys.argv[3]), sys.argv[4], int(sys.argv[5]), sys.argv[6] == "True"
+package = root / "package"
+package.mkdir()
+(package / "bootstrap.sh").write_text("#!/bin/bash\n")
+files = agents.describe(package)
+agents.ATTACHMENTS[:] = [{"name": "files", "label": "v1", "kind": "submission" if mode == "submission" else "attachment", "content_digest": agents.content_digest(files), "path": str(package), "bootstrap": True, "files": files}]
+records, steps, scopes = [], [], []
+agents.INSTALL.update(timeout_sec=10, env={"HTTP_PROXY": "http://setup.test:80", "npm_config_registry": "https://setup.test"}, report=lambda n,r: records.append(r))
+
+class Environment:
+    default_user = "worker"
+    os = "linux"
+    environment_dir = task_dir / "environment"
+    capabilities = SimpleNamespace(mounted=True)
+    overlay = {}
+    @contextlib.contextmanager
+    def scoped_exec_env(self, env):
+        before = self.overlay
+        self.overlay = {**before, **env}
+        try: yield
+        finally: self.overlay = before
+    async def upload_dir(self, source_dir, target_dir):
+        if str(target_dir) == "/solution": steps.append("upload_solution")
+    async def exec(self, command, **kwargs):
+        env = {**self.overlay, **(kwargs.get("env") or {})}
+        if "sha256sum" in command:
+            output = "" if corrupt else "".join(f"{sha}  ./{path}\n" for path,sha,_ in files) + "--maestro--\n" + "".join(f"./{path}\n" for path,_,x in files if x)
+            return SimpleNamespace(return_code=0, stdout=output)
+        if "bash bootstrap.sh" in command:
+            steps.append("install")
+            assert env["MAESTRO_TASK_NAME"] == "author task"
+            assert env["MAESTRO_ATTACHMENT_DIR"].endswith("00-files")
+            assert env["HTTP_PROXY"] == "http://setup.test:80"
+            return SimpleNamespace(return_code=exit_code)
+        if "/solution/solve.sh" in command and "chmod" not in command:
+            steps.append("solve")
+            assert "HTTP_PROXY" not in env and "npm_config_registry" not in env
+        return SimpleNamespace(return_code=0)
+
+env = Environment()
+agents.TASK_NAMES[str(env.environment_dir.resolve())] = "author task"
+paths = TrialPaths(trial_dir=root / "trial")
+paths.agent_dir.mkdir(parents=True)
+if mode == "oracle":
+    cls = agents.MaestroOracle
+    assert issubclass(cls, OracleAgent)
+    agent = cls(logs_dir=paths.agent_dir, task_dir=task_dir, trial_paths=paths)
+else:
+    agent = agents.MaestroSubmission(logs_dir=paths.agent_dir)
+
+class Harness:
+    config = SimpleNamespace(install_only=False, trial_name="trial")
+    result = SimpleNamespace(exception_info=None)
+    task = Task(task_dir)
+    logger = SimpleNamespace(debug=lambda *a, **kw: None)
+    async def _prepare(self): await agent.setup(env)
+    async def _run(self): await SingleStepTrial._run(self)
+    async def _run_agent(self): await agent.run("", env, AgentContext())
+    async def _upload_agent_logs(self): pass
+    async def _collect_artifacts(self, **kw): pass
+    async def _stop_agent_environment(self): pass
+    async def _run_verifier(self):
+        assert not env.overlay
+        steps.append("verify")
+    async def _emit(self, *a): pass
+    async def _close_bridge(self): pass
+    async def _recover_outputs(self): pass
+    async def _finalize(self): pass
+    def _init_result(self): pass
+    def _record_exception(self, exc): self.result.exception_info = type(exc).__name__
+    def _scrub_jobs_dir(self): pass
+    def _close_logger_handler(self): pass
+
+asyncio.run(Trial.run(Harness()))
+print(json.dumps({"steps": steps, "records": records[-1], "error": Harness.result.exception_info, "overlay": env.overlay}))
+"""
+
+
+@pytest.mark.parametrize(
+    "mode, exit_code, corrupt, expected, error",
+    [
+        ("oracle", 0, False, ["install", "upload_solution", "solve", "verify"], None),
+        ("submission", 0, False, ["install", "verify"], None),
+        ("oracle", 3, False, ["install"], "AttachmentInstallFailed"),
+        ("oracle", 124, False, ["install"], "AttachmentInstallTimeout"),
+        ("submission", 3, False, ["install"], "AttachmentInstallFailed"),
+        ("submission", 124, False, ["install"], "AttachmentInstallTimeout"),
+        # A copy that differs from the package is a transfer fault, as for attachments.
+        ("submission", 0, True, [], "AttachmentTransferFailed"),
+    ],
+)
+def test_no_harness_wrappers_follow_harbor_lifecycle_and_scope_setup_env(
+    tmp_path, mode, exit_code, corrupt, expected, error
+):
+    import json
+    import subprocess
+
+    from support import FIXTURES
+    from support.runner import RUNNER, RUNNER_SRC
+
+    if not RUNNER.exists():
+        pytest.skip("Runner environment not installed")
+    result = subprocess.run(
+        [
+            str(RUNNER),
+            "-I",
+            "-c",
+            WRAPPER_DRIVER,
+            str(RUNNER_SRC),
+            str(tmp_path),
+            str(FIXTURES / "harbor-tasks/oracle-pass"),
+            mode,
+            str(exit_code),
+            str(corrupt),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+        env={
+            "PATH": "/usr/bin:/bin",
+            "HOME": str(tmp_path),
+            "LITELLM_LOCAL_MODEL_COST_MAP": "True",
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    found = json.loads(result.stdout)
+    assert found["steps"] == expected
+    assert found["error"] == error and found["overlay"] == {}
+    assert found["records"][0]["status"] == (
+        "ok"
+        if error is None
+        else "transfer_mismatch"
+        if corrupt
+        else "timeout"
+        if exit_code == 124
+        else "failed"
+    )
+
+
+@pytest.mark.parametrize(
+    "mode, with_package", [("oracle", False), ("oracle", True), ("submission", True)]
+)
+@pytest.mark.parametrize("explicit_name", [False, True])
+def test_job_preserves_author_task_name_and_only_wraps_oracle_when_installing(
+    tmp_path, mode, with_package, explicit_name
+):
+    import json
+    import subprocess
+
+    from support import FIXTURES
+    from support.runner import RUNNER, RUNNER_SRC
+
+    if not RUNNER.exists():
+        pytest.skip("Runner environment not installed")
+    cached = tmp_path / "sha256-cache-name"
+    shutil.copytree(FIXTURES / "harbor-tasks/oracle-pass", cached)
+    if explicit_name:
+        with (cached / "task.toml").open("a") as handle:
+            handle.write('\n[task]\nname = "author/task-name"\n')
+    package = stored(tmp_path, "files", "#!/bin/bash\n")
+    if mode == "submission":
+        package["kind"] = "submission"
+    spec = {
+        "output_dir": str(tmp_path / "output"),
+        "retry": {
+            "max_retries": 0,
+            "exclude_exceptions": [],
+            "min_wait_sec": 1,
+            "wait_multiplier": 1,
+            "max_wait_sec": 1,
+        },
+        "artifact_limits": {},
+        "tasks": [{"path": str(cached), "task_key": "catalog-task", "trial_ids": ["trial"]}],
+        "agent": {"name": mode},
+        "attachments": [package] if with_package else [],
+        "bootstrap_timeout_sec": 17 if with_package else None,
+        # Forces a private numeric task copy without requiring network enforcement.
+        "network": {"agent": {"mode": "public"}, "verifier": {"mode": "public"}},
+        "labels": {},
+        "n_concurrent_trials": 1,
+    }
+    driver = r"""
+import json, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from maestro_runner import agents, job
+from harbor.agents.factory import AgentFactory
+from harbor.models.agent.name import AgentName
+spec = json.loads(sys.argv[2])
+execution = job.Execution(spec)
+config = execution._config()
+private = config.tasks[0].path
+assert private.name == "0" and private != Path(spec["tasks"][0]["path"])
+agent = config.agents[0]
+job.emit("probe", task_name=agents.TASK_NAMES[str((private / "environment").resolve())],
+    setup_timeout=agent.override_setup_timeout_sec,
+    oracle_class=AgentFactory._AGENT_MAP[AgentName.ORACLE],
+    nop_class=AgentFactory._AGENT_MAP[AgentName.NOP],
+    agent_name=agent.name, import_path=agent.import_path)
+"""
+    result = subprocess.run(
+        [str(RUNNER), "-I", "-c", driver, str(RUNNER_SRC), json.dumps(spec)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+        env={
+            "PATH": "/usr/bin:/bin",
+            "HOME": str(tmp_path),
+            "LITELLM_LOCAL_MODEL_COST_MAP": "True",
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    found = json.loads(result.stdout.splitlines()[-1])["payload"]
+    assert found["task_name"] == ("author/task-name" if explicit_name else "catalog-task")
+    assert found["setup_timeout"] == (17 + 120 if with_package else None)
+    if mode == "oracle":
+        assert found["oracle_class"] == (
+            "maestro_runner.agents:MaestroOracle"
+            if with_package
+            else "harbor.agents.oracle:OracleAgent"
+        )
+    else:
+        # Harbor keeps its utility-agent rules for the "nop" name.
+        assert found["agent_name"] == "nop" and found["import_path"] is None
+        assert found["nop_class"] == "maestro_runner.agents:MaestroSubmission"

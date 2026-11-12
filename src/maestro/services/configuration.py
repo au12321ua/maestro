@@ -23,7 +23,7 @@ from maestro.core.errors import FieldError, MaestroError
 from maestro.db import schema as t
 from maestro.domain.comparison import pointers
 from maestro.execution.agents import param_problem
-from maestro.execution.attachments import display
+from maestro.execution.attachments import display, installed_packages
 from maestro.execution.materials import DEFAULT_CPUS, DEFAULT_MEMORY_MB, RESERVED_PARAMETER
 from maestro.services import deleted, policy
 from maestro.services.capacity import never_fits, reservation
@@ -36,7 +36,7 @@ from maestro.services.catalog import (
 from maestro.services.credentials import credential_problem
 from maestro.services.model_configs import MODEL_KINDS
 
-EXECUTION_MODES = ("agent", "oracle")
+EXECUTION_MODES = ("agent", "oracle", "submission")
 PARAMETER_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,127}")
 PARAMETER_VALUE_MAX = 4096
 # Secret author parameters take generic secrets only: a model API key goes to the
@@ -68,6 +68,7 @@ REQUEST_FIELDS = (
     "harness_version_id",
     "harness_params",
     "attachments",
+    "submission",
     "repetitions",
     "concurrency",
     "run_deadline_hours",
@@ -94,17 +95,22 @@ def check_template(template) -> dict:
             "model_revision",
             "harness_version_id",
             "harness_params",
-            "attachments",
         )
     )
     probe = {
         "dataset_version_id": "-",
-        "execution_mode": "agent" if agent else "oracle",
+        "execution_mode": "submission"
+        if "submission" in template
+        else "agent"
+        if agent
+        else "oracle",
         **template,
     }
     if probe["execution_mode"] == "agent":
         probe.setdefault("model_config_id", "-")
         probe.setdefault("harness_version_id", "-")
+    elif probe["execution_mode"] == "submission":
+        probe.setdefault("submission", "-")
     try:
         checked = check_request(probe)
     except MaestroError as error:
@@ -147,7 +153,7 @@ def check_request(body: dict) -> dict:
         task_ids = None
     execution_mode = body.get("execution_mode")
     if execution_mode not in EXECUTION_MODES:
-        errors.append(FieldError("/execution_mode", "ENUM", "agent or oracle"))
+        errors.append(FieldError("/execution_mode", "ENUM", "agent, oracle or submission"))
     model_id = body.get("model_config_id")
     model_revision = body.get("model_revision")
     if model_revision is not None and (type(model_revision) is not int or model_revision < 1):
@@ -159,9 +165,13 @@ def check_request(body: dict) -> dict:
             errors.append(FieldError("/model_config_id", "REQUIRED"))
         if not isinstance(harness_id, str):
             errors.append(FieldError("/harness_version_id", "REQUIRED"))
-    elif execution_mode == "oracle" and (model_id or harness_id or harness_params):
-        # Oracle runs the task's reference solution; it never calls a model.
-        errors.append(FieldError("/execution_mode", "ORACLE_HAS_NO_MODEL"))
+    elif execution_mode in ("oracle", "submission") and (
+        model_id is not None
+        or model_revision is not None
+        or harness_id is not None
+        or harness_params
+    ):
+        errors.append(FieldError("/execution_mode", f"{execution_mode.upper()}_HAS_NO_MODEL"))
     attachments = body.get("attachments") or []
     if (
         not isinstance(attachments, list)
@@ -170,9 +180,14 @@ def check_request(body: dict) -> dict:
     ):
         errors.append(FieldError("/attachments", "INVALID", "distinct attachment snapshot ids"))
         attachments = []
-    elif attachments and execution_mode == "oracle":
-        # Attachments are installed by the harness wrapper around a model agent.
-        errors.append(FieldError("/attachments", "ORACLE_HAS_NO_ATTACHMENTS"))
+    elif attachments and execution_mode == "submission":
+        errors.append(FieldError("/attachments", "SUBMISSION_HAS_NO_ATTACHMENTS"))
+    submission = body.get("submission")
+    if execution_mode == "submission":
+        if not isinstance(submission, str) or not submission:
+            errors.append(FieldError("/submission", "REQUIRED", "one submission snapshot id"))
+    elif submission is not None:
+        errors.append(FieldError("/submission", "SUBMISSION_MODE_REQUIRED"))
     if not isinstance(harness_params, dict):
         errors.append(FieldError("/harness_params", "TYPE"))
         harness_params = {}
@@ -232,6 +247,7 @@ def check_request(body: dict) -> dict:
         "harness_params": dict(sorted(harness_params.items())),
         # In load order: the order is part of the configuration.
         "attachments": attachments,
+        "submission": submission,
         "repetitions": body.get("repetitions"),
         "concurrency": body.get("concurrency"),
         "run_deadline_hours": body.get("run_deadline_hours"),
@@ -778,7 +794,8 @@ class Resolver:
     def _attachments(self, conn: Connection, team, request, effective, res: Resolution) -> None:
         """Ordered packages, each compatible with the harness; two packages may not claim
         the same name, tool or environment variable (no "last one wins")."""
-        ids = request["attachments"]
+        submission = request["execution_mode"] == "submission"
+        ids = [request["submission"]] if submission else request["attachments"]
         effective["attachments"] = []
         effective["bootstrap_timeout_sec"] = None
         if not ids:
@@ -808,9 +825,17 @@ class Resolver:
         }
         gone = deleted.states(conn, "attachment_version", ids)
         agent = (effective.get("harness") or {}).get("agent")
+        if request["execution_mode"] == "oracle":
+            res.warnings.append(
+                {
+                    "code": "ORACLE_WITHOUT_HARNESS",
+                    "path": "/attachments",
+                    "message": "No harness is installed; scripts depending on harness files or commands may fail",
+                }
+            )
         claimed: dict[tuple[str, str], str] = {}
         for index, attachment_id in enumerate(ids):
-            path = f"/attachments/{index}"
+            path = "/submission" if submission else f"/attachments/{index}"
             row = rows.get(attachment_id)
             if row is None:
                 res.blockers.append(Blocker("NOT_FOUND", path, "Attachment not found"))
@@ -826,7 +851,18 @@ class Resolver:
                     Blocker("DISABLED", path, f"{label} is disabled", error="CONFIG_UNAVAILABLE")
                 )
             manifest = row["manifest_json"]
-            harnesses = manifest["compatible_harnesses"]
+            kind = manifest.get("kind", "attachment")
+            if kind != ("submission" if submission else "attachment"):
+                res.blockers.append(
+                    Blocker(
+                        "PACKAGE_KIND_MISMATCH",
+                        path,
+                        f"{label} is {kind}; this field requires {'submission' if submission else 'attachment'}",
+                        error="CONFIG_INCOMPATIBLE",
+                    )
+                )
+                continue
+            harnesses = manifest.get("compatible_harnesses", [])
             if agent and "*" not in harnesses and agent not in harnesses:
                 res.blockers.append(
                     Blocker(
@@ -837,7 +873,9 @@ class Resolver:
                     )
                 )
             claims = [("name", row["name"])] + [
-                (kind, name) for kind in ("tools", "env") for name in manifest["provides"][kind]
+                (kind, name)
+                for kind in ("tools", "env")
+                for name in manifest.get("provides", {}).get(kind, [])
             ]
             for claim in claims:
                 if claim in claimed:
@@ -852,24 +890,29 @@ class Resolver:
                     )
                 else:
                     claimed[claim] = label
-            effective["attachments"].append(
-                {
-                    "version_id": attachment_id,
-                    "name": row["name"],
-                    "label": row["label"],
-                    "content_digest": row["content_digest"],
-                    "effects": manifest["effects"],
-                    "provides": manifest["provides"],
-                    "has_bootstrap": row["has_bootstrap"],
-                }
-            )
-        res.field_sources["/attachments"] = {"layer": "override"}
-        res.references["attachments"] = list(ids)
-        res.labels["attachments"] = ", ".join(
+            package = {
+                "version_id": attachment_id,
+                "name": row["name"],
+                "label": row["label"],
+                "content_digest": row["content_digest"],
+                "effects": manifest.get("effects", []),
+                "provides": manifest.get("provides", {"tools": [], "env": []}),
+                "has_bootstrap": row["has_bootstrap"],
+            }
+            if submission:
+                # Only submission runs carry these keys: agent and Oracle configurations
+                # keep their shape, so collections fixed earlier still match new runs.
+                effective["submission"] = {**package, "kind": "submission"}
+            else:
+                effective["attachments"].append(package)
+        field = "submission" if submission else "attachments"
+        res.field_sources[f"/{field}"] = {"layer": "override"}
+        res.references[field] = ids[0] if submission else list(ids)
+        res.labels[field] = ", ".join(
             f"{a['name']} {display(a['label'], a['content_digest'])}"
-            for a in effective["attachments"]
+            for a in installed_packages(effective)
         )
-        if not any(a["has_bootstrap"] for a in effective["attachments"]):
+        if not any(a["has_bootstrap"] for a in installed_packages(effective)):
             return
         value = request["timeouts"]["bootstrap_sec"]
         if value is None:
@@ -1327,7 +1370,7 @@ class Resolver:
             ).scalar()
             if not enabled or deleted.state(conn, "harness_version", harness["version_id"]):
                 changed.append("/harness")
-        attachments = [a["version_id"] for a in (res.effective or {}).get("attachments") or []]
+        attachments = [a["version_id"] for a in installed_packages(res.effective or {})]
         if attachments:
             enabled = dict(
                 conn.execute(
@@ -1339,7 +1382,9 @@ class Resolver:
             gone = deleted.states(conn, "attachment_version", attachments)
             for index, attachment_id in enumerate(attachments):
                 if not enabled.get(attachment_id) or attachment_id in gone:
-                    changed.append(f"/attachments/{index}")
+                    changed.append(
+                        "/submission" if res.request.get("submission") else f"/attachments/{index}"
+                    )
         # Kinds never change; resolution already checked each reference's kind.
         for credential_id in res.credential_ids:
             if credential_problem(conn, credential_id, PARAMETER_KINDS + MODEL_KINDS):

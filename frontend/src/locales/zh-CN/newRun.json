@@ -70,7 +70,8 @@
     "agentMode": "模型实验：由 Harness 驱动所选模型完成任务",
     "oracleMode": "Oracle 测试模式：执行任务自带的参考解法，不调用模型，不参与模型比较",
     "clientRequestId": "客户端请求标识（可选）",
-    "clientRequestIdHint": "便于之后按此标识查找该运行"
+    "clientRequestIdHint": "便于之后按此标识查找该运行",
+    "submissionMode": "提交评分：安装一个待评提交后直接运行 verifier，不调模型、不跑参考解，不参与比较"
   },
   "model": {
     "title": "模型与 Harness",
@@ -96,7 +97,9 @@
     "add": "添加附件",
     "choose": "选择要加载的附件",
     "option": "{{name}} {{snapshot}}（{{owner}}）",
-    "bootstrapTimeout": "附件安装时限（秒，每试次）"
+    "bootstrapTimeout": "附件安装时限（秒，每试次）",
+    "noHarness": "没有安装 Harness，依赖 Harness 文件或命令的脚本可能失败。",
+    "chooseSubmission": "选择待评提交…"
   },
   "scale": {
     "title": "规模与资源",

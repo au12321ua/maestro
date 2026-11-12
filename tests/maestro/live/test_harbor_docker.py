@@ -1425,3 +1425,132 @@ def test_installed_harness_with_a_real_model(settings, adapter, protocol, prefix
         os.environ.get(f"{prefix}_VERSION") or HarborExecutor.harness_upstream[adapter]["tested"]
     )
     container_harness_with_a_real_model(settings, HARNESS_TASKS, adapter, protocol, prefix, version)
+
+
+def test_oracle_installs_two_ordered_attachments_before_the_reference_solution(harbor_service):
+    from support.attachments import package, publish
+
+    service = harbor_service
+    with running(service) as client:
+        admin = setup_admin(service, client)
+        pat = create_pat(admin)
+        first = package(
+            "first",
+            compatible_harnesses=["codex"],
+            extra_files={
+                "bootstrap.sh": (
+                    b'#!/bin/bash\nset -eu\ntest "$MAESTRO_TASK_NAME" = oracle-pass\necho first > /tmp/maestro-order\necho "$MAESTRO_ATTACHMENT_DIR"\nid\n',
+                    0o755,
+                ),
+            },
+        )
+        second = package(
+            "second",
+            compatible_harnesses=["codex"],
+            extra_files={
+                "bootstrap.sh": (
+                    b'#!/bin/bash\nset -eu\ntest "$(cat /tmp/maestro-order)" = first\necho second >> /tmp/maestro-order\ncat /tmp/maestro-order\n',
+                    0o755,
+                ),
+            },
+        )
+        snapshots = [publish(pat, files, expect=201).json()["data"] for files in (first, second)]
+        ids = [snapshot["id"] for snapshot in snapshots]
+        resolution = pat.post(
+            "/api/v1/config-resolutions",
+            json={
+                "dataset_version_id": service.version_id,
+                "execution_mode": "oracle",
+                "attachments": ids,
+            },
+            expect=201,
+        ).json()["data"]
+        assert any(w["code"] == "ORACLE_WITHOUT_HARNESS" for w in resolution["warnings"])
+        accepted = submit(
+            pat,
+            service.version_id,
+            ["oracle-pass"],
+            attachments=ids,
+            timeouts={"bootstrap_sec": 30},
+        )
+        finished = wait_operation(pat, accepted["operation_id"], timeout=300)
+        trials = pat.get(f"/api/v1/runs/{accepted['run_id']}/trials", expect=200).json()["data"]
+        assert finished["status"] == "succeeded", trials
+        assert trials[0]["result"]["score"] == 1
+        assert trials[0]["attempts"][0]["setup_network_revision"] == SETUP_NETWORK.revision
+        files = pat.get(f"/api/v1/runs/{accepted['run_id']}/artifacts", expect=200).json()["data"]
+
+        def read(path):
+            artifact = next(f for f in files if f["relative_path"] == path)
+            return pat.get(f"/api/v1/artifacts/{artifact['id']}/download", expect=200).text
+
+        records = json.loads(read("maestro/attachments.json"))
+        assert [(r["name"], r["status"], r["exit_code"]) for r in records] == [
+            ("first", "ok", 0),
+            ("second", "ok", 0),
+        ]
+        assert [r["content_digest"] for r in records] == [s["content_digest"] for s in snapshots]
+        assert all(r["user"] is None for r in records)
+        first_log = read("agent/attachments/00-first.log")
+        assert first_log.startswith("/opt/maestro/attachments/00-first\n")
+        assert "uid=0(root)" in first_log
+        assert read("agent/attachments/01-second.log").splitlines() == ["first", "second"]
+        assert "writing answer" in read("agent/oracle.txt")
+        assert labelled(service.worker.instance_id) == []
+
+
+@pytest.mark.parametrize("case, score", [("passing", 1), ("rejected", 0), ("missing", None)])
+def test_submission_scores_placed_files_and_missing_tasks_have_no_score(
+    harbor_service, case, score
+):
+    from support.attachments import publish, submission_package
+
+    script = b"""#!/bin/bash
+set -euo pipefail
+source_dir="$MAESTRO_ATTACHMENT_DIR/submissions/$MAESTRO_TASK_NAME"
+if [ ! -d "$source_dir" ]; then
+    echo "Missing submission for task: $MAESTRO_TASK_NAME" >&2
+    exit 1
+fi
+cp -a "$source_dir/." /app/
+"""
+    payload = (
+        {"submissions/oracle-pass/answer": b"ok\n"}
+        if case == "passing"
+        else {
+            f"submissions/{'other-task' if case == 'missing' else 'oracle-pass'}/unrelated": b"not an answer\n"
+        }
+    )
+    service = harbor_service
+    with running(service) as client:
+        admin = setup_admin(service, client)
+        pat = create_pat(admin)
+        snapshot = publish(
+            pat, submission_package(script=script, extra_files=payload), expect=201
+        ).json()["data"]
+        accepted = submit(
+            pat,
+            service.version_id,
+            ["oracle-pass"],
+            name="submission-scoring",
+            execution_mode="submission",
+            submission=snapshot["id"],
+            timeouts={"bootstrap_sec": 30},
+        )
+        finished = wait_operation(pat, accepted["operation_id"], timeout=300)
+        run_id = accepted["run_id"]
+        (trial,) = pat.get(f"/api/v1/runs/{run_id}/trials", expect=200).json()["data"]
+        files = pat.get(f"/api/v1/runs/{run_id}/artifacts", expect=200).json()["data"]
+        assert not any(f["relative_path"] == "agent/oracle.txt" for f in files)
+        run = pat.get(f"/api/v1/runs/{run_id}", expect=200).json()["data"]
+        assert run["snapshot"]["effective"]["execution_mode"] == "submission"
+        assert trial["attempts"][0]["setup_network_revision"] == SETUP_NETWORK.revision
+        if score is None:
+            assert finished["status"] == "failed" and trial["state"] == "execution_error"
+            assert (trial["result"] or {}).get("score") is None
+            assert trial["attempts"][0]["error"]["failure_cause"] == "attachment_failed"
+            assert not any(f["relative_path"].startswith("verifier/") for f in files)
+        else:
+            assert finished["status"] == "succeeded" and trial["state"] == "scored", trial
+            assert trial["result"]["score"] == score
+        assert labelled(service.worker.instance_id) == []

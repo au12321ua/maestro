@@ -2571,6 +2571,12 @@ export interface components {
             has_bootstrap: boolean;
             /** Id */
             id: string;
+            /**
+             * Kind
+             * @default attachment
+             * @enum {string}
+             */
+            kind: "attachment" | "submission";
             /** Label */
             label: string | null;
             /** Name */
@@ -3674,7 +3680,7 @@ export interface components {
         "ConfigRequest-Input": {
             /**
              * Attachments
-             * @description Attachment snapshot ids in load order (model runs only)
+             * @description Attachment snapshot ids in load order (agent and oracle runs)
              * @default []
              */
             attachments?: string[];
@@ -3692,9 +3698,9 @@ export interface components {
             dataset_version_id?: string | null;
             /**
              * Execution Mode
-             * @description agent: a model through a harness; oracle: each task's reference solution, a test mode never compared with model results. Required unless the plan has it
+             * @description agent: a model through a harness; oracle: each task's reference solution; submission: install one submission and run only the verifier. Only agent runs are comparable. Required unless the plan has it
              */
-            execution_mode?: ("agent" | "oracle") | null;
+            execution_mode?: ("agent" | "oracle" | "submission") | null;
             /**
              * Harness Params
              * @default {}
@@ -3736,6 +3742,11 @@ export interface components {
             /** Run Deadline Hours */
             run_deadline_hours?: number | null;
             /**
+             * Submission
+             * @description One submission-kind snapshot id; submission mode only
+             */
+            submission?: string | null;
+            /**
              * @default {
              *       "mode": "all_eligible"
              *     }
@@ -3748,7 +3759,7 @@ export interface components {
         "ConfigRequest-Output": {
             /**
              * Attachments
-             * @description Attachment snapshot ids in load order (model runs only)
+             * @description Attachment snapshot ids in load order (agent and oracle runs)
              * @default []
              */
             attachments: string[];
@@ -3766,9 +3777,9 @@ export interface components {
             dataset_version_id: string | null;
             /**
              * Execution Mode
-             * @description agent: a model through a harness; oracle: each task's reference solution, a test mode never compared with model results. Required unless the plan has it
+             * @description agent: a model through a harness; oracle: each task's reference solution; submission: install one submission and run only the verifier. Only agent runs are comparable. Required unless the plan has it
              */
-            execution_mode: ("agent" | "oracle") | null;
+            execution_mode: ("agent" | "oracle" | "submission") | null;
             /**
              * Harness Params
              * @default {}
@@ -3809,6 +3820,11 @@ export interface components {
             resources: components["schemas"]["ResourceOverrides"];
             /** Run Deadline Hours */
             run_deadline_hours: number | null;
+            /**
+             * Submission
+             * @description One submission-kind snapshot id; submission mode only
+             */
+            submission: string | null;
             /**
              * @default {
              *       "mode": "all_eligible"
@@ -4272,6 +4288,12 @@ export interface components {
             effects: string[];
             /** Has Bootstrap */
             has_bootstrap: boolean;
+            /**
+             * Kind
+             * @default attachment
+             * @enum {string}
+             */
+            kind: "attachment" | "submission";
             /** Label */
             label: string | null;
             /** Name */
@@ -4304,7 +4326,7 @@ export interface components {
              * Execution Mode
              * @enum {string}
              */
-            execution_mode: "agent" | "oracle";
+            execution_mode: "agent" | "oracle" | "submission";
             harness: components["schemas"]["EffectiveHarness"] | null;
             model: components["schemas"]["EffectiveModel"] | null;
             /** @description Values this run set for every task */
@@ -4317,6 +4339,7 @@ export interface components {
             repetitions: number;
             /** Run Deadline Hours */
             run_deadline_hours: number;
+            submission: components["schemas"]["EffectiveAttachment"] | null;
             /** Tasks */
             tasks: components["schemas"]["EffectiveTask"][];
         };
@@ -4976,7 +4999,7 @@ export interface components {
             /** Harness Adapters */
             harness_adapters: components["schemas"]["HarnessAdapter"][];
             /** Modes */
-            modes: ("agent" | "oracle")[];
+            modes: ("agent" | "oracle" | "submission")[];
             /** Policy Version */
             policy_version: string;
         };
@@ -5986,7 +6009,7 @@ export interface components {
              * Execution Mode
              * @enum {string}
              */
-            execution_mode: "agent" | "oracle";
+            execution_mode: "agent" | "oracle" | "submission";
             /** Harness Params */
             harness_params: {
                 [key: string]: string | number | boolean;
@@ -6007,6 +6030,8 @@ export interface components {
             resources: components["schemas"]["ResourceOverrides"];
             /** Run Deadline Hours */
             run_deadline_hours: number | null;
+            /** Submission */
+            submission: string | null;
             task_selection: components["schemas"]["TaskSelection-Output"];
             timeouts: components["schemas"]["TimeoutOverrides"];
         };
@@ -6221,7 +6246,7 @@ export interface components {
             /** Dataset Version Id */
             dataset_version_id?: string | null;
             /** Execution Mode */
-            execution_mode?: ("agent" | "oracle") | null;
+            execution_mode?: ("agent" | "oracle" | "submission") | null;
             /** Harness Params */
             harness_params?: {
                 [key: string]: string | number | boolean;
@@ -6241,6 +6266,11 @@ export interface components {
             resources?: components["schemas"]["ResourceOverrides"] | null;
             /** Run Deadline Hours */
             run_deadline_hours?: number | null;
+            /**
+             * Submission
+             * @description One submission-kind snapshot id; submission mode only
+             */
+            submission?: string | null;
             task_selection?: components["schemas"]["TaskSelection-Input"] | null;
             timeouts?: components["schemas"]["TimeoutOverrides"] | null;
         };
@@ -6257,7 +6287,7 @@ export interface components {
             /** Dataset Version Id */
             dataset_version_id?: string | null;
             /** Execution Mode */
-            execution_mode?: ("agent" | "oracle") | null;
+            execution_mode?: ("agent" | "oracle" | "submission") | null;
             /** Harness Params */
             harness_params?: {
                 [key: string]: string | number | boolean;
@@ -6277,6 +6307,11 @@ export interface components {
             resources?: components["schemas"]["ResourceOverrides"] | null;
             /** Run Deadline Hours */
             run_deadline_hours?: number | null;
+            /**
+             * Submission
+             * @description One submission-kind snapshot id; submission mode only
+             */
+            submission?: string | null;
             task_selection?: components["schemas"]["TaskSelection-Output"] | null;
             timeouts?: components["schemas"]["TimeoutOverrides"] | null;
         };
@@ -6711,6 +6746,8 @@ export interface components {
             harness_version?: string | null;
             model_config?: components["schemas"]["RevisionRef"] | null;
             plan?: components["schemas"]["RevisionRef"] | null;
+            /** Submission */
+            submission?: string | null;
             /** Team Policy */
             team_policy?: number | null;
         };
@@ -6963,7 +7000,7 @@ export interface components {
         RunCreate: {
             /**
              * Attachments
-             * @description Attachment snapshot ids in load order (model runs only)
+             * @description Attachment snapshot ids in load order (agent and oracle runs)
              * @default []
              */
             attachments?: string[];
@@ -6979,7 +7016,7 @@ export interface components {
             /** Dataset Version Id */
             dataset_version_id?: string | null;
             /** Execution Mode */
-            execution_mode?: ("agent" | "oracle") | null;
+            execution_mode?: ("agent" | "oracle" | "submission") | null;
             /**
              * Harness Params
              * @default {}
@@ -7029,6 +7066,11 @@ export interface components {
              * @description Makes this a modified run of that run: its differences are recorded (start from GET /runs/{run_id}/request)
              */
             source_run_id?: string | null;
+            /**
+             * Submission
+             * @description One submission-kind snapshot id; submission mode only
+             */
+            submission?: string | null;
             /**
              * @default {
              *       "mode": "all_eligible"
@@ -10342,6 +10384,7 @@ export interface operations {
             query?: {
                 name?: string | null;
                 include_disabled?: boolean;
+                kind?: ("attachment" | "submission") | null;
             };
             header?: never;
             path?: never;

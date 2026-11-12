@@ -257,3 +257,9 @@ def test_incomparable_runs_keep_raw_trial_statistics_and_never_count_failures_as
     assert row["task_count"] == 3 and row["compared_trials"] == 5
     assert row["valid_trials"] == 3 and row["failed_trials"] == 0
     assert row["excluded_trials"] == 2 and row["difference"] is None
+
+
+@pytest.mark.parametrize("mode", ["oracle", "submission"])
+def test_comparison_accepts_only_agent_runs(mode):
+    with pytest.raises(ValueError, match=mode):
+        compare([run("r", [trial("t", 1)], execution_mode=mode)])

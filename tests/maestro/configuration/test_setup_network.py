@@ -140,17 +140,25 @@ def test_administrators_save_revisions_that_everyone_reads(service):
 
 
 def test_runs_read_the_revision_in_force_when_they_execute(service, version_id, executor):
+    from support.attachments import attach, publish, submission_package
+
     with running(service, run_worker=False) as client:
         admin = setup_admin(service, client)
         model_id, harness_id = prepare_model(admin)
         pat = create_pat(admin, run_limit=5)
         model_run = submit(pat, version_id, **agent_body(model_id, harness_id)).json()["data"]
         oracle_run = submit(pat, version_id).json()["data"]
+        attachment = attach(pat)
+        with_attachment = submit(pat, version_id, attachments=[attachment]).json()["data"]
+        submission = publish(pat, submission_package(), expect=201).json()["data"]["id"]
+        scoring = submit(
+            pat, version_id, execution_mode="submission", submission=submission
+        ).json()["data"]
         # Saved after acceptance, before a worker picks the runs up.
         admin.put("/api/v1/admin/setup-network", json=body(proxy=PROXY, env=MIRRORS), expect=200)
     with running(service) as client:
         api = Api(client, token=pat.token)
-        for run in (model_run, oracle_run):
+        for run in (model_run, oracle_run, with_attachment, scoring):
             wait_operation(api, run["operation_id"])
         by_run = {spec.run_id: spec for spec in executor.specs}
         assert by_run[model_run["run_id"]].setup_network.revision == 1
@@ -163,6 +171,8 @@ def test_runs_read_the_revision_in_force_when_they_execute(service, version_id, 
         assert revisions(model_run["run_id"]) == {1}
         # Oracle runs have no setup work: nothing was offered.
         assert revisions(oracle_run["run_id"]) == {None}
+        assert revisions(with_attachment["run_id"]) == {1}
+        assert revisions(scoring["run_id"]) == {1}
 
 
 def test_preparations_name_the_revision_they_were_built_with(service, source):
@@ -230,6 +240,22 @@ def test_setup_in_the_container_gets_the_network_and_nothing_else_does(
     request = request_for(run_spec(materials, tmp_path, "ok", trials=1))
     assert request["agent"] == {"name": "oracle"} and request["setup_env"] == {}
     assert request["harness_setup_timeout_sec"] is None
+    attached = attachment_spec(materials, tmp_path, store)
+    for mode in ("oracle", "submission"):
+        effective = {
+            **attached.effective_config,
+            "execution_mode": mode,
+            "model": None,
+            "harness": None,
+        }
+        if mode == "submission":
+            effective["submission"] = {**effective["attachments"][0], "kind": "submission"}
+            effective["attachments"] = []
+        request = request_for(replace(attached, effective_config=effective, secrets={}))
+        assert request["agent"] == {"name": mode}
+        assert request["network"] is None
+        assert request["setup_env"] == network.container_env()
+        assert request["harness_setup_timeout_sec"] is None
 
 
 CONFIG_DRIVER = """
@@ -275,3 +301,14 @@ def test_the_runner_gives_harbor_the_harness_setup_time_limit(runner_python, mat
     with_attachments = attachment_spec(materials, tmp_path, store)
     bootstrap = with_attachments.effective_config["bootstrap_timeout_sec"]
     assert limit(with_attachments, NETWORK) == 900 + bootstrap + 120
+    oracle = replace(
+        with_attachments,
+        effective_config={
+            **with_attachments.effective_config,
+            "execution_mode": "oracle",
+            "model": None,
+            "harness": None,
+        },
+        secrets={},
+    )
+    assert limit(oracle, NETWORK) == bootstrap + 120

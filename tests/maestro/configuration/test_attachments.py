@@ -305,6 +305,16 @@ def test_reading_files_archives_and_differences(service):
 
 # --- resolution ------------------------------------------------------------------------
 
+ATTACHMENT_ENTRY = {
+    "version_id",
+    "name",
+    "label",
+    "content_digest",
+    "effects",
+    "provides",
+    "has_bootstrap",
+}
+
 
 def test_attachments_resolve_in_order_with_sources_and_limits(service, version_id):
     with running(service, run_worker=False) as client:
@@ -341,7 +351,11 @@ def test_attachments_resolve_in_order_with_sources_and_limits(service, version_i
                 "attachments": [first],
             },
         )
-        assert oracle.json()["error"]["field_errors"][0]["code"] == "ORACLE_HAS_NO_ATTACHMENTS"
+        assert oracle.status_code == 201
+        found = oracle.json()["data"]
+        assert found["blockers"] == []
+        assert [w["code"] for w in found["warnings"]] == ["ORACLE_WITHOUT_HARNESS"]
+        assert found["effective_config"]["attachments"][0]["version_id"] == first
 
 
 def test_attachment_blockers(service, version_id):
@@ -388,6 +402,16 @@ def test_runs_record_their_attachments_and_disabling_before_acceptance_refuses(s
         wait_operation(member, accepted["operation_id"])
         run = member.get(f"/api/v1/runs/{accepted['run_id']}").json()["data"]
         effective = run["snapshot"]["effective"]
+        # The stored model-run configuration keeps the shape it had before submission
+        # packages existed, so collections fixed on older runs still accept new ones.
+        with service.db.read() as conn:
+            stored = conn.execute(
+                select(t.run_snapshots.c.effective_json).where(
+                    t.run_snapshots.c.run_id == accepted["run_id"]
+                )
+            ).scalar_one()
+        assert "submission" not in stored
+        assert all(set(a) == ATTACHMENT_ENTRY for a in stored["attachments"])
         assert effective["bootstrap_timeout_sec"] == 90
         assert effective["attachments"][0]["version_id"] == tools
         assert run["snapshot"]["provenance"]["reference_revisions"]["attachments"] == [tools]
@@ -612,3 +636,137 @@ def test_low_disk_refuses_an_upload_before_it_is_stored(service):
         service.disk = _Low()
         assert error(upload(admin, b"data")) == (503, "STORAGE_LOW")
     assert not (service.settings.data_dir / "attachments" / "blobs").exists()
+
+
+def test_submission_manifest_requires_a_script_and_refuses_harness_fields(contents):
+    from support.attachments import submission_package
+
+    files = submission_package()
+    checked = check(contents, files)
+    assert checked.manifest["kind"] == "submission" and checked.has_bootstrap
+    assert check_manifest(manifest())["kind"] == "attachment"
+    for field, value in (("effects", []), ("compatible_harnesses", []), ("provides", {})):
+        with pytest.raises(PackageError) as raised:
+            check_manifest({**checked.manifest, field: value})
+        assert (f"/manifest/{field}", "UNSUPPORTED") in problems(raised.value)
+    with pytest.raises(PackageError) as raised:
+        check(contents, {k: v for k, v in files.items() if k != "bootstrap.sh"})
+    assert ("/files", "BOOTSTRAP_REQUIRED") in problems(raised.value)
+    with pytest.raises(PackageError) as raised:
+        check_manifest(manifest(kind="answer"))
+    assert ("/manifest/kind", "ENUM") in problems(raised.value)
+    explicit = check(contents, package(kind="attachment"))
+    implicit = check(contents, package())
+    assert explicit.content_digest != implicit.content_digest
+
+
+def test_submission_packages_resolve_snapshot_rerun_and_protect_active_inputs(service, version_id):
+    from support.attachments import submission_package
+
+    with running(service, run_worker=False) as client:
+        admin = setup_admin(service, client)
+        submission = publish(admin, submission_package(), expect=201).json()["data"]
+        ordinary = attach(admin)
+        assert submission["kind"] == "submission"
+        listed = admin.get("/api/v1/attachments?kind=submission", expect=200).json()["data"]
+        assert [a["id"] for a in listed] == [submission["id"]]
+        resolution = resolve(
+            admin, version_id, execution_mode="submission", submission=submission["id"]
+        )
+        assert resolution["blockers"] == []
+        effective = resolution["effective_config"]
+        assert effective["attachments"] == [] and effective["model"] is effective["harness"] is None
+        assert effective["submission"]["version_id"] == submission["id"]
+        assert effective["bootstrap_timeout_sec"] == 600
+        assert resolution["labels"]["submission"].startswith("deliverables")
+        for mode in ("agent", "oracle"):
+            fields = (
+                agent_body(*prepare_model(admin)) if mode == "agent" else {"execution_mode": mode}
+            )
+            wrong = resolve(admin, version_id, **fields, attachments=[submission["id"]])
+            assert codes(wrong) == ["PACKAGE_KIND_MISMATCH"]
+        wrong = resolve(admin, version_id, execution_mode="submission", submission=ordinary)
+        assert codes(wrong) == ["PACKAGE_KIND_MISMATCH"]
+        over = resolve(
+            admin,
+            version_id,
+            execution_mode="submission",
+            submission=submission["id"],
+            timeouts={"bootstrap_sec": 4000},
+        )
+        assert codes(over) == ["LIMIT_EXCEEDED"]
+        accepted = submit(
+            admin, version_id, execution_mode="submission", submission=submission["id"]
+        ).json()["data"]
+        run = admin.get(f"/api/v1/runs/{accepted['run_id']}", expect=200).json()["data"]
+        assert run["snapshot"]["effective"] == effective
+        refused = admin.delete(f"/api/v1/attachments/{submission['id']}")
+        assert error(refused) == (409, "ATTACHMENT_IN_USE")
+        changed = resolve(
+            admin,
+            version_id,
+            execution_mode="submission",
+            submission=submission["id"],
+            timeouts={"bootstrap_sec": 10},
+        )
+        assert changed["config_digest"] != resolution["config_digest"]
+        admin.post(f"/api/v1/runs/{accepted['run_id']}/cancel", expect=200)
+        rerun = admin.post(
+            f"/api/v1/runs/{accepted['run_id']}/rerun",
+            json={"task_selection": {"mode": "all"}, "name": "again"},
+            headers={"Idempotency-Key": uuid.uuid4().hex},
+            expect=202,
+        ).json()["data"]
+        again = admin.get(f"/api/v1/runs/{rerun['run_id']}", expect=200).json()["data"]
+        assert again["snapshot"]["config_digest"] == run["snapshot"]["config_digest"]
+
+
+@pytest.mark.parametrize(
+    "fields, path",
+    [
+        ({"submission": None}, "/submission"),
+        ({"submission": ["a", "b"]}, "/submission"),
+        ({"attachments": ["a"]}, "/attachments"),
+        ({"model_config_id": "model"}, "/execution_mode"),
+        ({"model_revision": 1}, "/execution_mode"),
+        ({"harness_version_id": "harness"}, "/execution_mode"),
+        ({"harness_params": {"max_turns": 1}}, "/execution_mode"),
+    ],
+)
+def test_submission_request_shape_refuses_model_fields_and_multiple_inputs(fields, path):
+    from maestro.services.configuration import check_request
+
+    with pytest.raises(MaestroError) as raised:
+        check_request(
+            {"dataset_version_id": "d", "execution_mode": "submission", "submission": "s", **fields}
+        )
+    assert path in {e.path for e in raised.value.field_errors}
+
+
+def test_partial_templates_support_submission_and_oracle_attachments():
+    from maestro.services.configuration import check_template
+
+    for template in (
+        {"submission": "s"},
+        {"execution_mode": "submission"},
+        {"attachments": ["a"]},
+        {"execution_mode": "oracle", "attachments": ["a"]},
+    ):
+        assert check_template(template) == template
+    from maestro.services.configuration import check_request
+
+    for mode in ("oracle", "agent"):
+        with pytest.raises(MaestroError) as raised:
+            check_request(
+                {
+                    "dataset_version_id": "d",
+                    "execution_mode": mode,
+                    "submission": "s",
+                    **(
+                        {"model_config_id": "m", "harness_version_id": "h"}
+                        if mode == "agent"
+                        else {}
+                    ),
+                }
+            )
+        assert any(e.code == "SUBMISSION_MODE_REQUIRED" for e in raised.value.field_errors)

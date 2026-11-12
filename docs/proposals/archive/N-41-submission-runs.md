@@ -1,6 +1,6 @@
 # N-41 给已有提交评分
 
-状态：实施中（U-101） · 优先级：建议二 · 2026-11-11 · 相关：[03 配置与附件](../design/03-configuration-attachments.md)、[05 调度与执行](../design/05-scheduling-execution.md)、[06 结果与评分](../design/06-results-scoring.md)、[08 集合与比较](../design/08-collections-comparison.md)、[N-40](N-40-oracle-attachments.md)、[N-33](archive/N-33-held-out-benchmarks-workflows.md) 第 6.1 节、U-86
+状态：完成（U-101） · 优先级：建议二 · 2026-11-11 · 相关：[03 配置与附件](../../design/03-configuration-attachments.md)、[05 调度与执行](../../design/05-scheduling-execution.md)、[06 结果与评分](../../design/06-results-scoring.md)、[08 集合与比较](../../design/08-collections-comparison.md)、[N-40](N-40-oracle-attachments.md)、[N-33](N-33-held-out-benchmarks-workflows.md) 第 6.1 节、U-86
 
 ## 问题
 
@@ -46,7 +46,7 @@ submissions/
 
 ### 3. 失败与分数
 
-- 待评提交安装失败、超时或内容不符，沿用附件的错因与重试规则，没有分数，不运行 verifier，不记成 0 分。
+- 待评提交安装失败或超时记 `attachment_failed`，没有分数，不运行 verifier，不记成 0 分；容器内副本不符与附件相同，算沙箱失败、可重试。
 - 安装成功、verifier 判定交付物不合格，是有效 0 分；verifier 没产分数、超时或崩溃按既有规则区分。
 - 缺题会被误读成有效 0 分：某题在包里没有文件，脚本什么都不放，verifier 可能对空输出打 0 分。平台不检查这一点，由 skill 给出的模板脚本防住：找不到本题文件时以非零退出，记为安装失败、没有分数。
 
@@ -85,4 +85,4 @@ submissions/
 
 ## 结果
 
-本轮按讨论改写：取代初稿（`83dbece`）中逐文件映射、逐试次来源、输入独立保留与同类比较的方案。尚未实施，不改变 U-86 的暂缓。
+已实现待评提交类别和 submission 执行方式，复用附件发布、存储、安装、引用保护与删除；安装后通过 Harbor 空 Agent 直接验证，不执行参考解。配置与两种包的互斥、有效 0 与安装失败无分数、仅 agent 可比较及加入集合均有回归覆盖。API、SDK、网页和 skill 已更新。新增真实 Docker 用例涵盖有效 1、有效 0 和缺题脚本失败，在真实 Docker 上通过（与 N-40 同一轮：2026-11-12，提交 `70e5564`，Harbor 0.24.0）；未新增评测对象、逐文件映射、逐试次来源或独立输入保留。

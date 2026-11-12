@@ -300,6 +300,7 @@ function Tree({
               {snapshotName(a)}
             </span>
           </button>
+          <Pill tone="neutral">{a.kind === "submission" ? t("attachments.kind.submission") : t("attachments.kind.attachment")}</Pill>
           {a.id === latest.id && <Pill tone="info">{t("attachments.history.latest")}</Pill>}
           {!a.enabled && <Pill tone="muted">{t("attachments.list.disabled")}</Pill>}
           {a.has_bootstrap && <Pill tone="neutral">{t("attachments.list.hasBootstrap")}</Pill>}

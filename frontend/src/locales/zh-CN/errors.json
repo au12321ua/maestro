@@ -169,6 +169,7 @@
     "UPDATE_IN_PROGRESS": "更新已经开始，无法取消",
     "UPDATE_TARGET_UNKNOWN": "更新目标未知，请先检查更新",
     "UPDATE_NOT_NEWER": "目标版本不比当前版本新",
-    "UPDATE_CHECK_DISABLED": "配置已关闭更新检查"
+    "UPDATE_CHECK_DISABLED": "配置已关闭更新检查",
+    "COMPARISON_AGENT_ONLY": "只有模型运行可以比较或加入集合。"
   }
 }

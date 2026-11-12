@@ -22,7 +22,7 @@ a = client.attachments.publish_commit("path/to/repo", "HEAD", parent=previous)
 - Only what the commit tracks is published, read from git objects: untracked and ignored files stay out, and executable bits come from git's file modes. Uncommitted changes are left out with a warning. Links and submodules are refused.
 - Both publish calls check that the snapshot's digest matches the files they sent.
 
-Then put the snapshot id in a configuration: `"attachments": [a.id]`. To make an attachment or improve one with experiments, read the `maestro-package` skill.
+Then put an attachment-kind snapshot id in an agent or Oracle configuration: `"attachments": [a.id]`. Oracle installs the attachments before the reference solution, without a Harness or model call. A submission-kind package instead uses `execution_mode="submission"` and `submission=a.id`, with an empty attachments list; it installs then runs only the verifier. Oracle and submission runs cannot join comparisons or collections. Use `client.attachments.list(kind="attachment")` or `kind="submission"` to select packages by kind. To make an attachment or improve one with experiments, read the `maestro-package` skill.
 
 ## Restore, inspect, compare
 

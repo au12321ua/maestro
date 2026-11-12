@@ -579,3 +579,50 @@ def test_sdk_records_and_current_best_use_the_public_contract(service, version_i
         )
         assert agent.records.delete(record.id).state == "recycled"
         assert agent.records.list("collection", collection.id) == []
+
+
+def test_sdk_submits_oracle_attachments_and_submission_scoring(service, version_id, tmp_path):
+    from support.attachments import package, submission_package
+
+    with running(service, run_worker=False) as client:
+        admin = setup_admin(service, client)
+        agent = sdk(create_pat(admin, ("experiment",), run_limit=4))
+        snapshots = []
+        for name, files in (("tools", package()), ("submission", submission_package())):
+            directory = tmp_path / name
+            directory.mkdir()
+            for path, content in files.items():
+                data, mode = content if isinstance(content, tuple) else (content, 0o644)
+                target = directory / path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(data)
+                target.chmod(mode)
+            snapshots.append(agent.attachments.publish(directory))
+        attachment, submission = snapshots
+        assert attachment.kind == "attachment" and submission.kind == "submission"
+        assert [a.id for a in agent.attachments.list(kind="submission")] == [submission.id]
+        oracle = agent.runs.submit(
+            {
+                "dataset_version_id": version_id,
+                "execution_mode": "oracle",
+                "attachments": [attachment.id],
+            },
+            name="install smoke",
+        )
+        assert (
+            agent.runs.get(oracle.run_id).snapshot.effective.attachments[0].version_id
+            == attachment.id
+        )
+        config = {
+            "dataset_version_id": version_id,
+            "execution_mode": "submission",
+            "submission": submission.id,
+        }
+        resolved = agent.configs.resolve(config)
+        assert not resolved.blockers
+        scored = agent.runs.submit(config, name="score files")
+        run = agent.runs.get(scored.run_id)
+        assert run.snapshot.effective.execution_mode == "submission"
+        assert run.snapshot.effective.submission.version_id == submission.id
+        assert run.snapshot.effective.attachments == []
+        assert agent.runs.request(scored.run_id).submission == submission.id

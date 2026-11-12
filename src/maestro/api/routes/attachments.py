@@ -7,6 +7,7 @@ follow the same steps.
 
 import hashlib
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import FileResponse, StreamingResponse
@@ -38,9 +39,10 @@ def list_attachments(
     request: Request,
     name: str | None = None,
     include_disabled: bool = True,
+    kind: Literal["attachment", "submission"] | None = None,
     who: Principal = Depends(principal),
 ):
-    return ok(request, maestro(request).attachments.list(who, name, include_disabled))
+    return ok(request, maestro(request).attachments.list(who, name, include_disabled, kind))
 
 
 @router.get("/attachments/{attachment_id}", response_model=Envelope[Attachment])

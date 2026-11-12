@@ -378,6 +378,10 @@ def compare(
     """The comparison table. ``scope`` is 'common' (tasks every run has) or 'all'.
     Differences to the baseline row are given only when the runs share dataset content
     and scoring contract and only common tasks are compared."""
+    for run in runs:
+        mode = run.view.get("execution_mode")
+        if mode != "agent":
+            raise ValueError(f"Only agent runs can be compared; {run.run_id} uses {mode}")
     excluded = set(exclude)
     ids = [r.run_id for r in runs]
     dims = {r.run_id: dimensions_of(r.view, r.contract) for r in runs}

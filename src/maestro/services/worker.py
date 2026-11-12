@@ -43,6 +43,7 @@ from maestro.domain.states import (
     TrialState,
     trial_can_move,
 )
+from maestro.execution.attachments import installed_packages
 from maestro.execution.docker import LABEL_INSTANCE, LABEL_RUN
 from maestro.execution.policy import (
     MAX_RETRIES,
@@ -969,7 +970,9 @@ class Worker:
                 # Read now, not at acceptance: a replaced mirror reaches queued runs.
                 with self.db.read() as conn:
                     spec = replace(spec, setup_network=setup_network.current(conn))
-                if spec.effective_config.get("harness"):
+                if spec.effective_config.get("harness") or installed_packages(
+                    spec.effective_config
+                ):
                     sink.setup_network_revision = spec.setup_network.revision
                 report = await self.executor.execute(spec, sink, cancel)
                 cleanup = CleanupState.COMPLETE if report.cleanup_complete else CleanupState.FAILED

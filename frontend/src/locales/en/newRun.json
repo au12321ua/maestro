@@ -71,7 +71,8 @@
     "agentMode": "Model experiment: a Harness drives the chosen model through the tasks",
     "oracleMode": "Oracle test mode: runs the tasks' own reference solutions, calls no model, not part of model comparisons",
     "clientRequestId": "Client request ID (optional)",
-    "clientRequestIdHint": "Lets you find this run by this ID later"
+    "clientRequestIdHint": "Lets you find this run by this ID later",
+    "submissionMode": "Submission scoring: installs one submission, then runs the verifier without a model or reference solution; not comparable"
   },
   "model": {
     "title": "Model and Harness",
@@ -97,7 +98,9 @@
     "add": "Add attachment",
     "choose": "Choose an attachment to load",
     "option": "{{name}} {{snapshot}} ({{owner}})",
-    "bootstrapTimeout": "Attachment install timeout (seconds, per trial)"
+    "bootstrapTimeout": "Attachment install timeout (seconds, per trial)",
+    "noHarness": "No harness is installed. Scripts depending on harness files or commands may fail.",
+    "chooseSubmission": "Choose a submission…"
   },
   "scale": {
     "title": "Scale and resources",

@@ -64,7 +64,7 @@ import {
   type Tone,
   snapshotName,
 } from "@/lib/format";
-import { useInterval, useSession } from "@/lib/hooks";
+import { useInterval, useLoad, useSession } from "@/lib/hooks";
 import type {
   Artifact,
   Attempt,
@@ -534,6 +534,8 @@ function RunDetailView({ runId }: { runId: string }) {
 }
 
 function ExecutionMode({ mode }: { mode: unknown }) {
+  if (mode === "submission")
+    return <Pill tone="info">{t("runs.detail.submission")}</Pill>;
   if (mode === "oracle") {
     return (
       <span title={t("runs.detail.oracleTitle")}>
@@ -571,40 +573,61 @@ function SourceDifferences({ snapshot }: { snapshot: RunDetail["snapshot"] }) {
       label={t("runs.detail.rerunScope")}
       value={t("runs.detail.rerunScopeValue", {
         count: causes.length,
-        causes: [...new Set(causes.flat())].join(t("runs.enumSeparator")) || "—",
+        causes:
+          [...new Set(causes.flat())].join(t("runs.enumSeparator")) || "—",
       })}
     />
   );
 }
 
-const INSTALL_STATUS: Record<string, string> = t("runs.installStatus", { returnObjects: true });
+const INSTALL_STATUS: Record<string, string> = t("runs.installStatus", {
+  returnObjects: true,
+});
 
 function isAttachmentFailure(
   detail: unknown,
-): detail is { attachment: string; label?: string; status?: string; exit_code?: number | null } {
-  return typeof detail === "object" && detail !== null && "attachment" in detail;
+): detail is {
+  attachment: string;
+  label?: string;
+  status?: string;
+  exit_code?: number | null;
+} {
+  return (
+    typeof detail === "object" && detail !== null && "attachment" in detail
+  );
 }
 
 function AgentSummary({ snapshot }: { snapshot: RunDetail["snapshot"] }) {
-  const { model, harness, attachments, bootstrap_timeout_sec: installSec } = snapshot.effective;
+  const {
+    model,
+    harness,
+    submission,
+    bootstrap_timeout_sec: installSec,
+  } = snapshot.effective;
+  const attachments = submission
+    ? [submission]
+    : snapshot.effective.attachments;
   const labels = snapshot.provenance.labels;
-  if (!model) return <span>—</span>;
   return (
     <span>
-      <Trans
-        i18nKey="runs.detail.agentSummary"
-        values={{
-          label: labels.model ?? model.model_id,
-          modelId: model.model_id,
-          provider: model.provider,
-          revision: model.revision,
-          harness: harness ? `${harness.name} ${harness.version}` : "—",
-        }}
-        components={{ code: <code /> }}
-      />
+      {model && (
+        <Trans
+          i18nKey="runs.detail.agentSummary"
+          values={{
+            label: labels.model ?? model.model_id,
+            modelId: model.model_id,
+            provider: model.provider,
+            revision: model.revision,
+            harness: harness ? `${harness.name} ${harness.version}` : "—",
+          }}
+          components={{ code: <code /> }}
+        />
+      )}
       {attachments.length > 0 && (
         <span className="block text-xs">
-          {t("runs.detail.attachments")}
+          {submission
+            ? t("attachments.kind.submission")
+            : t("runs.detail.attachments")}
           {attachments.map((a, i) => (
             <span key={a.version_id} title={a.content_digest}>
               {i > 0 && " → "}
@@ -928,6 +951,15 @@ function AttemptSteps({
               artifacts={artifacts.filter((a) => a.attempt_id === attempt.id)}
               live={live}
             />
+            {artifacts
+              .filter(
+                (a) =>
+                  a.attempt_id === attempt.id &&
+                  a.relative_path === "maestro/attachments.json",
+              )
+              .map((a) => (
+                <InstallRecords key={a.id} artifact={a} />
+              ))}
             {attempt.setup_network_revision != null && (
               <SetupNetworkRevision revision={attempt.setup_network_revision} />
             )}
@@ -952,6 +984,65 @@ function AttemptSteps({
         );
       })}
     </ol>
+  );
+}
+
+/** The install report is produced by the Runner and fetched only when opened. */
+function InstallRecords({ artifact }: { artifact: Artifact }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <details
+      className="mt-2 text-xs"
+      onToggle={(e) => setOpen(e.currentTarget.open)}
+    >
+      <summary className="cursor-pointer">
+        {t("runs.execution.installRecords")}
+      </summary>
+      {artifact.status !== "available" ? (
+        <StatusPill value={label(ARTIFACT_STATE, artifact.status)} />
+      ) : (
+        open && <InstallRecordList artifact={artifact} />
+      )}
+    </details>
+  );
+}
+
+interface InstallRecord {
+  name: string;
+  label?: string;
+  content_digest: string;
+  user: string | null;
+  status: string;
+  exit_code?: number;
+}
+
+function InstallRecordList({ artifact }: { artifact: Artifact }) {
+  const report = useLoad(async () => {
+    const response = await fetch(`${API}/artifacts/${artifact.id}/download`, {
+      credentials: "same-origin",
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return (await response.json()) as InstallRecord[];
+  }, [artifact.id]);
+  return (
+    <div className="grid gap-1 py-1">
+      {report.loading && <Loading />}
+      <ErrorAlert error={report.error} />
+      <ol className="list-decimal pl-5">
+        {report.data?.map((record, index) => (
+          <li key={index} className="break-all">
+            {record.name} {record.label} ·{" "}
+            {INSTALL_STATUS[record.status] ?? record.status}
+            {record.exit_code != null &&
+              t("runs.execution.exitCode", { code: record.exit_code })}
+            <span className="block text-muted-foreground">
+              {t("runs.execution.installUser", { user: record.user ?? t("runs.execution.defaultInstallUser") })}{" "}
+              · <code>{record.content_digest}</code>
+            </span>
+          </li>
+        ))}
+      </ol>
+    </div>
   );
 }
 

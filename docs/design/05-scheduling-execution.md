@@ -57,9 +57,11 @@ Worker 循环（约 0.5 秒或被唤醒）先处理停止与到期、重试未�
 1. 领取后解密凭据；不可用时运行不执行即结束（CREDENTIAL_UNAVAILABLE）。
 2. 各任务并行向准备协调器申请缓存，缺失时加入按 (spec_digest, location_id) 合并的共享恢复（[02](02-datasets-preparation.md)），试次显示 restoring_cache。恢复失败为该任务每个试次记一次尝试，按 [06](06-results-scoring.md) 第 4 节重试；耗尽或不可重试的任务的试次以准备错误结束，其他任务继续。
 3. 执行器核对任务材料与附件原件，缺失的试次直接以错误结束，不执行未经验证的内容。
-4. Runner 中 Harbor 为每个试次创建容器、安装 Harness 与附件、收紧网络、执行 Agent、验证（[03](03-configuration-attachments.md)、[09](09-identity-security.md)）。附件在每个试次容器内独立安装，不写回共享缓存；容器只挂载执行器为本试次输出准备的目录（U-16）。
+4. Runner 中 Harbor 为每个试次创建容器并按模式执行：模型实验安装 Harness 与普通附件、收紧网络、运行 Agent 后验证；Oracle 可先安装普通附件，再执行参考解并验证；提交评分安装单个待评提交后直接验证，不执行参考解（[03](03-configuration-attachments.md)、[09](09-identity-security.md)）。附件在每个试次容器内独立安装，不写回共享缓存；容器只挂载执行器为本试次输出准备的目录（U-16）。
 5. 每次尝试结束时，Runner 归档其目录，执行器核对摘要、脱敏后存为产物，再提交结果（[07](07-artifacts-export.md) 第 4 节）。产物保存失败不影响结果确认。
 6. Runner 退出后按运行标签清理 Docker 资源；Worker 把仍无结果的试次终结，运行进入终态。
+
+三种模式共用队列、并发、CPU / 内存、总时限、取消、幂等与资源释放规则。Oracle 与提交评分没有模型费用，仍消耗计算资源及 PAT 受理额度。安装失败或超时不进入参考解或 verifier；后续错误保持其原阶段。
 
 ## 6. 租约与重复执行防护
 
