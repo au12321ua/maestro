@@ -587,6 +587,7 @@ class Execution:
 
     def _config(self):
         from harbor.models.job.config import JobConfig, RetryConfig
+        from harbor.models.task.config import TaskConfig as TaskDefinition
         from harbor.models.trial.config import (
             AgentConfig,
             EnvironmentConfig,
@@ -608,6 +609,8 @@ class Execution:
             path = Path(task["path"]).resolve()
             if not (path / "task.toml").is_file():
                 raise Rejected("TASK_MATERIAL_MISSING", f"no task.toml for {task['task_key']}")
+            definition = TaskDefinition.model_validate_toml((path / "task.toml").read_text())
+            task_name = definition.task.name if definition.task is not None else task["task_key"]
             # Admissions made before the mount/replica checks must not bypass the runtime
             # boundary. Check every author service, including main and tests/.
             for directory in ("environment", "tests"):
@@ -637,6 +640,7 @@ class Execution:
                         )
                 emit("network_plan", task_key=task["task_key"], plan=plan)
             self.task_by_path[str(path)] = task["task_key"]
+            agents.TASK_NAMES[str((path / "environment").resolve())] = task_name
             self.unbound[task["task_key"]] = list(task["trial_ids"])
             task_dirs.append(path)
         if restricted:
@@ -669,6 +673,10 @@ class Execution:
                 agent = agents.agent_config(agent)
             except (agents.InputError, KeyError) as error:
                 raise Rejected("RUNNER_INPUT_INVALID", f"agent: {error}") from None
+        elif agent.get("name") == "submission":
+            # Harbor's "nop" agent: the trial treats it as a utility agent (no task
+            # trajectory, no skill or MCP requirements) and verifies after its empty run.
+            agent = {"name": "nop"}
         elif agent.get("name") != "oracle":
             # Harbor's default agent is oracle; never fall back to it implicitly.
             raise Rejected("RUNNER_INPUT_INVALID", "agent must be explicit")
@@ -677,15 +685,28 @@ class Execution:
         # deployment's setup network (proxy, package mirrors) when it has one.
         agents.INSTALL["env"] = dict(self.spec.get("setup_env") or {})
         if self.spec.get("attachments"):
-            if not self.spec["agent"].get("adapter"):
-                raise Rejected("RUNNER_INPUT_INVALID", "attachments need a harness agent")
             self._attachments()
+            wrapper = {"oracle": "MaestroOracle", "submission": "MaestroSubmission"}.get(
+                self.spec["agent"].get("name")
+            )
+            if wrapper:
+                # Harbor special-cases its "oracle" and "nop" names (constructor context for
+                # the oracle, utility-agent rules for both), so keep the name and swap the
+                # class it resolves to. The Runner is one process per job.
+                from harbor.agents.factory import AgentFactory
+                from harbor.models.agent.name import AgentName
+
+                name = AgentName.ORACLE if wrapper == "MaestroOracle" else AgentName.NOP
+                assert name in AgentFactory._AGENT_MAP, f"Harbor has no {name} agent"
+                AgentFactory._AGENT_MAP[name] = f"maestro_runner.agents:{wrapper}"
         harness_limit = self.spec.get("harness_setup_timeout_sec")
         if self.spec["agent"].get("adapter") and (agents.ATTACHMENTS or harness_limit):
             agent["override_setup_timeout_sec"] = agents.setup_timeout(
                 harness_limit
                 or agents.agent_class(self.spec["agent"]["adapter"]).DEFAULT_SETUP_TIMEOUT_SEC
             )
+        elif agents.ATTACHMENTS:
+            agent["override_setup_timeout_sec"] = agents.setup_timeout(0)
         return JobConfig(
             job_name="job",
             jobs_dir=self.jobs_dir,
@@ -1102,11 +1123,17 @@ def check_spec(spec: dict) -> None:
     fields = {"name": str, "label": str, "content_digest": str, "path": str, "bootstrap": bool}
     if not isinstance(attachments, list) or not all(
         isinstance(a, dict)
-        and set(a) == set(fields)
+        and set(fields) <= set(a) <= set(fields) | {"kind"}
+        and a.get("kind", "attachment") in ("attachment", "submission")
         and all(isinstance(a[k], kind) for k, kind in fields.items())
         for a in attachments
     ):
         raise Rejected("RUNNER_INPUT_INVALID", f"attachments need exactly {sorted(fields)}")
+    submission = (spec.get("agent") or {}).get("name") == "submission"
+    if submission and (len(attachments) != 1 or not attachments[0]["bootstrap"]):
+        raise Rejected("RUNNER_INPUT_INVALID", "submission needs one package with bootstrap.sh")
+    if any((a.get("kind", "attachment") == "submission") != submission for a in attachments):
+        raise Rejected("RUNNER_INPUT_INVALID", "package kind does not match the execution mode")
     harness_limit = spec.get("harness_setup_timeout_sec")
     if harness_limit is not None and (
         isinstance(harness_limit, bool)

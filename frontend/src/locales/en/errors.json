@@ -169,6 +169,7 @@
     "UPDATE_IN_PROGRESS": "The update has started and cannot be cancelled",
     "UPDATE_TARGET_UNKNOWN": "Unknown update target; check for updates first",
     "UPDATE_NOT_NEWER": "The target version is not newer than the installed version",
-    "UPDATE_CHECK_DISABLED": "Update checks are disabled in the configuration"
+    "UPDATE_CHECK_DISABLED": "Update checks are disabled in the configuration",
+    "COMPARISON_AGENT_ONLY": "Only agent runs can be compared or added to a collection."
   }
 }

@@ -47,6 +47,9 @@ SECRETS: dict[str, str] = {}
 # Set by the job: packages in load order ({name, label, content_digest, path, bootstrap,
 # files}), the install time limit of one trial, and the callback the job reports through.
 ATTACHMENTS: list[dict] = []
+# Private task copies can have numeric directory names. Preserve the author's name
+# before copying, keyed by the environment directory used by Harbor.
+TASK_NAMES: dict[str, str] = {}
 INSTALL: dict[str, Any] = {"timeout_sec": None, "report": None, "env": {}}
 TARGET = "/opt/maestro/attachments"
 LOG_DIR = "/logs/agent/attachments"
@@ -294,7 +297,13 @@ async def install(agent, environment) -> None:
             result = await environment.exec(
                 f"timeout -k 5 {remaining} bash bootstrap.sh > {log} 2>&1",
                 cwd=target,
-                env={**INSTALL["env"], "MAESTRO_ATTACHMENT_DIR": target},
+                env={
+                    **INSTALL["env"],
+                    "MAESTRO_ATTACHMENT_DIR": target,
+                    "MAESTRO_TASK_NAME": TASK_NAMES[
+                        str(Path(environment.environment_dir).resolve())
+                    ],
+                },
                 timeout_sec=remaining + 30,
             )
             spent += time.monotonic() - started
@@ -399,6 +408,30 @@ async def _setup_with_attachments(agent, environment, setup) -> None:
         if ATTACHMENTS:
             await install(agent, environment)
         await setup(environment)
+
+
+@functools.cache
+def _oracle():
+    from harbor.agents.oracle import OracleAgent
+
+    class MaestroOracle(OracleAgent):
+        async def setup(self, environment) -> None:
+            await _setup_with_attachments(self, environment, super().setup)
+
+    return MaestroOracle
+
+
+@functools.cache
+def _submission():
+    from harbor.agents.nop import NopAgent
+
+    class MaestroSubmission(NopAgent):
+        async def setup(self, environment) -> None:
+            await _setup_with_attachments(self, environment, super().setup)
+
+    # Harbor runs verification after this agent's no-op run. It never uploads or
+    # executes the task's reference solution.
+    return MaestroSubmission
 
 
 async def _upload_key(environment, content: str, target: str) -> None:
@@ -620,6 +653,8 @@ def _terminus():
 
 
 _CLASSES = {
+    "MaestroOracle": _oracle,
+    "MaestroSubmission": _submission,
     "MaestroTerminus2": _terminus,
     "MaestroOpenCode": _opencode,
     "MaestroOpenCode2": _opencode_2,

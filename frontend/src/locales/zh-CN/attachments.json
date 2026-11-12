@@ -27,7 +27,7 @@
   },
   "list": {
     "title": "已发布的附件",
-    "description": "附件是随模型运行加载的文件，例如工具、SDK 或安装脚本。每次发布得到一份内容固定的快照，内容相同就是同一份；同名的快照归在一个附件下，按时间排成历史，也可以基于任意一份快照再发布，分出多个方向。运行时，每个试次在自己的容器里复制附件到<dir>/opt/maestro/attachments/</dir>并运行其中的 <code>bootstrap.sh</code>，然后才开始 Agent；安装可以联网，Agent 和验证阶段仍按平台网络限制执行。",
+    "description": "包是每个试次独立安装的不可变快照。附件可用于模型和 Oracle 运行；待评提交用于提交评分，安装后只运行 verifier。安装使用安装网络，后续阶段遵循任务与平台网络规则。",
     "empty": "还没有发布附件。",
     "deletedSnapshot": "已删除的快照",
     "anyHarness": "任意",
@@ -72,5 +72,13 @@
     "first": "首个快照",
     "branches": "分出 {{count}} 支",
     "branch": "分支 {{n}}"
+  },
+  "kind": {
+    "label": "包类别（列表与上传）",
+    "attachment": "附件",
+    "submission": "待评提交",
+    "manifestHint": "在上方选择包类别，须与 manifest.json 一致：省略 kind 表示附件；待评提交须写 kind: \"submission\" 并包含 bootstrap.sh，不能包含 effects、compatible_harnesses 或 provides。所有安装脚本都可读取 MAESTRO_TASK_NAME。",
+    "mismatch": "所选类别须与 manifest.json 中的 kind 一致。",
+    "bootstrapRequired": "待评提交必须包含 bootstrap.sh。"
   }
 }

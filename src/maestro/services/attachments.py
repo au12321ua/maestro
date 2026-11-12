@@ -122,9 +122,10 @@ class Attachments:
             "owner_id": row["owner_id"],
             "owner_username": owner,
             "content_digest": row["content_digest"],
-            "effects": manifest["effects"],
-            "compatible_harnesses": manifest["compatible_harnesses"],
-            "provides": manifest["provides"],
+            "kind": manifest.get("kind", "attachment"),
+            "effects": manifest.get("effects", []),
+            "compatible_harnesses": manifest.get("compatible_harnesses", []),
+            "provides": manifest.get("provides", {"tools": [], "env": []}),
             "has_bootstrap": row["has_bootstrap"],
             "file_count": row["file_count"],
             "size_bytes": row["size_bytes"],
@@ -139,7 +140,11 @@ class Attachments:
         )
 
     def list(
-        self, principal: Principal, name: str | None = None, include_disabled: bool = True
+        self,
+        principal: Principal,
+        name: str | None = None,
+        include_disabled: bool = True,
+        kind: str | None = None,
     ) -> list[dict]:
         query = self._select().where(
             deleted.visible(t.attachment_versions.c.id, "attachment_version")
@@ -150,7 +155,11 @@ class Attachments:
             query = query.where(t.attachment_versions.c.enabled.is_(True))
         query = query.order_by(t.attachment_versions.c.name, t.attachment_versions.c.created_at)
         with self.db.read() as conn:
-            return [self._public(r, r["username"]) for r in conn.execute(query).mappings()]
+            return [
+                self._public(r, r["username"])
+                for r in conn.execute(query).mappings()
+                if kind is None or r["manifest_json"].get("kind", "attachment") == kind
+            ]
 
     def _row(self, conn: Connection, attachment_id: str):
         row = (
@@ -306,7 +315,7 @@ class Attachments:
             ) from None
         unknown = [
             name
-            for name in package.manifest["compatible_harnesses"]
+            for name in package.manifest.get("compatible_harnesses", [])
             if name != "*" and self.adapters is not None and name not in self.adapters
         ]
         if unknown:

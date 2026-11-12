@@ -93,7 +93,7 @@ def test_compare_two_models_and_exclude_external_failures(service, version_id, e
         ).json()["data"]
         wait_operation(member, oracle["operation_id"])
         refused = compare(member, [run_a, oracle["run_id"]], expect=422)
-        assert error(refused) == (422, "COMPARISON_ORACLE_RUN")
+        assert error(refused) == (422, "COMPARISON_AGENT_ONLY")
 
 
 def test_a_collection_keeps_only_matching_runs(service, version_id, executor):
@@ -1011,3 +1011,51 @@ def test_held_out_counts_and_read_times_follow_cross_version_identity(service, s
         final = {v["task_key"]: v for v in reader.get(url).json()["data"]}
         assert final["same"]["accepted_runs"] == 1
         assert final["changed"]["reads"] == []
+
+
+def test_submission_runs_are_refused_by_comparison_and_all_collection_entries(service, version_id):
+    from support import submit
+    from support.attachments import publish, submission_package
+
+    with running(service, run_worker=False) as client:
+        admin = setup_admin(service, client)
+        model, harness = prepare_model(admin)
+        baseline = run_of(admin, version_id, model, harness, wait=False)
+        submission = publish(admin, submission_package(), expect=201).json()["data"]["id"]
+        request = {
+            "dataset_version_id": version_id,
+            "execution_mode": "submission",
+            "submission": submission,
+        }
+        accepted = submit(
+            admin, version_id, execution_mode="submission", submission=submission
+        ).json()["data"]
+        run_id = accepted["run_id"]
+        refused = compare(admin, [baseline, run_id], expect=422)
+        assert error(refused) == (422, "COMPARISON_AGENT_ONLY")
+        assert "submission" in refused.json()["error"]["message"]
+        for base in ({"run_id": run_id}, {"request": request}):
+            refused = admin.post(
+                "/api/v1/collections", json={"name": "invalid", "scenario": "models", "base": base}
+            )
+            assert error(refused) == (422, "COMPARISON_AGENT_ONLY")
+            assert "submission" in refused.json()["error"]["message"]
+        collection = admin.post(
+            "/api/v1/collections",
+            json={"name": "models", "scenario": "models", "base": {"run_id": baseline}},
+            expect=201,
+        ).json()["data"]
+        refused = admin.post(
+            f"/api/v1/collections/{collection['id']}/runs", json={"runs": [{"run_id": run_id}]}
+        )
+        assert error(refused) == (422, "COMPARISON_AGENT_ONLY")
+        refused = admin.post(
+            "/api/v1/config-resolutions", json={**request, "collection_id": collection["id"]}
+        )
+        assert error(refused) == (409, "COLLECTION_MISMATCH")
+        assert "submission" in refused.json()["error"]["message"]
+        # Raw exports retain the mode and the package snapshot for manual inspection.
+        exported = admin.post(
+            "/api/v1/exports", json={"run_ids": [run_id], "include_artifacts": False}, expect=202
+        )
+        assert exported.json()["data"]["id"]

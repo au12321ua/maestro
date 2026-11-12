@@ -182,7 +182,8 @@
     "agentSummary": "{{label}} (<code>{{modelId}}</code>, {{provider}}, revision {{revision}}) · {{harness}}",
     "attachments": "Attachments: ",
     "installTimeout_one": " (install time limit per trial: {{count}} second)",
-    "installTimeout_other": " (install time limit per trial: {{count}} seconds)"
+    "installTimeout_other": " (install time limit per trial: {{count}} seconds)",
+    "submission": "Submission scoring"
   },
   "deletion": {
     "runPurged": "This run was permanently deleted",
@@ -216,7 +217,8 @@
     "failed": "Install script failed",
     "timeout": "Install timed out",
     "transfer_mismatch": "Content mismatch after copy",
-    "transfer_failed": "Copy failed"
+    "transfer_failed": "Copy failed",
+    "ok": "Installed successfully"
   },
   "execution": {
     "repetition": "Repetition {{index}}",
@@ -238,7 +240,10 @@
     "logEmpty": "(empty)",
     "available": "Available {{n}}",
     "expired": "Expired {{n}}",
-    "failed": "Failed {{n}}"
+    "failed": "Failed {{n}}",
+    "installRecords": "Install records",
+    "installUser": "Install user: {{user}}",
+    "defaultInstallUser": "Container default"
   },
   "summary": {
     "direction": {

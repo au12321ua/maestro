@@ -18,10 +18,14 @@ from maestro_sdk.errors import ContentMismatch
 
 class Attachments(_Resource):
     def list(
-        self, *, name: str | None = None, include_disabled: bool = False
+        self, *, name: str | None = None, include_disabled: bool = False, kind: str | None = None
     ) -> list[models.Attachment]:
         return self._c._get(
-            "attachments", list[models.Attachment], name=name, include_disabled=include_disabled
+            "attachments",
+            list[models.Attachment],
+            name=name,
+            include_disabled=include_disabled,
+            kind=kind,
         )
 
     def get(self, attachment_id: str) -> models.Attachment:

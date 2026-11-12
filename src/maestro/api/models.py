@@ -694,7 +694,10 @@ class RunConfigFields(Model):
     harness_version_id: str | None = None
     harness_params: dict[str, HarnessParamValue] = {}
     attachments: list[str] = Field(
-        [], description="Attachment snapshot ids in load order (model runs only)"
+        [], description="Attachment snapshot ids in load order (agent and oracle runs)"
+    )
+    submission: str | None = Field(
+        None, description="One submission-kind snapshot id; submission mode only"
     )
     repetitions: int | None = None
     concurrency: int | None = None
@@ -708,10 +711,10 @@ class RunConfigFields(Model):
 
 class ConfigRequest(RunConfigFields):
     dataset_version_id: str | None = Field(None, description="Required unless the plan has it")
-    execution_mode: Literal["agent", "oracle"] | None = Field(
+    execution_mode: Literal["agent", "oracle", "submission"] | None = Field(
         None,
         description="agent: a model through a harness; oracle: each task's reference "
-        "solution, a test mode never compared with model results. Required unless the "
+        "solution; submission: install one submission and run only the verifier. Only agent runs are comparable. Required unless the "
         "plan has it",
     )
 
@@ -722,7 +725,7 @@ class RunCreate(RunConfigFields):
     name: str
     resolution_id: str | None = None
     dataset_version_id: str | None = None
-    execution_mode: Literal["agent", "oracle"] | None = None
+    execution_mode: Literal["agent", "oracle", "submission"] | None = None
     client_request_id: str | None = None
     source_run_id: str | None = Field(
         None,
@@ -737,12 +740,15 @@ class PlanTemplate(Sparse):
 
     dataset_version_id: str | None = None
     task_selection: TaskSelection | None = None
-    execution_mode: Literal["agent", "oracle"] | None = None
+    execution_mode: Literal["agent", "oracle", "submission"] | None = None
     model_config_id: str | None = None
     model_revision: int | None = None
     harness_version_id: str | None = None
     harness_params: dict[str, HarnessParamValue] | None = None
     attachments: list[str] | None = None
+    submission: str | None = Field(
+        None, description="One submission-kind snapshot id; submission mode only"
+    )
     repetitions: int | None = None
     concurrency: int | None = None
     run_deadline_hours: int | None = None
@@ -880,6 +886,7 @@ class ReferenceRevisions(Sparse):
     model_config_ref: RevisionRef | None = Field(None, alias="model_config")
     harness_version: str | None = None
     attachments: list[str] | None = None
+    submission: str | None = None
     plan: RevisionRef | None = None
     collection: ObjectRef | None = None
 
@@ -903,12 +910,13 @@ class NormalizedRequest(Model):
     plan: PlanUse | None = None
     dataset_version_id: str
     task_selection: TaskSelection
-    execution_mode: Literal["agent", "oracle"]
+    execution_mode: Literal["agent", "oracle", "submission"]
     model_config_id: str | None
     model_revision: int | None
     harness_version_id: str | None
     harness_params: dict[str, HarnessParamValue]
     attachments: list[str]
+    submission: str | None = None
     repetitions: int | None
     concurrency: int | None
     run_deadline_hours: int | None
@@ -967,6 +975,7 @@ class EffectiveHarness(Model):
 
 
 class EffectiveAttachment(Model):
+    kind: Literal["attachment", "submission"] = "attachment"
     version_id: str = Field(description="The snapshot's id")
     name: str
     label: str | None
@@ -1011,13 +1020,14 @@ class EffectiveConfig(Model):
     """The fixed configuration of a run; ``config_digest`` is its digest."""
 
     dataset: EffectiveDataset
-    execution_mode: Literal["agent", "oracle"]
+    execution_mode: Literal["agent", "oracle", "submission"]
     repetitions: int
     concurrency: int
     run_deadline_hours: int
     model: EffectiveModel | None
     harness: EffectiveHarness | None
     attachments: list[EffectiveAttachment] = Field(description="In load order")
+    submission: EffectiveAttachment | None = None
     bootstrap_timeout_sec: Number | None
     overrides: EffectiveOverrides = Field(description="Values this run set for every task")
     tasks: list[EffectiveTask]
@@ -1238,6 +1248,7 @@ class AttachmentMissing(Model):
 
 
 class Attachment(Model):
+    kind: Literal["attachment", "submission"] = "attachment"
     id: str
     name: str
     label: str | None
@@ -2487,7 +2498,7 @@ class AuthInfo(Model):
 
 class ExecutionInfo(Model):
     executor: str | None
-    modes: list[Literal["agent", "oracle"]]
+    modes: list[Literal["agent", "oracle", "submission"]]
     harness_adapters: list[HarnessAdapter]
     policy_version: str
     capacity: HostCapacityView

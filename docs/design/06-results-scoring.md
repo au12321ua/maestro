@@ -26,7 +26,7 @@
 ### 已知限制
 
 - 契约不含验证器版本与分数提取规则；验证器随任务内容摘要固定。
-- 附件不能声明影响评分，没有由附件派生的契约。
+- 普通附件不能声明影响评分，没有由附件派生的契约。待评提交只放置交付物，由任务 verifier 按运行原评分契约评分，不新增评测记录对象。
 - 不提供把某类错误计为未通过的扩展口径（count_as_failure 恒为空）。
 
 ## 3. 结果状态与错误决策表
@@ -43,12 +43,14 @@
 | model_provider_failed（永久：请求参数等） | false | 否 | 是 |
 | model_provider_failed（认证、权限、模型不存在） | false | 否 | 否 |
 | harbor_failed：框架 / 依赖能力不支持 | false | 否 | 否 |
-| attachment_failed：附件安装失败、超时或原件缺失 | false | 否 | 否 |
+| attachment_failed：附件 / 待评提交安装失败、超时或原件缺失 | false | 否 | 否 |
 | verifier_failed：验证超时、奖励缺失 / 为空 / 解析失败 | false | 否 | 是 |
 | unclassified | false | 是 | 是 |
 | cancelled | false | 否 | 否 |
 
 reward_valid=true 的规则仍要求验证确实产出合法数值；没有异常但无可用奖励记 verifier_failed（RewardMissing）。无效奖励可以非空，所以状态不能只看 raw_score 是否为 null。“继续验证”是策略允许走验证路径，不是验证失败后反复重试。
+
+提交评分安装成功后，verifier 判定交付物不合格得到的 0 是有效分数；安装失败或模板遇到缺题非零退出没有分数，verifier 不运行。verifier 缺分、崩溃或超时仍按原有规则处理。Oracle 附件安装成功后参考解或验证失败同样保留原错因。
 
 错误记录在执行尝试上，最终结果写入 `trial_results`，都带策略版本与原始异常类型（字段见 `src/maestro/db/schema.py`）；试次 reason_code 为大写的 cause。message 已脱敏且可变，程序应依据稳定字段。平台另记管理原因，不伪装成执行器异常：USER_CANCELLED、ADMIN_CANCELLED、RUN_DEADLINE_EXCEEDED、RUN_INTERRUPTED、SERVICE_RESTARTED、RUNNER_UNRESPONSIVE、RUNNER_PROTOCOL_ERROR、CREDENTIAL_UNAVAILABLE 等。
 

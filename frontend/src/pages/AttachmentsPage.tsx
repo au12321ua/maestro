@@ -1,6 +1,6 @@
 // Attachment snapshots: members publish a folder, uploading only
 // the files the service lacks; each snapshot is fixed and named by its content. Each
-// trial of a model run installs the chosen ones in its own container before the agent.
+// trial installs its chosen packages in its own container before execution.
 import { useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -48,6 +48,8 @@ export function AttachmentsPage() {
   const [params] = useSearchParams();
   const { capabilities } = useSession();
   const [error, setError] = useState<unknown>();
+  const [selectedKind, setKind] = useState<"attachment" | "submission">();
+  const [manifestKind, setManifestKind] = useState("attachment");
   const [name, setName] = useState<string | null>(null);
   const [label, setLabel] = useState("");
   const [parentId, setParentId] = useState("");
@@ -56,7 +58,12 @@ export function AttachmentsPage() {
 
   const all = useMemo(() => list.data ?? [], [list.data]);
   const byId = new Map(all.map((a) => [a.id, a]));
-  const sameName = (n: string | null) => all.filter((a) => a.name === n);
+  const focused =
+    byId.get(params.get("snapshot") ?? params.get("base") ?? "") ??
+    all.find((a) => a.name === params.get("name"));
+  const kind = selectedKind ?? focused?.kind ?? "attachment";
+  const sameName = (n: string | null) =>
+    all.filter((a) => a.name === n && (a.kind ?? "attachment") === kind);
 
   /** The parent snapshot's files decide carried-over executable bits and the preview. */
   const chooseParent = async (id: string) => {
@@ -73,6 +80,16 @@ export function AttachmentsPage() {
 
   const chooseFolder = async (_folder: string, files: LocalFile[]) => {
     const found = await manifestName(files);
+    const manifest = files.find((f) => f.path === "manifest.json");
+    if (manifest) {
+      try {
+        setManifestKind(
+          JSON.parse(await manifest.file.text()).kind ?? "attachment",
+        );
+      } catch {
+        setManifestKind("");
+      }
+    }
     setName(found);
     // The newest snapshot of the same name is the default parent; one chosen with
     // "base a new snapshot on this" stays when the names match.
@@ -115,6 +132,7 @@ export function AttachmentsPage() {
     }
   };
   const baseOn = (a: Attachment) => {
+    setKind(a.kind ?? "attachment");
     void chooseParent(a.id).catch(setError);
     publishCard.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -154,10 +172,27 @@ export function AttachmentsPage() {
         <CardContent className="grid gap-3 text-sm">
           {list.loading && !list.data && <Loading />}
           <ErrorAlert error={list.error} />
-          {list.data && list.data.length === 0 && <EmptyNote>{t("attachments.list.empty")}</EmptyNote>}
+          {list.data && list.data.length === 0 && (
+            <EmptyNote>{t("attachments.list.empty")}</EmptyNote>
+          )}
+          <SelectField
+            id="package-kind"
+            label={t("attachments.kind.label")}
+            value={kind}
+            onChange={(e) =>
+              setKind(e.target.value as "attachment" | "submission")
+            }
+          >
+            <option value="attachment">
+              {t("attachments.kind.attachment")}
+            </option>
+            <option value="submission">
+              {t("attachments.kind.submission")}
+            </option>
+          </SelectField>
           {all.length > 0 && (
             <AttachmentHistory
-              all={all}
+              all={all.filter((a) => (a.kind ?? "attachment") === kind)}
               actions={actions}
               focus={{
                 snapshot: params.get("snapshot") ?? "",
@@ -171,9 +206,12 @@ export function AttachmentsPage() {
 
       <Card ref={publishCard}>
         <CardHeader>
-          <CardTitle className="text-base">{t("attachments.publish.title")}</CardTitle>
+          <CardTitle className="text-base">
+            {t("attachments.publish.title")}
+          </CardTitle>
           <CardDescription>
-            {t("attachments.publish.description")}
+            {t("attachments.publish.description")}{" "}
+            {t("attachments.kind.manifestHint")}
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 text-sm">
@@ -183,11 +221,18 @@ export function AttachmentsPage() {
             maxFiles={limit(capabilities, "attachment_max_files", 10000)}
             maxBytes={limit(capabilities, "attachment_max_bytes", 1024 ** 3)}
             submitLabel={t("attachments.publish.submit")}
-            check={(files) =>
-              files.some((f) => f.path === "manifest.json")
-                ? []
-                : [t("attachments.publish.noManifest")]
-            }
+            check={(files) => [
+              ...(!files.some((f) => f.path === "manifest.json")
+                ? [t("attachments.publish.noManifest")]
+                : []),
+              ...(manifestKind !== kind
+                ? [t("attachments.kind.mismatch")]
+                : []),
+              ...(kind === "submission" &&
+              !files.some((f) => f.path === "bootstrap.sh")
+                ? [t("attachments.kind.bootstrapRequired")]
+                : []),
+            ]}
             onFolder={chooseFolder}
             onSubmit={publish}
           >
@@ -210,14 +255,20 @@ export function AttachmentsPage() {
                     id="attachment-parent"
                     label={t("attachments.publish.parent")}
                     value={parentId}
-                    onChange={(e) => void chooseParent(e.target.value).catch(setError)}
+                    onChange={(e) =>
+                      void chooseParent(e.target.value).catch(setError)
+                    }
                   >
-                    <option value="">{t("attachments.publish.noParent")}</option>
-                    {sameName(name).map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {snapshotName(s)} · {fmtTime(s.created_at)}
-                      </option>
-                    ))}
+                    <option value="">
+                      {t("attachments.publish.noParent")}
+                    </option>
+                    {sameName(name)
+                      .filter((a) => (a.kind ?? "attachment") === kind)
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {snapshotName(s)} · {fmtTime(s.created_at)}
+                        </option>
+                      ))}
                   </SelectField>
                 </div>
               </div>

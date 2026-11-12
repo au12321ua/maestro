@@ -27,7 +27,7 @@
   },
   "list": {
     "title": "Published attachments",
-    "description": "Attachments are files loaded with a model run, such as tools, SDKs or setup scripts. Each publish produces a snapshot with fixed content; identical content is the same snapshot. Snapshots of the same name are grouped as one attachment, as a history by time; you can also publish again based on any snapshot to branch in several directions. At run time, each trial copies the attachments into<dir>/opt/maestro/attachments/</dir>in its own container and runs their <code>bootstrap.sh</code> before the Agent starts; setup may use the network, while the Agent and verification still follow the platform's network limits.",
+    "description": "Packages are fixed snapshots installed in each trial. Attachments support model and Oracle runs; submissions are installed for submission scoring, which runs only the verifier. Installation uses the setup network; later phases follow the task and platform network rules.",
     "empty": "No attachments published yet.",
     "deletedSnapshot": "a deleted snapshot",
     "anyHarness": "Any",
@@ -75,5 +75,13 @@
     "first": "First snapshot",
     "branches": "{{count}} branches",
     "branch": "Branch {{n}}"
+  },
+  "kind": {
+    "label": "Package kind (listing and upload)",
+    "attachment": "Attachment",
+    "submission": "Submission",
+    "manifestHint": "Choose the package kind above. It must match manifest.json: absent kind means attachment; submission requires kind: \"submission\" and bootstrap.sh, with no effects, compatible_harnesses or provides. MAESTRO_TASK_NAME is available during every install.",
+    "mismatch": "The selected kind must match kind in manifest.json.",
+    "bootstrapRequired": "A submission requires bootstrap.sh."
   }
 }

@@ -264,4 +264,4 @@ Harbor 限制了执行器能做的事：任务格式、每个试次一个容器�
 
 结论已并入 [02](../../design/02-datasets-preparation.md)、[07](../../design/07-artifacts-export.md)、[08](../../design/08-collections-comparison.md)、[09](../../design/09-identity-security.md)、[10](../../design/10-api-sdk-cli.md)、[11](../../design/11-web-ui.md) 与 [13](../../design/13-testing-plan.md)。网页及版本管理的后续补齐已由 [N-35](N-35-web-dataset-upload.md) 完成，工作流文字与引用展示由 [N-36](N-36-record-text.md) 完成。
 
-验证依据仍为第 7.1 节的固定版本可用性检查，保留当时未覆盖真实 CADGenBench、真实模型和用户附件改进实验的记录。本次状态整理没有新增产品验收结论。评测拆分继续按第 6.1 节与 U-86 暂缓；由实验提出的后续能力另见 [N-39](../N-39-skill-datasets-environments.md)、[N-40](../N-40-oracle-attachments.md)、[N-41](../N-41-submission-runs.md)。
+验证依据仍为第 7.1 节的固定版本可用性检查，保留当时未覆盖真实 CADGenBench、真实模型和用户附件改进实验的记录。本次状态整理没有新增产品验收结论。评测拆分继续按第 6.1 节与 U-86 暂缓；由实验提出的后续能力另见 [N-39](../N-39-skill-datasets-environments.md)、[N-40](N-40-oracle-attachments.md)、[N-41](N-41-submission-runs.md)。

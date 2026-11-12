@@ -1,6 +1,6 @@
 # N-40 Oracle 运行带附件
 
-状态：实施中（U-101） · 优先级：建议二 · 2026-11-11 · 相关：[03 配置与附件](../design/03-configuration-attachments.md)、[05 调度与执行](../design/05-scheduling-execution.md)、[06 结果与评分](../design/06-results-scoring.md)、[09 身份与安全](../design/09-identity-security.md)、[11 网页](../design/11-web-ui.md)、[15 Harbor 集成](../design/15-stack-harbor.md)、[N-39](N-39-skill-datasets-environments.md)、[N-41](N-41-submission-runs.md)
+状态：完成（U-101） · 优先级：建议二 · 2026-11-11 · 相关：[03 配置与附件](../../design/03-configuration-attachments.md)、[05 调度与执行](../../design/05-scheduling-execution.md)、[06 结果与评分](../../design/06-results-scoring.md)、[09 身份与安全](../../design/09-identity-security.md)、[11 网页](../../design/11-web-ui.md)、[15 Harbor 集成](../../design/15-stack-harbor.md)、[N-39](../N-39-skill-datasets-environments.md)、[N-41](N-41-submission-runs.md)
 
 ## 问题
 
@@ -80,4 +80,4 @@ Oracle 运行不检查附件的 `compatible_harnesses`，任何附件都可以�
 
 ## 结果
 
-本轮从想法整理为提案，尚未实施。
+已实现 Oracle 附件安装：复用有序复制、摘要校验、限时脚本与安装记录；跳过 Harness 兼容检查并提示，无附件 Oracle 保持原路径。有附件时下发并记录 setup 网络，作用域结束后参考解与 verifier 不继承安装变量。配置、SDK、网页与 Runner 回归通过；新增真实 Docker 用例已收集并默认跳过，Docker 现场验证待执行。

@@ -329,13 +329,14 @@ def _compared(row, snapshot) -> ComparedRun:
     )
 
 
-def _refuse_oracle(snapshot, path: str) -> None:
-    if snapshot.effective_json.get("execution_mode") == "oracle":
+def _refuse_non_agent(snapshot, path: str) -> None:
+    mode = snapshot.effective_json.get("execution_mode")
+    if mode != "agent":
         raise MaestroError(
-            "COMPARISON_ORACLE_RUN",
-            "Oracle runs are a test mode and are never compared with model results",
+            "COMPARISON_AGENT_ONLY",
+            f"Only agent runs can be compared; this run uses {mode}",
             422,
-            field_errors=[FieldError(path, "ORACLE")],
+            field_errors=[FieldError(path, "AGENT_REQUIRED", str(mode))],
         )
 
 
@@ -376,7 +377,7 @@ def table(
         if deletions.get(run_id) or run_id not in snapshots:
             set_aside.append({"run_id": run_id, "name": rows[run_id]["name"], "reason": "deleted"})
             continue
-        _refuse_oracle(snapshots[run_id], f"/run_ids/{index}")
+        _refuse_non_agent(snapshots[run_id], f"/run_ids/{index}")
         kept.append(run_id)
     trials = _trials(conn, kept)
     runs = []
@@ -752,7 +753,7 @@ class Collections:
                     field_errors=[FieldError("/base/run_id", "NOT_FOUND")],
                 )
             snapshot = _snapshots(conn, [run_id])[run_id]
-            _refuse_oracle(snapshot, "/base/run_id")
+            _refuse_non_agent(snapshot, "/base/run_id")
             effective = snapshot.effective_json
             contract = snapshot_contract(snapshot.policy_json)
             request = snapshot.provenance_json.get("request")
@@ -772,10 +773,16 @@ class Collections:
             if res.effective is None or res.effective.get("model") is None:
                 res.raise_if_blocked()
                 raise MaestroError(
-                    "COMPARISON_ORACLE_RUN",
-                    "A collection compares model runs; Oracle is a test mode",
+                    "COMPARISON_AGENT_ONLY",
+                    f"Only agent runs can join a collection; this request uses {request['execution_mode']}",
                     422,
-                    field_errors=[FieldError("/base/request/execution_mode", "ORACLE")],
+                    field_errors=[
+                        FieldError(
+                            "/base/request/execution_mode",
+                            "AGENT_REQUIRED",
+                            request["execution_mode"],
+                        )
+                    ],
                 )
             effective = res.effective
             contract = contract_for(res.version["manifest_json"])
@@ -890,7 +897,7 @@ class Collections:
                 field_errors=[FieldError(path, "NOT_FOUND")],
             )
         snapshot = _snapshots(conn, [run_id])[run_id]
-        _refuse_oracle(snapshot, path)
+        _refuse_non_agent(snapshot, path)
         dims = dimensions_of(
             comparison_view(snapshot.effective_json), snapshot_contract(snapshot.policy_json)
         )
@@ -1264,6 +1271,14 @@ class Collections:
         if collection_id is None:
             return body, None
         row = self._live(conn, collection_id)
+        mode = body.get("execution_mode")
+        if mode is not None and mode != "agent":
+            raise MaestroError(
+                "COLLECTION_MISMATCH",
+                f"Only agent runs can join a collection; this request uses {mode}",
+                409,
+                field_errors=[FieldError("/execution_mode", "AGENT_REQUIRED", mode)],
+            )
         merged, supplied = merge(request_input(row["template_json"]), body)
         return merged, {"collection_id": collection_id, "fields": supplied, "row": row}
 
@@ -1272,12 +1287,12 @@ class Collections:
         row = self._live(conn, collection_id)
         if res.effective is None:
             return []
-        if res.effective.get("execution_mode") == "oracle":
+        if res.effective.get("execution_mode") != "agent":
             return [
                 Blocker(
                     "COLLECTION_MISMATCH",
                     "/execution_mode",
-                    "Oracle runs cannot join a collection",
+                    f"Only agent runs can join a collection; this run uses {res.effective.get('execution_mode')}",
                     error="COLLECTION_MISMATCH",
                     status=409,
                 )

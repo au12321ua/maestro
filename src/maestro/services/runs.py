@@ -36,6 +36,7 @@ from maestro.domain.states import (
     result_completeness,
     trial_counts,
 )
+from maestro.execution.attachments import installed_packages
 from maestro.execution.policy import POLICY_VERSION
 from maestro.services import (
     audit,
@@ -987,7 +988,7 @@ class Runs:
             )
         )
         operations.set_resource(conn, op_id, "run", run_id)
-        for position, attachment in enumerate(effective.get("attachments") or []):
+        for position, attachment in enumerate(installed_packages(effective)):
             conn.execute(
                 insert(t.run_attachments).values(
                     run_id=run_id,

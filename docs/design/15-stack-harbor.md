@@ -84,7 +84,9 @@ Worker 在服务进程内，负责领取、租约、取消、资源和结果确�
 - `RetryConfig` 由平台错误策略推出并显式下发：最大重试次数、退避参数，以及不重试的异常名单（`exclude_exceptions`）；不使用 Harbor 默认名单，平台也不在外层再重试，避免两层相乘（U-15、D-006）。Harbor 内的每次重试在平台记为一次执行尝试。
 - 时限覆盖（Agent / 验证超时）与平台标签的 compose override 一并写入。资源覆盖是试次内所有容器的新总量，多出的部分写进主环境；独立验证器照主环境起新容器时两者设置相同，各得一半（[03](03-configuration-attachments.md) 第 3 节）。
 
-Agent 必须显式指定：Harbor 的默认 Agent 是 oracle，不能因为漏填而执行参考答案。Oracle 只作为 `execution_mode = oracle` 的测试模式，不混入模型能力比较。
+Agent 必须显式指定：Harbor 的默认 Agent 是 oracle，不能因为漏填而执行参考答案。Oracle 只作为 `execution_mode = oracle` 的测试模式；带附件时使用继承 Harbor OracleAgent 的包装类，在 setup 共用安装器，之后保留参考解的原 run。无附件 Oracle 保留上游类与空 setup，不依赖安装网络。提交评分使用继承 Harbor NopAgent 的包装类，在 setup 安装待评提交，run 不做任何事；Harbor 0.24.0 的 `Trial.run` 在准备成功后进入 `SingleStepTrial._run`，空 run 后仍正常调用 verifier，准备失败则两者都不执行。这两种运行均不混入模型能力比较。
+
+Runner 为每个任务私有副本的环境目录记录作者任务名（显式 task.name，否则目录任务键），给所有安装脚本注入 `MAESTRO_TASK_NAME`，避免缓存摘要或数字目录名改变脚本选择。无 Harness 安装的 setup 超时包含累计脚本时限与逐包传输余量，不额外分配 Harness 安装时间。setup 环境通过作用域包装使用，不进入参考解与 verifier。
 
 平台预检在受理时完成：内容固定、任务准入、已知内容阻塞、必要配置、资源、权限，以及模型运行所需的网络收紧能力（启动时用 Runner 的 `probe` 命令探测）。本机缓存缺失只形成运行恢复计划，不要求管理员重新准入。
 
@@ -119,6 +121,7 @@ Runner 依赖 Harbor 的私有接口与内部行为，升级 Harbor 时须逐项
 - Terminus-2 为在 Runner 内传入密钥覆盖了 `_init_llm`。
 - OpenCode 2.x 借用 Harbor 1.x OpenCode 类的配置写入、事件解析与用量统计，自己重写安装、版本解析与运行命令；上游 2.x 改事件格式时用量会变成未知。
 - 容器内 Harness 的包装层覆盖了 `_env_sources`（不读 Runner 环境）与 `install`（已有同一版本则跳过）；Codex 覆盖 `_resolve_auth_json_path` 并依赖 `_REMOTE_CODEX_SECRETS_DIR`，Claude Code 依赖 `config` 作为 `--settings` 上传与 `ANTHROPIC_BASE_URL` 的读取方式，并重写了安装命令。实时日志按 `agent/opencode.txt`、`agent/codex.txt`、`agent/claude-code.txt` 的事件格式渲染（`job.py`），上游改格式时只影响可读日志，不影响评分。
+- Oracle 带附件时为本 Runner 作业注册 `AgentFactory._AGENT_MAP[AgentName.ORACLE]` 包装类，保留 Harbor 仅对 oracle 名称注入的 `task_dir` 与 `trial_paths`；依赖内置名称优先于 import_path 的工厂行为。提交评分依赖 NopAgent 的空 run 后仍进入 verifier、setup 错误阻止 run 与 verifier 的顺序，升级须复核 `Trial.run` 与 `SingleStepTrial._run`。
 - Runner 照搬 Harbor 0.24.0 TrialQueue 的重试规则推断 attempt_finished 中的“是否还会重试”（`_will_retry`）。
 
 ## 9. 为什么仍然自建

@@ -172,7 +172,8 @@
     "rerunScopeValue": "{{count}} 个任务；原结果：{{causes}}",
     "agentSummary": "{{label}}（<code>{{modelId}}</code>，{{provider}}，修订 {{revision}}）· {{harness}}",
     "attachments": "附件：",
-    "installTimeout": "（每试次安装时限 {{count}} 秒）"
+    "installTimeout": "（每试次安装时限 {{count}} 秒）",
+    "submission": "提交评分"
   },
   "deletion": {
     "runPurged": "该运行已彻底删除",
@@ -206,7 +207,8 @@
     "failed": "安装脚本失败",
     "timeout": "安装超时",
     "transfer_mismatch": "复制后内容不符",
-    "transfer_failed": "复制失败"
+    "transfer_failed": "复制失败",
+    "ok": "安装成功"
   },
   "execution": {
     "repetition": "第 {{index}} 次重复",
@@ -226,7 +228,10 @@
     "logEmpty": "（空）",
     "available": "可用 {{n}}",
     "expired": "过期 {{n}}",
-    "failed": "失败 {{n}}"
+    "failed": "失败 {{n}}",
+    "installRecords": "安装记录",
+    "installUser": "安装用户：{{user}}",
+    "defaultInstallUser": "容器默认用户"
   },
   "summary": {
     "direction": {

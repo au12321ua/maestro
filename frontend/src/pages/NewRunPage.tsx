@@ -225,6 +225,7 @@ export function NewRunPage() {
   });
   // Attachment snapshot ids in load order.
   const [chosenAttachments, setChosenAttachments] = useState<string[]>([]);
+  const [submissionId, setSubmissionId] = useState("");
   // An earlier model revision, pinned by an imported request until the model changes.
   const [modelRevision, setModelRevision] = useState<number | null>(null);
   const [planId, setPlanId] = useState("");
@@ -258,17 +259,21 @@ export function NewRunPage() {
   );
   const harness = compatible.find((h) => h.id === harnessId) ?? compatible[0];
   const eligible = (tasks.data ?? []).filter((t) => t.can_submit);
-  const attachmentById = new Map((attachments.data ?? []).map((a) => [a.id, a]));
+  const attachmentById = new Map(
+    (attachments.data ?? []).map((a) => [a.id, a]),
+  );
   const addable = (attachments.data ?? []).filter(
     (a) =>
+      (a.kind ?? "attachment") === "attachment" &&
       !chosenAttachments.includes(a.id) &&
-      (!harness ||
+      (executionMode === "oracle" ||
+        !harness ||
         a.compatible_harnesses.includes("*") ||
         a.compatible_harnesses.includes(harness.agent)),
   );
-  const installs = chosenAttachments.some(
-    (id) => attachmentById.get(id)?.has_bootstrap,
-  );
+  const installs =
+    executionMode === "submission" ||
+    chosenAttachments.some((id) => attachmentById.get(id)?.has_bootstrap);
   const moveAttachment = (index: number, step: number) => {
     const next = [...chosenAttachments];
     const [item] = next.splice(index, 1);
@@ -340,9 +345,10 @@ export function NewRunPage() {
             model_revision: modelRevision,
             harness_version_id: harness?.id ?? null,
             harness_params: typedHarnessParams,
-            attachments: chosenAttachments,
           }
         : {}),
+      attachments: executionMode === "submission" ? [] : chosenAttachments,
+      submission: executionMode === "submission" ? submissionId || null : null,
       repetitions: numberOrNull(overrides.repetitions),
       concurrency: numberOrNull(overrides.concurrency),
       run_deadline_hours: numberOrNull(overrides.run_deadline_hours),
@@ -353,8 +359,7 @@ export function NewRunPage() {
       timeouts: {
         agent_sec: numberOrNull(overrides.agent_sec),
         verifier_sec: numberOrNull(overrides.verifier_sec),
-        bootstrap_sec:
-          executionMode === "agent" ? numberOrNull(overrides.bootstrap_sec) : null,
+        bootstrap_sec: numberOrNull(overrides.bootstrap_sec),
       },
       parameters: params,
     };
@@ -378,9 +383,12 @@ export function NewRunPage() {
     if (req.harness_version_id) setHarnessId(req.harness_version_id);
     if (req.harness_params)
       setHarnessParams(
-        Object.fromEntries(Object.entries(req.harness_params).map(([k, v]) => [k, String(v)])),
+        Object.fromEntries(
+          Object.entries(req.harness_params).map(([k, v]) => [k, String(v)]),
+        ),
       );
     if (req.attachments) setChosenAttachments(req.attachments);
+    setSubmissionId(req.submission ?? "");
     if (req.task_selection) {
       setMode(req.task_selection.mode ?? "all_eligible");
       setSelected(new Set(req.task_selection.task_ids ?? []));
@@ -571,9 +579,17 @@ export function NewRunPage() {
 
   const addToDraft = () => {
     const label = [
-      executionMode === "agent" ? (model?.name ?? t("newRun.draft.modelFallback")) : "Oracle",
-      harness ? `${harness.name} ${harness.version}` : null,
-      chosenAttachments.length
+      executionMode === "agent"
+        ? (model?.name ?? t("newRun.draft.modelFallback"))
+        : t(
+            executionMode === "submission"
+              ? "newRun.basic.submissionMode"
+              : "newRun.basic.oracleMode",
+          ),
+      executionMode === "agent" && harness
+        ? `${harness.name} ${harness.version}`
+        : null,
+      executionMode !== "submission" && chosenAttachments.length
         ? t("newRun.draft.attachmentCount", { count: chosenAttachments.length })
         : null,
     ]
@@ -1030,23 +1046,39 @@ export function NewRunPage() {
                   />
                   {t("newRun.basic.oracleMode")}
                 </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="execution-mode"
+                    disabled={!!loadedCollectionId}
+                    checked={executionMode === "submission"}
+                    onChange={() => changed(setExecutionMode)("submission")}
+                  />
+                  {t("newRun.basic.submissionMode")}
+                </label>
               </fieldset>
-              {!copyCollectionId && <TextField
-                id="run-client-request"
-                label={t("newRun.basic.clientRequestId")}
-                value={clientRequestId}
-                onChange={(e) => setClientRequestId(e.target.value)}
-                error={fieldErr("client_request_id")}
-                hint={t("newRun.basic.clientRequestIdHint")}
-              />}
+              {!copyCollectionId && (
+                <TextField
+                  id="run-client-request"
+                  label={t("newRun.basic.clientRequestId")}
+                  value={clientRequestId}
+                  onChange={(e) => setClientRequestId(e.target.value)}
+                  error={fieldErr("client_request_id")}
+                  hint={t("newRun.basic.clientRequestIdHint")}
+                />
+              )}
             </CardContent>
           </Card>
 
           {executionMode === "agent" && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">{t("newRun.model.title")}</CardTitle>
-                <CardDescription>{t("newRun.model.description")}</CardDescription>
+                <CardTitle className="text-base">
+                  {t("newRun.model.title")}
+                </CardTitle>
+                <CardDescription>
+                  {t("newRun.model.description")}
+                </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4 md:grid-cols-2">
                 {models.data && models.data.length === 0 && (
@@ -1106,38 +1138,111 @@ export function NewRunPage() {
                   >
                     {compatible.map((h) => (
                       <option key={h.id} value={h.id}>
-                        {t("newRun.model.harnessOption", { name: h.name, version: h.version, agent: h.agent })}
+                        {t("newRun.model.harnessOption", {
+                          name: h.name,
+                          version: h.version,
+                          agent: h.agent,
+                        })}
                       </option>
                     ))}
                   </SelectField>
                 )}
                 {harness &&
-                  Object.entries(harness.parameter_schema.parameters).map(([pname, spec]) => (
-                    <TextField
-                      key={pname}
-                      id={`harness-param-${pname}`}
-                      label={t("newRun.model.harnessParam", { name: pname, type: spec.type })}
-                      placeholder={
-                        spec.default !== undefined
-                          ? t("newRun.defaultValue", { value: String(spec.default) })
-                          : t("newRun.model.unset")
-                      }
-                      value={harnessParams[pname] ?? ""}
-                      onChange={(e) =>
-                        changed(setHarnessParams)({
-                          ...harnessParams,
-                          [pname]: e.target.value,
-                        })
-                      }
-                      hint={spec.description ?? undefined}
-                    />
-                  ))}
+                  Object.entries(harness.parameter_schema.parameters).map(
+                    ([pname, spec]) => (
+                      <TextField
+                        key={pname}
+                        id={`harness-param-${pname}`}
+                        label={t("newRun.model.harnessParam", {
+                          name: pname,
+                          type: spec.type,
+                        })}
+                        placeholder={
+                          spec.default !== undefined
+                            ? t("newRun.defaultValue", {
+                                value: String(spec.default),
+                              })
+                            : t("newRun.model.unset")
+                        }
+                        value={harnessParams[pname] ?? ""}
+                        onChange={(e) =>
+                          changed(setHarnessParams)({
+                            ...harnessParams,
+                            [pname]: e.target.value,
+                          })
+                        }
+                        hint={spec.description ?? undefined}
+                      />
+                    ),
+                  )}
+              </CardContent>
+            </Card>
+          )}
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">
+                {executionMode === "submission"
+                  ? t("attachments.kind.submission")
+                  : t("newRun.attachments.title")}
+              </CardTitle>
+              {executionMode === "oracle" && (
+                <CardDescription>
+                  {t("newRun.attachments.noHarness")}
+                </CardDescription>
+              )}
+            </CardHeader>
+            <CardContent>
+              {executionMode === "submission" ? (
+                <div className="grid gap-3">
+                  <SelectField
+                    id="run-submission"
+                    label={t("attachments.kind.submission")}
+                    value={submissionId}
+                    onChange={(e) => changed(setSubmissionId)(e.target.value)}
+                    error={fieldErr("submission")}
+                  >
+                    <option value="">
+                      {t("newRun.attachments.chooseSubmission")}
+                    </option>
+                    {(attachments.data ?? [])
+                      .filter((a) => a.kind === "submission")
+                      .map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name} · {snapshotName(a)}
+                        </option>
+                      ))}
+                  </SelectField>
+                  {override(
+                    "bootstrap_sec",
+                    t("newRun.attachments.bootstrapTimeout"),
+                    t("newRun.scale.teamDefault", {
+                      default: limit(
+                        capabilities,
+                        "bootstrap_timeout_sec",
+                        600,
+                      ),
+                      max: limit(
+                        capabilities,
+                        "bootstrap_timeout_sec_max",
+                        3600,
+                      ),
+                    }),
+                  )}
+                </div>
+              ) : (
                 <div className="grid gap-2 md:col-span-2">
-                  <p className="text-sm font-medium">{t("newRun.attachments.title")}</p>
+                  <p className="text-sm font-medium">
+                    {t("newRun.attachments.title")}
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     <Trans
                       i18nKey="newRun.attachments.intro"
-                      components={{ link: <Link to="/attachments" className="mx-1 underline" /> }}
+                      components={{
+                        link: (
+                          <Link to="/attachments" className="mx-1 underline" />
+                        ),
+                      }}
                     />
                   </p>
                   {chosenAttachments.length > 0 && (
@@ -1220,9 +1325,9 @@ export function NewRunPage() {
                       }),
                     )}
                 </div>
-              </CardContent>
-            </Card>
-          )}
+              )}
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader>
@@ -1561,6 +1666,7 @@ const FIELD_LABEL: Record<string, string> = {
   "/model": t("newRun.model.model"),
   "/harness": "Harness",
   "/attachments": t("newRun.field.attachments"),
+  "/submission": t("attachments.kind.submission"),
   "/timeouts/bootstrap_sec": t("newRun.field.bootstrapTimeout"),
 };
 
@@ -1590,6 +1696,7 @@ function ResolutionReview({
     if (path === "/model") return resolution.labels.model ?? "—";
     if (path === "/harness") return resolution.labels.harness ?? "—";
     if (path === "/attachments") return resolution.labels.attachments || "—";
+    if (path === "/submission") return resolution.labels.submission || "—";
     if (path === "/timeouts/bootstrap_sec")
       return String(effective.bootstrap_timeout_sec ?? "—");
     const taskField = TASK_FIELD[path];

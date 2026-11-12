@@ -6,7 +6,7 @@
 
 本文列出验收场景（E2E-…、F-…）与需求编号的验收入口，并注明当前由哪些测试覆盖；没有自动化测试的标“未覆盖”。场景描述的是必须成立的行为，不记录某次运行的结果；实测记录按协作规则放在私有仓库 `maestro-site`。
 
-平台规则不依靠真实模型的偶然输出：端到端闭环优先用 Oracle 执行参考解法。测试夹具选择无需模型、无付费外部依赖的任务，显式设置 oracle；Oracle 结果标为测试模式。真实模型只做少量冒烟，验证凭据、模型参数和调用接入。
+平台规则不依靠真实模型的偶然输出：端到端闭环优先用 Oracle 执行参考解法。测试夹具选择无需模型、无付费外部依赖的任务，显式设置 oracle；Oracle 结果标为测试模式。提交评分使用本地交付物验证直接评分链路；真实模型只做少量冒烟，验证凭据、模型参数和调用接入。
 
 UI 文案与纯样式变更不写低价值单元测试；优先验证会导致重复执行、丢结果、错计分或越权的业务行为。
 
@@ -158,6 +158,10 @@ UI 文案与纯样式变更不写低价值单元测试；优先验证会导致�
 预期：上传不执行脚本；运行受理后每试次在自己的容器安装，除本试次输出目录外无宿主目录挂载，无管理员准备请求；记录摘要、身份、目录、时限和日志。安装可按准备策略联网，执行 / 验证切换到模型服务限制；失败仅影响对应试次，无伪造零分，不污染另一容器、共享缓存或数据集准入。安装与等待均受总时限约束。
 
 覆盖：`configuration/test_attachments.py`、`api/test_sdk.py`、`runner/test_runner_attachments.py`、`runs/test_harbor_executor.py`；`live/test_harbor_docker.py`（真实容器内安装、挂载与网络）。
+
+Oracle 附件与提交评分的配置、包类别互斥、兼容性警告、快照与重跑由 `configuration/test_attachments.py` 覆盖；安装网络输入和版本记录在 `configuration/test_setup_network.py`；生成契约与 SDK 提交在 `api/test_sdk.py`；非 agent 的比较与集合拒绝在 `results/test_comparison.py`、`results/test_collections.py`。
+
+Runner 的 `runner/test_runner_attachments.py` 使用锁定 Harbor 的真实 Trial 顺序与环境替身，检查 Oracle 安装后执行参考解、提交评分跳过参考解、任务名变量、setup 环境作用域，以及安装失败、超时时不运行 verifier、容器内副本不符时按沙箱失败处理。真实 Docker 用例在 `live/test_harbor_docker.py`：Oracle 两个有序附件；提交评分的有效 1、有效 0 与缺题安装失败。默认收集并跳过，须显式开启 `MAESTRO_DOCKER_TESTS=1`。这些新增 Docker 用例的现场验证待执行；网页新增交互的浏览器冒烟也待执行。
 
 ### E2E-RUN-05 附件快照的增量发布与取回
 

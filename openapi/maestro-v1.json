@@ -388,6 +388,15 @@
             "title": "Id",
             "type": "string"
           },
+          "kind": {
+            "default": "attachment",
+            "enum": [
+              "attachment",
+              "submission"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
           "label": {
             "anyOf": [
               {
@@ -438,6 +447,7 @@
           }
         },
         "required": [
+          "kind",
           "id",
           "name",
           "label",
@@ -3903,7 +3913,7 @@
         "properties": {
           "attachments": {
             "default": [],
-            "description": "Attachment snapshot ids in load order (model runs only)",
+            "description": "Attachment snapshot ids in load order (agent and oracle runs)",
             "items": {
               "type": "string"
             },
@@ -3950,7 +3960,8 @@
               {
                 "enum": [
                   "agent",
-                  "oracle"
+                  "oracle",
+                  "submission"
                 ],
                 "type": "string"
               },
@@ -3958,7 +3969,7 @@
                 "type": "null"
               }
             ],
-            "description": "agent: a model through a harness; oracle: each task's reference solution, a test mode never compared with model results. Required unless the plan has it",
+            "description": "agent: a model through a harness; oracle: each task's reference solution; submission: install one submission and run only the verifier. Only agent runs are comparable. Required unless the plan has it",
             "title": "Execution Mode"
           },
           "harness_params": {
@@ -4081,6 +4092,18 @@
               }
             ],
             "title": "Run Deadline Hours"
+          },
+          "submission": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "One submission-kind snapshot id; submission mode only",
+            "title": "Submission"
           },
           "task_selection": {
             "$ref": "#/components/schemas/TaskSelection-Input",
@@ -4101,7 +4124,7 @@
         "properties": {
           "attachments": {
             "default": [],
-            "description": "Attachment snapshot ids in load order (model runs only)",
+            "description": "Attachment snapshot ids in load order (agent and oracle runs)",
             "items": {
               "type": "string"
             },
@@ -4148,7 +4171,8 @@
               {
                 "enum": [
                   "agent",
-                  "oracle"
+                  "oracle",
+                  "submission"
                 ],
                 "type": "string"
               },
@@ -4156,7 +4180,7 @@
                 "type": "null"
               }
             ],
-            "description": "agent: a model through a harness; oracle: each task's reference solution, a test mode never compared with model results. Required unless the plan has it",
+            "description": "agent: a model through a harness; oracle: each task's reference solution; submission: install one submission and run only the verifier. Only agent runs are comparable. Required unless the plan has it",
             "title": "Execution Mode"
           },
           "harness_params": {
@@ -4279,6 +4303,18 @@
               }
             ],
             "title": "Run Deadline Hours"
+          },
+          "submission": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "One submission-kind snapshot id; submission mode only",
+            "title": "Submission"
           },
           "task_selection": {
             "$ref": "#/components/schemas/TaskSelection-Output",
@@ -4301,6 +4337,7 @@
           "harness_version_id",
           "harness_params",
           "attachments",
+          "submission",
           "repetitions",
           "concurrency",
           "run_deadline_hours",
@@ -5600,6 +5637,15 @@
             "title": "Has Bootstrap",
             "type": "boolean"
           },
+          "kind": {
+            "default": "attachment",
+            "enum": [
+              "attachment",
+              "submission"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
           "label": {
             "anyOf": [
               {
@@ -5625,6 +5671,7 @@
           }
         },
         "required": [
+          "kind",
           "version_id",
           "name",
           "label",
@@ -5676,7 +5723,8 @@
           "execution_mode": {
             "enum": [
               "agent",
-              "oracle"
+              "oracle",
+              "submission"
             ],
             "title": "Execution Mode",
             "type": "string"
@@ -5720,6 +5768,16 @@
             "title": "Run Deadline Hours",
             "type": "integer"
           },
+          "submission": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EffectiveAttachment"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "tasks": {
             "items": {
               "$ref": "#/components/schemas/EffectiveTask"
@@ -5737,6 +5795,7 @@
           "model",
           "harness",
           "attachments",
+          "submission",
           "bootstrap_timeout_sec",
           "overrides",
           "tasks",
@@ -7891,7 +7950,8 @@
             "items": {
               "enum": [
                 "agent",
-                "oracle"
+                "oracle",
+                "submission"
               ],
               "type": "string"
             },
@@ -11008,7 +11068,8 @@
           "execution_mode": {
             "enum": [
               "agent",
-              "oracle"
+              "oracle",
+              "submission"
             ],
             "title": "Execution Mode",
             "type": "string"
@@ -11108,6 +11169,17 @@
             ],
             "title": "Run Deadline Hours"
           },
+          "submission": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submission"
+          },
           "task_selection": {
             "$ref": "#/components/schemas/TaskSelection-Output"
           },
@@ -11125,6 +11197,7 @@
           "harness_version_id",
           "harness_params",
           "attachments",
+          "submission",
           "repetitions",
           "concurrency",
           "run_deadline_hours",
@@ -11785,7 +11858,8 @@
               {
                 "enum": [
                   "agent",
-                  "oracle"
+                  "oracle",
+                  "submission"
                 ],
                 "type": "string"
               },
@@ -11907,6 +11981,18 @@
               }
             ],
             "title": "Run Deadline Hours"
+          },
+          "submission": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "One submission-kind snapshot id; submission mode only",
+            "title": "Submission"
           },
           "task_selection": {
             "anyOf": [
@@ -11977,7 +12063,8 @@
               {
                 "enum": [
                   "agent",
-                  "oracle"
+                  "oracle",
+                  "submission"
                 ],
                 "type": "string"
               },
@@ -12099,6 +12186,18 @@
               }
             ],
             "title": "Run Deadline Hours"
+          },
+          "submission": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "One submission-kind snapshot id; submission mode only",
+            "title": "Submission"
           },
           "task_selection": {
             "anyOf": [
@@ -13322,6 +13421,17 @@
               }
             ]
           },
+          "submission": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submission"
+          },
           "team_policy": {
             "anyOf": [
               {
@@ -14103,7 +14213,7 @@
         "properties": {
           "attachments": {
             "default": [],
-            "description": "Attachment snapshot ids in load order (model runs only)",
+            "description": "Attachment snapshot ids in load order (agent and oracle runs)",
             "items": {
               "type": "string"
             },
@@ -14160,7 +14270,8 @@
               {
                 "enum": [
                   "agent",
-                  "oracle"
+                  "oracle",
+                  "submission"
                 ],
                 "type": "string"
               },
@@ -14317,6 +14428,18 @@
             ],
             "description": "Makes this a modified run of that run: its differences are recorded (start from GET /runs/{run_id}/request)",
             "title": "Source Run Id"
+          },
+          "submission": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "One submission-kind snapshot id; submission mode only",
+            "title": "Submission"
           },
           "task_selection": {
             "$ref": "#/components/schemas/TaskSelection-Input",
@@ -21315,6 +21438,26 @@
               "default": true,
               "title": "Include Disabled",
               "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "attachment",
+                    "submission"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
             }
           }
         ],

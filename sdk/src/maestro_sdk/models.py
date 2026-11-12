@@ -531,6 +531,7 @@ class EffectiveAttachment(BaseModel):
     content_digest: str
     effects: list[str]
     has_bootstrap: bool
+    kind: Literal["attachment", "submission"]
     label: str | None
     name: str
     provides: AttachmentProvides
@@ -2106,6 +2107,7 @@ class Attachment(BaseModel):
     files: list[AttachmentFile] | None
     has_bootstrap: Annotated[bool, Field(description="Has bootstrap.sh, run in each trial's setup")]
     id: str
+    kind: Literal["attachment", "submission"]
     label: str | None
     name: str
     owner_id: str
@@ -2328,7 +2330,7 @@ class ConfigRequestInput(BaseModel):
     )
     attachments: Annotated[
         list[str] | None,
-        Field(description="Attachment snapshot ids in load order (model runs only)"),
+        Field(description="Attachment snapshot ids in load order (agent and oracle runs)"),
     ] = []
     collection_id: Annotated[
         str | None,
@@ -2341,9 +2343,9 @@ class ConfigRequestInput(BaseModel):
         str | None, Field(description="Required unless the plan has it")
     ] = None
     execution_mode: Annotated[
-        Literal["agent", "oracle"] | None,
+        Literal["agent", "oracle", "submission"] | None,
         Field(
-            description="agent: a model through a harness; oracle: each task's reference solution, a test mode never compared with model results. Required unless the plan has it"
+            description="agent: a model through a harness; oracle: each task's reference solution; submission: install one submission and run only the verifier. Only agent runs are comparable. Required unless the plan has it"
         ),
     ] = None
     harness_params: dict[str, str | int | float | bool] | None = {}
@@ -2371,6 +2373,10 @@ class ConfigRequestInput(BaseModel):
     repetitions: int | None = None
     resources: Annotated[ResourceOverrides | None, Field(validate_default=True)] = {}
     run_deadline_hours: int | None = None
+    submission: Annotated[
+        str | None,
+        Field(description="One submission-kind snapshot id; submission mode only"),
+    ] = None
     task_selection: Annotated[TaskSelectionInput | None, Field(validate_default=True)] = {
         "mode": "all_eligible"
     }
@@ -2383,7 +2389,7 @@ class ConfigRequestOutput(BaseModel):
     )
     attachments: Annotated[
         list[str],
-        Field(description="Attachment snapshot ids in load order (model runs only)"),
+        Field(description="Attachment snapshot ids in load order (agent and oracle runs)"),
     ]
     collection_id: Annotated[
         str | None,
@@ -2394,9 +2400,9 @@ class ConfigRequestOutput(BaseModel):
     concurrency: int | None
     dataset_version_id: Annotated[str | None, Field(description="Required unless the plan has it")]
     execution_mode: Annotated[
-        Literal["agent", "oracle"] | None,
+        Literal["agent", "oracle", "submission"] | None,
         Field(
-            description="agent: a model through a harness; oracle: each task's reference solution, a test mode never compared with model results. Required unless the plan has it"
+            description="agent: a model through a harness; oracle: each task's reference solution; submission: install one submission and run only the verifier. Only agent runs are comparable. Required unless the plan has it"
         ),
     ]
     harness_params: dict[str, str | int | float | bool]
@@ -2421,6 +2427,10 @@ class ConfigRequestOutput(BaseModel):
     repetitions: int | None
     resources: ResourceOverrides
     run_deadline_hours: int | None
+    submission: Annotated[
+        str | None,
+        Field(description="One submission-kind snapshot id; submission mode only"),
+    ]
     task_selection: TaskSelectionOutput
     timeouts: TimeoutOverrides
 
@@ -2954,7 +2964,7 @@ class ExecutionInfo(BaseModel):
     capacity: HostCapacityView
     executor: str | None
     harness_adapters: list[HarnessAdapter]
-    modes: list[Literal["agent", "oracle"]]
+    modes: list[Literal["agent", "oracle", "submission"]]
     policy_version: str
 
 
@@ -3146,7 +3156,7 @@ class NormalizedRequest(BaseModel):
     attachments: list[str]
     concurrency: int | None
     dataset_version_id: str
-    execution_mode: Literal["agent", "oracle"]
+    execution_mode: Literal["agent", "oracle", "submission"]
     harness_params: dict[str, str | int | float | bool]
     harness_version_id: str | None
     model_config_id: str | None
@@ -3156,6 +3166,7 @@ class NormalizedRequest(BaseModel):
     repetitions: int | None
     resources: ResourceOverrides
     run_deadline_hours: int | None
+    submission: str | None
     task_selection: TaskSelectionOutput
     timeouts: TimeoutOverrides
 
@@ -3172,7 +3183,7 @@ class PlanTemplateInput(BaseModel):
     attachments: list[str] | None = None
     concurrency: int | None = None
     dataset_version_id: str | None = None
-    execution_mode: Literal["agent", "oracle"] | None = None
+    execution_mode: Literal["agent", "oracle", "submission"] | None = None
     harness_params: dict[str, str | int | float | bool] | None = None
     harness_version_id: str | None = None
     model_config_id: str | None = None
@@ -3181,6 +3192,10 @@ class PlanTemplateInput(BaseModel):
     repetitions: int | None = None
     resources: ResourceOverrides | None = None
     run_deadline_hours: int | None = None
+    submission: Annotated[
+        str | None,
+        Field(description="One submission-kind snapshot id; submission mode only"),
+    ] = None
     task_selection: TaskSelectionInput | None = None
     timeouts: TimeoutOverrides | None = None
 
@@ -3197,7 +3212,7 @@ class PlanTemplateOutput(BaseModel):
     attachments: list[str] | None = None
     concurrency: int | None = None
     dataset_version_id: str | None = None
-    execution_mode: Literal["agent", "oracle"] | None = None
+    execution_mode: Literal["agent", "oracle", "submission"] | None = None
     harness_params: dict[str, str | int | float | bool] | None = None
     harness_version_id: str | None = None
     model_config_id: str | None = None
@@ -3206,6 +3221,10 @@ class PlanTemplateOutput(BaseModel):
     repetitions: int | None = None
     resources: ResourceOverrides | None = None
     run_deadline_hours: int | None = None
+    submission: Annotated[
+        str | None,
+        Field(description="One submission-kind snapshot id; submission mode only"),
+    ] = None
     task_selection: TaskSelectionOutput | None = None
     timeouts: TimeoutOverrides | None = None
 
@@ -3305,6 +3324,7 @@ class ReferenceRevisions(BaseModel):
     harness_version: str | None = None
     model_config_: Annotated[RevisionRef | None, Field(alias="model_config")] = None
     plan: RevisionRef | None = None
+    submission: str | None = None
     team_policy: int | None = None
 
 
@@ -3408,7 +3428,7 @@ class RunCreate(BaseModel):
     )
     attachments: Annotated[
         list[str] | None,
-        Field(description="Attachment snapshot ids in load order (model runs only)"),
+        Field(description="Attachment snapshot ids in load order (agent and oracle runs)"),
     ] = []
     client_request_id: str | None = None
     collection_id: Annotated[
@@ -3419,7 +3439,7 @@ class RunCreate(BaseModel):
     ] = None
     concurrency: int | None = None
     dataset_version_id: str | None = None
-    execution_mode: Literal["agent", "oracle"] | None = None
+    execution_mode: Literal["agent", "oracle", "submission"] | None = None
     harness_params: dict[str, str | int | float | bool] | None = {}
     harness_version_id: str | None = None
     model_config_id: str | None = None
@@ -3452,6 +3472,10 @@ class RunCreate(BaseModel):
         Field(
             description="Makes this a modified run of that run: its differences are recorded (start from GET /runs/{run_id}/request)"
         ),
+    ] = None
+    submission: Annotated[
+        str | None,
+        Field(description="One submission-kind snapshot id; submission mode only"),
     ] = None
     task_selection: Annotated[TaskSelectionInput | None, Field(validate_default=True)] = {
         "mode": "all_eligible"
@@ -3981,7 +4005,7 @@ class EffectiveConfig(BaseModel):
     concurrency: int
     dataset: EffectiveDataset
     deviates_from_author_baseline: bool
-    execution_mode: Literal["agent", "oracle"]
+    execution_mode: Literal["agent", "oracle", "submission"]
     harness: EffectiveHarness | None
     model: EffectiveModel | None
     overrides: Annotated[
@@ -3990,6 +4014,7 @@ class EffectiveConfig(BaseModel):
     parameters: dict[str, ParameterChoice]
     repetitions: int
     run_deadline_hours: int
+    submission: EffectiveAttachment | None
     tasks: list[EffectiveTask]
 
 

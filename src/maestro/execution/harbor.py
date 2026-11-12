@@ -30,7 +30,7 @@ from maestro.boundaries.executor import (
 )
 from maestro.execution import process
 from maestro.execution.agents import endpoint_host
-from maestro.execution.attachments import AttachmentStore, display
+from maestro.execution.attachments import AttachmentStore, display, installed_packages
 from maestro.execution.docker import DockerResources
 from maestro.execution.materials import TaskMaterials
 from maestro.execution.policy import HARBOR_VERSION, MAPPING_ID, harbor_outcome, harbor_retry_config
@@ -296,6 +296,8 @@ class HarborExecutor:
         mode = effective.get("execution_mode")
         if mode == "oracle":
             return {"name": "oracle"}
+        if mode == "submission":
+            return {"name": "submission"}
         if mode != "agent":
             # Never let Harbor fall back to its default agent.
             raise ValueError(f"unsupported execution mode: {mode!r}")
@@ -314,8 +316,8 @@ class HarborExecutor:
 
     def _network(self, spec: RunSpec) -> dict | None:
         """Platform phase policy: model runs get it in place of the author's looser
-        settings, and the model's host stays reachable whatever the author set; Oracle
-        is a test mode and keeps the author's settings. Verification never needs the
+        settings, and the model's host stays reachable whatever the author set. Oracle and
+        submission runs keep the author's settings. Verification never needs the
         model; the agent phase needs it only when the harness calls the model from
         inside the container."""
         effective = spec.effective_config
@@ -332,7 +334,7 @@ class HarborExecutor:
         """Stored packages in load order, each checked against its digest just before the
         Runner copies it; the name of the first one missing or changed, if any."""
         found = []
-        for entry in spec.effective_config.get("attachments") or []:
+        for entry in installed_packages(spec.effective_config):
             path = (
                 await asyncio.to_thread(self.attachments.verified, entry["content_digest"])
                 if self.attachments is not None
@@ -343,6 +345,7 @@ class HarborExecutor:
                 return [], label
             found.append(
                 {
+                    **({"kind": "submission"} if entry.get("kind") == "submission" else {}),
                     "name": entry["name"],
                     "label": display(entry.get("label"), entry["content_digest"]),
                     "content_digest": entry["content_digest"],
@@ -441,8 +444,8 @@ class HarborExecutor:
             "task_env": self._task_env(spec),
             "attachments": attachments,
             "bootstrap_timeout_sec": spec.effective_config.get("bootstrap_timeout_sec"),
-            # Setup work only (harness install, attachment scripts); Oracle has none.
-            "setup_env": spec.setup_network.container_env() if harness else {},
+            # Scoped to installation; solve and verification never inherit these variables.
+            "setup_env": spec.setup_network.container_env() if harness or attachments else {},
             "harness_setup_timeout_sec": (
                 spec.setup_network.harness_setup_timeout_sec if harness else None
             ),

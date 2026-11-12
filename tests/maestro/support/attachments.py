@@ -28,6 +28,16 @@ def package(name="tools", bootstrap=True, extra_files=None, **fields) -> dict:
     return files
 
 
+def submission_package(name="deliverables", script=BOOTSTRAP, extra_files=None) -> dict:
+    return {
+        "manifest.json": json.dumps(
+            {"schema_version": 1, "name": name, "kind": "submission"}
+        ).encode(),
+        "bootstrap.sh": (script, 0o755),
+        **(extra_files or {}),
+    }
+
+
 def entries(files: dict) -> list[dict]:
     """The file list a client commits, and each content by its SHA-256."""
     listed = []
