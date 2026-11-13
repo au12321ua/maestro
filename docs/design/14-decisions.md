@@ -111,6 +111,7 @@
 | U-99 | 2026-11-11 | N-39 按纯指导范围；N-40 的两个待定问题：Oracle 运行不检查附件的 Harness 兼容声明，任何附件都能安装，页面提示没有安装 Harness；有附件的 Oracle 在 setup 阶段使用部署的安装网络，参考解与 verifier 不继承。是否实施由用户读后决定 | [N-39](../proposals/archive/N-39-skill-datasets-environments.md)、[N-40](../proposals/archive/N-40-oracle-attachments.md) 第 2、4 节；下方“N-39～N-41 的决定来源” |
 | U-100 | 2026-11-11 | N-41 改为附件的一个类别“待评提交”：复用附件的上传、快照、安装与删除，由包里的脚本按任务名放好文件；平台不检查它是否真的起到答案的作用，只提供更明确的语义。新执行方式“提交评分”，页面不显示为 Oracle（避免名不副实）：不调模型、不跑参考解，装好后直接跑 verifier，不参与比较与集合。不做初稿中的逐文件映射、逐试次来源与输入独立保留；U-86 的评测拆分仍暂缓。是否实施由用户读后决定 | [N-41](../proposals/archive/N-41-submission-runs.md)；下方“N-39～N-41 的决定来源” |
 | U-101 | 2026-11-11 | 确认实施 N-39、N-40、N-41，按 U-99、U-100 定下的范围；N-39 单独实施，N-40 与 N-41 一起实施。可由 Agent 借助 Codex（gpt-6.1-sol，思考强度 medium～max）完成，作为常备工具，主要为节省账号额度，也可以不用。每步检查通过后由 Agent 合入 `dev`；网络不通时先在本地合并，网络恢复后再推送 | [N-39](../proposals/archive/N-39-skill-datasets-environments.md)、[N-40](../proposals/archive/N-40-oracle-attachments.md)、[N-41](../proposals/archive/N-41-submission-runs.md) 状态改为实施中；下方“N-39～N-41 的决定来源” |
+| U-102 | 2026-11-12 | 确认实施 N-42：回收站多选恢复/彻底删除、选择当前筛选全部页，统一输入 DELETE，逐项执行并保留失败项和原因；Harness 从已有版本升级，保留名称、协议、参数定义和说明，选择确切上游版本发布，旧版本、方案与运行不自动替换，同名新版本在前。来源：本次对话用户要求“继续n42”“你来补一下吧”，并对以上两项范围分别回复“按这个范围完成” | [N-42](../proposals/archive/N-42-batch-recycle-harness-upgrade.md)、[03](03-configuration-attachments.md)、[07](07-artifacts-export.md)、[11](11-web-ui.md) |
 
 ### 本次文档整理的决定来源
 

@@ -55,8 +55,10 @@ def test_member_bins_own_run_admin_restores_and_purges(service, version_id, stor
         entry = alice.delete(f"/api/v1/runs/{run_id}", expect=200).json()["data"]
         artifact_keys = set(store.files)
         assert artifact_keys
-        wrong = purge(admin, entry, confirm="nope")
-        assert wrong.status_code == 422 and wrong.json()["error"]["code"] == "PURGE_NOT_CONFIRMED"
+        # Only the fixed word confirms; the object id no longer does.
+        for word in ("nope", entry["object_id"], "delete"):
+            assert purge(admin, entry, confirm=word).status_code == 422
+        assert bin_entry(admin, run_id)["state"] == "recycled"
         purged = purge(admin, entry).json()["data"]
         assert purged["state"] == "purged" and purged["detail"]["purged"]["trials"] == 3
         assert not store.files  # files gone with the run

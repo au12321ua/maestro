@@ -323,9 +323,10 @@ def restore_entry(entry_id: str, request: Request, who: Principal = Depends(prin
 def purge_entry(
     entry_id: str, body: PurgeRequest, request: Request, who: Principal = Depends(principal)
 ):
-    """Irreversible: removes content and files; the entry stays as the receipt."""
+    """Irreversible: removes content and files; the entry stays as the receipt. The body
+    carries the word DELETE so a stray request cannot purge; batches call this per entry."""
     service = maestro(request)
-    return ok(request, service.recycle.purge(who, entry_id, body.confirm_object_id))
+    return ok(request, service.recycle.purge(who, entry_id))
 
 
 # --- datasets and preparation -----------------------------------------------------

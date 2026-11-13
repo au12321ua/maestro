@@ -28,11 +28,8 @@ def bin_entry(admin, object_id, state="recycled") -> dict:
     return next(x for x in entries if x["object_id"] == object_id)
 
 
-def purge(admin, entry, confirm=None):
-    return admin.post(
-        f"/api/v1/admin/recycle-bin/{entry['id']}/purge",
-        json={"confirm_object_id": confirm or entry["object_id"]},
-    )
+def purge(admin, entry, confirm="DELETE"):
+    return admin.post(f"/api/v1/admin/recycle-bin/{entry['id']}/purge", json={"confirm": confirm})
 
 
 def make_owner(service) -> Principal:

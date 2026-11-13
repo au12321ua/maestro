@@ -72,6 +72,7 @@
 
 | 编号 | 状态 | 提案 |
 | --- | --- | --- |
+| N-42 | 完成 | [回收站批量操作与 Harness 升级](archive/N-42-batch-recycle-harness-upgrade.md)（U-102）→ [03](../design/03-configuration-attachments.md)、[07](../design/07-artifacts-export.md)、[11](../design/11-web-ui.md) |
 | N-37 | 完成 | [网页检查与触发更新，带排空](archive/N-37-web-update.md)（U-96、U-98）→ [12](../design/12-operations.md)、[05](../design/05-scheduling-execution.md)、[11](../design/11-web-ui.md)、[部署指南](../guides/deployment.md) |
 | N-36 | 完成 | [工作流记录：给人读写的文字与可跳转的引用](archive/N-36-record-text.md)（U-95、U-97）→ [01](../design/01-domain-model.md)、[10](../design/10-api-sdk-cli.md)、[11](../design/11-web-ui.md) |
 | N-35 | 完成 | [补齐 N-33 的网页一侧：数据集上传与版本管理、工作流记录读写、交付物导出](archive/N-35-web-dataset-upload.md)（U-92、U-93）→ [02](../design/02-datasets-preparation.md)、[08](../design/08-collections-comparison.md)、[11](../design/11-web-ui.md) |

@@ -92,7 +92,9 @@
     "schemaHint": "JSON，例如 {{example}}",
     "adapterParams": "这个适配器可声明的参数：{{list}}",
     "modelParams": "它能传递的模型配置参数：{{list}}",
-    "publish": "发布"
+    "publish": "发布",
+    "upgrade": "升级",
+    "upgradeFrom": "基于 {{name}} {{version}} 发布新版本。请选择确切的上游版本；旧版本、已有方案与运行不会自动替换。"
   },
   "policy": {
     "group": {

@@ -624,7 +624,8 @@ export interface paths {
         put?: never;
         /**
          * Purge Entry
-         * @description Irreversible: removes content and files; the entry stays as the receipt.
+         * @description Irreversible: removes content and files; the entry stays as the receipt. The body
+         *     carries the word DELETE so a stray request cannot purge; batches call this per entry.
          */
         post: operations["purge_entry"];
         delete?: never;
@@ -6517,10 +6518,11 @@ export interface components {
         /** PurgeRequest */
         PurgeRequest: {
             /**
-             * Confirm Object Id
-             * @description Repeat the object id: purging is irreversible
+             * Confirm
+             * @description The word DELETE: purging is irreversible
+             * @constant
              */
-            confirm_object_id: string;
+            confirm: "DELETE";
         };
         /** RecordCreate */
         RecordCreate: {

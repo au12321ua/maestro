@@ -1315,8 +1315,8 @@ class PurgeRequest(BaseModel):
     model_config = ConfigDict(
         extra="allow",
     )
-    confirm_object_id: Annotated[
-        str, Field(description="Repeat the object id: purging is irreversible")
+    confirm: Annotated[
+        Literal["DELETE"], Field(description="The word DELETE: purging is irreversible")
     ]
 
 

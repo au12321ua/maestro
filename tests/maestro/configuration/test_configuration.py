@@ -183,6 +183,12 @@ def test_harness_versions_are_fixed_and_checked_against_the_executor(service):
         assert created["content_digest"].startswith("sha256:")
         again = admin.post("/api/v1/admin/harness-versions", json=body)
         assert error(again) == (409, "HARNESS_VERSION_EXISTS")
+        newer = admin.post(
+            "/api/v1/admin/harness-versions", json={**body, "version": "2.0"}, expect=201
+        ).json()["data"]
+        versions = admin.get("/api/v1/harness-versions", expect=200).json()["data"]
+        assert [v["id"] for v in versions if v["name"] == "h"] == [newer["id"], created["id"]]
+        assert next(v for v in versions if v["id"] == created["id"]) == created
 
 
 # --- resolution ---------------------------------------------------------------------------
@@ -402,7 +408,7 @@ def test_snapshots_keep_their_model_revision_and_bind_the_credential(service, ve
         assert codes(gone) == ["DELETED"]
         admin.post(
             f"/api/v1/admin/recycle-bin/{entry['id']}/purge",
-            json={"confirm_object_id": model_id},
+            json={"confirm": "DELETE"},
             expect=200,
         )
         assert member.get(f"/api/v1/model-configs/{model_id}").status_code == 410
