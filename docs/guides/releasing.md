@@ -77,7 +77,7 @@ python3 tools/release.py publish --version X.Y.Z \
 
 1. 从本仓库 `verify.yml` 的分支 push 或手动运行中，找到准确 SHA 的 `verify` 任务及所有必需检查步骤成功记录，打印原运行链接。旧 SHA、其他工作流、失败或跳过的检查不能代用；上传失败不影响独立的源码检查结论。
 2. 核对源码版本、下一开发版本、发布说明与两端 tag；用普通快进推送推进 Gitea master，再创建、推送附注 tag。master 并发变化无法安全快进时停止，不强推或额外引入其他改动。
-3. Gitea 的 tag 任务重新核对上述源码检查、tag 类型与 master 祖先关系，然后自行构建、校验 manifest/摘要，在临时 HOME 和全新环境中安装实际 wheel。检查服务、SDK 元数据、导入路径、必要入口、包内页面及 SDK 附件一致性，不操作已有 state。SDK 先发布到包仓库，Release 附件齐全后才公开草稿。
+3. Gitea 的 tag 任务重新核对上述源码检查、tag 类型与 master 祖先关系（tag 类型向服务器查询：CI 的 checkout 会把本地附注 tag 换成普通引用），然后自行构建、校验 manifest/摘要，在临时 HOME 和全新环境中安装实际 wheel。检查服务、SDK 元数据、导入路径、必要入口、包内页面及 SDK 附件一致性，不操作已有 state。SDK 先发布到包仓库，Release 附件齐全后才公开草稿。
 4. 等 Gitea 成功后向 GitHub 推送相同 master 和 tag。GitHub 从同一 tag 重建、校验、通过草稿补齐 Release，再单独重建 Pages 索引，不重复源码测试。
 5. 核对两端附件实际下载摘要、SDK 包仓库和 Pages 索引的 wheel 摘要，再将正式准备及下一开发版本一起快进推到 dev。dev 有后续提交时，在 `--finish-worktree` 中合并保留它们；冲突保留现场，解决并提交后重跑。远端 dev 的头不会短暂停在正式版本。
 
