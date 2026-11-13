@@ -4,7 +4,7 @@
 
 ## 1. 安装布局与进程
 
-发布形式是压缩包（`tools/build_release.py` 生成），由包内只用系统 Python 标准库的 `maestroctl` 安装和维护（U-29）。根 `pyproject.toml` 是权威版本，服务运行时从安装元数据读取，SDK 包声明与契约由准备入口同步；Runner 独立版本不变。维护者用 `tools/release.py` 从固定 dev 提交准备正式候选、发布说明与下一开发版本，最终 SHA 完整检查后才快进 master 并创建固定附注 tag（U-66）。
+发布形式是压缩包（`tools/build_release.py` 生成），由包内只用系统 Python 标准库的 `maestroctl` 安装和维护（U-29）。根 `pyproject.toml` 是权威版本，号码按[发布指南](../guides/releasing.md)的版本号规则决定（U-103）；服务运行时从安装元数据读取，并从版本目录的 `RELEASE.json` 读出构建名（含提交号）报告给管理页，SDK 包声明与契约由准备入口同步；Runner 独立版本不变。维护者用 `tools/release.py` 从固定 dev 提交准备正式候选、发布说明与下一开发版本，最终 SHA 完整检查后才快进 master 并创建固定附注 tag（U-66）。
 
 所有分支 push 检查源码，PR 复用对应提交结果；正式 tag 读取准确 SHA 的成功 `verify` 任务及必需步骤，独立 `publish` 任务构建和验证实际 wheel，上传失败不改变源码检查结论（U-67）。dev 通过后发 Gitea 预览，正式 tag 发 Gitea Release 与同版本 SDK 包；GitHub 从相同 tag 重建并验证 Release，再更新 Pages 正式 SDK 索引（U-42、U-62）。预览 Release 与 `.dev<CI运行号>` SDK 各留最近 10 个，正式版不清理。
 

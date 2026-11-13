@@ -1490,7 +1490,10 @@ function MaintenanceTab() {
           <CardTitle className="text-base">{t("admin.maintenance.versionsTitle")}</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-2 text-sm sm:grid-cols-2">
-          <Field label={t("admin.maintenance.serviceVersion")} value={<code>{capabilities?.service_version ?? "—"}</code>} />
+          <Field
+            label={t("admin.maintenance.serviceVersion")}
+            value={<code>{capabilities?.service_build ?? capabilities?.service_version ?? "—"}</code>}
+          />
           <Field label={t("admin.maintenance.apiVersion")} value={<code>{capabilities?.api_version ?? "—"}</code>} />
           <Field label={t("admin.maintenance.schemaRevision")} value={<code>{capabilities?.schema_revision ?? "—"}</code>} />
           <Field
