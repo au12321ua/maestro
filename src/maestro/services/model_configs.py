@@ -500,7 +500,7 @@ class ModelConfigs:
             rows = conn.execute(
                 select(t.harness_versions)
                 .where(deleted.visible(t.harness_versions.c.id, "harness_version"))
-                .order_by(t.harness_versions.c.name, t.harness_versions.c.created_at)
+                .order_by(t.harness_versions.c.name, t.harness_versions.c.created_at.desc())
             ).mappings()
             return [self._public_harness(r) for r in rows]
 

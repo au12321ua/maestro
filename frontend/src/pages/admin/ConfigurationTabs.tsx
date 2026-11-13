@@ -541,12 +541,26 @@ export function HarnessesTab() {
     schema: '{\n  "parameters": {}\n}',
     description: "",
   });
+  const publishForm = useRef<HTMLDivElement>(null);
+  const [source, setSource] = useState<Harness | null>(null);
   const [error, setError] = useState<unknown>();
   const [busy, setBusy] = useState(false);
   const agent = form.agent || adapters.data?.[0]?.agent || "";
   const adapter = adapters.data?.find((a) => a.agent === agent);
   // The contract types protocols as plain strings; the adapters list only these three.
   const supported = adapter?.protocols ?? [];
+
+  const upgrade = (harness: Harness) => {
+    setSource(harness);
+    setError(undefined);
+    setForm({
+      name: harness.name, version: "", upstream: "", agent: harness.agent,
+      protocols: [...harness.protocols],
+      schema: JSON.stringify(harness.parameter_schema, null, 2),
+      description: harness.description,
+    });
+    publishForm.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   const create = async (e: FormEvent) => {
     e.preventDefault();
@@ -567,6 +581,7 @@ export function HarnessesTab() {
       });
       toast.success(t("adminConfig.harness.published"));
       setForm({ ...form, version: "", upstream: "" });
+      setSource(null);
       await harnesses.reload();
     } catch (err) {
       setError(err);
@@ -653,6 +668,11 @@ export function HarnessesTab() {
                         </Pill>
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-right">
+                        {adapters.data?.some((a) => a.agent === h.agent && a.package) && (
+                          <Button size="sm" variant="outline" disabled={busy} onClick={() => upgrade(h)}>
+                            {t("adminConfig.harness.upgrade")}
+                          </Button>
+                        )}{" "}
                         <Button
                           size="sm"
                           variant="outline"
@@ -698,9 +718,12 @@ export function HarnessesTab() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card ref={publishForm}>
         <CardHeader>
           <CardTitle className="text-base">{t("adminConfig.harness.publishTitle")}</CardTitle>
+          {source && <CardDescription>{t("adminConfig.harness.upgradeFrom", {
+            name: source.name, version: source.version,
+          })}</CardDescription>}
           {adapters.data && adapters.data.length === 0 && (
             <CardDescription>{t("adminConfig.harness.noAdapters")}</CardDescription>
           )}

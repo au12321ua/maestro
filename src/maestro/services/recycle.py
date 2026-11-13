@@ -906,17 +906,13 @@ class Recycle:
             )
             return {**public_entry(entry), "state": "restored"}
 
-    def purge(self, principal: Principal, entry_id: str, confirm_object_id: str) -> dict:
-        """Irreversible; the caller repeats the object id to confirm."""
+    def purge(self, principal: Principal, entry_id: str) -> dict:
+        """Irreversible; the request model carries the confirmation word."""
         require_admin_session(principal)
         with self.db.write() as conn:
             entry = self._bin_entry(conn, entry_id)
             if entry["state"] == deleted.PURGED:
                 return public_entry(entry)
-            if confirm_object_id != entry["object_id"]:
-                raise MaestroError(
-                    "PURGE_NOT_CONFIRMED", "Repeat the object id to confirm the purge", 422
-                )
             handler = self._handler(entry["object_type"])
             row = handler.load(conn, entry["object_id"])
             purged = handler.purge(conn, row, self, principal.user_id)

@@ -2236,7 +2236,7 @@ class RecycleEntry(Model):
 
 
 class PurgeRequest(Model):
-    confirm_object_id: str = Field(description="Repeat the object id: purging is irreversible")
+    confirm: Literal["DELETE"] = Field(description="The word DELETE: purging is irreversible")
 
 
 class OperationResource(Model):

@@ -945,7 +945,19 @@ function AuditTab() {
   );
 }
 
-const RECYCLE_TYPES = ["run", "artifact", "dataset", "dataset_version", "credential", "user", "pat"];
+// Every object type the bin can hold, in the order of the type labels.
+const RECYCLE_TYPES = Object.keys(RECYCLE_TYPE) as RecycleObjectType[];
+
+// Parents go back before their children: a dataset version or an artifact cannot be
+// restored while its dataset or run is still in the bin.
+const RESTORE_FIRST: string[] = ["user", "dataset", "run"];
+const restoreRank = (entry: RecycleEntry) => {
+  const rank = RESTORE_FIRST.indexOf(entry.object_type);
+  return rank < 0 ? RESTORE_FIRST.length : rank;
+};
+
+// The word a purge is confirmed with, whatever the number of entries.
+const PURGE_WORD = "DELETE";
 
 function RecycleBinTab() {
   const [state, setState] = useState<"recycled" | "purged">("recycled");
@@ -954,19 +966,28 @@ function RecycleBinTab() {
   const [cursor, setCursor] = useState<string | null>(null);
   const [error, setError] = useState<unknown>();
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState<string | null>(null);
+  const [failures, setFailures] = useState<{ entry: RecycleEntry; error: string }[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const busy = progress !== null;
+
+  const fetchPage = useCallback(
+    async (after: string | null) =>
+      api.get("/admin/recycle-bin", {
+        query: { state, object_type: objectType || undefined, cursor: after },
+      }),
+    [state, objectType],
+  );
 
   const load = useCallback(
     async (after: string | null) => {
       setLoading(true);
+      if (!after) {
+        setEntries([]);
+        setCursor(null);
+      }
       try {
-        const res = await api.get("/admin/recycle-bin", {
-          query: {
-            state,
-            object_type: objectType || undefined,
-            cursor: after,
-          },
-        });
+        const res = await fetchPage(after);
         setEntries((prev) => (after ? [...prev, ...res.data] : res.data));
         setCursor(res.meta.next_cursor ?? null);
         setError(undefined);
@@ -976,61 +997,133 @@ function RecycleBinTab() {
         setLoading(false);
       }
     },
-    [state, objectType],
+    [fetchPage],
   );
 
   useEffect(() => {
+    setSelected(new Set());
+    setFailures([]);
     void load(null);
   }, [load]);
 
-  const restore = async (entry: RecycleEntry) => {
-    if (
-      !window.confirm(
-        t("admin.recycleBin.confirmRestore", {
-          type: RECYCLE_TYPE[entry.object_type] ?? entry.object_type,
-          name: entry.label,
-        }),
-      )
-    )
-      return;
-    setBusy(entry.id);
+  const selectable = state === "recycled";
+  const chosen = entries.filter((e) => selected.has(e.id));
+  const allLoadedChosen = entries.length > 0 && chosen.length === entries.length;
+
+  const toggle = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const toggleLoaded = () =>
+    setSelected(allLoadedChosen ? new Set() : new Set(entries.map((e) => e.id)));
+
+  // Loads the remaining pages of the current filter, then selects all of it.
+  const selectAllMatching = async () => {
+    setLoading(true);
     try {
-      await api.post("/admin/recycle-bin/{entry_id}/restore", { path: { entry_id: entry.id } });
-      toast.success(t("admin.recycleBin.restored"));
+      let all = entries;
+      let after = cursor;
+      while (after) {
+        const res = await fetchPage(after);
+        all = [...all, ...res.data];
+        after = res.meta.next_cursor ?? null;
+      }
+      setEntries(all);
+      setCursor(null);
+      setSelected(new Set(all.map((e) => e.id)));
+      setError(undefined);
     } catch (err) {
-      toast.error(t("admin.recycleBin.restoreFailed", { error: errorText(err) }));
+      setError(err);
     } finally {
-      setBusy(null);
+      setLoading(false);
     }
-    await load(null);
   };
 
-  const purge = async (entry: RecycleEntry) => {
+  // One request per entry, one after another: each succeeds or fails on its own, and
+  // the failed ones stay selected with their reasons listed.
+  const runBatch = async (
+    items: RecycleEntry[],
+    call: (entry: RecycleEntry) => Promise<unknown>,
+    messages: { done: "admin.recycleBin.restored" | "admin.recycleBin.purged"; failed: "admin.recycleBin.restoreFailed" | "admin.recycleBin.purgeFailed" },
+  ) => {
+    const failed: { entry: RecycleEntry; error: string }[] = [];
+    setFailures([]);
+    setProgress({ done: 0, total: items.length });
+    for (const [index, entry] of items.entries()) {
+      try {
+        await call(entry);
+      } catch (err) {
+        failed.push({ entry, error: errorText(err) });
+      }
+      setProgress({ done: index + 1, total: items.length });
+    }
+    const succeeded = items.length - failed.length;
+    if (succeeded > 0) toast.success(t(messages.done, { count: succeeded }));
+    if (failed.length > 0) {
+      toast.error(
+        t(messages.failed, {
+          count: failed.length,
+          details: failed
+            .slice(0, 5)
+            .map((f) => `${f.entry.label}: ${f.error}`)
+            .join("\n"),
+        }),
+      );
+    }
+    setFailures(failed);
+    setSelected(new Set(failed.map((f) => f.entry.id)));
+    // Keep failures from every loaded page visible and selected for retry.
+    const failedIds = new Set(failed.map((f) => f.entry.id));
+    const actedIds = new Set(items.map((e) => e.id));
+    setEntries((previous) => previous.filter((e) => !actedIds.has(e.id) || failedIds.has(e.id)));
+    setProgress(null);
+  };
+
+  const listed = (items: RecycleEntry[]) =>
+    items
+      .slice(0, 5)
+      .map((e) => t("admin.recycleBin.entryLabel", { type: RECYCLE_TYPE[e.object_type] ?? e.object_type, name: e.label }))
+      .join("\n") +
+    (items.length > 5 ? `\n${t("admin.recycleBin.andMore", { count: items.length - 5 })}` : "");
+
+  const restore = async (items: RecycleEntry[]) => {
+    if (!window.confirm(t("admin.recycleBin.confirmRestore", { count: items.length, list: listed(items) })))
+      return;
+    const ordered = [...items].sort((a, b) => restoreRank(a) - restoreRank(b));
+    await runBatch(
+      ordered,
+      (entry) =>
+        api.post("/admin/recycle-bin/{entry_id}/restore", { path: { entry_id: entry.id } }),
+      { done: "admin.recycleBin.restored", failed: "admin.recycleBin.restoreFailed" },
+    );
+  };
+
+  const purge = async (items: RecycleEntry[]) => {
     const typed = window.prompt(
       t("admin.recycleBin.purgePrompt", {
-        type: RECYCLE_TYPE[entry.object_type] ?? entry.object_type,
-        name: entry.label,
-        id: entry.object_id,
+        count: items.length,
+        list: listed(items),
+        word: PURGE_WORD,
       }),
     );
     if (typed === null) return;
-    if (typed.trim() !== entry.object_id) {
-      toast.error(t("admin.recycleBin.idMismatch"));
+    if (typed.trim() !== PURGE_WORD) {
+      toast.error(t("admin.recycleBin.wordMismatch", { word: PURGE_WORD }));
       return;
     }
-    setBusy(entry.id);
-    try {
-      await api.post("/admin/recycle-bin/{entry_id}/purge", {
-        path: { entry_id: entry.id },
-        body: { confirm_object_id: typed.trim() },
-      });
-      toast.success(t("admin.recycleBin.purged"));
-    } catch (err) {
-      toast.error(t("admin.recycleBin.purgeFailed", { error: errorText(err) }));
-    } finally {
-      setBusy(null);
-    }
-    await load(null);
+    await runBatch(
+      items,
+      (entry) =>
+        api.post("/admin/recycle-bin/{entry_id}/purge", {
+          path: { entry_id: entry.id },
+          body: { confirm: PURGE_WORD },
+        }),
+      { done: "admin.recycleBin.purged", failed: "admin.recycleBin.purgeFailed" },
+    );
   };
 
   return (
@@ -1048,6 +1141,7 @@ function RecycleBinTab() {
               <button
                 key={value}
                 type="button"
+                disabled={busy || loading}
                 className={cn(
                   "rounded px-3 py-1",
                   state === value ? "bg-primary text-primary-foreground" : "text-muted-foreground",
@@ -1062,6 +1156,7 @@ function RecycleBinTab() {
             aria-label={t("admin.recycleBin.objectType")}
             className="h-8 rounded-md border border-input bg-background px-2 text-sm"
             value={objectType}
+            disabled={busy || loading}
             onChange={(e) => setObjectType(e.target.value as RecycleObjectType | "")}
           >
             <option value="">{t("admin.recycleBin.allTypes")}</option>
@@ -1071,11 +1166,51 @@ function RecycleBinTab() {
               </option>
             ))}
           </select>
-          <Button size="sm" variant="outline" onClick={() => void load(null)}>
+          <Button size="sm" variant="outline" disabled={busy || loading} onClick={() => void load(null)}>
             {t("admin.actions.refresh")}
           </Button>
         </div>
+        {selectable && entries.length > 0 && (
+          <div
+            className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm"
+            data-testid="recycle-selection"
+          >
+            <span>
+              {progress
+                ? t("admin.recycleBin.progress", progress)
+                : t("admin.recycleBin.selectedCount", { count: chosen.length })}
+            </span>
+            {cursor && !busy && (
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={loading}
+                onClick={() => void selectAllMatching()}
+              >
+                {t("admin.recycleBin.selectAllMatching")}
+              </Button>
+            )}
+            {chosen.length > 0 && !busy && !loading && (
+              <>
+                <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
+                  {t("admin.recycleBin.clearSelection")}
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => void restore(chosen)}>
+                  {t("admin.recycleBin.restoreSelected")}
+                </Button>
+                <Button size="sm" variant="destructive" onClick={() => void purge(chosen)}>
+                  {t("admin.recycleBin.purgeSelected")}
+                </Button>
+              </>
+            )}
+          </div>
+        )}
         <ErrorAlert error={error} />
+        {failures.length > 0 && (
+          <ul className="list-disc space-y-1 pl-5 text-sm text-destructive" data-testid="recycle-failures">
+            {failures.map(({ entry, error }) => <li key={entry.id}>{entry.label}: {error}</li>)}
+          </ul>
+        )}
         {!loading && entries.length === 0 && !error && (
           <EmptyNote>{state === "recycled" ? t("admin.recycleBin.emptyRecycled") : t("admin.recycleBin.emptyPurged")}</EmptyNote>
         )}
@@ -1084,6 +1219,17 @@ function RecycleBinTab() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  {selectable && (
+                    <TableHead className="w-8">
+                      <input
+                        type="checkbox"
+                        aria-label={t("admin.recycleBin.selectLoaded")}
+                        checked={allLoadedChosen}
+                        disabled={busy || loading}
+                        onChange={toggleLoaded}
+                      />
+                    </TableHead>
+                  )}
                   <TableHead>{t("admin.recycleBin.type")}</TableHead>
                   <TableHead>{t("admin.recycleBin.name")}</TableHead>
                   <TableHead>{t("admin.recycleBin.owner")}</TableHead>
@@ -1096,6 +1242,17 @@ function RecycleBinTab() {
               <TableBody>
                 {entries.map((entry) => (
                   <TableRow key={entry.id} data-testid="recycle-row">
+                    {selectable && (
+                      <TableCell>
+                        <input
+                          type="checkbox"
+                          aria-label={t("admin.recycleBin.selectOne", { name: entry.label })}
+                          checked={selected.has(entry.id)}
+                          disabled={busy || loading}
+                          onChange={() => toggle(entry.id)}
+                        />
+                      </TableCell>
+                    )}
                     <TableCell>
                       <Pill tone="neutral">
                         {RECYCLE_TYPE[entry.object_type] ?? entry.object_type}
@@ -1121,16 +1278,16 @@ function RecycleBinTab() {
                           <Button
                             size="sm"
                             variant="outline"
-                            disabled={busy === entry.id}
-                            onClick={() => void restore(entry)}
+                            disabled={busy || loading}
+                            onClick={() => void restore([entry])}
                           >
                             {t("admin.actions.restore")}
                           </Button>
                           <Button
                             size="sm"
                             variant="destructive"
-                            disabled={busy === entry.id}
-                            onClick={() => void purge(entry)}
+                            disabled={busy || loading}
+                            onClick={() => void purge([entry])}
                           >
                             {t("admin.actions.purge")}
                           </Button>
@@ -1146,7 +1303,7 @@ function RecycleBinTab() {
         {loading && <Loading />}
         {cursor && !loading && (
           <div className="flex justify-center">
-            <Button variant="outline" onClick={() => void load(cursor)}>
+            <Button variant="outline" disabled={busy || loading} onClick={() => void load(cursor)}>
               {t("admin.actions.loadMore")}
             </Button>
           </div>

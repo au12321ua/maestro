@@ -290,9 +290,8 @@ test("setup, run, PAT, admin and invitation flow", async ({ page, browser }) => 
   await other.close();
 
   // Deletion: PAT revoke then delete; the run goes to the recycle bin, is restored,
-  // deleted again and purged (the prompt asks for the object id).
-  const runId = runUrl.split("/").pop()!;
-  page.on("dialog", (dialog) => void dialog.accept(dialog.type() === "prompt" ? runId : undefined));
+  // deleted again and purged with the confirmation word.
+  page.on("dialog", (dialog) => void dialog.accept(dialog.type() === "prompt" ? "DELETE" : undefined));
   await nav(page, "设置").click();
   const patRow = page.getByRole("row").filter({ hasText: "smoke pat" });
   await patRow.getByRole("button", { name: "撤销" }).click();
@@ -1162,4 +1161,138 @@ test("delete selected runs from the list", async ({ page }) => {
   await expect(rows.getByRole("link", { name: "batch one" })).toHaveCount(0);
   await expect(rows.getByRole("link", { name: "batch two" })).toHaveCount(0);
   await expect(rows.getByRole("link", { name: "m5 source", exact: true })).toBeVisible();
+});
+
+test("recycle batch keeps cross-page failures and retries only those entries", async ({ page }) => {
+  await serveFixtures(page, { ...sessionRoutes,
+    "/api/v1/session": { user: { ...me, role: "admin" }, csrf_token: "csrf" },
+  });
+  const entry = (id: string) => ({ id, object_id: id, object_type: "run", label: id,
+    state: "recycled", owner: null, deleted_by: null, deleted_at: null, purged_at: null });
+  const first = entry("run-first"), second = entry("run-second");
+  const calls: string[] = [];
+  let retry = false;
+  await page.route("**/api/v1/admin/recycle-bin**", async (route) => {
+    const url = new URL(route.request().url());
+    if (route.request().method() === "GET") {
+      return route.fulfill({ json: { data: url.searchParams.has("cursor") ? [second] : [first],
+        meta: { ...meta, next_cursor: url.searchParams.has("cursor") ? null : "page2" } } });
+    }
+    const id = url.pathname.split("/").at(-2)!;
+    calls.push(id);
+    expect(route.request().postDataJSON()).toEqual({ confirm: "DELETE" });
+    if (id === second.id && !retry) {
+      return route.fulfill({ status: 409, json: { error: { code: "BUSY_FIXTURE",
+        message: "still referenced", field_errors: [], retryable: false, suggested_actions: [] }, meta } });
+    }
+    return route.fulfill({ json: { data: { ...entry(id), state: "purged" }, meta } });
+  });
+  await page.goto("/admin/recycle-bin");
+  await page.getByRole("button", { name: "选择当前筛选的全部条目" }).click();
+  await expect(page.getByText("已选 2 项", { exact: true })).toBeVisible();
+  page.once("dialog", (d) => void d.accept("wrong"));
+  await page.getByRole("button", { name: "彻底删除所选", exact: true }).click();
+  await expect(page.getByText("请输入 DELETE，未删除")).toBeVisible();
+  expect(calls).toEqual([]);
+  page.once("dialog", (d) => void d.accept("DELETE"));
+  await page.getByRole("button", { name: "彻底删除所选", exact: true }).click();
+  await expect(page.getByTestId("recycle-row")).toHaveCount(1);
+  await expect(page.getByLabel("选择 run-second", { exact: true })).toBeChecked();
+  await expect(page.getByTestId("recycle-failures")).toContainText("still referenced");
+  expect(calls).toEqual([first.id, second.id]);
+  retry = true;
+  page.once("dialog", (d) => void d.accept("DELETE"));
+  await page.getByRole("button", { name: "彻底删除所选", exact: true }).click();
+  await expect(page.getByTestId("recycle-row")).toHaveCount(0);
+  expect(calls).toEqual([first.id, second.id, second.id]);
+});
+
+test("harness upgrade copies configuration and publishes a separate version", async ({ page }) => {
+  const old = { id: "har_old", name: "team-codex", version: "old", agent: "codex",
+    upstream_version: "1.0.0", protocols: ["openai"], enabled: true,
+    parameter_schema: { parameters: { max_turns: { type: "integer", default: 4 } } },
+    description: "team settings", content_digest: "sha256:old", created_at: null };
+  const versions = [old];
+  await serveFixtures(page, { ...sessionRoutes,
+    "/api/v1/session": { user: { ...me, role: "admin" }, csrf_token: "csrf" },
+    "/api/v1/admin/harness-adapters": [{ agent: "codex", package: "@openai/codex",
+      protocols: ["openai"], parameters: null, model_parameters: null, tested_version: "1.0.0" }],
+    "/api/v1/admin/harness-adapters/codex/upstream-versions": { tags: [], recent: [], error: "offline" },
+  });
+  await page.route("**/api/v1/harness-versions", (route) => route.fulfill({ json: { data: versions, meta } }));
+  let attempts = 0;
+  await page.route("**/api/v1/admin/harness-versions", (route) => {
+    const body = route.request().postDataJSON();
+    expect(body).toEqual({ name: old.name, version: "1.2.0", agent: old.agent,
+      upstream_version: "1.2.0", protocols: old.protocols,
+      parameter_schema: old.parameter_schema, description: old.description });
+    attempts++;
+    if (attempts === 1) return route.fulfill({ status: 409, json: { error: {
+      code: "HARNESS_VERSION_EXISTS", message: "version exists", field_errors: [],
+      retryable: false, suggested_actions: [] }, meta } });
+    const published = { ...old, ...body, id: "har_new" };
+    versions.unshift(published);
+    return route.fulfill({ status: 201, json: { data: published, meta } });
+  });
+  await page.goto("/admin/harnesses");
+  await page.getByRole("button", { name: "升级", exact: true }).click();
+  await expect(page.locator("#harness-name")).toHaveValue(old.name);
+  await expect(page.locator("#harness-upstream")).toHaveValue("");
+  await expect(page.locator("#harness-schema")).toHaveValue(JSON.stringify(old.parameter_schema, null, 2));
+  await page.locator("#harness-upstream").fill("1.2.0");
+  await page.getByRole("button", { name: "发布", exact: true }).click();
+  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(page.locator("#harness-upstream")).toHaveValue("1.2.0");
+  await page.getByRole("button", { name: "发布", exact: true }).click();
+  await expect(page.getByRole("row").filter({ hasText: old.name })).toHaveCount(2);
+  expect(versions[1]).toEqual(old);
+});
+
+test("recycle restore orders parents first and filtering clears selection", async ({ page }) => {
+  await serveFixtures(page, { ...sessionRoutes,
+    "/api/v1/session": { user: { ...me, role: "admin" }, csrf_token: "csrf" },
+  });
+  const entries = [
+    { id: "child", object_id: "version", object_type: "dataset_version", label: "child" },
+    { id: "parent", object_id: "dataset", object_type: "dataset", label: "parent" },
+  ].map((e) => ({ ...e, state: "recycled", owner: null, deleted_by: null,
+    deleted_at: null, purged_at: null }));
+  const calls: string[] = [];
+  let release: (() => void) | undefined;
+  await page.route("**/api/v1/admin/recycle-bin**", async (route) => {
+    const url = new URL(route.request().url());
+    if (route.request().method() === "GET") {
+      const kind = url.searchParams.get("object_type");
+      if (kind === "credential") return route.fulfill({ status: 500, json: { error: {
+        code: "FIXTURE_LIST_FAILED", message: "listing failed", field_errors: [],
+        retryable: false, suggested_actions: [] }, meta } });
+      return route.fulfill({ json: { data: entries.filter((e) => !kind || kind === e.object_type),
+        meta: { ...meta, next_cursor: null } } });
+    }
+    const id = url.pathname.split("/").at(-2)!;
+    calls.push(id);
+    if (id === "parent") await new Promise<void>((resolve) => { release = resolve; });
+    return route.fulfill({ json: { data: {}, meta } });
+  });
+  await page.goto("/admin/recycle-bin");
+  await page.getByLabel("选择已加载的全部条目").check();
+  await expect(page.getByText("已选 2 项", { exact: true })).toBeVisible();
+  await page.getByLabel("对象类型", { exact: true }).selectOption("dataset");
+  await expect(page.getByText("已选 0 项", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("recycle-row")).toHaveCount(1);
+  await page.getByLabel("对象类型", { exact: true }).selectOption("credential");
+  await expect(page.getByRole("alert")).toContainText("listing failed");
+  await expect(page.getByTestId("recycle-row")).toHaveCount(0);
+  await page.getByLabel("对象类型", { exact: true }).selectOption("");
+  await expect(page.getByTestId("recycle-row")).toHaveCount(2);
+  await page.getByLabel("选择已加载的全部条目").check();
+  page.once("dialog", (d) => void d.accept());
+  await page.getByRole("button", { name: "恢复所选", exact: true }).click();
+  await expect.poll(() => calls.length).toBe(1);
+  expect(calls).toEqual(["parent"]);
+  await expect(page.getByLabel("对象类型", { exact: true })).toBeDisabled();
+  await expect(page.getByLabel("选择已加载的全部条目")).toBeDisabled();
+  release!();
+  await expect(page.getByTestId("recycle-row")).toHaveCount(0);
+  expect(calls).toEqual(["parent", "child"]);
 });

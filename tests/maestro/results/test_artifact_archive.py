@@ -152,7 +152,7 @@ def test_deleted_files_remain_in_missing_at_every_level(service, version_id, pur
         if purge:
             admin.post(
                 f"/api/v1/admin/recycle-bin/{entry['id']}/purge",
-                json={"confirm_object_id": chosen["id"]},
+                json={"confirm": "DELETE"},
                 expect=200,
             )
         # Soft deletion leaves the stored content available. It still must not be opened.
@@ -397,7 +397,7 @@ def test_deliverables_manifest_lists_missing_outputs(service, deliverables_run, 
         if status == "purged":
             admin.post(
                 f"/api/v1/admin/recycle-bin/{entry['id']}/purge",
-                json={"confirm_object_id": output["id"]},
+                json={"confirm": "DELETE"},
                 expect=200,
             )
     else:

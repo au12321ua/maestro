@@ -319,7 +319,7 @@ def test_a_snapshot_stays_while_runs_and_files_go(service, version_id, executor)
         again = alice.get(f"/api/v1/analysis-snapshots/{snapshot['id']}").json()["data"]
         assert rows(again["result"]) == before
         assert again["evidence"][run_b] == "deleted"
-        purge(admin, bin_entry(admin, run_b), run_b)
+        purge(admin, bin_entry(admin, run_b))
         again = alice.get(f"/api/v1/analysis-snapshots/{snapshot['id']}").json()["data"]
         assert rows(again["result"]) == before and again["evidence"][run_b] == "purged"
         assert again["result"]["dimensions"] == conditions

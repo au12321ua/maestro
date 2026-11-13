@@ -234,7 +234,7 @@ def test_purge_during_a_build_withholds_the_package(service, version_id):
     def purge_meanwhile(*args):
         result = write(*args)
         entry = service.recycle.delete(who, "artifact", artifact["id"])
-        service.recycle.purge(who, entry["id"], artifact["id"])
+        service.recycle.purge(who, entry["id"])
         return result
 
     service.exports._write = purge_meanwhile
@@ -314,7 +314,7 @@ def test_a_purge_in_the_middle_of_packing_fails_the_export_and_leaves_nothing(se
         packed.append(item["id"])
         if len(packed) == 2:
             entry = service.recycle.delete(who, "artifact", item["id"])
-            service.recycle.purge(who, entry["id"], item["id"])
+            service.recycle.purge(who, entry["id"])
         return add(archive, root, directory, item, *rest)
 
     service.exports._add_artifact = purge_the_second

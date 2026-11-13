@@ -93,7 +93,9 @@
     "schemaHint": "JSON, e.g. {{example}}",
     "adapterParams": "Parameters this adapter can declare: {{list}}",
     "modelParams": "Model configuration parameters it can pass: {{list}}",
-    "publish": "Publish"
+    "publish": "Publish",
+    "upgrade": "Upgrade",
+    "upgradeFrom": "Publish a new version based on {{name}} {{version}}. Choose an exact upstream version; existing versions, plans and runs will not be replaced."
   },
   "policy": {
     "group": {

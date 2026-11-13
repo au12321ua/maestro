@@ -12790,14 +12790,15 @@
       "PurgeRequest": {
         "additionalProperties": false,
         "properties": {
-          "confirm_object_id": {
-            "description": "Repeat the object id: purging is irreversible",
-            "title": "Confirm Object Id",
+          "confirm": {
+            "const": "DELETE",
+            "description": "The word DELETE: purging is irreversible",
+            "title": "Confirm",
             "type": "string"
           }
         },
         "required": [
-          "confirm_object_id"
+          "confirm"
         ],
         "title": "PurgeRequest",
         "type": "object"
@@ -20493,7 +20494,7 @@
     },
     "/api/v1/admin/recycle-bin/{entry_id}/purge": {
       "post": {
-        "description": "Irreversible: removes content and files; the entry stays as the receipt.",
+        "description": "Irreversible: removes content and files; the entry stays as the receipt. The body\ncarries the word DELETE so a stray request cannot purge; batches call this per entry.",
         "operationId": "purge_entry",
         "parameters": [
           {
