@@ -54,6 +54,7 @@
 
 ## 环境陷阱
 
+- **npm 下载来源**：`frontend/package-lock.json` 的下载地址统一使用 `registry.npmjs.org`，依赖版本与完整性摘要仍由锁文件固定。npm 12 默认禁止任意远程 tarball；锁文件若混入与当前 registry 不同的镜像地址，`npm ci` 会报 `EALLOWREMOTE`，即使较旧 npm 的 CI 可以通过。使用镜像时通过 `npm_config_registry` 配置，不把镜像地址写回锁文件。
 - **rootless Docker**：docker context 存在用户 HOME 里，隔离 HOME 会让客户端回到 `/var/run/docker.sock`，须显式设 `DOCKER_HOST=unix:///run/user/<uid>/docker.sock`，否则 Runner 也连到系统 Docker 的套接字而失败。rootless 守护进程有自己的镜像库和代理设置，与系统守护进程不共享。
 - **代理**：BuildKit 向镜像仓库取令牌由 docker 客户端进程完成，用 `env -i` 跑真实测试时须把宿主机代理（如 `HTTP_PROXY`/`HTTPS_PROXY=http://127.0.0.1:7890`）放进去，否则镜像库里还没有的基础镜像（如 Harbor 出口控制 sidecar 的 `gogost/gost`）会在解析时超时。Runner 继承代理变量，但不支持 SOCKS 代理变量（`ALL_PROXY`）。容器里用的代理必须是容器能访问的地址：测试设 `MAESTRO_TEST_SETUP_PROXY=http://<容器可达的地址>:<端口>`，部署上由管理员在管理页“安装网络”设置（[12](../design/12-operations.md) 第 3 节）。
 
