@@ -38,6 +38,9 @@ jobs:
           (cd frontend && npm ci --no-audit --no-fund --ignore-scripts)
       - name: Build
         run: |
+          # actions/checkout replaces the annotated tag with a plain ref to the commit;
+          # fetch the tag object itself before checking that it is annotated.
+          git fetch --no-tags --force origin "+refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
           test "$(git cat-file -t "$GITHUB_REF_NAME")" = tag
           if ! git merge-base --is-ancestor HEAD origin/master; then
             echo "$GITHUB_REF_NAME is not on master"; exit 1
