@@ -821,3 +821,33 @@ def test_installed_service_reports_its_package_build(tmp_path):
     assert installed_build(version_dir / "venv") is None
     (version_dir / "RELEASE.json").write_text("not json")
     assert installed_build(version_dir / "venv") is None
+
+
+class FakeRefs(publish.Gitea):
+    """Tag refs as the server reports them: annotated tags point at a tag object."""
+
+    def __init__(self, refs, tags):
+        super().__init__("http://unused/api/v1", "o/r", "t")
+        self.refs, self.tags = refs, tags
+
+    def call(self, method, path, body=None, **kwargs):
+        if path.startswith("/git/refs/tags/"):
+            name = path.removeprefix("/git/refs/tags/")
+            if name not in self.refs:
+                return None
+            return [{"ref": f"refs/tags/{name}", "object": self.refs[name]}]
+        return {"object": self.tags[path.removeprefix("/git/tags/")]}
+
+
+def test_release_tag_must_be_annotated_on_the_server():
+    """The checkout in CI turns the tag into a plain ref, so the server is asked."""
+    client = FakeRefs(
+        {
+            "v1.0.0": {"type": "tag", "sha": "t" * 40},
+            "dev-1": {"type": "commit", "sha": "a" * 40},
+        },
+        {"t" * 40: {"type": "commit", "sha": "a" * 40}},
+    )
+    assert client.annotated_tag_commit("v1.0.0") == "a" * 40
+    assert client.annotated_tag_commit("dev-1") is None
+    assert client.annotated_tag_commit("v9.9.9") is None

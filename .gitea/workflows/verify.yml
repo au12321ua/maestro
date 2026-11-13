@@ -124,10 +124,7 @@ jobs:
           GITEA_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git merge-base --is-ancestor HEAD origin/master
-          # actions/checkout replaces the annotated tag with a plain ref to the commit;
-          # fetch the tag object itself before checking that it is annotated.
-          git fetch --no-tags --force origin "+refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
-          test "$(git cat-file -t "$GITHUB_REF_NAME")" = tag
+          python3 -I tools/check_tag.py --tag "$GITHUB_REF_NAME" --commit "$(git rev-parse HEAD)"
           python3 -I tools/verify_commit.py --commit "$(git rev-parse HEAD)"
       - id: python
         uses: actions/setup-python@v5

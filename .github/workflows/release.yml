@@ -37,11 +37,10 @@ jobs:
           (cd runner && uv sync --locked)
           (cd frontend && npm ci --no-audit --no-fund --ignore-scripts)
       - name: Build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # actions/checkout replaces the annotated tag with a plain ref to the commit;
-          # fetch the tag object itself before checking that it is annotated.
-          git fetch --no-tags --force origin "+refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
-          test "$(git cat-file -t "$GITHUB_REF_NAME")" = tag
+          python3 -I tools/check_tag.py --github --tag "$GITHUB_REF_NAME" --commit "$(git rev-parse HEAD)"
           if ! git merge-base --is-ancestor HEAD origin/master; then
             echo "$GITHUB_REF_NAME is not on master"; exit 1
           fi

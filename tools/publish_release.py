@@ -82,6 +82,17 @@ class Gitea:
             obj = self.call("GET", f"/git/tags/{obj['sha']}")["object"]
         raise SystemExit(f"tag {tag} does not resolve to a commit")
 
+    def annotated_tag_commit(self, tag):
+        """Commit of ``tag`` when it is an annotated tag, else None. Asked from the server:
+        a CI checkout may have replaced the tag locally with a plain ref to the commit."""
+        prefix = "/git/ref/tags/" if self.github else "/git/refs/tags/"
+        ref = self.call("GET", prefix + urllib.parse.quote(tag, safe=""), ok_missing=True)
+        if isinstance(ref, list):
+            ref = next((r for r in ref if r["ref"] == f"refs/tags/{tag}"), None)
+        if not ref or ref["object"]["type"] != "tag":
+            return None
+        return self.tag_commit(tag)
+
     def asset_digest(self, asset, release_id):
         # Read bytes even if the provider advertises a digest: this also verifies downloads.
         if self.github:
