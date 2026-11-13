@@ -18778,7 +18778,7 @@
   },
   "info": {
     "title": "Maestro API",
-    "version": "0.5.2"
+    "version": "0.5.3.dev0"
   },
   "openapi": "3.1.0",
   "paths": {
