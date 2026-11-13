@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, Request
 
-from maestro import __version__
+from maestro import __build__, __version__
 from maestro.api.deps import maestro, ok, principal
 from maestro.api.models import Capabilities, Envelope, Health, SystemStatus
 from maestro.domain import limits
@@ -81,6 +81,7 @@ def capabilities(request: Request):
         {
             "api_version": "v1",
             "service_version": __version__,
+            "service_build": __build__,
             "schema_revision": service.schema_state()["head"],
             "contract_digest": contract_digest(request.app),
             "features": {

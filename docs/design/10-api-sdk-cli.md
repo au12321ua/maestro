@@ -31,7 +31,7 @@ retryable 表示同一请求是否值得重试，不代表可以换幂等键再�
 | --- | --- |
 | GET /health/live | 进程可响应，无认证、无细节 |
 | GET /health/ready | 数据库结构兼容即 ready，另给 accepting_runs |
-| GET /api/v1/capabilities | api_version、service_version、schema_revision、contract_digest、功能开关、生效限制、团队策略修订、认证方式、actions 的权限条件 |
+| GET /api/v1/capabilities | api_version、service_version、service_build（安装包的构建名，含提交号）、schema_revision、contract_digest、功能开关、生效限制、团队策略修订、认证方式、actions 的权限条件 |
 | GET /api/v1/system-status | 需认证：存储、结构、主密钥、执行器与 Worker 状态 |
 
 SDK 要求 api_version 为 v1 且所需功能开启，否则抛 UNSUPPORTED_CAPABILITY；contract_digest 与 SDK 内置值不同只警告一次，没有单独的“兼容区间”。

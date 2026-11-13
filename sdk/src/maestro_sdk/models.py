@@ -3831,6 +3831,12 @@ class Capabilities(BaseModel):
     features: dict[str, bool]
     limits: dict[str, int]
     schema_revision: str
+    service_build: Annotated[
+        str | None,
+        Field(
+            description="release package the service was installed from (version and source commit); null when it runs from a source checkout"
+        ),
+    ]
     service_version: str
     team_policy_revision: int
 

@@ -1,6 +1,6 @@
 """Release tooling: the license rules, the SDK version stamp,
 publishing to Gitea Releases and the Python package registry against fake APIs, and the
-package index for GitHub Pages. Building a
+package index for GitHub Pages; the build an installed service reports. Building a
 real package runs in live/test_install.py (opt-in); the license list itself runs in CI."""
 
 import hashlib
@@ -804,3 +804,20 @@ def test_download_preserves_internal_server_subpath(monkeypatch):
     )
     assert result == hashlib.sha256(b"asset").hexdigest()
     assert seen == ["https://internal.example/gitea/o/r/releases/download/v1/wheel.whl"]
+
+
+def test_installed_service_reports_its_package_build(tmp_path):
+    """Development builds of one version share the version string; the build read from
+    the installed package description tells them apart. A source checkout reports none."""
+    from maestro import installed_build
+
+    version_dir = tmp_path / "0.5.0.dev0-921d0e7f95b7"
+    (version_dir / "venv").mkdir(parents=True)
+    assert installed_build(version_dir / "venv") is None
+    info = {"name": "maestro", "version": "0.5.0.dev0", "build": "0.5.0.dev0-921d0e7f95b7"}
+    (version_dir / "RELEASE.json").write_text(json.dumps(info))
+    assert installed_build(version_dir / "venv") == "0.5.0.dev0-921d0e7f95b7"
+    (version_dir / "RELEASE.json").write_text(json.dumps({**info, "name": "other"}))
+    assert installed_build(version_dir / "venv") is None
+    (version_dir / "RELEASE.json").write_text("not json")
+    assert installed_build(version_dir / "venv") is None

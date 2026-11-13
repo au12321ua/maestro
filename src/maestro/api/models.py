@@ -2507,6 +2507,11 @@ class ExecutionInfo(Model):
 class Capabilities(Model):
     api_version: str
     service_version: str
+    service_build: str | None = Field(
+        default=None,
+        description="release package the service was installed from (version and source "
+        "commit); null when it runs from a source checkout",
+    )
     schema_revision: str
     contract_digest: str = Field(
         description="sha256 of the OpenAPI document; clients generated from another one warn"

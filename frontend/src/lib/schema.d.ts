@@ -3060,6 +3060,11 @@ export interface components {
             };
             /** Schema Revision */
             schema_revision: string;
+            /**
+             * Service Build
+             * @description release package the service was installed from (version and source commit); null when it runs from a source checkout
+             */
+            service_build: string | null;
             /** Service Version */
             service_version: string;
             /** Team Policy Revision */

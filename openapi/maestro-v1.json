@@ -1872,6 +1872,18 @@
             "title": "Schema Revision",
             "type": "string"
           },
+          "service_build": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "release package the service was installed from (version and source commit); null when it runs from a source checkout",
+            "title": "Service Build"
+          },
           "service_version": {
             "title": "Service Version",
             "type": "string"
@@ -1884,6 +1896,7 @@
         "required": [
           "api_version",
           "service_version",
+          "service_build",
           "schema_revision",
           "contract_digest",
           "features",
