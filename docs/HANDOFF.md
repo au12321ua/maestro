@@ -4,8 +4,8 @@
 
 ## 当前代码
 
-- 根 `pyproject.toml` 是权威版本，开发版本使用 `.dev0`，服务读取安装元数据、SDK 包声明由 `tools/version.py` 同步；版本号按[打包与发布](guides/releasing.md)的版本号规则决定，一批功能验证后就发正式版（U-103）；发布记录看 Git tag 与 Releases，管理页“服务版本”显示安装包的构建名（含提交号），实际运行版本另由部署者记录在私有仓库 `auua/maestro-site`。
-- 维护者发布入口为 `tools/release.py`，根据固定 dev SHA 准备正式与下一开发版本、核对最终 SHA 检查、推进两端发布及 dev 收尾。正式 tag 与附件固定，失败按实际状态续跑；`verify` 与 `publish` 任务独立，部署单独进行，见[打包与发布](guides/releasing.md)。
+- 根 `pyproject.toml` 是权威版本，只使用 `X.Y.Z`，服务读取安装元数据、SDK 包声明由 `tools/version.py` 同步。dev 保持最近正式版本，发布时按[打包与发布](guides/releasing.md)的变化规则定号，一批功能验证后就发正式版（U-103、U-104）。管理页“服务版本”包含提交号；开发包与源码运行带 `unreleased` 标记。实际运行版本另由部署者记录在私有仓库 `auua/maestro-site`。
+- 维护者发布入口为 `tools/release.py`，根据固定 dev SHA 准备一个正式候选、核对最终 SHA 检查、推进两端发布及 dev 收尾。dev push 只验证，不自动发布预览包；`python3 tools/build_dev.py` 一条命令在独立工作树中构建并验证最新 dev，输出可用 `maestroctl update` 安装的本地开发包。正式 tag 与附件固定，失败按实际状态续跑；部署单独进行，见[打包与发布](guides/releasing.md)。
 - 服务在 `src/maestro/`，独立 Runner 在 `runner/`，SDK 在 `sdk/`，随 SDK 发布的 Agent skill 在 `skills/`，安装工具在 `ops/maestroctl.py`；完整分工见[源码职责](architecture/source-layout.md)。
 - 不迁移旧系统的 state；第一个面向外部用户的版本之前不承诺向后兼容（U-31）。数据库结构变更从 0.3.0 起追加迁移（U-34）。
 - `fix/separate-verifier` 只作参考（U-32）；独立验证器与 Compose 辅助服务支持已经重新实现。

@@ -1,18 +1,16 @@
 """Publish the SDK wheel to the Gitea Python package registry. Standard library only.
 
     GITEA_URL=<server> GITEA_OWNER=<owner> GITEA_TOKEN=<token> \\
-    python3 tools/publish_package.py --dist <dir> [--keep 10]
+    python3 tools/publish_package.py --dist <dir>
 
 Uploads the one ``maestro_sdk-*.whl`` in ``--dist`` to ``<server>/api/packages/<owner>/pypi``
 (the protocol ``twine upload`` speaks). A version is never overwritten: when the job is
-re-run and the file is already there, the registry's SHA-256 must equal the wheel's. With
-``--keep N`` it then deletes all but the newest N ``.devN`` versions of the package;
-other versions are never deleted.
+re-run and the file is already there, the registry's SHA-256 must equal the wheel's.
+Only canonical X.Y.Z versions are uploaded; development wheels travel with local packages.
 """
 
 import argparse
 import hashlib
-import json
 import os
 import re
 import sys
@@ -25,7 +23,6 @@ from email.parser import HeaderParser
 from pathlib import Path
 
 PACKAGE = "maestro-sdk"
-DEV_VERSION = re.compile(r"\.dev\d+$")
 
 
 class Registry:
@@ -91,23 +88,6 @@ class Registry:
         found = re.search(re.escape(filename) + r"#sha256=([0-9a-f]{64})", body.decode())
         return found[1] if found else None
 
-    def versions(self) -> list[dict]:
-        found, page = [], 1
-        while True:
-            query = urllib.parse.urlencode(
-                {"type": "pypi", "q": PACKAGE, "limit": 50, "page": page}
-            )
-            status, body = self.call("GET", f"/api/v1/packages/{self.owner}?{query}")
-            batch = json.loads(body) if status == 200 and body else []
-            if not batch:
-                return found
-            found += [p for p in batch if p["name"] == PACKAGE]
-            page += 1
-
-    def delete(self, version: str) -> None:
-        quoted = urllib.parse.quote(version, safe="")
-        self.call("DELETE", f"/api/v1/packages/{self.owner}/pypi/{PACKAGE}/{quoted}")
-
 
 def wheel_fields(wheel: Path) -> dict[str, str]:
     """The upload form for ``wheel``, from its own metadata."""
@@ -130,34 +110,26 @@ def wheel_fields(wheel: Path) -> dict[str, str]:
     }
 
 
-def stale_dev_versions(versions: list[dict], keep: int) -> list[dict]:
-    """``.devN`` versions beyond the newest ``keep``; other versions never qualify."""
-    dev = [v for v in versions if DEV_VERSION.search(v["version"])]
-    dev.sort(key=lambda v: v["created_at"], reverse=True)
-    return dev[keep:]
-
-
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dist", required=True, type=Path)
-    parser.add_argument("--keep", type=int, help="keep only the newest N .dev versions")
     args = parser.parse_args(argv)
 
+    if any("-unreleased" in p.name for p in args.dist.glob("maestro-*.tar.gz")):
+        raise SystemExit("unreleased development packages must not be uploaded to the SDK index")
     wheels = sorted(args.dist.glob("maestro_sdk-*.whl"))
     if len(wheels) != 1:
         raise SystemExit(f"{args.dist} must hold exactly one SDK wheel, found {len(wheels)}")
     (wheel,) = wheels
     fields = wheel_fields(wheel)
+    if not re.fullmatch(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)", fields["version"]):
+        raise SystemExit("only canonical X.Y.Z SDK versions can be published")
     registry = Registry(
         os.environ["GITEA_URL"], os.environ["GITEA_OWNER"], os.environ["GITEA_TOKEN"]
     )
     uploaded = registry.upload(wheel, fields)
     print(f"{'uploaded' if uploaded else 'already published'} {wheel.name}")
 
-    if args.keep is not None:
-        for old in stale_dev_versions(registry.versions(), args.keep):
-            registry.delete(old["version"])
-            print(f"deleted {PACKAGE} {old['version']}")
     return 0
 
 

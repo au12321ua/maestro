@@ -79,6 +79,8 @@ git push -u origin feature/my-change
 
 CI 在所有分支 push 时运行；PR 使用对应提交的结果，不再双触发。新的合并提交按 push 检查。CI 不覆盖真实 Docker、Hub 与模型测试，这些仍按开发验证指南另行执行。分支保护、必需检查和远端运行结果仍需在各仓库实时核对，配置文件不代表保护已经生效。
 
+合入 dev 完成集成，不自动创建开发 tag、Release 或 SDK 包。日常功能和修复不递增产品版本；dev 保持最近正式版本，发布时在临时 release 分支上统一定号、生成契约与发布说明，并验证最终候选。发布后把该候选同步回 dev，不再准备下一开发版本（U-104）。开发机需要可安装的试用包时执行 `python3 tools/build_dev.py`，固定提交、隔离构建与校验见[发布指南](releasing.md)。
+
 只改 Markdown 文档的推送不跑 CI（U-37）：工作流用 `paths` 自动判断，不必再写 `[skip ci]`（U-43）。`skills/` 与 `sdk/README.md` 由测试核对，改了仍会触发；改了代码、配置、依赖锁文件、前端、测试或工作流也都会触发。跳过后 CI 不会检查链接，只改文档时提交前在本地运行 `python3 tools/check_doc_links.py` 和 `git diff --check`。推送后在 Actions 页确认出现了这次的运行：Gitea 对没有新提交的推送（例如强推回旧提交）不触发，新分支的首推偶尔也不触发、原因未明；没有运行时在 Actions 页手动运行 `verify`（`workflow_dispatch`），或用 API `POST /repos/<仓库>/actions/workflows/verify.yml/dispatches`。
 
 ## 资料与交付证据

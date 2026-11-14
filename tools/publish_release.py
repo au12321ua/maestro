@@ -1,21 +1,20 @@
 """Publish immutable assets through draft Gitea or GitHub Releases; safe to resume.
 
 Credentials: GITEA_API/GITEA_REPO/GITEA_TOKEN, or GH_TOKEN/GITHUB_REPOSITORY.
-An existing tag must resolve to --commit. Only development tags may be created here.
+An existing tag must resolve to --commit. Tags are created by the maintainer entry point, never by this uploader.
 """
 
 import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
 from pathlib import Path
-
-DEV_PREFIX = "dev-"
 
 
 class SafeRedirect(urllib.request.HTTPRedirectHandler):
@@ -143,20 +142,15 @@ class Gitea:
         )
 
 
-def stale_prereleases(releases: list[dict], keep: int) -> list[dict]:
-    dev = [r for r in releases if r["prerelease"] and r["tag_name"].startswith(DEV_PREFIX)]
-    dev.sort(key=lambda r: r["created_at"], reverse=True)
-    return dev[keep:]
-
-
-def publish(client, dist, tag, commit, *, title=None, notes="", prerelease=False, keep=10):
+def publish(client, dist, tag, commit, *, title=None, notes=""):
+    if not re.fullmatch(r"v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)", tag):
+        raise SystemExit("only formal vX.Y.Z tags can be published")
+    if any("-unreleased" in p.name for p in dist.glob("maestro-*.tar.gz")):
+        raise SystemExit("unreleased development packages are for local installation only")
     assets = sorted(p for p in dist.iterdir() if p.is_file())
     if not assets:
         raise SystemExit(f"{dist} has nothing to publish")
     actual = client.tag_commit(tag)
-    if actual is None and prerelease and tag.startswith(DEV_PREFIX):
-        client.call("POST", "/tags", {"tag_name": tag, "target": commit})
-        actual = client.tag_commit(tag)
     if actual != commit:
         raise SystemExit(f"tag {tag}: expected {commit}, found {actual}; refusing to publish")
     quoted = urllib.parse.quote(tag, safe="")
@@ -173,11 +167,11 @@ def publish(client, dist, tag, commit, *, title=None, notes="", prerelease=False
                 "target_commitish": commit,
                 "name": title or tag,
                 "body": notes,
-                "prerelease": prerelease,
+                "prerelease": False,
                 "draft": True,
             },
         )
-    if release.get("body", "") != notes or release["prerelease"] != prerelease:
+    if release.get("body", "") != notes or release["prerelease"]:
         raise SystemExit(
             f"release {tag}: description or release type differs; refusing to change it"
         )
@@ -208,11 +202,6 @@ def publish(client, dist, tag, commit, *, title=None, notes="", prerelease=False
     if release["draft"]:
         client.call("PATCH", f"/releases/{release['id']}", {"draft": False})
     print(f"release {tag}: {release.get('html_url', '')}")
-    if prerelease:
-        for old in stale_prereleases(client.releases(), keep):
-            client.call("DELETE", f"/releases/{old['id']}")
-            client.call("DELETE", f"/tags/{urllib.parse.quote(old['tag_name'], safe='')}")
-            print(f"deleted prerelease {old['tag_name']}")
 
 
 def main(argv=None) -> int:
@@ -222,12 +211,8 @@ def main(argv=None) -> int:
     parser.add_argument("--commit", required=True)
     parser.add_argument("--title")
     parser.add_argument("--notes", type=Path)
-    parser.add_argument("--prerelease", action="store_true")
-    parser.add_argument("--keep", type=int, default=10)
     parser.add_argument("--github", action="store_true")
     args = parser.parse_args(argv)
-    if args.keep < 1:
-        parser.error("--keep must be positive")
     if args.github:
         client = Gitea(
             "https://api.github.com",
@@ -244,8 +229,6 @@ def main(argv=None) -> int:
         args.commit,
         title=args.title,
         notes=args.notes.read_text() if args.notes else "",
-        prerelease=args.prerelease,
-        keep=args.keep,
     )
     return 0
 

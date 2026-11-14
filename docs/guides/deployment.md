@@ -30,7 +30,7 @@
 - [uv](https://docs.astral.sh/uv/)。Python 3.12 或 3.13：主机没有时 uv 会下载到 `/opt/maestro/python`。安装需要访问 PyPI，可经 `--proxy`。
 - 数据目录所在磁盘至少 20 GiB 可用，否则新运行会被拒绝（可在配置中调整）。
 
-发布包从仓库的 Releases 下载 `maestro-<版本>-<提交>.tar.gz` 与 `SHA256SUMS`，用 `sha256sum -c SHA256SUMS --ignore-missing` 核对。正式版本来自 `master` 的版本 tag；名字带 `dev-` 的预发布由 `dev` 上每次通过 CI 的推送自动生成，只用于试用，只保留最近 10 个。
+发布包从仓库的 Releases 下载 `maestro-<版本>-<提交>.tar.gz` 与 `SHA256SUMS`，用 `sha256sum -c SHA256SUMS --ignore-missing` 核对。正式版本来自 `master` 的版本 tag；开发试用包在开发机按下方“从源码打包”构建，包名带 `unreleased`，复制到主机后同样通过 `maestroctl` 安装或更新。
 
 先检查，不改动任何东西：
 
@@ -107,7 +107,7 @@ sudo maestroctl restore /var/backups/maestro/<时间> [--include-files]
 
 等不及时可以点“立即更新”：在途的运行标为中断，已得的评分保留。也可以随时取消待更新。更新任务的输出用 `journalctl -u maestro-update` 查看；`maestroctl status` 显示它是否在监视以及最近一次的结果。
 
-只检查正式版，不提示开发预览（`dev-` 包仍用下面的命令行）。获取源与开关在 `/etc/maestro/config.toml` 里，网页不能改：
+只检查正式版，开发包仍用下面的本地包更新命令。获取源与开关在 `/etc/maestro/config.toml` 里，网页不能改：
 
 ```toml
 update_check = true                     # false：不检查，网页上没有更新入口
@@ -146,13 +146,13 @@ sudo maestroctl uninstall --purge --confirm <实例编号>
 
 ## 从源码打包
 
-在仓库根目录（工作树必须是干净的）：
+在开发机的仓库根目录执行，需要 Linux、Python 3.12–3.13、uv、Node/npm：
 
 ```bash
-uv sync --locked --group dev
-(cd runner && uv sync --locked)
-(cd frontend && npm ci)                    # 第三方许可证清单要读网页依赖的许可证
-uv run python tools/build_release.py      # 写出 dist/maestro-<版本>-<提交>.tar.gz
+python3 tools/build_dev.py                      # 默认构建最新 origin/dev
+python3 tools/build_dev.py --commit <提交或分支> # 也可选择已提交的源码
 ```
 
-包里有 `maestroctl`、服务 / Runner / SDK 的 wheel、带哈希的锁定依赖、本说明、`LICENSE`、`NOTICE`、第三方许可证清单 `THIRD_PARTY_LICENSES.md`，以及记录版本、提交、数据库结构版本、Harbor 版本和每个文件摘要的 `RELEASE.json`。网页已经编译进服务的 wheel，安装的机器不需要 git 或 Node。成员要用的 Python SDK 在包里的 `sdk/` 目录，正式版本另由包索引提供，成员与 Agent 可以直接按版本安装（见 [SDK 说明](../../sdk/README.md)）。
+命令自动准备依赖、构建并验证实际 wheel，默认输出 `dist/development-<提交前12位>/` 下的安装包、SDK wheel、许可证和 `SHA256SUMS`。已有输出不覆盖，可用 `--out <新目录>` 指定新位置。调用者未提交的修改不会被打进包，也不会被改动；失败保留独立构建目录并提示路径。
+
+把安装包与摘要复制到主机，核对摘要后执行 `sudo maestroctl update <包路径>`。包里有 `maestroctl`、服务 / Runner / SDK 的 wheel、带哈希的锁定依赖、本说明、`LICENSE`、`NOTICE`、第三方许可证清单 `THIRD_PARTY_LICENSES.md`，以及记录版本、提交、构建渠道、数据库结构版本、Harbor 版本和每个文件摘要的 `RELEASE.json`。网页已经编译进服务的 wheel，安装的机器不需要 git 或 Node。成员要用的 Python SDK 在包里的 `sdk/` 目录，开发包使用它随附的 wheel；正式版本另由包索引提供，成员与 Agent 可以直接按版本安装（见 [SDK 说明](../../sdk/README.md)）。

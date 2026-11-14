@@ -1,9 +1,8 @@
 # Branch pushes verify source; tags reuse that exact commit's verification.
 # Checks for every push: lint, Markdown links, the pytest suite
 # without Docker, Hub or model requests (it includes the contract and SDK model drift
-# check), third-party licenses and the web build. A push to dev that passes them becomes a
-# prerelease, a v* tag on master a release, and the SDK goes to the Gitea Python
-# package registry with it; nothing is deployed.
+# check), third-party licenses and the web build. Only a v* tag on master publishes a
+# release and SDK package. Branch pushes never publish packages; nothing is deployed.
 name: verify
 on:
   push:
@@ -105,7 +104,7 @@ jobs:
       contents: write
       actions: read
     needs: verify
-    if: ${{ always() && github.event_name == 'push' && (github.ref_type == 'tag' || (github.ref == 'refs/heads/dev' && needs.verify.result == 'success')) }}
+    if: ${{ always() && github.event_name == 'push' && github.ref_type == 'tag' }}
     runs-on: ${{ vars.HH_RUNNER_LABEL || 'ubuntu-latest' }}
     timeout-minutes: 30
     concurrency:
@@ -117,7 +116,6 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - name: Verified release commit
-        if: ${{ github.ref_type == 'tag' }}
         env:
           GITEA_API: ${{ github.api_url }}
           GITEA_REPO: ${{ github.repository }}
@@ -154,16 +152,10 @@ jobs:
           if [ -n "$CI_PROXY" ]; then export HTTPS_PROXY="$CI_PROXY" HTTP_PROXY="$CI_PROXY"; fi
           out="$RUNNER_TEMP/release"
           mkdir -p "$out/dist"
-          if [ "${{ github.ref_type }}" = tag ]; then
-            version="${GITHUB_REF_NAME#v}"
-            uv run python tools/build_release.py --assets --expect-version "$version" --out "$out/dist"
-            python3 -I tools/validate_release.py --dist "$out/dist" --commit "$(git rev-parse HEAD)" --expect-version "$version"
-            cp "docs/releases/$GITHUB_REF_NAME.md" "$out/notes.md"
-          else
-            uv run python tools/build_release.py --assets --dev-number "${{ github.run_number }}" --out "$out/dist"
-            python3 -I tools/validate_release.py --dist "$out/dist" --commit "$(git rev-parse HEAD)"
-            git log -1 --format='%s (%h)' > "$out/notes.md"
-          fi
+          version="${GITHUB_REF_NAME#v}"
+          uv run python tools/build_release.py --assets --expect-version "$version" --out "$out/dist"
+          python3 -I tools/validate_release.py --dist "$out/dist" --commit "$(git rev-parse HEAD)" --expect-version "$version"
+          cp "docs/releases/$GITHUB_REF_NAME.md" "$out/notes.md"
       - name: Publish the SDK to the package registry
         env:
           GITEA_URL: ${{ github.server_url }}
@@ -171,17 +163,9 @@ jobs:
           GITEA_TOKEN: ${{ secrets.PACKAGE_TOKEN }}
         run: |
           if [ -z "$GITEA_TOKEN" ]; then
-            if [ "${{ github.ref_type }}" = tag ]; then
-              echo "PACKAGE_TOKEN is required for a formal release"; exit 1
-            fi
-            echo "::warning::PACKAGE_TOKEN is missing; SDK preview was not published"
-            exit 0
+            echo "PACKAGE_TOKEN is required for a formal release"; exit 1
           fi
-          if [ "${{ github.ref_type }}" = tag ]; then
-            python3 -I tools/publish_package.py --dist "$RUNNER_TEMP/release/dist"
-          else
-            python3 -I tools/publish_package.py --dist "$RUNNER_TEMP/release/dist" --keep 10
-          fi
+          python3 -I tools/publish_package.py --dist "$RUNNER_TEMP/release/dist"
       - name: Publish Gitea Release
         env:
           GITEA_API: ${{ github.api_url }}
@@ -190,8 +174,4 @@ jobs:
         run: |
           out="$RUNNER_TEMP/release"
           sha="$(git rev-parse HEAD)"
-          if [ "${{ github.ref_type }}" = tag ]; then
-            python3 -I tools/publish_release.py --dist "$out/dist" --notes "$out/notes.md" --tag "$GITHUB_REF_NAME" --commit "$sha"
-          else
-            python3 -I tools/publish_release.py --dist "$out/dist" --notes "$out/notes.md" --tag "dev-${sha:0:12}" --commit "$sha" --prerelease --keep 10
-          fi
+          python3 -I tools/publish_release.py --dist "$out/dist" --notes "$out/notes.md" --tag "$GITHUB_REF_NAME" --commit "$sha"

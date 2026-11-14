@@ -18,9 +18,11 @@ uv pip install "maestro-sdk==<版本>" --index maestro=<索引>     # 已有的�
 pip install "maestro-sdk==<版本>" --extra-index-url <索引>       # pip 会同时查 PyPI，务必固定版本
 ```
 
-- **与服务对版本。** 服务装的是正式版本时，SDK 就是同一版本；装的是 `dev-<提交>` 预发布时，安装那个预发布附带的 wheel 文件（版本 `<版本>.dev<N>` 写在发布包 `RELEASE.json` 的 `sdk_version` 里）。
+- **与服务对版本。** 服务装的是正式版本时，SDK 就是同一版本；装的是带 `unreleased` 的开发包时，安装该包随附的 SDK wheel。开发包的 SDK 与服务共用基础版本号，代码可能与同号正式版不同，不能用包索引里的同号正式 SDK 代替。
 
 - **没有包仓库时**直接装发布附带的 wheel：`uv pip install ./maestro_sdk-<版本>-py3-none-any.whl`；在本仓库里是 `pip install ./sdk`。
+
+开发包与已安装 SDK 可能使用同一个基础版本号，安装随附 wheel 时显式重装：`uv pip install --reinstall-package maestro-sdk ./maestro_sdk-<版本>-py3-none-any.whl`。
 
 PAT 在网页“设置”页创建：`read` 只能读，`experiment` 还能提交、取消、重跑、发布附件和方案。令牌只显示一次，请放进文件或环境变量，不要写进代码或命令行参数。
 
