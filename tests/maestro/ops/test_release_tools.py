@@ -37,6 +37,8 @@ index = _load("package_index")
 gate = _load("verify_commit")
 release_tool = _load("release")
 validate = _load("validate_release")
+development = _load("build_dev")
+versions = _load("version")
 
 
 @pytest.mark.parametrize(
@@ -74,18 +76,6 @@ def test_license_fields_become_spdx(fields, expected):
 )
 def test_only_allowed_licenses_pass(expression, ok):
     assert licenses.allowed(expression) is ok
-
-
-def test_only_dev_prereleases_beyond_the_newest_are_stale():
-    releases = [
-        {"tag_name": f"dev-{n}", "prerelease": True, "created_at": f"2026-10-{n:02d}"}
-        for n in range(1, 6)
-    ] + [
-        {"tag_name": "v0.4.0", "prerelease": False, "created_at": "2026-10-01"},
-        {"tag_name": "v0.5.0-rc1", "prerelease": True, "created_at": "2026-10-01"},
-    ]
-    stale = publish.stale_prereleases(releases, keep=2)
-    assert [r["tag_name"] for r in stale] == ["dev-3", "dev-2", "dev-1"]
 
 
 class FakeGitea(BaseHTTPRequestHandler):
@@ -227,31 +217,21 @@ def gitea(monkeypatch):
     server.shutdown()
 
 
-def test_prereleases_upload_rerun_and_prune(gitea, tmp_path):
-    dist = tmp_path / "dist"
-    dist.mkdir()
-    (dist / "maestro-0.4.0.dev0-abc.tar.gz").write_bytes(b"package")
-    (dist / "SHA256SUMS").write_text("sums\n")
-    for n in range(12):
-        args = ["--dist", str(dist), "--tag", f"dev-{n:03d}", "--commit", "c" * 40]
-        assert publish.main([*args, "--prerelease", "--keep", "10"]) == 0
-    assert [r["tag_name"] for r in gitea["releases"]] == [f"dev-{n:03d}" for n in range(2, 12)]
-    assert gitea["deleted_tags"] == ["dev-000", "dev-001"]
-    assert gitea["auth"] == {"Bearer t0ken"}
-
-    # Re-running the same job reuses bytes without deleting or duplicating assets.
-    uploads = len(gitea["uploads"])
-    publish.main(["--dist", str(dist), "--tag", "dev-011", "--commit", "c" * 40, "--prerelease"])
-    assert len(gitea["uploads"]) == uploads
-    assert all(gitea["created_drafts"])
-    latest = gitea["releases"][-1]
-    assert sorted(a["name"] for a in latest["assets"]) == [
-        "SHA256SUMS",
-        "maestro-0.4.0.dev0-abc.tar.gz",
-    ]
+def test_uploader_never_creates_a_missing_tag(gitea, tmp_path):
+    (tmp_path / "package.tar.gz").write_bytes(b"package")
+    with pytest.raises(SystemExit, match="refusing to publish"):
+        publish.main(["--dist", str(tmp_path), "--tag", "v0.4.1", "--commit", "c" * 40])
+    assert gitea["tags"] == {"v0.4.0": "c" * 40}
+    assert gitea["releases"] == []
 
 
-def test_formal_release_is_never_pruned(gitea, tmp_path):
+@pytest.mark.parametrize("tag", ["dev-abcdef", "v0.4.1.dev0", "v01.2.3"])
+def test_uploader_only_accepts_formal_tags(tag, tmp_path):
+    with pytest.raises(SystemExit, match="formal vX.Y.Z"):
+        publish.publish(None, tmp_path, tag, "c" * 40)
+
+
+def test_formal_release_uses_reviewed_notes(gitea, tmp_path):
     (tmp_path / "pkg.tar.gz").write_bytes(b"package")
     notes = tmp_path / "notes.md"
     notes.write_text("- change one\n")
@@ -263,21 +243,11 @@ def test_formal_release_is_never_pruned(gitea, tmp_path):
     assert release["target_commitish"] == "c" * 40
 
 
-def test_the_sdk_wheel_is_stamped_without_changing_the_checkout(monkeypatch, tmp_path):
-    pyproject = tmp_path / "pyproject.toml"
-    pyproject.write_text('[project]\nname = "maestro-sdk"\nversion = "0.4.1.dev0"\n')
-    monkeypatch.setattr(build, "SDK_PYPROJECT", pyproject)
-    seen = []
-
-    def fake_wheel(project, out):
-        seen.append(build.SDK_VERSION.search(pyproject.read_text())[1])
-        raise RuntimeError("build failed")
-
-    monkeypatch.setattr(build, "wheel", fake_wheel)
-    with pytest.raises(RuntimeError):
-        build.sdk_wheel_as("0.4.1.dev57", tmp_path)
-    assert seen == ["0.4.1.dev57"]
-    assert 'version = "0.4.1.dev0"' in pyproject.read_text()  # restored even on failure
+@pytest.mark.parametrize("value", ["0.4.1.dev0", "0.4.1.dev57", "01.2.3", "1.2", "1.2.3rc1"])
+def test_source_versions_only_accept_canonical_release_numbers(value):
+    with pytest.raises(SystemExit, match="canonical X.Y.Z"):
+        versions.validate_version(value)
+    versions.validate_version("0.5.2")
 
 
 def _sdk_wheel(directory: Path, version: str, content: bytes = b"") -> Path:
@@ -377,27 +347,27 @@ def registry(monkeypatch):
     server.shutdown()
 
 
-def test_dev_versions_upload_rerun_and_prune(registry, tmp_path, capsys):
-    release = tmp_path / "release"
-    release.mkdir()
-    _sdk_wheel(release, "0.4.0")
-    assert package.main(["--dist", str(release)]) == 0  # a formal version, never pruned
-    for n in range(1, 13):
-        dist = tmp_path / f"dev{n}"
+def test_sdk_upload_is_repeatable_and_refuses_changed_bytes(registry, tmp_path, capsys):
+    for version in ("0.4.0", "0.4.1"):
+        dist = tmp_path / version
         dist.mkdir()
-        wheel = _sdk_wheel(dist, f"0.4.1.dev{n}", content=str(n).encode())
+        wheel = _sdk_wheel(dist, version, content=version.encode())
         (dist / "SHA256SUMS").write_text("other assets are ignored\n")
-        assert package.main(["--dist", str(dist), "--keep", "10"]) == 0
-    assert set(registry["files"]) == {"0.4.0"} | {f"0.4.1.dev{n}" for n in range(3, 13)}
+        assert package.main(["--dist", str(dist)]) == 0
+    assert set(registry["files"]) == {"0.4.0", "0.4.1"}
     assert registry["auth"] == {"token t0ken"}
-
-    # Re-running the job finds the same file and succeeds; other content is refused.
     capsys.readouterr()
     assert package.main(["--dist", str(wheel.parent)]) == 0
     assert "already published" in capsys.readouterr().out
-    _sdk_wheel(wheel.parent, "0.4.1.dev12", content=b"changed")
+    _sdk_wheel(wheel.parent, "0.4.1", content=b"changed")
     with pytest.raises(SystemExit, match="already published"):
         package.main(["--dist", str(wheel.parent)])
+
+
+def test_development_sdk_cannot_be_uploaded(tmp_path):
+    _sdk_wheel(tmp_path, "0.4.1.dev57")
+    with pytest.raises(SystemExit, match="canonical X.Y.Z SDK"):
+        package.main(["--dist", str(tmp_path)])
 
 
 def test_only_one_sdk_wheel_is_published(registry, tmp_path):
@@ -551,7 +521,7 @@ def release_repo(tmp_path):
     git("init", "-b", "dev")
     git("config", "user.name", "Release Test")
     git("config", "user.email", "release@example.test")
-    (repo / "pyproject.toml").write_text('[project]\nversion = "0.4.1.dev0"\n')
+    (repo / "pyproject.toml").write_text('[project]\nversion = "0.4.0"\n')
     (repo / "business").write_text("selected")
     git("add", ".")
     git("commit", "-m", "Business change")
@@ -562,9 +532,8 @@ def release_repo(tmp_path):
     return repo, git
 
 
-@pytest.mark.parametrize("failed_version", ["0.4.1", "0.4.2.dev0"])
-def test_prepare_pins_scope_and_prepares_next_version_before_publishing(
-    release_repo, tmp_path, monkeypatch, failed_version
+def test_prepare_pins_one_candidate_and_resumes_without_a_next_version(
+    release_repo, tmp_path, monkeypatch
 ):
     repo, git = release_repo
     source = git("rev-parse", "HEAD")
@@ -574,7 +543,7 @@ def test_prepare_pins_scope_and_prepares_next_version_before_publishing(
     def stamp(value, root):
         nonlocal failed
         (root / "pyproject.toml").write_text(f'[project]\nversion = "{value}"\n')
-        if value == failed_version and not failed:
+        if not failed:
             failed = True
             raise RuntimeError("interrupted generation")
 
@@ -594,7 +563,6 @@ def test_prepare_pins_scope_and_prepares_next_version_before_publishing(
         remote="origin",
         commit=source,
         version="0.4.1",
-        next_version=None,
         notes=notes,
         worktree=tmp_path / "candidate",
     )
@@ -602,24 +570,23 @@ def test_prepare_pins_scope_and_prepares_next_version_before_publishing(
         release_tool.prepare(args, repo)
     candidate = release_tool.prepare(args, repo)
     assert release_tool.prepare(args, repo) == candidate  # Preparation can be resumed repeatedly.
-    completion = git("rev-parse", "release/v0.4.1-next")
-    assert candidate != source and completion != candidate
+    assert candidate != source
+    assert release_tool.maybe_ref("release/v0.4.1-next", repo) is None
     assert 'version = "0.4.1"' in git("show", f"{candidate}:pyproject.toml")
-    assert 'version = "0.4.2.dev0"' in git("show", f"{completion}:pyproject.toml")
     assert git("rev-parse", "origin/master") == source
-    # Concurrent dev work is integrated only in the development completion.
+    # Concurrent dev work is retained without broadening the published candidate.
     (repo / "later").write_text("must survive")
     git("add", ".")
     git("commit", "-m", "Later work")
     git("push", "origin", "dev")
     args.finish_worktree = tmp_path / "finish"
-    release_tool.finish_dev(candidate, completion, args, repo)
+    release_tool.finish_dev(candidate, args, repo)
     git("fetch", "origin")
     final = git("rev-parse", "origin/dev")
     assert git("show", f"{final}:later") == "must survive"
     assert git("show", f"{candidate}:business") == "selected"
-    assert 'version = "0.4.2.dev0"' in git("show", f"{final}:pyproject.toml")
-    release_tool.finish_dev(candidate, completion, args, repo)  # Repeat is harmless.
+    assert 'version = "0.4.1"' in git("show", f"{final}:pyproject.toml")
+    release_tool.finish_dev(candidate, args, repo)  # Repeat is harmless.
     assert git("rev-parse", "origin/dev") == final
 
 
@@ -717,9 +684,9 @@ def test_package_validation_rejects_missing_extra_and_changed_assets(tmp_path):
 def test_partial_publication_never_reports_complete_or_finishes_dev(
     failed_stage, monkeypatch, tmp_path
 ):
-    sha, completion = "a" * 40, "b" * 40
+    sha = "a" * 40
     clients = [SimpleNamespace(tag_commit=lambda tag: None) for _ in range(2)]
-    monkeypatch.setattr(release_tool, "candidate_refs", lambda *a: (sha, completion))
+    monkeypatch.setattr(release_tool, "candidate_ref", lambda *a: sha)
     monkeypatch.setattr(release_tool, "clients", lambda: clients)
     monkeypatch.setattr(release_tool, "verified", lambda *a: {"html_url": "https://ci/source"})
     monkeypatch.setattr(release_tool, "ancestor", lambda *a: True)
@@ -729,8 +696,7 @@ def test_partial_publication_never_reports_complete_or_finishes_dev(
     def git(*args, **kwargs):
         if args[0] == "show":
             if args[1].endswith("pyproject.toml"):
-                version = "0.4.2.dev0" if args[1].startswith(completion) else "0.4.1"
-                return f'[project]\nversion = "{version}"\n'
+                return '[project]\nversion = "0.4.1"\n'
             return "Release notes"
         if args[0] == "push":
             pushes.append(args[1:])
@@ -767,18 +733,110 @@ def test_missing_tag_is_not_a_completed_release():
     assert release_tool.release_state(Client(), "v0.4.1", "a" * 40) is None
 
 
-def test_dev_completion_never_pushes_a_formal_version(release_repo, tmp_path):
+def test_dev_integration_refuses_to_lose_the_release_version(release_repo, tmp_path):
     repo, git = release_repo
     source = git("rev-parse", "HEAD")
-    (repo / "pyproject.toml").write_text('[project]\nversion = "0.4.1"\n')
+    (repo / "business").write_text("release metadata was lost")
     git("add", ".")
-    git("commit", "-m", "Incorrectly prepared development completion")
-    completion = git("rev-parse", "HEAD")
+    git("commit", "-m", "Incorrectly prepared release integration")
+    candidate = git("rev-parse", "HEAD")
     args = SimpleNamespace(remote="origin", version="0.4.1", finish_worktree=tmp_path / "finish")
-    with pytest.raises(SystemExit, match="development version"):
-        release_tool.finish_dev(source, completion, args, repo)
+    with pytest.raises(SystemExit, match="release version"):
+        release_tool.finish_dev(candidate, args, repo)
     git("fetch", "origin")
     assert git("rev-parse", "origin/dev") == source
+
+
+def test_resuming_a_release_preserves_a_newer_dev_version(release_repo, tmp_path):
+    repo, git = release_repo
+    (repo / "pyproject.toml").write_text('[project]\nversion = "0.4.1"\n')
+    git("add", ".")
+    git("commit", "-m", "Release")
+    candidate = git("rev-parse", "HEAD")
+    (repo / "pyproject.toml").write_text('[project]\nversion = "0.5.0"\n')
+    git("add", ".")
+    git("commit", "-m", "Later release")
+    git("push", "origin", "dev")
+    final = git("rev-parse", "HEAD")
+    args = SimpleNamespace(remote="origin", version="0.4.1", finish_worktree=tmp_path / "finish")
+    release_tool.finish_dev(candidate, args, repo)
+    assert git("rev-parse", "origin/dev") == final
+    assert not args.finish_worktree.exists()
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_development_build_uses_committed_source_and_preserves_failed_work(
+    release_repo, tmp_path, monkeypatch, fail
+):
+    repo, git = release_repo
+    source = git("rev-parse", "HEAD")
+    (repo / "business").write_text("uncommitted work must survive")
+    directories = []
+
+    def directory(prefix):
+        path = tmp_path / f"{prefix}{len(directories)}"
+        path.mkdir()
+        directories.append(path)
+        return str(path)
+
+    monkeypatch.setattr(development, "mkdtemp", directory)
+    monkeypatch.setenv("MAESTRO_MODEL_KEY", "must-not-reach-build")
+    out = tmp_path / "dist"
+    commands = []
+
+    def run(command, *, cwd, env):
+        commands.append(command)
+        assert cwd.is_relative_to(directories[0])
+        assert env["HOME"] == str(directories[1] / "home")
+        assert "MAESTRO_MODEL_KEY" not in env
+        assert (directories[0] / "business").read_text() == "selected"
+        if "tools/build_release.py" in command:
+            out.mkdir()
+            (out / "maestro-0.4.0-test-unreleased.tar.gz").write_bytes(b"package")
+            (out / "SHA256SUMS").write_text("sums")
+        if "tools/validate_release.py" in command and fail:
+            raise RuntimeError("wheel validation failed")
+
+    monkeypatch.setattr(development, "run", run)
+    args = SimpleNamespace(remote="origin", commit=None, out=out)
+    if fail:
+        with pytest.raises(RuntimeError, match="wheel validation"):
+            development.build(args, repo)
+        assert directories[0].is_dir() and directories[1].is_dir()
+        assert str(directories[0]) in git("worktree", "list", "--porcelain")
+    else:
+        result = development.build(args, repo)
+        assert result["commit"] == source
+        assert Path(result["package"]).is_file()
+        assert not any(path.exists() for path in directories)
+        assert str(directories[0]) not in git("worktree", "list", "--porcelain")
+    assert (repo / "business").read_text() == "uncommitted work must survive"
+    assert git("rev-parse", "HEAD") == source
+    assert git("tag", "--list") == ""
+    assert "--expect-channel" in commands[-1]
+    with pytest.raises(SystemExit, match="output already exists"):
+        development.build(args, repo)
+
+
+def test_unreleased_package_cannot_pass_formal_validation(tmp_path):
+    manifest = tmp_path / "RELEASE.json"
+    manifest.write_text(
+        json.dumps(
+            {"commit": "a" * 40, "dirty": False, "version": "0.5.2", "channel": "development"}
+        )
+    )
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    archive_path = dist / "maestro-0.5.2-test-unreleased.tar.gz"
+    with tarfile.open(archive_path, "w:gz") as archive:
+        archive.add(manifest, arcname="package/RELEASE.json")
+    (dist / "SHA256SUMS").write_text(f"{validate.digest(archive_path)}  {archive_path.name}\n")
+    with pytest.raises(SystemExit, match="unreleased package"):
+        list(validate.inspect_assets(dist, "a" * 40, "0.5.2"))
+    with pytest.raises(SystemExit, match="unreleased development"):
+        package.main(["--dist", str(dist)])
+    with pytest.raises(SystemExit, match="unreleased development"):
+        publish.publish(None, dist, "v0.5.2", "a" * 40)
 
 
 def test_download_does_not_follow_an_unrelated_advertised_path():
@@ -811,16 +869,27 @@ def test_installed_service_reports_its_package_build(tmp_path):
     the installed package description tells them apart. A source checkout reports none."""
     from maestro import installed_build
 
-    version_dir = tmp_path / "0.5.0.dev0-921d0e7f95b7"
+    version_dir = tmp_path / "0.5.2-921d0e7f95b7-unreleased"
     (version_dir / "venv").mkdir(parents=True)
     assert installed_build(version_dir / "venv") is None
-    info = {"name": "maestro", "version": "0.5.0.dev0", "build": "0.5.0.dev0-921d0e7f95b7"}
+    info = {"name": "maestro", "version": "0.5.2", "build": "0.5.2-921d0e7f95b7-unreleased"}
     (version_dir / "RELEASE.json").write_text(json.dumps(info))
-    assert installed_build(version_dir / "venv") == "0.5.0.dev0-921d0e7f95b7"
+    assert installed_build(version_dir / "venv") == "0.5.2-921d0e7f95b7-unreleased"
     (version_dir / "RELEASE.json").write_text(json.dumps({**info, "name": "other"}))
     assert installed_build(version_dir / "venv") is None
     (version_dir / "RELEASE.json").write_text("not json")
     assert installed_build(version_dir / "venv") is None
+
+
+def test_source_service_identifies_the_unreleased_commit_and_local_changes(release_repo, tmp_path):
+    from maestro import source_build
+
+    repo, git = release_repo
+    sha = git("rev-parse", "HEAD")
+    assert source_build(repo).endswith(f"-{sha[:12]}-unreleased")
+    (repo / "business").write_text("local modifications")
+    assert source_build(repo).endswith(f"-{sha[:12]}-dirty-unreleased")
+    assert source_build(tmp_path / "not-a-checkout") is None
 
 
 class FakeRefs(publish.Gitea):

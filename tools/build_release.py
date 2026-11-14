@@ -1,7 +1,7 @@
 """Build a release package for maestroctl.
 
     uv run python tools/build_release.py [--out dist] [--allow-dirty] [--assets]
-                                         [--expect-version 0.4.0] [--dev-number N]
+                                         [--expect-version 0.4.0]
 
 The package ``maestro-<build>.tar.gz`` holds one directory with ``maestroctl``, the
 service, Runner and SDK wheels, the locked requirements (with hashes) each environment
@@ -14,10 +14,10 @@ neither git nor Node; building the license list does need ``npm ci`` in ``fronte
 wheel, the license list and ``SHA256SUMS`` over all of them. ``--expect-version`` refuses
 to build when the code's version differs, so a ``v0.4.0`` tag cannot publish 0.4.1.
 
-The SDK has the service's version. On ``dev`` that ends in ``.dev0``; ``--dev-number N``
-builds the SDK wheel as ``.devN`` instead (CI passes its run number), so each prerelease
-the package registry receives has its own, increasing version. Only the built wheel
-changes: ``sdk/pyproject.toml`` is restored right after the build.
+The SDK always has the service's source version. Without ``--expect-version``, the
+package is explicitly marked unreleased and is only for manual installation; its
+SDK wheel must not be uploaded to a package index. Use ``tools/build_dev.py`` to
+prepare dependencies, build and validate a selected commit in an isolated worktree.
 """
 
 import argparse
@@ -64,18 +64,6 @@ def wheel(project: Path, out: Path) -> Path:
 
 
 SDK_PYPROJECT = ROOT / "sdk/pyproject.toml"
-SDK_VERSION = re.compile(r'^version = "([^"]+)"$', re.MULTILINE)
-
-
-def sdk_wheel_as(version: str, out: Path) -> Path:
-    """Build the SDK wheel with ``version``, leaving ``sdk/pyproject.toml`` as it was."""
-    original = SDK_PYPROJECT.read_text()
-    stamped = SDK_VERSION.sub(f'version = "{version}"', original, count=1)
-    try:
-        SDK_PYPROJECT.write_text(stamped)
-        return wheel(ROOT / "sdk", out)
-    finally:
-        SDK_PYPROJECT.write_text(original)
 
 
 def requirements(project: Path, target: Path) -> None:
@@ -121,7 +109,6 @@ def main(argv=None) -> int:
     parser.add_argument("--label", default="", help="appended to the build name (tests, rebuilds)")
     parser.add_argument("--assets", action="store_true", help="also write the release assets")
     parser.add_argument("--expect-version", help="fail unless the code has this version")
-    parser.add_argument("--dev-number", type=int, help="SDK wheel as .devN instead of .dev0")
     args = parser.parse_args(argv)
 
     if args.expect_version and not re.fullmatch(
@@ -143,17 +130,17 @@ def main(argv=None) -> int:
     if args.expect_version and args.expect_version != version:
         print(f"the code is version {version}, not {args.expect_version}", file=sys.stderr)
         return 1
-    sdk_version = SDK_VERSION.search(SDK_PYPROJECT.read_text())[1]
+    if not re.fullmatch(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)", version):
+        parser.error("source version must be canonical X.Y.Z")
+    sdk_version = tomllib.loads(SDK_PYPROJECT.read_text())["project"]["version"]
     if sdk_version != version:
         print(f"the SDK is version {sdk_version}, the service {version}", file=sys.stderr)
         return 1
-    if args.dev_number is not None:
-        if not version.endswith(".dev0") or args.dev_number < 1:
-            print("--dev-number needs a .dev0 version and a number from 1", file=sys.stderr)
-            return 1
-        sdk_version = f"{version.removesuffix('.dev0')}.dev{args.dev_number}"
     harbor = re.search(r'"harbor==([^"]+)"', (ROOT / "runner/pyproject.toml").read_text())[1]
     build = f"{version}-{commit[:12]}" + ("-dirty" if dirty else "")
+    channel = "release" if args.expect_version else "development"
+    if channel == "development":
+        build += "-unreleased"
     if args.label:
         if not re.fullmatch(r"[a-z0-9.]+", args.label):
             print("--label takes lower-case letters, digits and dots", file=sys.stderr)
@@ -178,7 +165,7 @@ def main(argv=None) -> int:
         requirements(ROOT, top / "server/requirements.txt")
         runner_wheel = wheel(ROOT / "runner", top / "runner")
         requirements(ROOT / "runner", top / "runner/requirements.txt")
-        sdk_wheel = sdk_wheel_as(sdk_version, top / "sdk")
+        sdk_wheel = wheel(ROOT / "sdk", top / "sdk")
         shutil.copy2(ROOT / "ops/maestroctl.py", top / "maestroctl")
         (top / "maestroctl").chmod(0o755)
         shutil.copy2(ROOT / "docs/guides/deployment.md", top / "INSTALL.md")
@@ -202,6 +189,7 @@ def main(argv=None) -> int:
             "build": build,
             "commit": commit,
             "dirty": dirty,
+            "channel": channel,
             "schema_head": head,
             "harbor_version": harbor,
             "runner_revision": runner_revision,

@@ -66,6 +66,12 @@
 | N-31 | 被 N-33 取代（U-85） | [用 SDK 与 skill 适配工作流：以附件改进为例](archive/N-31-workflow-adaptation.md) |
 | N-28 | 被 N-33 取代（U-85） | [数据集拓展与执行 / 评测拆分](archive/N-28-datasets-and-evaluation-split.md) |
 
+### 发布流程
+
+| 编号 | 提案 | 状态 | 要点 |
+| --- | --- | --- | --- |
+| N-43 | [简化版本发布与开发包构建](N-43-simple-release.md) | 实施中 | dev 只验证，单正式候选与 X.Y.Z tag；发布提交同步回 dev，一条命令构建和验证本地开发包（U-104） |
+
 ### 已完成
 
 结论已并入当前文档，细节以系统说明与代码为准。

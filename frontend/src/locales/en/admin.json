@@ -224,6 +224,7 @@
     "incompatible": "Incompatible",
     "versionsTitle": "Versions",
     "serviceVersion": "Service version",
+    "unreleased": "Unreleased",
     "apiVersion": "API version",
     "schemaRevision": "Schema revision",
     "policyVersion": "Error policy version",

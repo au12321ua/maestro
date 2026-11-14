@@ -3834,7 +3834,7 @@ class Capabilities(BaseModel):
     service_build: Annotated[
         str | None,
         Field(
-            description="release package the service was installed from (version and source commit); null when it runs from a source checkout"
+            description="package or source build (version and source commit); development builds include unreleased, modified source includes dirty; null when provenance is unavailable"
         ),
     ]
     service_version: str

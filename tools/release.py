@@ -1,6 +1,6 @@
 """Maintainer entry point: prepare, inspect, publish or resume one fixed release.
 
-prepare creates two Git branches and a worktree; publish only runs after review and
+prepare creates one candidate branch and a worktree; publish only runs after review and
 successful verification. Git refs, Actions, Releases, registry and Pages are the state.
 No deployment is performed. See --help for each command.
 """
@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from publish_package import Registry
 from publish_release import Gitea
 from verify_commit import verified
-from version import set_version
+from version import set_version, validate_version
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -52,8 +52,8 @@ def maybe_ref(ref, root=ROOT):
     return result.stdout.strip() if result.returncode == 0 else None
 
 
-def branches(version):
-    return f"release/v{version}", f"release/v{version}-next"
+def branch(version):
+    return f"release/v{version}"
 
 
 def notes_path(version):
@@ -71,29 +71,16 @@ def prepare(args, root=ROOT):
         raise SystemExit(
             "master cannot fast-forward to the selected content; reconcile and reverify"
         )
-    candidate, completion = branches(args.version)
+    candidate = branch(args.version)
     remotes = {args.remote}
     if mirror := getattr(args, "github_remote", None):
         remotes.add(mirror)
     for remote in sorted(remotes):
         if git("ls-remote", "--tags", remote, f"refs/tags/v{args.version}", root=root):
             raise SystemExit(f"version {args.version} is already tagged on {remote}; resume it")
-    for ref in (
-        f"refs/tags/v{args.version}",
-        f"{args.remote}/{candidate}",
-        f"{args.remote}/{completion}",
-    ):
+    for ref in (f"refs/tags/v{args.version}", f"{args.remote}/{candidate}"):
         if maybe_ref(ref, root):
             raise SystemExit(f"{ref} already exists; inspect/status/publish to resume it")
-    next_version = (
-        args.next_version
-        or f"{args.version.rsplit('.', 1)[0]}.{int(args.version.rsplit('.', 1)[1]) + 1}.dev0"
-    )
-    if not re.fullmatch(r"\d+\.\d+\.\d+\.dev0", next_version):
-        raise SystemExit("next version must be X.Y.Z.dev0")
-    formal_tuple = tuple(map(int, args.version.split(".")))
-    if tuple(map(int, next_version.removesuffix(".dev0").split("."))) <= formal_tuple:
-        raise SystemExit("next development version must follow the formal version")
     worktree = args.worktree.resolve()
     allowed = {
         "pyproject.toml",
@@ -116,7 +103,7 @@ def prepare(args, root=ROOT):
                 "prepared branch exists; use its original worktree to resume preparation"
             )
         current_branch = git("symbolic-ref", "--short", "HEAD", root=worktree)
-        if current_branch not in (candidate, completion):
+        if current_branch != candidate:
             raise SystemExit(
                 "preparation worktree is on a different branch; inspect before resuming"
             )
@@ -129,8 +116,6 @@ def prepare(args, root=ROOT):
                 "preparation has unrelated changes; preserve and inspect them before resuming"
             )
     else:
-        if maybe_ref(completion, root):
-            raise SystemExit("completion exists without its candidate; inspect before resuming")
         git("worktree", "add", "-b", candidate, str(worktree), source, root=root)
     final = resolve(candidate, root)
     if final == source:
@@ -147,7 +132,7 @@ def prepare(args, root=ROOT):
         git(
             "commit",
             "-m",
-            f"Prepare release {args.version}\n\nRelease-source: {source}\nNext-development: {next_version}",
+            f"Prepare release {args.version}\n\nRelease-source: {source}",
             root=worktree,
         )
         final = resolve("HEAD", worktree)
@@ -156,7 +141,6 @@ def prepare(args, root=ROOT):
         if (
             git("rev-parse", final + "^", root=root) != source
             or f"Release-source: {source}" not in message
-            or f"Next-development: {next_version}" not in message
             or tomllib.loads(git("show", f"{final}:pyproject.toml", root=root))["project"][
                 "version"
             ]
@@ -166,62 +150,32 @@ def prepare(args, root=ROOT):
             raise SystemExit(
                 "existing candidate differs from the requested preparation; inspect before resuming"
             )
-    if not maybe_ref(completion, root):
-        git("switch", "-c", completion, root=worktree)
-    if resolve(completion, root) == final:
-        if git("symbolic-ref", "--short", "HEAD", root=worktree) != completion:
-            raise SystemExit("resume next-version preparation from its original worktree")
-        set_version(next_version, worktree)
-        git("add", "--", *sorted(allowed - {notes_path(args.version)}), root=worktree)
-        git(
-            "commit",
-            "-m",
-            f"Resume development at {next_version}\n\nRelease-candidate: {final}",
-            root=worktree,
-        )
-    else:
-        complete = resolve(completion, root)
-        if (
-            git("rev-parse", complete + "^", root=root) != final
-            or f"Release-candidate: {final}"
-            not in git("show", "-s", "--format=%B", complete, root=root)
-            or tomllib.loads(git("show", f"{complete}:pyproject.toml", root=root))["project"][
-                "version"
-            ]
-            != next_version
-            or git("status", "--porcelain", root=worktree)
-        ):
-            raise SystemExit("prepared completion differs or has changes; inspect before resuming")
+    if git("status", "--porcelain", root=worktree):
+        raise SystemExit("prepared candidate has uncommitted changes; inspect before resuming")
     print(
         json.dumps(
             {
                 "source": source,
                 "candidate": final,
                 "version": args.version,
-                "next_version": next_version,
-                "completion": resolve(completion, root),
                 "worktree": str(worktree),
                 "review": f"git diff {source} {candidate}",
             },
             indent=2,
         )
     )
-    print(f"After review: git push {args.remote} {candidate} {completion}")
+    print(f"After review: git push {args.remote} {candidate}")
     return final
 
 
-def candidate_refs(version, remote, root=ROOT):
-    found = []
-    for branch in branches(version):
-        local, upstream = maybe_ref(branch, root), maybe_ref(f"{remote}/{branch}", root)
-        if local and upstream and local != upstream:
-            raise SystemExit(f"{branch}: local and remote differ; inspect before resuming")
-        if not (local or upstream):
-            raise SystemExit(f"missing {branch}; fetch the prepared branches to resume")
-        found.append(local or upstream)
-    if not ancestor(found[0], found[1], root):
-        raise SystemExit("next-development branch does not contain the candidate")
-    return found
+def candidate_ref(version, remote, root=ROOT):
+    name = branch(version)
+    local, upstream = maybe_ref(name, root), maybe_ref(f"{remote}/{name}", root)
+    if local and upstream and local != upstream:
+        raise SystemExit(f"{name}: local and remote differ; inspect before resuming")
+    if not (local or upstream):
+        raise SystemExit(f"missing {name}; fetch the prepared branch to resume")
+    return local or upstream
 
 
 def clients():
@@ -304,23 +258,23 @@ def compare_channels(gitea, github, first, second):
     return wheel, gitea.asset_digest(left[wheel], first["id"])
 
 
-def require_development_head(sha, formal, root):
+def require_release_base(sha, formal, root):
     version = tomllib.loads(git("show", f"{sha}:pyproject.toml", root=root))["project"]["version"]
-    if not re.fullmatch(r"\d+\.\d+\.\d+\.dev0", version) or tuple(
-        map(int, version.removesuffix(".dev0").split("."))
-    ) <= tuple(map(int, formal.split("."))):
-        raise SystemExit("dev completion must end at a development version after the release")
+    if not re.fullmatch(r"\d+\.\d+\.\d+", version) or tuple(map(int, version.split("."))) < tuple(
+        map(int, formal.split("."))
+    ):
+        raise SystemExit("dev must retain this release version or a later release base")
 
 
-def finish_dev(candidate, completion, args, root=ROOT):
+def finish_dev(candidate, args, root=ROOT):
     git("fetch", args.remote, root=root)
     current = resolve(f"{args.remote}/dev", root)
-    if ancestor(completion, current, root):
-        require_development_head(current, args.version, root)
-        print(f"dev already includes next development version: {current}")
+    if ancestor(candidate, current, root):
+        require_release_base(current, args.version, root)
+        print(f"dev already includes release: {current}")
         return
-    if ancestor(current, completion, root):
-        final = completion
+    if ancestor(current, candidate, root):
+        final = candidate
     else:
         # A new worktree retains any merge conflict for review. Never reset remote dev.
         path = args.finish_worktree.resolve()
@@ -330,22 +284,22 @@ def finish_dev(candidate, completion, args, root=ROOT):
                     f"resolve and commit the retained dev integration at {path}, then retry"
                 )
             final = resolve("HEAD", path)
-            if not ancestor(candidate, final, root) or not ancestor(completion, final, root):
-                raise SystemExit("retained dev integration does not include prepared completion")
+            if not ancestor(candidate, final, root):
+                raise SystemExit("retained dev integration does not include prepared release")
         else:
-            git("worktree", "add", "--detach", str(path), completion, root=root)
+            git("worktree", "add", "--detach", str(path), candidate, root=root)
         if not ancestor(current, resolve("HEAD", path), root):
             git("merge", "--no-edit", current, root=path)
         final = resolve("HEAD", path)
-    require_development_head(final, args.version, root)
-    # One fast-forward push contains both formal preparation and next-dev version.
+    require_release_base(final, args.version, root)
+    # A normal push preserves all concurrent work and the published version metadata.
     git("push", args.remote, f"{final}:refs/heads/dev", root=root)
     print(f"dev completed: {final}")
 
 
 def publish(args, root=ROOT):
     git("fetch", args.remote, root=root)
-    sha, completion = candidate_refs(args.version, args.remote, root)
+    sha = candidate_ref(args.version, args.remote, root)
     gitea, github = clients()
     tag = f"v{args.version}"
     run = verified(gitea, sha)
@@ -357,11 +311,6 @@ def publish(args, root=ROOT):
         actual = client.tag_commit(tag)
         if actual and actual != sha:
             raise SystemExit(f"{tag} already points at {actual}, expected {sha}")
-    following = tomllib.loads(git("show", f"{completion}:pyproject.toml", root=root))["project"][
-        "version"
-    ]
-    if not re.fullmatch(r"\d+\.\d+\.\d+\.dev0", following):
-        raise SystemExit("prepared completion must restore a development version")
     source_version = git("show", f"{sha}:pyproject.toml", root=root)
     if tomllib.loads(source_version)["project"]["version"] != args.version:
         raise SystemExit("candidate source version differs from requested tag")
@@ -413,7 +362,7 @@ def publish(args, root=ROOT):
         page = response.read().decode()
     if f"{wheel}#sha256={digest}" not in page:
         raise SystemExit("Pages index has not published the verified SDK digest; retry index job")
-    finish_dev(sha, completion, args, root)
+    finish_dev(sha, args, root)
     print(
         json.dumps(
             {
@@ -432,12 +381,9 @@ def publish(args, root=ROOT):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
-    prep = sub.add_parser(
-        "prepare", help="prepare reviewable version/contract/notes/next-dev commits"
-    )
+    prep = sub.add_parser("prepare", help="prepare one reviewable version/contract/notes commit")
     prep.add_argument("--commit", required=True)
     prep.add_argument("--version", required=True)
-    prep.add_argument("--next-version")
     prep.add_argument("--notes", type=Path, required=True)
     prep.add_argument("--worktree", type=Path, required=True)
     prep.add_argument("--remote", default="origin")
@@ -455,24 +401,26 @@ def main(argv=None):
             )
             item.add_argument("--pages-url", help="custom Pages SDK project index URL")
     args = parser.parse_args(argv)
-    if not re.fullmatch(r"\d+\.\d+\.\d+", args.version):
-        parser.error("formal version must be X.Y.Z")
+    try:
+        validate_version(args.version)
+    except SystemExit as error:
+        parser.error(str(error))
     if args.command == "prepare":
         prepare(args)
     elif args.command == "publish":
         publish(args)
     else:
         git("fetch", args.remote)
-        sha, completion = candidate_refs(args.version, args.remote)
+        sha = candidate_ref(args.version, args.remote)
         client = Gitea(os.environ["GITEA_API"], os.environ["GITEA_REPO"], os.environ["GITEA_TOKEN"])
         if args.command == "verify":
-            branch = branches(args.version)[0]
-            if resolve(f"{args.remote}/{branch}") != sha:
+            name = branch(args.version)
+            if resolve(f"{args.remote}/{name}") != sha:
                 raise SystemExit(
                     "push the prepared candidate branch before dispatching verification"
                 )
-            client.call("POST", "/actions/workflows/verify.yml/dispatches", {"ref": branch})
-            print(f"verification requested for {sha} on {branch}")
+            client.call("POST", "/actions/workflows/verify.yml/dispatches", {"ref": name})
+            print(f"verification requested for {sha} on {name}")
         else:
             mirror = Gitea(
                 "https://api.github.com",
@@ -485,7 +433,6 @@ def main(argv=None):
                 json.dumps(
                     {
                         "candidate": sha,
-                        "completion": completion,
                         "verification": verified(client, sha),
                         "gitea": release_state(client, tag, sha),
                         "github": release_state(mirror, tag, sha),

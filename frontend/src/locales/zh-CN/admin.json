@@ -223,6 +223,7 @@
     "incompatible": "不兼容",
     "versionsTitle": "版本",
     "serviceVersion": "服务版本",
+    "unreleased": "未发布",
     "apiVersion": "API 版本",
     "schemaRevision": "结构修订",
     "policyVersion": "错误策略版本",

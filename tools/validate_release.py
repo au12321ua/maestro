@@ -28,7 +28,7 @@ def metadata(wheel):
         return BytesParser().parsebytes(archive.read(name))
 
 
-def inspect_assets(dist, commit, version=None):
+def inspect_assets(dist, commit, version=None, channel=None):
     sums = {}
     for line in (dist / "SHA256SUMS").read_text().splitlines():
         value, name = line.split("  ", 1)
@@ -48,6 +48,10 @@ def inspect_assets(dist, commit, version=None):
             raise SystemExit("release manifest does not describe the clean expected commit")
         if version and manifest["version"] != version:
             raise SystemExit("release manifest version differs from tag")
+        if version and manifest.get("channel") != "release":
+            raise SystemExit("an unreleased package cannot be published as a formal release")
+        if channel and manifest.get("channel") != channel:
+            raise SystemExit("release manifest channel differs from the expected build channel")
         files = {
             str(p.relative_to(top)): digest(p)
             for p in top.rglob("*")
@@ -92,8 +96,8 @@ def inspect_assets(dist, commit, version=None):
         yield top, service, sdk, manifest
 
 
-def validate(dist, commit, version=None):
-    for top, service, sdk, manifest in inspect_assets(dist, commit, version):
+def validate(dist, commit, version=None, channel=None):
+    for top, service, sdk, manifest in inspect_assets(dist, commit, version, channel):
         with tempfile.TemporaryDirectory(prefix="maestro-wheel-check-") as tmp:
             scratch = Path(tmp)
             env = {
@@ -176,8 +180,9 @@ def main(argv=None):
     parser.add_argument("--dist", required=True, type=Path)
     parser.add_argument("--commit", required=True)
     parser.add_argument("--expect-version")
+    parser.add_argument("--expect-channel", choices=("release", "development"))
     args = parser.parse_args(argv)
-    validate(args.dist.resolve(), args.commit, args.expect_version)
+    validate(args.dist.resolve(), args.commit, args.expect_version, args.expect_channel)
 
 
 if __name__ == "__main__":

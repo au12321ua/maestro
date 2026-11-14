@@ -4,11 +4,11 @@
 
 ## 1. 安装布局与进程
 
-发布形式是压缩包（`tools/build_release.py` 生成），由包内只用系统 Python 标准库的 `maestroctl` 安装和维护（U-29）。根 `pyproject.toml` 是权威版本，号码按[发布指南](../guides/releasing.md)的版本号规则决定（U-103）；服务运行时从安装元数据读取，并从版本目录的 `RELEASE.json` 读出构建名（含提交号）报告给管理页，SDK 包声明与契约由准备入口同步；Runner 独立版本不变。维护者用 `tools/release.py` 从固定 dev 提交准备正式候选、发布说明与下一开发版本，最终 SHA 完整检查后才快进 master 并创建固定附注 tag（U-66）。
+发布形式是压缩包（`tools/build_release.py` 生成），由包内只用系统 Python 标准库的 `maestroctl` 安装和维护（U-29）。根 `pyproject.toml` 是权威版本，只使用 `X.Y.Z`，dev 保持最近正式版本，发布时按[发布指南](../guides/releasing.md)的变化规则定号（U-103、U-104）；服务运行时从安装元数据读取，并从版本目录的 `RELEASE.json` 读出构建名（含提交号）报告给管理页；开发包与源码运行明确报告提交号和 `unreleased`，本地源码有修改时还报告 `dirty`。SDK 包声明与契约由准备入口同步；Runner 独立版本不变。维护者用 `tools/release.py` 从固定 dev 提交准备一个正式候选及发布说明，最终 SHA 完整检查后才快进 master 并创建固定附注 tag（U-66）。
 
-所有分支 push 检查源码，PR 复用对应提交结果；正式 tag 读取准确 SHA 的成功 `verify` 任务及必需步骤，独立 `publish` 任务构建和验证实际 wheel，上传失败不改变源码检查结论（U-67）。dev 通过后发 Gitea 预览，正式 tag 发 Gitea Release 与同版本 SDK 包；GitHub 从相同 tag 重建并验证 Release，再更新 Pages 正式 SDK 索引（U-42、U-62）。预览 Release 与 `.dev<CI运行号>` SDK 各留最近 10 个，正式版不清理。
+所有分支 push 检查源码，PR 复用对应提交结果；正式 tag 读取准确 SHA 的成功 `verify` 任务及必需步骤，独立 `publish` 任务构建和验证实际 wheel，上传失败不改变源码检查结论（U-67）。dev push 不创建 tag、Release 或 SDK 包，正式 tag 发 Gitea Release 与同版本 SDK 包（U-104）；GitHub 从相同 tag 重建并验证 Release，再更新 Pages 正式 SDK 索引（U-42、U-62）。开发包由 `tools/build_dev.py` 在独立工作树和隔离环境中按固定提交构建、验证；服务和 SDK 使用同一源码版本，仅供手动安装，不上传包索引。
 
-包附 SDK wheel、许可证清单与 `SHA256SUMS`，manifest 固定源码 SHA 与文件摘要；构建输入锁定、归档元数据规范化，同一输入可重建。发布先准备草稿，附件齐全后公开；缺失补传，同摘要跳过，异摘要或 tag 改指向则停止。两端附件、SDK 包仓库和 Pages 全部核对后，正式准备与下一开发版本一起推回 dev，保留并发提交。各渠道没有原子事务，入口按实际状态续跑，不把部分成功报告为完成。操作见[发布指南](../guides/releasing.md)。不自动部署：管理员在管理页检查并发起正式版更新，或在主机上执行 `maestroctl update`（第 5 节）。
+包附 SDK wheel、许可证清单与 `SHA256SUMS`，manifest 固定源码 SHA、构建渠道与文件摘要；构建输入锁定、归档元数据规范化，同一输入可重建。发布先准备草稿，附件齐全后公开；缺失补传，同摘要跳过，异摘要或 tag 改指向则停止。两端附件、SDK 包仓库和 Pages 全部核对后，将正式候选同步回 dev，保留并发提交，不再递增下一开发版本。各渠道没有原子事务，入口按实际状态续跑，不把部分成功报告为完成。操作见[发布指南](../guides/releasing.md)。不自动部署：管理员在管理页检查并发起正式版更新，或在主机上执行 `maestroctl update`（第 5 节）。
 
 布局是系统级的（U-13）：
 
@@ -128,7 +128,7 @@ journald                            服务标准输出 / 错误
 
 ### 网页发起（U-96）
 
-服务每天查询一次获取源最新的正式版（GitHub `releases/latest`，经服务进程的代理），管理员也可以在管理页“更新”中立即检查；只有比当前安装版本新的正式版才提示，所以装着开发预览（`.dev`）的实例在下一个正式版出来前不会被提示降级。页面显示发布说明，标题含“破坏性变更”“迁移”“更新后”“首次准备”等字样的段落列在前面。查询失败只显示原因，保留上一次成功查到的结果。`update_check = false` 时不查询，网页没有更新入口（`features.web_update`）。开发预览只走命令行。
+服务每天查询一次获取源最新的正式版（GitHub `releases/latest`，经服务进程的代理），管理员也可以在管理页“更新”中立即检查；只有版本号比当前安装版本更大的正式版才提示，开发包按源码基础版本比较，不按提交号排序。页面显示发布说明，标题含“破坏性变更”“迁移”“更新后”“首次准备”等字样的段落列在前面。查询失败只显示原因，保留上一次成功查到的结果。`update_check = false` 时不查询，网页没有更新入口（`features.web_update`）。开发包经 `maestroctl update <本地包>` 安装。
 
 1. 管理员确认发布说明后发起“更新到 X”（只能是最近一次检查查到的那个版本），服务进入**待更新**。待更新是数据库里的一条记录（`service_updates`），重启后仍然有效：运行照常受理和排队，但不派发，排队原因 `UPDATE_PENDING`（[05](05-scheduling-execution.md) 第 3 节）；新的导入、首次准备与回收缓存拒绝启动（`UPDATE_PENDING`），已开始的继续做完。所有成员看到横幅，管理页列出还在执行的运行与 Operation 及其提交者。
 2. 管理员可以随时取消待更新，恢复派发；也可以“立即更新”，在途工作按重启语义中断，已得评分保留（与 `--interrupt-running` 相同）。

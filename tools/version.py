@@ -16,25 +16,30 @@ def read(root=ROOT):
 
 def check(root=ROOT):
     expected = read(root)
+    validate_version(expected)
     sdk = tomllib.loads((root / "sdk/pyproject.toml").read_text())["project"]["version"]
     if sdk != expected:
         raise SystemExit(f"derived SDK version {sdk} differs from source version {expected}")
     return expected
 
 
+def validate_version(value):
+    if not re.fullmatch(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)", value):
+        raise SystemExit("version must be canonical X.Y.Z")
+
+
 def set_version(value, root=ROOT):
-    if not re.fullmatch(r"\d+\.\d+\.\d+(?:\.dev0)?", value):
-        raise SystemExit("version must be X.Y.Z or X.Y.Z.dev0")
+    validate_version(value)
     for name in ("pyproject.toml", "sdk/pyproject.toml"):
         path = root / name
         path.write_text(VERSION.sub(f'version = "{value}"', path.read_text(), count=1))
     # Refresh installation metadata before exporting the runtime OpenAPI version.
-    if not (root / "frontend/node_modules").exists():
-        subprocess.run(
-            ["npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund"],
-            cwd=root / "frontend",
-            check=True,
-        )
+    # A failed npm download can leave node_modules present but incomplete.
+    subprocess.run(
+        ["npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund"],
+        cwd=root / "frontend",
+        check=True,
+    )
     for command in (
         ["uv", "lock"],
         ["uv", "sync", "--locked", "--group", "dev"],
