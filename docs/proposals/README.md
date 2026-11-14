@@ -66,18 +66,13 @@
 | N-31 | 被 N-33 取代（U-85） | [用 SDK 与 skill 适配工作流：以附件改进为例](archive/N-31-workflow-adaptation.md) |
 | N-28 | 被 N-33 取代（U-85） | [数据集拓展与执行 / 评测拆分](archive/N-28-datasets-and-evaluation-split.md) |
 
-### 发布流程
-
-| 编号 | 提案 | 状态 | 要点 |
-| --- | --- | --- | --- |
-| N-43 | [简化版本发布与开发包构建](N-43-simple-release.md) | 实施中 | dev 只验证，单正式候选与 X.Y.Z tag；发布提交同步回 dev，一条命令构建和验证本地开发包（U-104） |
-
 ### 已完成
 
 结论已并入当前文档，细节以系统说明与代码为准。
 
 | 编号 | 状态 | 提案 |
 | --- | --- | --- |
+| N-43 | 完成 | [简化版本发布与开发包构建](archive/N-43-simple-release.md)（U-104）：dev 只验证，单正式候选与 X.Y.Z tag，发布提交同步回 dev，一条命令构建和验证本地开发包 → [12](../design/12-operations.md)、[发布指南](../guides/releasing.md) |
 | N-42 | 完成 | [回收站批量操作与 Harness 升级](archive/N-42-batch-recycle-harness-upgrade.md)（U-102）→ [03](../design/03-configuration-attachments.md)、[07](../design/07-artifacts-export.md)、[11](../design/11-web-ui.md) |
 | N-37 | 完成 | [网页检查与触发更新，带排空](archive/N-37-web-update.md)（U-96、U-98）→ [12](../design/12-operations.md)、[05](../design/05-scheduling-execution.md)、[11](../design/11-web-ui.md)、[部署指南](../guides/deployment.md) |
 | N-36 | 完成 | [工作流记录：给人读写的文字与可跳转的引用](archive/N-36-record-text.md)（U-95、U-97）→ [01](../design/01-domain-model.md)、[10](../design/10-api-sdk-cli.md)、[11](../design/11-web-ui.md) |
