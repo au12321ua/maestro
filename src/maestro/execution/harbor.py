@@ -629,8 +629,9 @@ class HarborExecutor:
                 permit = p.get("permit_id")
                 if not permit or session.permits.get(phase) != permit:
                     raise ProtocolError("release for an unknown permit")
-                # Progress is not proof. Independently remove and list every resource
-                # in this attempt's environment group, including auxiliary services.
+                # The Runner drains starts and stops before requesting release.
+                # Only after that fence can an empty resource list prove release.
+                # Independently sweep the whole group, including auxiliary services.
                 report = await self.docker.cleanup({**session.spec.labels, LABEL_PHASE: phase})
                 if not report.released:
                     raise ProtocolError("environment release could not be confirmed")

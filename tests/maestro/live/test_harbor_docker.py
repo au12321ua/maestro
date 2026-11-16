@@ -1603,6 +1603,172 @@ def staged_task(root, name, execution, verification=None, *, solve_seconds=2, ve
     return task
 
 
+@pytest.mark.parametrize("phase", ["execution", "verification"])
+@pytest.mark.parametrize("stop", ["timeout", "cancel"])
+def test_delayed_compose_start_cannot_outlive_released_capacity(
+    settings, tmp_path, monkeypatch, phase, stop
+):
+    from support.results import make_owner
+
+    from maestro.execution.process import identity
+    from maestro.services.capacity import HostCapacity, in_use
+
+    tasks = tmp_path / "tasks"
+    slow = staged_task(
+        tasks,
+        "slow",
+        (1, 128),
+        (1, 128) if phase == "verification" else None,
+        solve_seconds=0,
+        verify_seconds=0,
+    )
+    config = slow / "task.toml"
+    config.write_text(config.read_text() + "build_timeout_sec = 2\n")
+    staged_task(tasks, "fast", (1, 128), solve_seconds=0, verify_seconds=0)
+    marker = tmp_path / "delayed-up.json"
+    shim = tmp_path / "bin"
+    shim.mkdir()
+    wrapper = shim / "docker"
+    wrapper.write_text(
+        f"""#!{sys.executable}
+import json, os, shutil, signal, sys, time
+from pathlib import Path
+args = sys.argv[1:]
+if "compose" in args and "up" in args:
+    files = [Path(args[i + 1]) for i, value in enumerate(args) if value == "-f"]
+    selected = any("io.maestro.phase: {phase}" in p.read_text() for p in files)
+    if selected:
+        try:
+            with Path({str(marker)!r}).open("x") as out:
+                json.dump({{"pid": os.getpid(), "at": time.time()}}, out)
+        except FileExistsError:
+            pass
+        else:
+            # Preserve parsed Compose input: removing temporary files during down
+            # must not hide a start request that was already submitted.
+            saved = Path(out.name).parent / "captured-compose"
+            saved.mkdir()
+            for i, value in enumerate(args):
+                if value == "-f":
+                    target = saved / (str(i) + ".yaml")
+                    shutil.copyfile(args[i + 1], target)
+                    args[i + 1] = str(target)
+            signal.signal(signal.SIGTERM, signal.SIG_IGN)
+            time.sleep({60 if stop == "cancel" else 6})
+os.execv({shutil.which("docker")!r}, [{shutil.which("docker")!r}, *args])
+"""
+    )
+    wrapper.chmod(0o755)
+    observations = []
+
+    class ObservedDocker(DockerResources):
+        async def cleanup(self, labels):
+            report = await super().cleanup(labels)
+            if marker.exists():
+                pid = json.loads(marker.read_text())["pid"]
+                observations.append(
+                    {
+                        "phase": labels.get("io.maestro.phase"),
+                        "creator_alive": identity(pid)["start_ticks"] is not None,
+                        "released": report.released,
+                    }
+                )
+            return report
+
+    with harbor(settings, tasks, "delayed-start") as service:
+        owner = make_owner(service)
+        executor = service.executor
+        executor.docker = ObservedDocker()
+        executor.term_grace = 0.25
+        environment = executor._environment
+        monkeypatch.setattr(
+            executor,
+            "_environment",
+            lambda workdir: {
+                **environment(workdir),
+                "PATH": str(shim) + os.pathsep + environment(workdir)["PATH"],
+            },
+        )
+        host = HostCapacity(slots=1, cpus=1, memory_mb=128)
+        service.worker.capacity = service.runs.capacity = host
+        accepted = []
+        with service.db.read() as conn:
+            ids = dict(conn.execute(select(t.tasks.c.task_key, t.tasks.c.id)).all())
+
+        def accept(name):
+            _, data, _ = service.runs.submit(
+                owner,
+                uuid.uuid4().hex,
+                {
+                    "name": name,
+                    "dataset_version_id": service.version_id,
+                    "execution_mode": "oracle",
+                    "task_selection": {"mode": "explicit", "task_ids": [ids[name]]},
+                },
+            )
+            accepted.append(data["run_id"])
+            with service.db.write() as conn:
+                policy = conn.execute(
+                    select(t.run_snapshots.c.policy_json).where(
+                        t.run_snapshots.c.run_id == data["run_id"]
+                    )
+                ).scalar_one()
+                conn.execute(
+                    t.run_snapshots.update()
+                    .where(t.run_snapshots.c.run_id == data["run_id"])
+                    .values(policy_json={**policy, "retry": {**policy["retry"], "max_retries": 0}})
+                )
+
+        accept("slow")
+
+        async def scenario():
+            service.worker.start_epoch()
+            drain = asyncio.create_task(service.worker.drain(timeout=60))
+            try:
+                async with asyncio.timeout(30):
+                    while not marker.exists():
+                        if drain.done():
+                            await drain
+                            raise AssertionError("the delayed Compose command never started")
+                        await asyncio.sleep(0.02)
+                accept("fast")
+                if stop == "cancel":
+                    service.runs.cancel(owner, accepted[0])
+                else:
+                    await asyncio.sleep(2.5)  # after start timeout, before the delayed up
+                    with service.db.read() as conn:
+                        assert in_use(conn)["cpus"] == 1
+                        assert (
+                            conn.execute(
+                                select(t.stage_permits.c.state).where(
+                                    t.stage_permits.c.phase == phase
+                                )
+                            ).scalar_one()
+                            == "granted"
+                        )
+                    assert service.runs.trials(accepted[1])[0]["attempts"] == []
+                await drain
+                created = json.loads(marker.read_text())
+                await asyncio.sleep(max(0, created["at"] + 7 - time.time()))
+                assert identity(created["pid"])["start_ticks"] is None
+                assert observations and all(
+                    not row["creator_alive"] for row in observations if row["released"]
+                ), observations
+                assert labelled(service.worker.instance_id) == []
+                assert service.runs.trials(accepted[1])[0]["state"] == "scored"
+                with service.db.read() as conn:
+                    assert in_use(conn)["slots"] == 0
+                print(json.dumps({"phase": phase, "stop": stop, "cleanup": observations}))
+            finally:
+                if not drain.done():
+                    for run_id in accepted:
+                        service.runs.cancel(owner, run_id)
+                    with contextlib.suppress(Exception):
+                        await drain
+
+        asyncio.run(scenario())
+
+
 @pytest.mark.parametrize("mode", ["separate", "shared", "larger"])
 def test_environment_stage_capacity_on_real_containers(settings, tmp_path, mode):
     from maestro.services.capacity import HostCapacity, in_use

@@ -7,6 +7,35 @@ from contextlib import asynccontextmanager
 from maestro_runner.protocol import emit
 
 
+async def _complete_before_cancelling(task, on_cancel=None):
+    """Delay cancellation until the operation and its CLI commands have returned.
+
+    Cancelling Harbor's wait can orphan a Compose command that still creates
+    containers. Keep it owned and keep the permit held while it drains. A stuck
+    operation remains within the Runner group for the service's forced stop.
+    """
+    cancellation = None
+    while True:
+        try:
+            result = await asyncio.shield(task)
+        except asyncio.CancelledError as error:
+            if on_cancel is not None:
+                on_cancel()
+            if task.done():
+                if not task.cancelled():
+                    task.exception()
+                raise cancellation or error
+            cancellation = cancellation or error
+        except BaseException:
+            if cancellation is not None:
+                raise cancellation from None
+            raise
+        else:
+            if cancellation is not None:
+                raise cancellation
+            return result
+
+
 class Permits:
     def __init__(self, attempt_id):
         self.attempt_id = attempt_id
@@ -31,6 +60,8 @@ class Permits:
         permit = await asyncio.shield(future)
         if self.closed:
             raise RuntimeError("resource channel is closed")
+        if phase in self.retired:
+            raise RuntimeError("environment stage has already been released")
         self.held[phase] = permit
         return permit
 
@@ -76,18 +107,35 @@ class Permits:
 
     def wrap_environment(self, environment, phase):
         start, stop = environment.start, environment.stop
+        starting = set()
+        shutdown = None
 
         async def start_permitted(*args, **kwargs):
             await self.acquire(phase)
-            return await start(*args, **kwargs)
+            task = asyncio.create_task(start(*args, **kwargs))
+            starting.add(task)
+            try:
+                return await _complete_before_cancelling(task, lambda: self.retired.add(phase))
+            finally:
+                starting.discard(task)
 
-        async def stop_confirmed(*args, **kwargs):
+        async def stop_after_start(*args, **kwargs):
+            # A container list is only a release proof once no outstanding start
+            # can create another container. Drain starts before invoking Compose down.
+            await asyncio.gather(*starting, return_exceptions=True)
             # Upstream can swallow stop failures. The platform independently sweeps
             # the labelled group before acknowledging release, even after an error.
             try:
                 return await stop(*args, **kwargs)
             finally:
                 await self.release(phase)
+
+        async def stop_confirmed(*args, **kwargs):
+            nonlocal shutdown
+            self.retired.add(phase)
+            if shutdown is None:
+                shutdown = asyncio.create_task(stop_after_start(*args, **kwargs))
+            return await _complete_before_cancelling(shutdown)
 
         environment.start = start_permitted
         environment.stop = stop_confirmed

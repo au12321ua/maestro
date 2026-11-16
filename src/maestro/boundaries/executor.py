@@ -94,7 +94,7 @@ class ExecutionSink(Protocol):
         ...
 
     async def resource_released(self, phase: str, permit_id: str) -> None:
-        """The executor has independently confirmed this environment is gone."""
+        """Starts/stops have finished and the executor confirms no environment remains."""
         ...
 
     async def model_finished(self) -> None:

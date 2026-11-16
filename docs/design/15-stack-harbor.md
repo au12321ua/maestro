@@ -70,7 +70,7 @@ Worker 在服务进程内，负责领取、租约、取消、资源和结果确�
 
 `execute` 的事件：started（Harbor 与 Runner 版本、试次数、PID）、network_plan、attempt_started、phase_changed、log、attempt_finished（结果、是否还会重试、归档目录与逐文件摘要清单、用量、耗时、附件安装记录）、heartbeat、cancel_requested、completed，以及 resource_requested、resource_released、model_finished。`hub`（含本地上传任务检查）与 `probe` 只回一条 result。阶段事件来自 Harbor Job 的试次生命周期钩子（`Job.add_hook`），不解析终端输出；log 事件是 Runner 定期读取 Agent 与验证日志、渲染 Agent 轨迹得到的。
 
-没有单独的结果目录完成标记：平台按 attempt_finished 的清单逐个核对归档文件的摘要后入库。进程退出码（0 完成、2 Runner 错误、3 取消、4 拒绝）不决定业务结果，平台按事件、租约和错误策略决定试次状态；退出码 0 不等于任务通过，非零也不抹去已确认的结果。Runner 长时间无事件（`runner_silence_sec`）视为失联并停止。资源控制任务独立处理，等待许可不堵塞 stdout、日志、心跳和取消；环境停止先由执行器按阶段标签核对，再向 Runner 确认释放。
+没有单独的结果目录完成标记：平台按 attempt_finished 的清单逐个核对归档文件的摘要后入库。进程退出码（0 完成、2 Runner 错误、3 取消、4 拒绝）不决定业务结果，平台按事件、租约和错误策略决定试次状态；退出码 0 不等于任务通过，非零也不抹去已确认的结果。Runner 长时间无事件（`runner_silence_sec`）视为失联并停止。资源控制任务独立处理，等待许可不堵塞 stdout、日志、心跳和取消；Runner 关闭阶段启动入口并等待在途启动 / 停止操作结束，执行器再按阶段标签核对清理，最后向 Runner 确认释放。启动超时只取消 Harbor 的等待时，Runner 保留该操作直到命令结束，期间继续占用许可；命令卡住时由服务强制终止 Runner 进程组，不能凭暂时没有容器减账。
 
 **凭据。** 服务在执行时解密凭据，经 stdin 交给 Runner，不放进命令行、环境变量或可导出的作业配置。模型密钥只留在 Runner 内存；Terminus-2 在 Runner 内调用模型，OpenCode、Codex、Claude Code 在容器内调用，密钥以权限 400 的临时文件进入容器，Agent 结束即删除（[09](09-identity-security.md) 第 5 节）。作者参数值（含秘密参数）放进 Runner 环境变量，供 Harbor 解析任务模板。stderr 中出现的密钥值与带口令的代理地址由服务端脱敏。
 

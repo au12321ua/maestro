@@ -296,6 +296,7 @@ Runner 的 `runner/test_runner_attachments.py` 使用锁定 Harbor 的真实 Tri
 - 独立验证 4 CPU / 8 GiB → 1 CPU / 2 GiB 后，其他尝试可以使用归还资源；共享验证保持原预算；更大的验证阶段先归还旧环境再等待。覆盖：`runs/test_capacity.py`、`live/test_harbor_docker.py`，真实测试同时核对 Docker 限制及许可总量。
 - 准备等待不占执行容量，先就绪任务独立推进；模型结束归还提供商额度但保留活动槽位；平台重试等清理确认，跨尝试累计交付物上限不重置。覆盖：`runs/test_worker.py`、`runs/test_capacity.py`、`results/test_artifact_downloads.py`。
 - 重复与过期许可、管道丢失、等待期间心跳 / 日志 / 取消、取消与授予竞争、停止失败和重启对账不提前重用容量。覆盖：`runner/test_runner_resources.py`、`runs/test_harbor_executor.py`、`runs/test_restart.py`、`runs/test_races_and_recovery.py`、`live/test_harbor_docker.py`。
+- 启动超时后仍在途的 Compose 命令不能越过资源释放边界：主环境与独立验证器都须先等命令结束再停止、清理与减账，排队试次不能提前使用容量。覆盖：`runner/test_runner_resources.py`（重复取消及启动最终失败）、`live/test_harbor_docker.py`（完整 Worker / Runner、保留 Compose 输入后延迟启动，以及卡住命令的进程组强制取消）。
 - 旧快照与容器资源覆盖保持，追加迁移保留已有运行、结果、入队顺序和旧清理预留。覆盖：`ops/test_migrations.py`、`runs/test_capacity.py`、`runs/test_reruns.py`、`live/test_harbor_docker.py`。真实 Oracle 测试测量完整 Runner 启动、十个活动进程 RSS 与阶段交接延迟，不调用模型。
 - 执行与验证阶段经 Harbor 阶段策略只访问批准范围，不能直连任意外网、宿主管理面或云元数据；主机没有收紧能力时拒绝模型运行。覆盖：`runs/test_network_capability.py`、`live/test_harbor_docker.py`。
 - 容器没有宿主目录（本试次输出目录除外）、Docker socket、主密钥或宿主数据库挂载；附件路径与文件传输不越界。覆盖：`configuration/test_attachments.py`、`live/test_harbor_docker.py`。共享构建不计入主机 CPU / 内存总账：未实现（N-22）。
