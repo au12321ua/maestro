@@ -173,7 +173,10 @@
     "agentSummary": "{{label}}（<code>{{modelId}}</code>，{{provider}}，修订 {{revision}}）· {{harness}}",
     "attachments": "附件：",
     "installTimeout": "（每试次安装时限 {{count}} 秒）",
-    "submission": "提交评分"
+    "submission": "提交评分",
+    "schedulingOrder": "受理顺序",
+    "resourceUsage": "当前资源占用",
+    "resourceUsageValue": "{{slots}} 个槽位 · {{cpus}} 核 · {{memory_mb}} MiB"
   },
   "deletion": {
     "runPurged": "该运行已彻底删除",
@@ -231,7 +234,20 @@
     "failed": "失败 {{n}}",
     "installRecords": "安装记录",
     "installUser": "安装用户：{{user}}",
-    "defaultInstallUser": "容器默认用户"
+    "defaultInstallUser": "容器默认用户",
+    "backfilled": "填空派发",
+    "slotHeld": "占用试次槽位",
+    "resources": "环境阶段资源",
+    "resourcePhase": {
+      "execution": "执行环境",
+      "verification": "独立验证环境"
+    },
+    "permitState": {
+      "waiting": "等待许可",
+      "granted": "已获批，尚未确认释放",
+      "released": "已确认释放"
+    },
+    "stageUsage": "{{cpus}} 核 · {{memory}} MiB"
   },
   "summary": {
     "direction": {

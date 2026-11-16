@@ -24,6 +24,58 @@ def test_empty_instance_migrates_to_head_and_matches_schema(tmp_path):
     assert migrate.current(db) == migrate.head()
 
 
+def test_stage_permit_upgrade_preserves_populated_legacy_runs(tmp_path, service, owner, version_id):
+    import asyncio
+
+    from sqlalchemy import MetaData, select, update
+    from support.runs import _drain, accept
+
+    from maestro.db import schema as t
+
+    completed = accept(service, owner, version_id)
+    asyncio.run(_drain(service))
+    accept(service, owner, version_id)
+    legacy_reservation = {"slots": 3, "cpus": 3, "memory_mb": 6144, "provider": None}
+    with service.db.write() as conn:
+        conn.execute(
+            update(t.runs)
+            .where(t.runs.c.id == completed["run_id"])
+            .values(reservation_json=legacy_reservation, cleanup_state="failed")
+        )
+        for snapshot in conn.execute(select(t.run_snapshots)).mappings():
+            policy = {k: v for k, v in snapshot["policy_json"].items() if k != "retry"}
+            conn.execute(
+                update(t.run_snapshots)
+                .where(t.run_snapshots.c.run_id == snapshot["run_id"])
+                .values(policy_json=policy)
+            )
+    db = Database.open(tmp_path / "legacy.db")
+    migrate.upgrade(db, "0013")
+    legacy = MetaData()
+    legacy.reflect(db.engine)
+    before = {}
+    with service.db.read() as source, db.write() as destination:
+        for table in legacy.sorted_tables:
+            if table.name == "alembic_version":
+                continue
+            rows = [dict(row) for row in source.execute(select(table)).mappings()]
+            before[table.name] = rows
+            if rows:
+                destination.execute(table.insert(), rows)
+    migrate.upgrade(db)
+    with db.read() as conn:
+        for name, rows in before.items():
+            assert list(conn.execute(select(legacy.tables[name])).mappings()) == rows, name
+        assert conn.execute(select(t.stage_permits)).all() == []
+        attempts = conn.execute(select(t.execution_attempts)).mappings().all()
+        assert attempts and all(
+            not a["slot_held"] and not a["backfilled"] and a["cleanup_state"] == "not_required"
+            for a in attempts
+        )
+        assert conn.exec_driver_sql("PRAGMA foreign_key_check").all() == []
+    db.dispose()
+
+
 def test_pragmas_wal_and_foreign_keys(tmp_path):
     db = Database.open(tmp_path / "app.db")
     migrate.upgrade(db)

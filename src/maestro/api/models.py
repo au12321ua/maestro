@@ -1400,6 +1400,12 @@ class RunScoring(Model):
     bench_score: float | None = Field(description="Macro mean of per-task means")
 
 
+class ResourceUsage(Model):
+    slots: int
+    cpus: float
+    memory_mb: int
+
+
 class Run(Model):
     id: str
     name: str
@@ -1421,10 +1427,13 @@ class Run(Model):
     stop_requested: bool
     stop_reason: str | None
     queue_reason: str | None = Field(
-        description="Why a queued run waits: CAPACITY_SLOTS, CAPACITY_CPU, CAPACITY_MEMORY "
-        "or PROVIDER_LIMIT"
+        description="Current dispatch wait reason, including stage capacity, run concurrency, retry backoff or priority protection"
     )
-    heartbeat_at: str | None = Field(description="Last sign of life from the run's Runner")
+    scheduling_order: int | None = Field(
+        description="Persistent acceptance order key; lower runs dispatch first"
+    )
+    resource_usage: ResourceUsage
+    heartbeat_at: str | None = Field(description="Last sign of life from any of the run's Runners")
     counts: RunCounts
     scoring: RunScoring | None
     deletion: DeletionState | None = Field(description="Set when the run is in the recycle bin")
@@ -1492,7 +1501,16 @@ class RunProvenance(Model):
     admissions: list[AdmissionRecord]
 
 
+class RetryPolicy(Model):
+    max_retries: int
+    exclude_exceptions: list[str]
+    min_wait_sec: float
+    wait_multiplier: float
+    max_wait_sec: float
+
+
 class RunPolicy(Model):
+    retry: RetryPolicy | None = None
     aggregation_version: int
     policy_version: str
     team_policy_revision: int
@@ -1595,8 +1613,23 @@ class AttemptError(Model):
     detail: JsonObject | None = None
 
 
+class StagePermit(Model):
+    id: str
+    phase: Literal["execution", "verification"]
+    state: Literal["waiting", "granted", "released"]
+    cpus: float
+    memory_mb: int
+    requested_at: str
+    granted_at: str | None
+    released_at: str | None
+
+
 class Attempt(Model):
     id: str
+    slot_held: bool
+    cleanup_state: str
+    backfilled: bool
+    stage_permits: list[StagePermit]
     attempt_index: int
     state: Literal[
         "starting",
@@ -1645,6 +1678,9 @@ class Trial(Model):
     ]
     phase: str | None
     reason_code: str | None
+    queue_reason: str | None = Field(
+        description="Capacity or priority wait, separate from execution failures"
+    )
     artifact_state: Literal["pending", "saving", "complete", "partial", "failed", "expired"]
     artifact_counts: ArtifactCounts
     cleanup_state: Literal["pending", "running", "complete", "failed", "not_required"]

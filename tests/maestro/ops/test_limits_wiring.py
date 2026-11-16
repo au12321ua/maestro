@@ -52,11 +52,11 @@ def test_component_defaults_match_the_configuration_defaults(tmp_path):
 
 STUB = """
 import json, sys
-spec = json.loads(sys.stdin.read())
+spec = json.loads(sys.stdin.readline())
 with open({capture!r}, "w") as handle:
     json.dump(spec, handle)
 def emit(sequence, kind, **payload):
-    print(json.dumps({{"protocol_version": 2, "run_id": spec["run_id"], "sequence": sequence,
+    print(json.dumps({{"protocol_version": 3, "run_id": spec["run_id"], "sequence": sequence,
                       "type": kind, "at": "x", "payload": payload}}), flush=True)
 emit(1, "started", harbor_version="0.24.0", runner_version="1", n_trials=0)
 emit(2, "completed", status="completed")

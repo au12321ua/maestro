@@ -38,6 +38,7 @@ from support import (
 
 from maestro.application import Maestro
 from maestro.boundaries.storage import LocalArtifactStore
+from maestro.core import clock
 from maestro.db import migrate
 from maestro.db import schema as t
 from maestro.domain.setup_network import BUILT_IN, SetupNetwork
@@ -444,9 +445,16 @@ def test_a_killed_runner_leaves_no_separate_verifier_behind(settings, tmp_path):
             wait_for(verifying, timeout=300)
             with service.db.read() as conn:
                 runner = (
-                    conn.execute(t.runs.select().where(t.runs.c.id == accepted["run_id"]))
+                    conn.execute(
+                        t.execution_attempts.select()
+                        .join(t.trials, t.trials.c.id == t.execution_attempts.c.trial_id)
+                        .where(
+                            t.trials.c.run_id == accepted["run_id"],
+                            t.execution_attempts.c.slot_held.is_(True),
+                        )
+                    )
                     .mappings()
-                    .one()["runner_json"]
+                    .one()["process_identity_json"]
                 )
             os.killpg(runner["pgid"], signal.SIGKILL)
             wait_operation(pat, accepted["operation_id"], timeout=180)
@@ -608,9 +616,13 @@ def test_killed_runner_ends_trials_and_leaves_no_containers(harbor_service):
             from maestro.db import schema as t
 
             runner = (
-                conn.execute(t.runs.select().where(t.runs.c.id == run_id))
+                conn.execute(
+                    t.execution_attempts.select()
+                    .join(t.trials, t.trials.c.id == t.execution_attempts.c.trial_id)
+                    .where(t.trials.c.run_id == run_id, t.execution_attempts.c.slot_held.is_(True))
+                )
                 .mappings()
-                .one()["runner_json"]
+                .one()["process_identity_json"]
             )
         os.killpg(runner["pgid"], signal.SIGKILL)
         wait_operation(pat, accepted["operation_id"], timeout=120)
@@ -710,7 +722,11 @@ def test_service_killed_mid_run_is_reconciled_on_restart(tmp_path):
             ).stdout.split()
             for pid in runners:
                 cwd = Path(f"/proc/{pid}/cwd")
-                assert not (cwd.exists() and str(cwd.resolve()).startswith(str(tmp_path)))
+                try:
+                    location = cwd.resolve(strict=True)
+                except (FileNotFoundError, PermissionError):
+                    continue  # unrelated users' processes are outside this test's scope
+                assert not str(location).startswith(str(tmp_path))
         finally:
             os.killpg(second.pid, signal.SIGTERM)
             second.wait(30)
@@ -1554,3 +1570,394 @@ cp -a "$source_dir/." /app/
             assert finished["status"] == "succeeded" and trial["state"] == "scored", trial
             assert trial["result"]["score"] == score
         assert labelled(service.worker.instance_id) == []
+
+
+def staged_task(root, name, execution, verification=None, *, solve_seconds=2, verify_seconds=6):
+    task = root / name
+    for directory in ("environment", "solution", "tests"):
+        (task / directory).mkdir(parents=True)
+    config = (
+        'schema_version = "1.4"\nartifacts = ["/app/answer"]\n'
+        "[agent]\ntimeout_sec = 60\n[verifier]\ntimeout_sec = 60\n"
+    )
+    if verification:
+        config += 'environment_mode = "separate"\n'
+        config += (
+            f"[verifier.environment]\ncpus = {verification[0]}\nmemory_mb = {verification[1]}\n"
+        )
+        (task / "tests/Dockerfile").write_text(
+            "FROM ubuntu:22.04\nRUN mkdir -p /app\nCOPY test.sh /tests/test.sh\n"
+        )
+    config += f"[environment]\ncpus = {execution[0]}\nmemory_mb = {execution[1]}\n"
+    (task / "task.toml").write_text(config)
+    (task / "instruction.md").write_text("Write an answer.\n")
+    (task / "environment/Dockerfile").write_text("FROM ubuntu:22.04\nRUN mkdir -p /app\n")
+    (task / "solution/solve.sh").write_text(
+        f"#!/bin/bash\nsleep {solve_seconds}\necho intact > /app/answer\n"
+    )
+    (task / "tests/test.sh").write_text(
+        f"#!/bin/bash\nsleep {verify_seconds}\n"
+        'if [ "$(cat /app/answer)" = intact ]; then echo 1 > /logs/verifier/reward.txt; '
+        "else echo 0 > /logs/verifier/reward.txt; fi\n"
+    )
+    return task
+
+
+@pytest.mark.parametrize("phase", ["execution", "verification"])
+@pytest.mark.parametrize("stop", ["timeout", "cancel"])
+def test_delayed_compose_start_cannot_outlive_released_capacity(
+    settings, tmp_path, monkeypatch, phase, stop
+):
+    from support.results import make_owner
+
+    from maestro.execution.process import identity
+    from maestro.services.capacity import HostCapacity, in_use
+
+    tasks = tmp_path / "tasks"
+    slow = staged_task(
+        tasks,
+        "slow",
+        (1, 128),
+        (1, 128) if phase == "verification" else None,
+        solve_seconds=0,
+        verify_seconds=0,
+    )
+    config = slow / "task.toml"
+    config.write_text(config.read_text() + "build_timeout_sec = 2\n")
+    staged_task(tasks, "fast", (1, 128), solve_seconds=0, verify_seconds=0)
+    marker = tmp_path / "delayed-up.json"
+    shim = tmp_path / "bin"
+    shim.mkdir()
+    wrapper = shim / "docker"
+    wrapper.write_text(
+        f"""#!{sys.executable}
+import json, os, shutil, signal, sys, time
+from pathlib import Path
+args = sys.argv[1:]
+if "compose" in args and "up" in args:
+    files = [Path(args[i + 1]) for i, value in enumerate(args) if value == "-f"]
+    selected = any("io.maestro.phase: {phase}" in p.read_text() for p in files)
+    if selected:
+        try:
+            with Path({str(marker)!r}).open("x") as out:
+                json.dump({{"pid": os.getpid(), "at": time.time()}}, out)
+        except FileExistsError:
+            pass
+        else:
+            # Preserve parsed Compose input: removing temporary files during down
+            # must not hide a start request that was already submitted.
+            saved = Path(out.name).parent / "captured-compose"
+            saved.mkdir()
+            for i, value in enumerate(args):
+                if value == "-f":
+                    target = saved / (str(i) + ".yaml")
+                    shutil.copyfile(args[i + 1], target)
+                    args[i + 1] = str(target)
+            signal.signal(signal.SIGTERM, signal.SIG_IGN)
+            time.sleep({60 if stop == "cancel" else 6})
+os.execv({shutil.which("docker")!r}, [{shutil.which("docker")!r}, *args])
+"""
+    )
+    wrapper.chmod(0o755)
+    observations = []
+
+    class ObservedDocker(DockerResources):
+        async def cleanup(self, labels):
+            report = await super().cleanup(labels)
+            if marker.exists():
+                pid = json.loads(marker.read_text())["pid"]
+                observations.append(
+                    {
+                        "phase": labels.get("io.maestro.phase"),
+                        "creator_alive": identity(pid)["start_ticks"] is not None,
+                        "released": report.released,
+                    }
+                )
+            return report
+
+    with harbor(settings, tasks, "delayed-start") as service:
+        owner = make_owner(service)
+        executor = service.executor
+        executor.docker = ObservedDocker()
+        executor.term_grace = 0.25
+        environment = executor._environment
+        monkeypatch.setattr(
+            executor,
+            "_environment",
+            lambda workdir: {
+                **environment(workdir),
+                "PATH": str(shim) + os.pathsep + environment(workdir)["PATH"],
+            },
+        )
+        host = HostCapacity(slots=1, cpus=1, memory_mb=128)
+        service.worker.capacity = service.runs.capacity = host
+        accepted = []
+        with service.db.read() as conn:
+            ids = dict(conn.execute(select(t.tasks.c.task_key, t.tasks.c.id)).all())
+
+        def accept(name):
+            _, data, _ = service.runs.submit(
+                owner,
+                uuid.uuid4().hex,
+                {
+                    "name": name,
+                    "dataset_version_id": service.version_id,
+                    "execution_mode": "oracle",
+                    "task_selection": {"mode": "explicit", "task_ids": [ids[name]]},
+                },
+            )
+            accepted.append(data["run_id"])
+            with service.db.write() as conn:
+                policy = conn.execute(
+                    select(t.run_snapshots.c.policy_json).where(
+                        t.run_snapshots.c.run_id == data["run_id"]
+                    )
+                ).scalar_one()
+                conn.execute(
+                    t.run_snapshots.update()
+                    .where(t.run_snapshots.c.run_id == data["run_id"])
+                    .values(policy_json={**policy, "retry": {**policy["retry"], "max_retries": 0}})
+                )
+
+        accept("slow")
+
+        async def scenario():
+            service.worker.start_epoch()
+            drain = asyncio.create_task(service.worker.drain(timeout=60))
+            try:
+                async with asyncio.timeout(30):
+                    while not marker.exists():
+                        if drain.done():
+                            await drain
+                            raise AssertionError("the delayed Compose command never started")
+                        await asyncio.sleep(0.02)
+                accept("fast")
+                if stop == "cancel":
+                    service.runs.cancel(owner, accepted[0])
+                else:
+                    await asyncio.sleep(2.5)  # after start timeout, before the delayed up
+                    with service.db.read() as conn:
+                        assert in_use(conn)["cpus"] == 1
+                        assert (
+                            conn.execute(
+                                select(t.stage_permits.c.state).where(
+                                    t.stage_permits.c.phase == phase
+                                )
+                            ).scalar_one()
+                            == "granted"
+                        )
+                    assert service.runs.trials(accepted[1])[0]["attempts"] == []
+                await drain
+                created = json.loads(marker.read_text())
+                await asyncio.sleep(max(0, created["at"] + 7 - time.time()))
+                assert identity(created["pid"])["start_ticks"] is None
+                assert observations and all(
+                    not row["creator_alive"] for row in observations if row["released"]
+                ), observations
+                assert labelled(service.worker.instance_id) == []
+                assert service.runs.trials(accepted[1])[0]["state"] == "scored"
+                with service.db.read() as conn:
+                    assert in_use(conn)["slots"] == 0
+                print(json.dumps({"phase": phase, "stop": stop, "cleanup": observations}))
+            finally:
+                if not drain.done():
+                    for run_id in accepted:
+                        service.runs.cancel(owner, run_id)
+                    with contextlib.suppress(Exception):
+                        await drain
+
+        asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("mode", ["separate", "shared", "larger"])
+def test_environment_stage_capacity_on_real_containers(settings, tmp_path, mode):
+    from maestro.services.capacity import HostCapacity, in_use
+
+    tasks = tmp_path / "stage-tasks"
+    execution = (1, 2048) if mode == "larger" else (4, 8192)
+    verifier = (4, 8192) if mode == "larger" else (1, 2048) if mode == "separate" else None
+    staged_task(tasks, "first", execution, verifier)
+    staged_task(tasks, "second", (3, 6144), solve_seconds=8, verify_seconds=0)
+    with harbor(settings, tasks, "stages") as service:
+        host = HostCapacity(slots=2, cpus=4, memory_mb=8192)
+        service.worker.capacity = service.runs.capacity = host
+        service.capacity.host = host
+        with running(service) as client:
+            pat = create_pat(setup_admin(service, client))
+            first = submit(pat, service.version_id, ["first"])
+            wait_for(lambda: service.runs.trials(first["run_id"])[0]["phase"] == "agent")
+            second = submit(pat, service.version_id, ["second"])
+            first_id, second_id = first["run_id"], second["run_id"]
+
+            def observations():
+                with service.db.read() as conn:
+                    used = in_use(conn)
+                    permits = [
+                        dict(p)
+                        for p in conn.execute(
+                            select(t.stage_permits, t.trials.c.run_id)
+                            .join(
+                                t.execution_attempts,
+                                t.execution_attempts.c.id == t.stage_permits.c.attempt_id,
+                            )
+                            .join(t.trials, t.trials.c.id == t.execution_attempts.c.trial_id)
+                        ).mappings()
+                    ]
+                assert used["cpus"] <= 4 and used["memory_mb"] <= 8192 and used["slots"] <= 2
+                return used, permits
+
+            if mode == "larger":
+
+                def waiting():
+                    used, permits = observations()
+                    return (
+                        (used, permits)
+                        if any(
+                            p["run_id"] == first_id
+                            and p["phase"] == "verification"
+                            and p["state"] == "waiting"
+                            for p in permits
+                        )
+                        else None
+                    )
+
+                used, permits = wait_for(waiting)
+                assert used["cpus"] == 3 and used["slots"] == 2
+                assert (
+                    next(
+                        p for p in permits if p["run_id"] == first_id and p["phase"] == "execution"
+                    )["state"]
+                    == "released"
+                )
+            elif mode == "separate":
+
+                def overlapping():
+                    used, permits = observations()
+                    first_verifies = any(
+                        p["run_id"] == first_id
+                        and p["phase"] == "verification"
+                        and p["state"] == "granted"
+                        for p in permits
+                    )
+                    second_executes = any(
+                        p["run_id"] == second_id
+                        and p["phase"] == "execution"
+                        and p["state"] == "granted"
+                        for p in permits
+                    )
+                    return (used, permits) if first_verifies and second_executes else None
+
+                used, permits = wait_for(overlapping)
+                assert used == {"slots": 2, "cpus": 4.0, "memory_mb": 8192, "providers": {}}
+
+                # The first verifier may be just authorized; wait for its actual container.
+                def verifier_limits():
+                    containers = subprocess.run(
+                        [
+                            "docker",
+                            "ps",
+                            "-q",
+                            "--filter",
+                            f"label=io.maestro.run_id={first_id}",
+                            "--filter",
+                            "label=io.maestro.phase=verification",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        check=True,
+                    ).stdout.split()
+                    if not containers:
+                        return None
+                    details = json.loads(
+                        subprocess.run(
+                            ["docker", "inspect", *containers],
+                            capture_output=True,
+                            text=True,
+                            check=True,
+                        ).stdout
+                    )
+                    return [
+                        (d["HostConfig"]["NanoCpus"] / 10**9, d["HostConfig"]["Memory"] // 2**20)
+                        for d in details
+                    ]
+
+                assert wait_for(verifier_limits) == [(1, 2048)]
+            else:
+                wait_for(
+                    lambda: any(
+                        trial["phase"] == "verifying" for trial in service.runs.trials(first_id)
+                    )
+                )
+                used, permits = observations()
+                assert used["cpus"] == 4 and used["slots"] == 1
+                assert not any(p["run_id"] == second_id for p in permits)
+            for run in (first, second):
+                done = wait_operation(pat, run["operation_id"], timeout=120)
+                assert done["status"] == "succeeded", done
+                assert service.runs.trials(run["run_id"])[0]["result"]["score"] == 1
+            used, permits = observations()
+            assert used["slots"] == used["cpus"] == 0
+            handoffs = []
+            for run_id in (first_id, second_id):
+                stages = {p["phase"]: p for p in permits if p["run_id"] == run_id}
+                if "verification" in stages:
+                    handoffs.append(
+                        (
+                            clock.from_text(stages["verification"]["granted_at"])
+                            - clock.from_text(stages["execution"]["released_at"])
+                        ).total_seconds()
+                    )
+            print(json.dumps({"mode": mode, "handoff_seconds": handoffs, "scores": [1, 1]}))
+
+
+def test_ten_active_attempt_runner_overhead(settings, tmp_path):
+    from maestro.services.capacity import HostCapacity
+
+    tasks = tmp_path / "ten-tasks"
+    staged_task(tasks, "ten", (1, 256), solve_seconds=8, verify_seconds=0)
+    with harbor(settings, tasks, "ten") as service:
+        service.worker.capacity = service.runs.capacity = HostCapacity(10, 10, 2560)
+        with running(service) as client:
+            pat = create_pat(setup_admin(service, client))
+            accepted = submit(pat, service.version_id, ["ten"], repetitions=10, concurrency=10)
+
+            def active():
+                trials = service.runs.trials(accepted["run_id"])
+                return trials if all(t["phase"] == "agent" for t in trials) else None
+
+            trials = wait_for(active)
+            with service.db.read() as conn:
+                attempts = (
+                    conn.execute(
+                        select(t.execution_attempts)
+                        .join(t.trials, t.trials.c.id == t.execution_attempts.c.trial_id)
+                        .where(t.trials.c.run_id == accepted["run_id"])
+                    )
+                    .mappings()
+                    .all()
+                )
+            rss = []
+            for attempt in attempts:
+                pid = attempt["process_identity_json"]["pid"]
+                status = Path(f"/proc/{pid}/status").read_text().splitlines()
+                rss.append(int(next(s for s in status if s.startswith("VmRSS:")).split()[1]))
+            startup = [
+                (
+                    clock.from_text(next(s["at"] for s in a["steps"] if s["step"] == "environment"))
+                    - clock.from_text(a["started_at"])
+                ).total_seconds()
+                for trial in trials
+                for a in trial["attempts"]
+            ]
+            print(
+                json.dumps(
+                    {
+                        "active_runners": len(attempts),
+                        "runner_rss_kib": rss,
+                        "startup_seconds": startup,
+                    }
+                )
+            )
+            done = wait_operation(pat, accepted["operation_id"], timeout=180)
+            assert done["status"] == "succeeded", done
+            assert service.runs.get(None, accepted["run_id"])["counts"]["scored"] == 10

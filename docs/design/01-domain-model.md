@@ -21,10 +21,10 @@
 | Harness 版本 HarnessVersion | 执行器适配器、内容摘要、参数契约 | 发布后固定 |
 | 附件快照 AttachmentVersion | 能力包的一份文件清单、作用范围及加载协议；以内容摘要为身份，可带标签与父快照 | 发布后固定 |
 | 实验方案 ExperimentPlan | 可编辑的实验模板 | 带修订号 |
-| 运行 Run | 一次受理的实验；领取、租约与资源预留都在运行上 | 定义固定，状态演进 |
+| 运行 Run | 一次受理的实验；固定配置、运行租约、并发和跨运行排序 | 定义固定，状态演进 |
 | 运行快照 RunSnapshot | 生效配置、来源、内容标识和口径 | 固定 |
 | 试次 Trial | 运行中某任务的第几次计划执行 | 身份固定，结果演进 |
-| 执行尝试 ExecutionAttempt | 同一试次的一次执行（Harbor Job 内的一次重试也是一次尝试） | 每次独立记录 |
+| 执行尝试 ExecutionAttempt | 同一试次的一次具体执行；平台重试另记一次，独占一个 Runner | 每次独立记录 |
 | 工作单元 WorkItem | 每个试次一条，随运行的领取同步状态与租约；不单独领取 | 调度状态可变 |
 | 提交批次 SubmissionBatch | 一次原子成组受理的一组运行 | 成员固定，状态聚合 |
 | 集合 Collection | 团队维护的一组运行引用，带建立时固定的规格（[08](08-collections-comparison.md)） | 规格固定；成员与设置可变，变更有记录 |
@@ -104,14 +104,14 @@ erDiagram
 
 **运行与执行。**
 
-- 运行的 relation 为 initial / rerun / modified；领取与租约字段（lease_token、service_epoch、reservation_json、queue_reason）都在运行上（D-020）。
+- 运行的 relation 为 initial / rerun / modified；运行租约与等待原因在运行上，槽位与环境阶段许可归属具体执行尝试。
 - 运行快照每个运行一条，只插入不更新；同时保存 snapshot_digest、config_digest 与 comparison_digest。
-- 试次按 运行 + 任务 + repetition_index 唯一；执行尝试按 试次 + attempt_index 唯一。Runner 的进程身份（PID、启动时刻、boot id、进程组）记在运行上，重启对账据此判断进程是否仍是自己启动的那个。工作单元按 trial_id 唯一，重试复用同一条。
+- 试次按 运行 + 任务 + repetition_index 唯一；执行尝试按 试次 + attempt_index 唯一。Runner 的进程身份（PID、启动时刻、boot id、进程组）记在具体执行尝试上，重启对账据此判断进程是否仍是原进程。工作单元按 trial_id 唯一，重试复用同一条；持久入队顺序稳定区分同时受理的运行。阶段许可按尝试与环境阶段唯一，已授予和释放未确认的资源继续计入容量。
 - 试次结果每个试次至多一条。原始奖励可只供诊断；进入统计须是合法值且 reward_valid 为真。
 - 产物记录只存存储键与相对路径，不返回宿主机路径。
 - 幂等记录按 主体 + 动作 + key 唯一；审计事件不含令牌、密码、凭据明文。
 
-表的全集见 `schema.py`。几张用途不显然的表：team_policies 保存团队策略修订，setup_networks 保存安装网络的版本（执行尝试的 setup_network_revision 指向其中一版），config_resolutions 保存配置解析结果（有效期内凭 resolution_id 提交），run_attachments 记录运行按顺序加载的附件快照，attachment_files 记录每份未物理删除的快照持有哪些文件内容（无人持有的内容才清除），attachment_uploads 是发布前上传、只供上传者使用且会过期的文件内容，dataset_files 保存上传版本的原始文件引用，导入中也持有内容，成功后保留至版本物理删除，失败或中断后释放，artifact_pins 是导出等读取者的有期限 pin，exports 是导出任务，deletions 是回收站状态与删除回执，provider_limits 是提供商并发上限，instance 与 service_epochs 是实例标识与每次启动的代次（用于租约与对账）。
+表的全集见 `schema.py`。几张用途不显然的表：team_policies 保存团队策略修订，setup_networks 保存安装网络的版本（执行尝试的 setup_network_revision 指向其中一版），config_resolutions 保存配置解析结果（有效期内凭 resolution_id 提交），run_attachments 记录运行按顺序加载的附件快照，attachment_files 记录每份未物理删除的快照持有哪些文件内容（无人持有的内容才清除），attachment_uploads 是发布前上传、只供上传者使用且会过期的文件内容，dataset_files 保存上传版本的原始文件引用，导入中也持有内容，成功后保留至版本物理删除，失败或中断后释放，artifact_pins 是导出等读取者的有期限 pin，exports 是导出任务，deletions 是回收站状态与删除回执，stage_permits 是具体尝试的环境资源账本，provider_limits 是模型执行阶段的提供商并发上限，instance 与 service_epochs 是实例标识与每次启动的代次（用于租约与对账）。
 
 ## 5. 状态与派生字段
 
@@ -133,7 +133,7 @@ erDiagram
 必须原子的操作：
 
 1. 受理：幂等检查、PAT 与用户有效性、任务准入修订与已知内容阻塞的复查、额度扣减、运行 / 快照 / 试次 / 工作单元 / Operation 插入。
-2. 领取：一个写事务内检查运行仍可领取，写入 lease_token、service_epoch 与整体资源预留，并同步工作单元（`src/maestro/services/worker.py`）；Runner 与容器在事务外启动。
+2. 领取与派发：领取只写入运行租约和服务代次；就绪试次派发在同一写事务中检查容量、创建执行尝试、占用槽位和授予首阶段许可。阶段交接在确认旧环境停止后原子归还旧许可、授予能放下的新许可；Runner 与容器在事务外启动。
 3. 结果提交：校验运行租约与尝试身份，写入最终结果并推进试次状态。
 4. 取消：写入 stop_requested，阻止后续领取；已领取的通过 Runner 协议取消。
 5. 内容读取：返回题面或试次产物之前，短写事务原子更新所有涉及任务的读取汇总；记录失败不返回内容，压缩与文件读取在事务外完成。

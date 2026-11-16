@@ -183,7 +183,10 @@
     "attachments": "Attachments: ",
     "installTimeout_one": " (install time limit per trial: {{count}} second)",
     "installTimeout_other": " (install time limit per trial: {{count}} seconds)",
-    "submission": "Submission scoring"
+    "submission": "Submission scoring",
+    "schedulingOrder": "Acceptance order",
+    "resourceUsage": "Current resource use",
+    "resourceUsageValue": "{{slots}} slots · {{cpus}} CPUs · {{memory_mb}} MiB"
   },
   "deletion": {
     "runPurged": "This run was permanently deleted",
@@ -243,7 +246,20 @@
     "failed": "Failed {{n}}",
     "installRecords": "Install records",
     "installUser": "Install user: {{user}}",
-    "defaultInstallUser": "Container default"
+    "defaultInstallUser": "Container default",
+    "backfilled": "Backfilled",
+    "slotHeld": "Holding trial slot",
+    "resources": "Environment stage resources",
+    "resourcePhase": {
+      "execution": "Execution environment",
+      "verification": "Separate verification environment"
+    },
+    "permitState": {
+      "waiting": "Waiting for permission",
+      "granted": "Granted; release not confirmed",
+      "released": "Release confirmed"
+    },
+    "stageUsage": "{{cpus}} CPUs · {{memory}} MiB"
   },
   "summary": {
     "direction": {

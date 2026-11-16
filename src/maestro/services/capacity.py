@@ -1,21 +1,15 @@
-"""Execution capacity: slots, CPU, memory and provider concurrency.
-
-A run reserves ``min(concurrency, trials) x per-trial resources`` as a whole when it
-is claimed and keeps the reservation until its resources are confirmed released, so
-a run whose cleanup failed still blocks capacity. The worker is the only claimer, so
-checks and reservations happen in one write transaction against current totals.
-"""
+"""Execution capacity from persistent attempt slots and environment permits."""
 
 import os
 from dataclasses import dataclass
 
-from sqlalchemy import Connection, delete, or_, select
+from sqlalchemy import Connection, delete, func, or_, select
 
 from maestro.core import clock
 from maestro.core.errors import FieldError, MaestroError
 from maestro.db import schema as t
 from maestro.domain.states import CleanupState, PatPermission
-from maestro.execution.materials import DEFAULT_CPUS, DEFAULT_MEMORY_MB
+from maestro.execution.resources import stage_resources
 from maestro.services import audit
 from maestro.services.principal import Principal, require_admin
 
@@ -49,14 +43,16 @@ def provider_of(effective: dict) -> str | None:
 def reservation(
     concurrency: int, definitions: list[dict], provider: str | None, trial_count: int
 ) -> dict:
-    width = max(1, min(concurrency, trial_count))
-    resources = [d.get("resources") or {} for d in definitions] or [{}]
-    cpus = max(float(r.get("cpus") or DEFAULT_CPUS) for r in resources)
-    memory = max(int(r.get("memory_mb") or DEFAULT_MEMORY_MB) for r in resources)
+    # Admission checks each indivisible environment group, not the run's width.
+    stages = [
+        stage
+        for d in definitions
+        for stage in stage_resources(d.get("resources") or {}, d.get("definition") or {}).values()
+    ]
     return {
-        "slots": width,
-        "cpus": width * cpus,
-        "memory_mb": width * memory,
+        "slots": 1,
+        "cpus": max((s["cpus"] for s in stages), default=0),
+        "memory_mb": max((s["memory_mb"] for s in stages), default=0),
         "provider": provider,
     }
 
@@ -85,6 +81,19 @@ def in_use(conn: Connection) -> dict:
         if held.get("provider"):
             providers = used["providers"]
             providers[held["provider"]] = providers.get(held["provider"], 0) + held["slots"]
+    used["slots"] += conn.execute(
+        select(func.count())
+        .select_from(t.execution_attempts)
+        .where(t.execution_attempts.c.slot_held.is_(True))
+    ).scalar()
+    for permit in conn.execute(
+        select(t.stage_permits).where(t.stage_permits.c.state == "granted")
+    ).mappings():
+        used["cpus"] += permit["cpus"]
+        used["memory_mb"] += permit["memory_mb"]
+        if permit["provider"]:
+            p = permit["provider"]
+            used["providers"][p] = used["providers"].get(p, 0) + 1
     return used
 
 
@@ -121,7 +130,7 @@ def waiting_reason(conn: Connection, capacity: HostCapacity, need: dict) -> str 
     if need["provider"]:
         limit = provider_limits(conn).get(need["provider"])
         held = used["providers"].get(need["provider"], 0)
-        if limit is not None and held + need["slots"] > limit:
+        if limit is not None and held + need.get("provider_slots", need["slots"]) > limit:
             return "PROVIDER_LIMIT"
     return None
 

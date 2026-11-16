@@ -166,14 +166,12 @@ class FakeExecutor:
 
     A dict entry is a verifier's rewards, scored like Harbor's by the run's metric
     (``RunSpec.metric_id``). A ``"hang"`` entry blocks until cancellation. Retries
-    happen when an outcome recommends it and attempts remain, mirroring Job-internal
-    retries. Cleanup and reconciliation calls are recorded instead of
+    are scheduled by the Worker in fresh executor calls. Cleanup and reconciliation calls are recorded instead of
     touching Docker.
     """
 
     script: dict[str, list] = field(default_factory=dict)
     default: AttemptOutcome = field(default_factory=lambda: scored(1.0))
-    max_attempts: int = 3
     step_delay: float = 0.0
     executor_id: str = "fake"
     # A stand-in harness that speaks every model protocol and calls nothing.
@@ -195,48 +193,42 @@ class FakeExecutor:
 
     async def execute(self, spec: RunSpec, sink: ExecutionSink, cancel: CancelToken):
         self.specs.append(spec)
-        semaphore = asyncio.Semaphore(spec.concurrency)
         await sink.runner_started({"pid": 0, "runner_id": self.executor_id})
-
-        async def run_trial(trial):
-            async with semaphore:
-                plan = list(self.script.get(trial.task_key, [self.default]))
-                for attempt in range(1, self.max_attempts + 1):
-                    if cancel.cancelled:
-                        return
-                    outcome = plan[min(attempt - 1, len(plan) - 1)]
-                    if isinstance(outcome, dict):
-                        outcome = harbor_outcome(None, None, outcome, True, spec.metric_id)
-                    await sink.attempt_started(trial.trial_id, attempt)
-                    self.started.set()
-                    for step in ("environment", "agent", "verifying"):
-                        await sink.phase_changed(trial.trial_id, attempt, step)
-                        if outcome == "hang" and step == "agent":
-                            await cancel.wait()
-                            return
-                        if self.step_delay:
-                            await asyncio.sleep(self.step_delay)
-                        if cancel.cancelled:
-                            return
-                    await sink.log(
-                        trial.trial_id,
-                        attempt,
-                        "agent/fake.txt",
-                        f"attempt {attempt} of {trial.task_key}\n",
-                    )
-                    await sink.artifact(
-                        trial.trial_id,
-                        attempt,
-                        "output",
-                        "result.txt",
-                        f"{trial.task_key}:{outcome.raw_score}".encode(),
-                    )
-                    retry = outcome.retry_recommended and attempt < self.max_attempts
-                    await sink.attempt_finished(trial.trial_id, attempt, outcome, final=not retry)
-                    if not retry:
-                        return
-
-        await asyncio.gather(*(run_trial(trial) for trial in spec.trials))
+        for trial in spec.trials:
+            plan = list(self.script.get(trial.task_key, [self.default]))
+            index = spec.attempt_index
+            outcome = plan[min(index - 1, len(plan) - 1)]
+            if isinstance(outcome, dict):
+                outcome = harbor_outcome(None, None, outcome, True, spec.metric_id)
+            if cancel.cancelled:
+                break
+            await sink.attempt_started(trial.trial_id, 1)
+            self.started.set()
+            for step in ("environment", "agent", "verifying"):
+                await sink.phase_changed(trial.trial_id, 1, step)
+                if outcome == "hang" and step == "agent":
+                    await cancel.wait()
+                    break
+                if self.step_delay:
+                    await asyncio.sleep(self.step_delay)
+                if cancel.cancelled:
+                    break
+            if cancel.cancelled:
+                break
+            await sink.model_finished()
+            await sink.log(
+                trial.trial_id, 1, "agent/fake.txt", f"attempt {index} of {trial.task_key}\n"
+            )
+            await sink.artifact(
+                trial.trial_id,
+                1,
+                "output",
+                "result.txt",
+                f"{trial.task_key}:{outcome.raw_score}".encode(),
+            )
+            await sink.attempt_finished(trial.trial_id, 1, outcome, final=True)
+            if self.on_trial is not None:
+                self.on_trial(trial)
         report = await self.cleanup(spec.labels)
         return ExecutionReport(cleanup_complete=report.released)
 

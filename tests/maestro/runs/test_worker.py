@@ -188,3 +188,116 @@ def test_deadline_stops_queued_run(service, owner, version_id):
     with service.db.read() as conn:
         reasons = set(conn.execute(select(t.trials.c.reason_code)).scalars())
     assert reasons == {"RUN_DEADLINE_EXCEEDED"}
+
+
+def test_retry_waits_for_confirmed_cleanup(service, owner, version_id, executor):
+    from support.runs import dispatch_until
+
+    executor.script = {"add-01": [failed("sandbox_failed", retry=True), scored(1)]}
+    executor.release = False
+    data = accept(service, owner, version_id)
+
+    async def scenario():
+        worker = service.worker
+        worker.start_epoch()
+
+        def held_retry():
+            trial = trials_by_key(service, data["run_id"])["add-01"][0]
+            return (
+                trial["state"] == "queued"
+                and trial["attempts"]
+                and trial["attempts"][0]["cleanup_state"] == "failed"
+            )
+
+        await dispatch_until(service, held_retry)
+        for _ in range(5):
+            await worker.tick()
+            await asyncio.sleep(0.01)
+        trial = trials_by_key(service, data["run_id"])["add-01"][0]
+        assert len(trial["attempts"]) == 1
+        executor.release = True
+        worker.cleanup_retry_seconds = 0
+        await worker.drain()
+        trial = trials_by_key(service, data["run_id"])["add-01"][0]
+        assert trial["state"] == "scored" and len(trial["attempts"]) == 2
+
+    asyncio.run(scenario())
+
+
+def test_old_attempt_cannot_release_or_request_resources(service, owner, version_id, executor):
+    from support.runs import dispatch_until
+
+    from maestro.boundaries.executor import ExecutionReport
+
+    seen = []
+
+    async def capture(spec, sink, cancel):
+        await sink.attempt_started(spec.trials[0].trial_id, 1)
+        seen.append(sink)
+        await cancel.wait()
+        return ExecutionReport(cleanup_complete=True)
+
+    executor.execute = capture
+    data = accept(service, owner, version_id, concurrency=1)
+
+    async def scenario():
+        worker = service.worker
+        worker.start_epoch()
+        await dispatch_until(service, lambda: len(seen) == 1)
+        sink = seen[0]
+        permit = await sink.resource_requested("execution")
+        with pytest.raises(StaleLease):
+            await sink.resource_released("verification", permit)
+        await sink.resource_released("execution", permit)
+        await sink.resource_released("execution", permit)
+        service.runs.cancel(owner, data["run_id"])
+        await worker.drain()
+        with pytest.raises(StaleLease):
+            await sink.resource_requested("execution")
+        with pytest.raises(StaleLease):
+            await sink.resource_released("execution", permit)
+        with pytest.raises(StaleLease):
+            await sink.model_finished()
+
+    asyncio.run(scenario())
+
+
+def test_a_slow_task_preparation_does_not_hold_other_ready_trials(
+    service, owner, version_id, monkeypatch
+):
+    from support.runs import dispatch_until
+
+    from maestro.services.capacity import in_use
+
+    gate = asyncio.Event()
+    acquire = service.preparer.acquire
+
+    async def delayed(context, *args, **kwargs):
+        if context.task_key == "mul-01":
+            await gate.wait()
+        return await acquire(context, *args, **kwargs)
+
+    monkeypatch.setattr(service.preparer, "acquire", delayed)
+    data = accept(service, owner, version_id, concurrency=3)
+
+    async def scenario():
+        service.worker.start_epoch()
+        await dispatch_until(
+            service,
+            lambda: all(
+                trial["state"] == "scored"
+                for key, trials in trials_by_key(service, data["run_id"]).items()
+                for trial in trials
+                if key != "mul-01"
+            ),
+        )
+        slow = trials_by_key(service, data["run_id"])["mul-01"][0]
+        assert slow["state"] == "queued" and slow["queue_reason"] == "PREPARING_CACHE"
+        assert slow["attempts"] == []
+        with service.db.read() as conn:
+            assert in_use(conn) == {"slots": 0, "cpus": 0, "memory_mb": 0, "providers": {}}
+        gate.set()
+        await service.worker.drain()
+        assert service.runs.get(owner, data["run_id"])["counts"]["scored"] == 3
+
+    asyncio.run(scenario())

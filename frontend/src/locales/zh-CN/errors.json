@@ -123,6 +123,7 @@
     "RESULT_CONFLICT": "已记录不同的结果",
     "REVISION_CONFLICT": "内容已被修改，请刷新",
     "RUN_ACTIVE": "运行尚未结束",
+    "RUN_CLEANUP_PENDING": "资源释放尚未确认，请等待清理完成后再物理删除",
     "RUN_EXCEEDS_CAPACITY": "运行超出执行容量",
     "RUN_NOT_FINISHED": "源运行尚未结束",
     "RUN_TOO_LARGE": "运行超出规模限制",

@@ -5,6 +5,7 @@ decides business outcomes from events, never from the exit code alone.
 """
 
 import asyncio
+import contextlib
 import ctypes
 import json
 import os
@@ -75,7 +76,7 @@ def probe_command() -> int:
 
 def main() -> int:
     try:
-        spec = json.loads(sys.stdin.read())
+        spec = json.loads(sys.stdin.buffer.readline())
         if spec.get("protocol_version") == protocol.PROTOCOL_VERSION:
             if spec.get("command") == "hub":
                 return hub_command(spec)
@@ -115,8 +116,27 @@ def main() -> int:
     loop.add_signal_handler(signal.SIGTERM, cancel)
     protocol.on_lost = lambda: loop.call_soon_threadsafe(cancel)
     _stop_with_parent()
+
+    async def controlled():
+        reader = asyncio.StreamReader(limit=1024 * 1024)
+        await loop.connect_read_pipe(lambda: asyncio.StreamReaderProtocol(reader), sys.stdin.buffer)
+        from maestro_runner.resources import consume
+
+        control = (
+            loop.create_task(consume(reader, execution.permits, cancel))
+            if execution.permits
+            else None
+        )
+        try:
+            return await task
+        finally:
+            if control is not None:
+                control.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await control
+
     try:
-        status = loop.run_until_complete(task)
+        status = loop.run_until_complete(controlled())
     except asyncio.CancelledError:
         status = "cancelled"
     except Rejected as error:

@@ -2,6 +2,8 @@
 
 状态：暂缓（U-57） · 优先级：暂缓 · 2026-10-27 · 相关：[05](../design/05-scheduling-execution.md)、[06](../design/06-results-scoring.md) 第 4 节、[15](../design/15-stack-harbor.md) 第 4、6 节、[14](../design/14-decisions.md) U-05、D-020、V-12
 
+本稿的核心试次派发、单尝试 Runner 和平台重试已由 [N-44](archive/N-44-peak-resource-budget.md) 取代并实现；单试次取消、不同任务重复次数等其余范围仍暂缓。以下保留原方案。
+
 ## 问题
 
 现在按运行调度（D-020）：一个运行由一个 Runner 进程执行一个 Harbor Job，`n_attempts` 为每任务计划试次数，`n_concurrent_trials` 为运行并发，重试在 Job 内进行。由此带来的限制：
