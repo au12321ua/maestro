@@ -11,6 +11,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 import tomllib
 import urllib.parse
@@ -20,6 +21,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from publish_package import Registry
 from publish_release import Gitea
+from publish_release import publish as publish_assets
+from validate_release import digest, inspect_assets
 from verify_commit import verified
 from version import set_version, validate_version
 
@@ -207,7 +210,8 @@ def latest_run(client, sha, workflow, tag):
         if not runs:
             return None
         for run in runs:
-            if run.get("head_sha") != sha or run.get("event") != "push":
+            event = "workflow_dispatch" if client.github else "push"
+            if run.get("head_sha") != sha or run.get("event") != event:
                 continue
             if client.github:
                 matches = (
@@ -244,18 +248,25 @@ def wait_publication(client, sha, workflow, tag, deadline, retry=False):
     raise SystemExit("publication still incomplete; rerun publish to continue from current facts")
 
 
-def compare_channels(gitea, github, first, second):
-    left = {a["name"]: a for a in first["assets"]}
-    right = {a["name"]: a for a in second["assets"]}
-    if not left or left.keys() != right.keys():
-        raise SystemExit("release channels have different/missing attachments")
-    for name, asset in left.items():
-        one = gitea.asset_digest(asset, first["id"])
-        two = github.asset_digest(right[name], second["id"])
-        if one != two:
-            raise SystemExit(f"release channels disagree on {name}; no file will be overwritten")
-    (wheel,) = [n for n in left if n.startswith("maestro_sdk-") and n.endswith(".whl")]
-    return wheel, gitea.asset_digest(left[wheel], first["id"])
+def mirror_release(gitea, github, release, tag, sha, notes):
+    if release["prerelease"] or release.get("body", "").strip() != notes.strip():
+        raise SystemExit("Gitea release type or notes differ from the reviewed candidate")
+    with tempfile.TemporaryDirectory(prefix="maestro-release-mirror-") as tmp:
+        dist = Path(tmp)
+        names = set()
+        for asset in release["assets"]:
+            name = asset["name"]
+            if name in {"", ".", ".."} or Path(name).name != name or name in names:
+                raise SystemExit("invalid or duplicate release attachment name")
+            names.add(name)
+        for asset in release["assets"]:
+            gitea.download_asset(asset, dist / asset["name"])
+        # Check the downloaded bytes and their source identity without reinstalling wheels.
+        for _ in inspect_assets(dist, sha, tag.removeprefix("v")):
+            pass
+        publish_assets(github, dist, tag, sha, notes=notes)
+        (wheel,) = dist.glob("maestro_sdk-*.whl")
+        return wheel.name, digest(wheel)
 
 
 def require_release_base(sha, formal, root):
@@ -347,20 +358,22 @@ def publish(args, root=ROOT):
     else:
         git("push", args.github_remote, f"{sha}:refs/heads/master", root=root)
     git("push", args.github_remote, f"refs/tags/{tag}", root=root)
+    wheel, wheel_digest = mirror_release(gitea, github, first, tag, sha, notes)
+    if latest_run(github, sha, "release.yml", tag) is None:
+        github.call("POST", "/actions/workflows/release.yml/dispatches", {"ref": tag})
     wait_publication(github, sha, "release.yml", tag, deadline, args.retry)
     second = release_state(github, tag, sha)
     if not second:
         raise SystemExit("GitHub publication finished without a public release")
-    wheel, digest = compare_channels(gitea, github, first, second)
     server = os.environ["GITEA_API"].removesuffix("/api/v1")
     registry = Registry(server, os.environ["GITEA_REPO"].split("/")[0], os.environ["GITEA_TOKEN"])
-    if registry.published_digest(wheel) != digest:
+    if registry.published_digest(wheel) != wheel_digest:
         raise SystemExit("SDK registry is missing the release wheel or has a different digest")
     repo = os.environ["GITHUB_REPOSITORY"].split("/")
     pages = args.pages_url or f"https://{repo[0]}.github.io/{repo[1]}/simple/maestro-sdk/"
     with urllib.request.urlopen(pages, timeout=60) as response:
         page = response.read().decode()
-    if f"{wheel}#sha256={digest}" not in page:
+    if f"{wheel}#sha256={wheel_digest}" not in page:
         raise SystemExit("Pages index has not published the verified SDK digest; retry index job")
     finish_dev(sha, args, root)
     print(

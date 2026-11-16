@@ -6,7 +6,7 @@
 
 发布形式是压缩包（`tools/build_release.py` 生成），由包内只用系统 Python 标准库的 `maestroctl` 安装和维护（U-29）。根 `pyproject.toml` 是权威版本，只使用 `X.Y.Z`，dev 保持最近正式版本，发布时按[发布指南](../guides/releasing.md)的变化规则定号（U-103、U-104）；服务运行时从安装元数据读取，并从版本目录的 `RELEASE.json` 读出构建名（含提交号）报告给管理页；开发包与源码运行明确报告提交号和 `unreleased`，本地源码有修改时还报告 `dirty`。SDK 包声明与契约由准备入口同步；Runner 独立版本不变。维护者用 `tools/release.py` 从固定 dev 提交准备一个正式候选及发布说明，最终 SHA 完整检查后才快进 master 并创建固定附注 tag（U-66）。
 
-所有分支 push 检查源码，PR 复用对应提交结果；正式 tag 读取准确 SHA 的成功 `verify` 任务及必需步骤，独立 `publish` 任务构建和验证实际 wheel，上传失败不改变源码检查结论（U-67）。dev push 不创建 tag、Release 或 SDK 包，正式 tag 发 Gitea Release 与同版本 SDK 包（U-104）；GitHub 从相同 tag 重建并验证 Release，再更新 Pages 正式 SDK 索引（U-42、U-62）。开发包由 `tools/build_dev.py` 在独立工作树和隔离环境中按固定提交构建、验证；服务和 SDK 使用同一源码版本，仅供手动安装，不上传包索引。
+所有分支 push 检查源码，准确 SHA 已有完整成功记录时复用原运行，PR 同样复用；新的 SHA 重新检查，手动 verify 强制重验。复用时跳过的步骤不能代替原完整记录。正式 tag 读取准确 SHA 的成功 `verify` 任务及必需步骤，独立 `publish` 任务构建和验证实际 wheel，上传失败不改变源码检查结论（U-67、U-108）。dev push 不创建 tag、Release 或 SDK 包，正式 tag 发 Gitea Release 与同版本 SDK 包（U-104）；维护者入口下载 Gitea 已验证的发布物，核对清单、版本和摘要后，以相同文件发布 GitHub Release，再触发 GitHub Actions 更新 Pages 正式 SDK 索引（U-108）。两端凭据只在维护者入口分别使用，GitHub CI 无需访问 Gitea。开发包由 `tools/build_dev.py` 在独立工作树和隔离环境中按固定提交构建、验证；服务和 SDK 使用同一源码版本，仅供手动安装，不上传包索引。
 
 包附 SDK wheel、许可证清单与 `SHA256SUMS`，manifest 固定源码 SHA、构建渠道与文件摘要；构建输入锁定、归档元数据规范化，同一输入可重建。发布先准备草稿，附件齐全后公开；缺失补传，同摘要跳过，异摘要或 tag 改指向则停止。两端附件、SDK 包仓库和 Pages 全部核对后，将正式候选同步回 dev，保留并发提交，不再递增下一开发版本。各渠道没有原子事务，入口按实际状态续跑，不把部分成功报告为完成。操作见[发布指南](../guides/releasing.md)。不自动部署：管理员在管理页检查并发起正式版更新，或在主机上执行 `maestroctl update`（第 5 节）。
 

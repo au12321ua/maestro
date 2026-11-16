@@ -35,14 +35,25 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 1
+      - name: Reuse verified source
+        id: reuse
+        if: ${{ github.event_name == 'push' }}
+        env:
+          GITEA_API: ${{ github.api_url }}
+          GITEA_REPO: ${{ github.repository }}
+          GITEA_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 -I tools/verify_commit.py --commit "$GITHUB_SHA" --reuse
       - id: python
+        if: ${{ steps.reuse.outputs.verified != 'true' }}
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - uses: actions/setup-node@v4
+        if: ${{ steps.reuse.outputs.verified != 'true' }}
         with:
           node-version: '24'
       - name: Isolate HOME and caches
+        if: ${{ steps.reuse.outputs.verified != 'true' }}
         # A host runner may share the machine with real instances: nothing below may read
         # or write their state, credentials or caches.
         run: |
@@ -52,6 +63,7 @@ jobs:
           echo "UV_PYTHON_DOWNLOADS=never" >> "$GITHUB_ENV"
           python -m pip install uv==0.11.31
       - name: Service and Runner environments
+        if: ${{ steps.reuse.outputs.verified != 'true' }}
         timeout-minutes: 15
         run: |
           if [ -n "$CI_PROXY" ]; then export HTTPS_PROXY="$CI_PROXY" HTTP_PROXY="$CI_PROXY"; fi
@@ -61,18 +73,23 @@ jobs:
             echo "::warning::dependency download failed, retrying ($attempt)"
           done
       - name: Lint
+        if: ${{ steps.reuse.outputs.verified != 'true' }}
         run: |
           uv run ruff check src tests runner/src tools sdk/src ops
           uv run ruff format --check src/maestro tests/maestro runner/src tools sdk/src ops
       - name: Markdown links
+        if: ${{ steps.reuse.outputs.verified != 'true' }}
         run: python tools/check_doc_links.py
       - name: Versions
+        if: ${{ steps.reuse.outputs.verified != 'true' }}
         run: uv run python tools/version.py
       - name: Tests
+        if: ${{ steps.reuse.outputs.verified != 'true' }}
         # Only PATH and the isolated HOME pass through, so no inherited credential or
         # MAESTRO_* switch (Docker, Hub, real model) reaches the suite.
         run: env -i PATH="$PATH" HOME="$HOME" UV_PYTHON="$UV_PYTHON" UV_PYTHON_DOWNLOADS=never uv run pytest -q -n 4
       - name: Web client dependencies
+        if: ${{ steps.reuse.outputs.verified != 'true' }}
         working-directory: frontend
         timeout-minutes: 10
         run: |
@@ -83,6 +100,7 @@ jobs:
             echo "::warning::npm download failed, retrying ($attempt)"
           done
       - name: Web client
+        if: ${{ steps.reuse.outputs.verified != 'true' }}
         working-directory: frontend
         run: |
           npm run lint
@@ -90,6 +108,7 @@ jobs:
           npm run check:i18n
           npm run build
       - name: Built pages match their sources
+        if: ${{ steps.reuse.outputs.verified != 'true' }}
         run: |
           changed="$(git status --porcelain -- src/maestro/static)"
           if [ -n "$changed" ]; then
@@ -98,6 +117,7 @@ jobs:
             exit 1
           fi
       - name: Third-party licenses are allowed
+        if: ${{ steps.reuse.outputs.verified != 'true' }}
         run: uv run python tools/third_party_licenses.py
   publish:
     permissions:

@@ -1,62 +1,16 @@
-# GitHub only receives master and its v* tags when a release is made, after the same
-# version was tested and published on Gitea. So this workflow runs no tests:
-# it rebuilds the package from the tag and publishes a GitHub Release with the same
-# assets, then rebuilds the SDK package index on GitHub Pages from the wheels of all
-# releases. Gitea reads only .gitea/workflows and never runs this file.
+# The maintainer mirrors Gitea's verified assets to GitHub, then dispatches this
+# workflow on the release tag to update the SDK index. No package is rebuilt here.
 name: release
 on:
-  push:
-    tags: ["v*"]
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  release:
-    runs-on: ubuntu-latest
-    concurrency:
-      group: release-${{ github.ref }}
-      cancel-in-progress: false
-    timeout-minutes: 30
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-      - name: Environments for the package and the license list
-        # The web pages are built and committed, so npm only provides the license texts.
-        run: |
-          python -m pip install uv==0.11.31
-          uv sync --locked
-          (cd runner && uv sync --locked)
-          (cd frontend && npm ci --no-audit --no-fund --ignore-scripts)
-      - name: Build
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          python3 -I tools/check_tag.py --github --tag "$GITHUB_REF_NAME" --commit "$(git rev-parse HEAD)"
-          if ! git merge-base --is-ancestor HEAD origin/master; then
-            echo "$GITHUB_REF_NAME is not on master"; exit 1
-          fi
-          uv run python tools/build_release.py --assets --expect-version "${GITHUB_REF_NAME#v}" --out dist
-          python3 -I tools/validate_release.py --dist dist --commit "$(git rev-parse HEAD)" --expect-version "${GITHUB_REF_NAME#v}"
-          cp "docs/releases/$GITHUB_REF_NAME.md" "$RUNNER_TEMP/notes.md"
-      - name: Publish
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python3 -I tools/publish_release.py --github --dist dist --tag "$GITHUB_REF_NAME" --commit "$(git rev-parse HEAD)" --notes "$RUNNER_TEMP/notes.md"
   index:
     # GitHub Packages has no Python registry, so the SDK index is a static PEP 503 page
     # on GitHub Pages whose links point at the wheels in the releases. It is rebuilt from
     # every formal release, so earlier versions stay installable. Pages must be set to
     # deploy from GitHub Actions in the repository settings.
-    needs: release
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -73,6 +27,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 0
+      - name: Published formal release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 -I tools/check_tag.py --github --tag "$GITHUB_REF_NAME" --commit "$(git rev-parse HEAD)"
+          git merge-base --is-ancestor HEAD origin/master
+          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --json isDraft,isPrerelease --jq 'if .isDraft or .isPrerelease then error("a public formal release is required") else . end'
       - name: Index of the SDK wheels in all releases
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

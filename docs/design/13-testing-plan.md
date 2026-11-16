@@ -20,9 +20,9 @@ UI 文案与纯样式变更不写低价值单元测试；优先验证会导致�
 | 真实 Hub | 目录调用、失败分类、导入与首次准备 | `live/test_hub_live.py`，需 `MAESTRO_HUB_TESTS=1`；匿名读取公开数据集 |
 | 真实模型冒烟 | Terminus-2、OpenCode（1.x 与 2.x）、Codex、Claude Code 各一个试次 | `live/test_harbor_docker.py -k real_model`，需 `MAESTRO_MODEL_TESTS=1` 及模型地址、key 文件；Codex 与 Claude Code 另需各自的 Responses / Messages 地址，并在 setup 中真实安装（见交接）；会产生费用，须核对当前授权与预算 |
 | 安装运维 | 安装、更新、网页发起的更新、失败回退、备份恢复、卸载与清除 | `live/test_install.py`，需 `MAESTRO_INSTALL_TESTS=1`；用隐藏参数 `--test-root` 把布局放进临时目录，以 systemd 用户单元运行；规则部分在 `ops/test_maestroctl.py`、`ops/test_backup.py`，默认运行 |
-| 发布工具 | 许可证规则、SDK 版本戳、Gitea Releases 与包仓库的上传、重跑与保留、GitHub Pages 的 SDK 索引 | `ops/test_release_tools.py`（模拟接口），默认运行；真实发布只在 CI 中发生，发布后按第 9 节核对 |
+| 发布工具 | 许可证规则、SDK 版本戳、完整检查复用、Gitea Releases 与包仓库上传、GitHub 文件中转与草稿续传、Pages 索引 | `ops/test_release_tools.py`（模拟接口），默认运行；正式构建在 Gitea CI，维护者入口中转文件，发布后按第 9 节核对 |
 | 网页 | 关键路径冒烟 | `frontend/qa/smoke.spec.ts`（Playwright），需要全新的一次性 state 与 `serve --demo-executor`；按中文界面定位元素，另有一项以英文浏览器逐页确认没有残留中文、显示 AI 翻译说明，并能切回中文。语言文件的一致性与代码里没有写死文字由 `npm run check:i18n` 检查（CI） |
-| CI | lint、文档链接、默认 pytest（含契约与 SDK 模型漂移）、网页 lint / `check:api` / `check:i18n` / build、第三方许可证 | `.gitea/workflows/verify.yml`，触发条件与环境隔离见开发验证指南；另核对 `src/maestro/static/` 与网页源码一致。`dev` 与版本 tag 通过后发布（[12](12-operations.md) 第 1 节）。真实 Docker、Hub、模型与安装测试不在 CI，手动运行 |
+| CI | lint、文档链接、默认 pytest（含契约与 SDK 模型漂移）、网页 lint / `check:api` / `check:i18n` / build、第三方许可证 | `.gitea/workflows/verify.yml`，触发条件、准确 SHA 复用与环境隔离见开发验证指南；另核对 `src/maestro/static/` 与网页源码一致。dev 只检查，正式 tag 发布（[12](12-operations.md) 第 1 节）。真实 Docker、Hub、模型与安装测试不在 CI，按影响范围手动运行 |
 
 隔离要求：验证使用独立 HOME、state 与主密钥，清除继承的真实凭据环境；不用已有团队 state 或真实凭据作随手测试。真实 Docker 测试前后建议对 `docker images`、`ps -a`、`network ls`、`volume ls` 留快照对比。
 
@@ -308,12 +308,12 @@ Runner 的 `runner/test_runner_attachments.py` 使用锁定 Harbor 的真实 Tri
 
 发布步骤见[打包与发布](../guides/releasing.md)。发布前：
 
-- 候选提交的 CI 通过（第 2 节）。
-- 手动运行真实 Docker、真实 Hub 与安装运维测试并通过；模型接入另有一次真实模型冒烟（须有授权与预算）。
-- 升级检查：在已部署版本的一份数据副本上执行 `maestroctl update`，迁移成功、旧运行仍能打开；迁移带来的管理员操作（例如准入重置后要重新首次准备、旧附件被清空）写进发布说明。
+- 最终候选准确 SHA 的完整 CI 通过（第 2 节）；同一 SHA 可复用原成功记录，版本准备或合并产生的新 SHA 重新检查。
+- 按改动影响范围核对开发阶段已有的固定提交验收证据，只补后续相关修改和缺口。涉及执行、Hub、安装运维或模型接入时，补对应真实测试；不因正式发布而重跑整套验收。真实模型仍须有授权与预算（U-108）。
+- 涉及迁移或安装更新路径时，做对应升级检查，确认迁移成功、旧运行仍能打开；使用独立测试 state，确需已部署数据副本时另按现场授权操作。迁移带来的管理员操作写进发布说明。
 - 未实现的能力在 `/capabilities` 的 `features` 中关闭（例如主机没有网络收紧能力时的 `restricted_network`），不靠文档宣称交付。
 
 发布后：
 
-- 第 4～8 节中标“未覆盖”或“部分”的项目、升级时管理员要做的事，补写到 Gitea 与 GitHub 的 Release 说明里（CI 只自动列出提交）。
-- 核对两个包索引：在干净环境中分别从 Gitea 包仓库与 GitHub Pages 索引按版本安装 SDK，`maestro_sdk.workspace.init` 装上同版本的 skill。
+- 发布说明在公开前写清本次相关的实际验证、未覆盖范围及升级操作；两端使用同一份已审阅说明。
+- Gitea 在干净环境安装实际 SDK wheel 并验证同版本 skill；中转后核对 GitHub 文件、Gitea 包仓库和 Pages 索引都对应已验证的同一 wheel 摘要。分发或索引安装方式变化时，额外从受影响索引做安装验证。

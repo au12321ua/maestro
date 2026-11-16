@@ -509,6 +509,37 @@ def test_skipped_required_check_does_not_authorize_release():
     assert gate.verified(client, "a" * 40) is None
 
 
+@pytest.mark.parametrize("state", ["complete", "missing", "skipped"])
+def test_ci_reuse_reports_only_exact_complete_verification(state, monkeypatch, tmp_path, capsys):
+    client = FakeChecks()
+    sha = "b" * 40 if state == "missing" else "a" * 40
+    if state == "skipped":
+        client.job["steps"][0]["conclusion"] = "skipped"
+    monkeypatch.setattr(gate, "Gitea", lambda *a: client)
+    for name in ("GITEA_API", "GITEA_REPO", "GITEA_TOKEN"):
+        monkeypatch.setenv(name, "fixture")
+    output = tmp_path / "output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    assert gate.main(["--commit", sha, "--reuse"]) == 0
+    assert output.read_text() == f"verified={'true' if state == 'complete' else 'false'}\n"
+    assert ("https://ci/run/2" in capsys.readouterr().out) is (state == "complete")
+
+
+def test_reused_job_does_not_hide_the_original_full_verification():
+    client = FakeChecks()
+    original_call = client.call
+
+    def call(method, path):
+        if path.endswith("/3/jobs?limit=100"):
+            return {"jobs": [{**client.job, "steps": []}]}
+        if path.endswith("page=1"):
+            return {"workflow_runs": [{**client.run, "id": 3}, client.run]}
+        return original_call(method, path)
+
+    client.call = call
+    assert gate.verified(client, "a" * 40)["id"] == 2
+
+
 @pytest.fixture
 def release_repo(tmp_path):
     repo, remote = tmp_path / "repo", tmp_path / "remote.git"
@@ -648,6 +679,235 @@ def test_github_draft_upload_and_resume_use_the_same_immutable_rules(gitea, tmp_
         publish.publish(client, tmp_path, "v0.4.0", "c" * 40)
 
 
+@pytest.fixture
+def release_assets(tmp_path):
+    top, dist = tmp_path / "package", tmp_path / "dist"
+    dist.mkdir()
+    for name, version in (("maestro", "0.4.0"), ("maestro_sdk", "0.4.0"), ("maestro_runner", "1")):
+        folder = top / {"maestro": "server", "maestro_sdk": "sdk", "maestro_runner": "runner"}[name]
+        folder.mkdir(parents=True)
+        with zipfile.ZipFile(folder / f"{name}-{version}-py3-none-any.whl", "w") as archive:
+            archive.writestr(
+                f"{name}-{version}.dist-info/METADATA",
+                f"Name: {name.replace('_', '-')}\nVersion: {version}\n",
+            )
+            if name == "maestro":
+                archive.writestr("maestro/static/index.html", "<html>fixture</html>")
+                archive.writestr(
+                    f"{name}-{version}.dist-info/entry_points.txt",
+                    "[console_scripts]\nmaestro = maestro.cli:main\n",
+                )
+    for name in (
+        "LICENSE",
+        "NOTICE",
+        "THIRD_PARTY_LICENSES.md",
+        "INSTALL.md",
+        "maestroctl",
+        "server/requirements.txt",
+        "runner/requirements.txt",
+    ):
+        (top / name).write_text("fixture")
+    manifest = {
+        "commit": "c" * 40,
+        "dirty": False,
+        "version": "0.4.0",
+        "sdk_version": "0.4.0",
+        "channel": "release",
+        "files": {
+            str(p.relative_to(top)): validate.digest(p) for p in top.rglob("*") if p.is_file()
+        },
+    }
+    (top / "RELEASE.json").write_text(json.dumps(manifest))
+    build.reproducible_tar(top, dist / "maestro-0.4.0-fixture.tar.gz", 1_700_000_000)
+    (wheel,) = (top / "sdk").glob("*.whl")
+    (dist / wheel.name).write_bytes(wheel.read_bytes())
+    (dist / "SHA256SUMS").write_text(
+        "".join(f"{validate.digest(p)}  {p.name}\n" for p in sorted(dist.iterdir()))
+    )
+    source = SimpleNamespace(
+        download_asset=lambda asset, target: target.write_bytes((dist / asset["name"]).read_bytes())
+    )
+    state = {
+        "prerelease": False,
+        "body": "Reviewed notes",
+        "assets": [{"name": p.name} for p in dist.iterdir()],
+    }
+    return dist, source, state
+
+
+def test_mirror_copies_verified_bytes_and_resumes_a_partial_upload(gitea, release_assets):
+    dist, source, state = release_assets
+    github = publish.Gitea(os.environ["GITEA_API"], "o/r", "t0ken", github=True)
+    gitea["fail_name"] = "maestro-0.4.0-fixture.tar.gz"
+    with pytest.raises(Exception, match="503"):
+        release_tool.mirror_release(source, github, state, "v0.4.0", "c" * 40, "Reviewed notes")
+    assert gitea["releases"][0]["draft"] is True
+    gitea["fail_name"] = None
+    for _ in range(2):
+        wheel, digest = release_tool.mirror_release(
+            source, github, state, "v0.4.0", "c" * 40, "Reviewed notes"
+        )
+    assert digest == validate.digest(dist / wheel)
+    assert sorted(gitea["uploads"]) == sorted(p.name for p in dist.iterdir())
+    assert gitea["releases"][0]["draft"] is False
+    for asset in gitea["releases"][0]["assets"]:
+        assert gitea["contents"][asset["id"]] == (dist / asset["name"]).read_bytes()
+
+
+@pytest.mark.parametrize("fault", ["sha", "version", "checksum", "notes", "name", "duplicate"])
+def test_mirror_refuses_invalid_source_before_uploading(gitea, release_assets, fault):
+    dist, source, state = release_assets
+    sha, tag, notes = "c" * 40, "v0.4.0", "Reviewed notes"
+    if fault == "sha":
+        sha = "d" * 40
+    elif fault == "version":
+        tag = "v0.4.1"
+    elif fault == "checksum":
+        (dist / "SHA256SUMS").write_text("0" * 64 + "  absent\n")
+    elif fault == "notes":
+        notes = "Changed notes"
+    elif fault == "name":
+        state["assets"].append({"name": "../outside"})
+    else:
+        state["assets"].append(state["assets"][0])
+    github = publish.Gitea(os.environ["GITEA_API"], "o/r", "t0ken", github=True)
+    with pytest.raises(SystemExit):
+        release_tool.mirror_release(source, github, state, tag, sha, notes)
+    assert gitea["created"] == 0
+    assert gitea["uploads"] == []
+
+
+def test_hidden_draft_with_extra_attachment_cannot_be_mirrored(gitea, release_assets, monkeypatch):
+    dist, source, state = release_assets
+    github = publish.Gitea(os.environ["GITEA_API"], "o/r", "t0ken", github=True)
+    publish.publish(github, dist, "v0.4.0", "c" * 40, notes="Reviewed notes")
+    gitea["releases"][0]["draft"] = True
+    gitea["releases"][0]["assets"].append({"name": "unexpected", "id": 999})
+    original_call = github.call
+
+    def call(method, path, *args, **kwargs):
+        return (
+            None
+            if path.startswith("/releases/tags/")
+            else original_call(method, path, *args, **kwargs)
+        )
+
+    monkeypatch.setattr(github, "call", call)
+    with pytest.raises(SystemExit, match="unexpected attachments"):
+        release_tool.mirror_release(source, github, state, "v0.4.0", "c" * 40, "Reviewed notes")
+    assert gitea["releases"][0]["draft"] is True
+
+
+def test_index_lookup_requires_dispatch_on_the_exact_tag_and_sha():
+    valid = {
+        "head_sha": "c" * 40,
+        "event": "workflow_dispatch",
+        "path": ".github/workflows/release.yml",
+        "head_branch": "v0.4.0",
+    }
+    candidates = [
+        {**valid, "event": "push"},
+        {**valid, "head_sha": "d" * 40},
+        {**valid, "head_branch": "v0.3.0"},
+        {**valid, "path": ".github/workflows/other.yml"},
+        valid,
+    ]
+    client = SimpleNamespace(github=True, call=lambda *a: {"workflow_runs": candidates})
+    assert release_tool.latest_run(client, "c" * 40, "release.yml", "v0.4.0") == valid
+
+
+@pytest.mark.parametrize("index_exists", [False, True])
+def test_publication_mirrors_then_dispatches_or_resumes_the_index(
+    index_exists, monkeypatch, tmp_path
+):
+    import io
+
+    sha, wheel, checksum = "c" * 40, "maestro_sdk-0.4.0-py3-none-any.whl", "f" * 64
+    events = []
+    clients = [
+        SimpleNamespace(github=False, tag_commit=lambda tag: None),
+        SimpleNamespace(
+            github=True,
+            tag_commit=lambda tag: None,
+            call=lambda *args: events.append(("dispatch", args)),
+        ),
+    ]
+    monkeypatch.setattr(release_tool, "clients", lambda: clients)
+    monkeypatch.setattr(release_tool, "candidate_ref", lambda *a: sha)
+    monkeypatch.setattr(release_tool, "verified", lambda *a: {"html_url": "https://ci/source"})
+    monkeypatch.setattr(release_tool, "ancestor", lambda *a: True)
+    monkeypatch.setattr(release_tool, "maybe_ref", lambda *a: None)
+
+    def git(*args, **kwargs):
+        if args[0] == "show":
+            return (
+                '[project]\nversion = "0.4.0"\n' if args[1].endswith("pyproject.toml") else "Notes"
+            )
+        return ""
+
+    monkeypatch.setattr(release_tool, "git", git)
+    monkeypatch.setattr(
+        release_tool, "wait_publication", lambda client, *a: events.append(("wait", client.github))
+    )
+    monkeypatch.setattr(release_tool, "release_state", lambda *a: {"html_url": "https://release"})
+
+    def mirror(*args):
+        events.append(("mirror", args[3:]))
+        return wheel, checksum
+
+    monkeypatch.setattr(release_tool, "mirror_release", mirror)
+    monkeypatch.setattr(release_tool, "latest_run", lambda *a: {"id": 9} if index_exists else None)
+    monkeypatch.setattr(
+        release_tool, "Registry", lambda *a: SimpleNamespace(published_digest=lambda name: checksum)
+    )
+    monkeypatch.setattr(
+        release_tool.urllib.request,
+        "urlopen",
+        lambda *a, **kw: io.BytesIO(f"{wheel}#sha256={checksum}".encode()),
+    )
+    monkeypatch.setattr(release_tool, "finish_dev", lambda *a: events.append(("finish",)))
+    monkeypatch.setenv("GITEA_API", "https://example/api/v1")
+    monkeypatch.setenv("GITEA_REPO", "o/r")
+    monkeypatch.setenv("GITEA_TOKEN", "fixture")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "o/r")
+    args = SimpleNamespace(
+        remote="origin",
+        version="0.4.0",
+        timeout=100,
+        github_remote="github",
+        retry=False,
+        pages_url="https://pages.example/simple/maestro-sdk/",
+    )
+    release_tool.publish(args, tmp_path)
+    assert [e[0] for e in events] == (
+        ["wait", "mirror", "wait", "finish"]
+        if index_exists
+        else ["wait", "mirror", "dispatch", "wait", "finish"]
+    )
+    if not index_exists:
+        assert events[2][1] == (
+            "POST",
+            "/actions/workflows/release.yml/dispatches",
+            {"ref": "v0.4.0"},
+        )
+
+
+def test_download_copies_release_bytes_without_overwriting(gitea, tmp_path):
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "asset.whl").write_bytes(b"published bytes")
+    client = publish.Gitea(os.environ["GITEA_API"], "o/r", "t0ken")
+    publish.publish(client, dist, "v0.4.0", "c" * 40)
+    asset = gitea["releases"][0]["assets"][0]
+    target = tmp_path / "download.whl"
+    client.download_asset(asset, target)
+    assert target.read_bytes() == b"published bytes"
+    target.write_bytes(b"local file")
+    with pytest.raises(FileExistsError):
+        client.download_asset(asset, target)
+    assert target.read_bytes() == b"local file"
+
+
 def test_cross_host_download_redirect_does_not_forward_credentials():
     import urllib.request
 
@@ -711,6 +971,14 @@ def test_partial_publication_never_reports_complete_or_finishes_dev(
             raise SystemExit("index failed" if failed_stage == "pages" else "GitHub release failed")
 
     monkeypatch.setattr(release_tool, "wait_publication", wait)
+
+    def mirror(*args):
+        if failed_stage == "github":
+            raise SystemExit("GitHub release failed")
+        return "maestro_sdk-0.4.1-py3-none-any.whl", "fixture-digest"
+
+    monkeypatch.setattr(release_tool, "mirror_release", mirror)
+    monkeypatch.setattr(release_tool, "latest_run", lambda *a: {"id": 9})
     monkeypatch.setattr(release_tool, "release_state", lambda *a: {"draft": False})
     monkeypatch.setattr(release_tool, "finish_dev", lambda *a: finished.append(True))
     args = SimpleNamespace(

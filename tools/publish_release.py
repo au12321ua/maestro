@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import sys
 import urllib.error
 import urllib.parse
@@ -92,8 +93,7 @@ class Gitea:
             return None
         return self.tag_commit(tag)
 
-    def asset_digest(self, asset, release_id):
-        # Read bytes even if the provider advertises a digest: this also verifies downloads.
+    def asset_url(self, asset):
         if self.github:
             url = self.base + f"/releases/assets/{asset['id']}"
         else:
@@ -110,8 +110,23 @@ class Gitea:
         # Only send credentials to the configured API's host. Redirects strip them too.
         if urllib.parse.urlsplit(url).netloc != urllib.parse.urlsplit(self.base).netloc:
             raise SystemExit("release download points outside the configured server")
+        return url
+
+    def download_asset(self, asset, target):
+        with (
+            self.request(
+                "GET", self.asset_url(asset), accept="application/octet-stream"
+            ) as response,
+            target.open("xb") as output,
+        ):
+            shutil.copyfileobj(response, output, length=1024 * 1024)
+
+    def asset_digest(self, asset, release_id):
+        # Read bytes even if the provider advertises a digest: this also verifies downloads.
         digest = hashlib.sha256()
-        with self.request("GET", url, accept="application/octet-stream") as response:
+        with self.request(
+            "GET", self.asset_url(asset), accept="application/octet-stream"
+        ) as response:
             while chunk := response.read(1024 * 1024):
                 digest.update(chunk)
         return digest.hexdigest()
@@ -176,6 +191,8 @@ def publish(client, dist, tag, commit, *, title=None, notes=""):
             f"release {tag}: description or release type differs; refusing to change it"
         )
     existing = {a["name"]: a for a in release.get("assets") or []}
+    if existing.keys() - {path.name for path in assets}:
+        raise SystemExit(f"release {tag}: unexpected attachments; refusing to change it")
     # Check all conflicts before writing anything. Never delete or replace an attachment.
     for path in assets:
         if path.name in existing:

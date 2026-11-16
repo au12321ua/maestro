@@ -54,9 +54,18 @@ def verified(client, sha):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--commit", required=True)
+    parser.add_argument(
+        "--reuse", action="store_true", help="report optional reuse to GITHUB_OUTPUT"
+    )
     args = parser.parse_args(argv)
     client = Gitea(os.environ["GITEA_API"], os.environ["GITEA_REPO"], os.environ["GITEA_TOKEN"])
     run = verified(client, args.commit)
+    if args.reuse:
+        with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+            output.write(f"verified={'true' if run else 'false'}\n")
+        if run is None:
+            print(f"no reusable full verification for {args.commit}; running checks")
+            return 0
     if run is None:
         raise SystemExit(
             f"no successful full verify job for {args.commit}; dispatch verify.yml on "
