@@ -605,6 +605,7 @@ trials = Table(
     Column("state", String(16), nullable=False),
     Column("phase", String(32), nullable=True),
     Column("reason_code", String(64), nullable=True),
+    Column("queue_reason", String(64), nullable=True),
     _time("execution_terminal_at", nullable=True),
     Column("result_revision", Integer, nullable=False),
     Column("artifact_state", String(16), nullable=False),
@@ -636,10 +637,31 @@ execution_attempts = Table(
     _json("executor_ref_json", nullable=True),
     # The setup network revision a model run's setup was given; None for Oracle.
     Column("setup_network_revision", Integer, nullable=True),
+    Column("backfilled", Boolean, nullable=False, server_default="0"),
+    Column("slot_held", Boolean, nullable=False, server_default="0"),
+    Column("cleanup_state", String(16), nullable=False, server_default="not_required"),
     _time("started_at"),
     _time("ended_at", nullable=True),
     _json("error_json", nullable=True),
     UniqueConstraint("trial_id", "attempt_index"),
+)
+
+stage_permits = Table(
+    "stage_permits",
+    metadata,
+    _id(),
+    _ref("attempt_id", "execution_attempts"),
+    Column("phase", String(16), nullable=False),
+    Column("state", String(16), nullable=False),
+    Column("cpus", Float, nullable=False),
+    Column("memory_mb", Integer, nullable=False),
+    Column("provider", String(64), nullable=True),
+    _time("requested_at"),
+    _time("granted_at", nullable=True),
+    _time("released_at", nullable=True),
+    UniqueConstraint("attempt_id", "phase"),
+    CheckConstraint("state IN ('waiting','granted','released')", name="state"),
+    Index("ix_stage_permits_state", "state"),
 )
 
 work_items = Table(
@@ -650,6 +672,8 @@ work_items = Table(
     Column("state", String(16), nullable=False),
     _time("eligible_at"),
     Column("enqueue_seq", Integer, nullable=False),
+    _time("ready_at", nullable=True),
+    Column("bypass_count", Integer, nullable=False, server_default="0"),
     Column("lease_token", String(80), nullable=True),
     Index("ix_work_items_state", "state", "eligible_at", "enqueue_seq"),
 )

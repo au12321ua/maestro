@@ -114,9 +114,12 @@ RETRY_MAX_WAIT_SEC = 20.0
 
 
 def harbor_retry_config() -> dict:
-    """Job-internal retry settings handed to Harbor: everything is retried
+    """Freeze the platform retry policy using the adapter's exception names.
+
+    Everything is retried
     except what the platform policy says not to, which keeps unknown exceptions
-    retryable like the ``unclassified`` rule. Harbor's own default list is not used."""
+    retryable like the ``unclassified`` rule. Each Runner executes only one attempt;
+    Harbor's own retry count is zero and its default exception list is not used."""
     return {
         "max_retries": MAX_RETRIES,
         "exclude_exceptions": sorted(

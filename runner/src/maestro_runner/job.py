@@ -1,7 +1,7 @@
-"""Execute one platform run as one Harbor Job and report it over the protocol.
+"""Execute one platform attempt as one Harbor Job and report it over the protocol.
 
 Harbor's trial hooks give real-time phases; per-attempt evidence is archived in the
-END hook because Harbor deletes a failed attempt's directory before an in-job retry.
+END hook before the platform decides whether to retry in a fresh Runner.
 Live logs come from the trial directories Docker mounts on the host.
 
 Those mounted directories are writable from inside the container, so
@@ -24,6 +24,7 @@ from pathlib import Path
 
 from maestro_runner import agents, compose, network, protocol
 from maestro_runner.protocol import emit
+from maestro_runner.resources import Permits
 
 # Harbor hook -> platform step. Collection has no hook: it is the span between
 # agent end and verification start.
@@ -353,7 +354,7 @@ def _pin_overrides(path: Path, task: dict, labels: dict, out: Path) -> dict[str,
     return result
 
 
-def _environment_overrides(out: Path, labels: dict, pins: dict[str, Path]) -> None:
+def _environment_overrides(out: Path, labels: dict, pins: dict[str, Path], permits=None) -> None:
     """Give every environment Harbor creates the platform's Compose files.
 
     Harbor applies the job's overlays to the agent's environment only and clears them for
@@ -387,7 +388,35 @@ def _environment_overrides(out: Path, labels: dict, pins: dict[str, Path]) -> No
             extra.append(pin)
         if extra != list(config.extra_docker_compose):
             config = config.model_copy(update={"extra_docker_compose": extra})
-        return original(config, *args, **kwargs)
+        phase = (
+            "execution" if str(kwargs.get("session_id", "")).endswith("__env") else "verification"
+        )
+        if permits is not None:
+            services, networks, volumes = _author_compose(Path(where) / "docker-compose.yaml")
+            text = "services:\n"
+            for name in dict.fromkeys(["main", *services, network.SIDECAR]):
+                text += f"  {json.dumps(name)}:\n    labels:\n      io.maestro.phase: {phase}\n"
+            # Only include the egress service when Harbor actually creates it.
+            policies = [kwargs.get("network_policy"), *kwargs.get("phase_network_policies", [])]
+            if not any(p and p.network_mode.value != "public" for p in policies):
+                text = text.replace(
+                    f"  {json.dumps(network.SIDECAR)}:\n    labels:\n      io.maestro.phase: {phase}\n",
+                    "",
+                )
+            for kind, names in (("networks", ["default", *networks]), ("volumes", volumes)):
+                if names:
+                    text += kind + ":\n"
+                    for name in dict.fromkeys(names):
+                        text += (
+                            f"  {json.dumps(name)}:\n    labels:\n      io.maestro.phase: {phase}\n"
+                        )
+            file = out / f"stage-{phase}.yaml"
+            file.write_text(text)
+            config = config.model_copy(
+                update={"extra_docker_compose": [*config.extra_docker_compose, file]}
+            )
+        environment = original(config, *args, **kwargs)
+        return permits.wrap_environment(environment, phase) if permits is not None else environment
 
     EnvironmentFactory.create_environment_from_config = classmethod(create)
 
@@ -567,11 +596,13 @@ class Execution:
         self.retry = spec["retry"]
         self.limits = spec["artifact_limits"]
         self.deliverable_bytes: dict[str, int] = defaultdict(int)
+        self.deliverable_bytes.update(spec.get("deliverable_bytes") or {})
         self.cancelling = False
         # Harbor trial name -> platform trial id; retries keep the trial name.
         self.bound: dict[str, str] = {}
         self.unbound: dict[str, list[str]] = {}
         self.task_by_path: dict[str, str] = {}
+        self.multi_step_paths: set[str] = set()
         self.attempt: dict[str, int] = defaultdict(int)
         self.live: set[str] = set()
         self.offsets: dict[Path, int] = {}
@@ -582,6 +613,7 @@ class Execution:
         # Harbor trial name -> the current attempt's attachment install records.
         self.installs: dict[str, list] = {}
         self.finished = 0
+        self.permits = Permits(spec["attempt_id"]) if spec.get("attempt_id") else None
 
     # --- configuration -----------------------------------------------------------
 
@@ -640,6 +672,8 @@ class Execution:
                         )
                 emit("network_plan", task_key=task["task_key"], plan=plan)
             self.task_by_path[str(path)] = task["task_key"]
+            if definition.steps:
+                self.multi_step_paths.add(str(path))
             agents.TASK_NAMES[str((path / "environment").resolve())] = task_name
             self.unbound[task["task_key"]] = list(task["trial_ids"])
             task_dirs.append(path)
@@ -666,7 +700,7 @@ class Execution:
                 "RUNNER_INPUT_INVALID", "prepared and unprepared tasks cannot share a job"
             )
         if prepared:
-            _environment_overrides(self.out, self.spec["labels"], pins)
+            _environment_overrides(self.out, self.spec["labels"], pins, self.permits)
         agent = self.spec["agent"]
         if agent.get("adapter"):
             try:
@@ -710,11 +744,11 @@ class Execution:
         return JobConfig(
             job_name="job",
             jobs_dir=self.jobs_dir,
-            n_attempts=counts.pop(),
-            n_concurrent_trials=self.spec["n_concurrent_trials"],
+            n_attempts=1,
+            n_concurrent_trials=1,
             quiet=True,
             retry=RetryConfig(
-                max_retries=self.retry["max_retries"],
+                max_retries=0,
                 include_exceptions=None,
                 exclude_exceptions=set(self.retry["exclude_exceptions"]),
                 min_wait_sec=self.retry["min_wait_sec"],
@@ -769,14 +803,6 @@ class Execution:
         else:
             self.installs[name] = [dict(r) for r in records]
 
-    def _will_retry(self, exception_type: str | None, attempt: int) -> bool:
-        """Mirror of Harbor 0.24.0 TrialQueue retry rules for the settings we pass."""
-        if exception_type is None or self.cancelling or exception_type == "CancelledError":
-            return False
-        if exception_type in self.retry["exclude_exceptions"]:
-            return False
-        return attempt <= self.retry["max_retries"]
-
     # --- hooks ---------------------------------------------------------------------
 
     def _trial_id(self, event) -> str:
@@ -808,6 +834,14 @@ class Execution:
                 harbor_trial_id=str(event.trial_id),
             )
         elif kind in STEPS:
+            # Shared multi-step trials can call the model again after verification.
+            # Their model quota stays held until the attempt's final event.
+            if (
+                kind == "agent-end"
+                and self.permits is not None
+                and str(Path(event.config.task.path).resolve()) not in self.multi_step_paths
+            ):
+                emit("model_finished", attempt_id=self.spec["attempt_id"])
             emit(
                 "phase_changed",
                 trial_id=trial_id,
@@ -816,6 +850,8 @@ class Execution:
                 harbor_at=event.timestamp.isoformat(),
             )
         elif kind == "end":
+            if self.permits is not None:
+                emit("model_finished", attempt_id=self.spec["attempt_id"])
             self._finish(event, trial_id)
 
     def _finish(self, event, trial_id: str) -> None:
@@ -855,7 +891,7 @@ class Execution:
             exception_message=(exc.exception_message[:MESSAGE_LIMIT] if exc else None),
             rewards=rewards,
             verifier_ran=result.verifier is not None,
-            will_retry=self._will_retry(exception_type, attempt),
+            will_retry=False,
             archive=archive.relative_to(self.out).as_posix() if archived else None,
             files=files,
             skipped_unlisted=unlisted,
@@ -1042,6 +1078,8 @@ class Execution:
 
         self.attempts_dir.mkdir(parents=True, exist_ok=True)
         config = self._config()
+        if self.permits is not None:
+            self.permits.install_verifier_gate()
         job = await Job.create(config)
         for trial_event in TrialEvent:
             job.add_hook(trial_event, self.on_event)
@@ -1091,6 +1129,17 @@ def check_spec(spec: dict) -> None:
     missing = [key for key in required if key not in spec]
     if missing:
         raise Rejected("RUNNER_INPUT_INVALID", f"missing fields: {missing}")
+    if spec.get("attempt_id") and (
+        len(spec["tasks"]) != 1
+        or len(spec["tasks"][0]["trial_ids"]) != 1
+        or spec["n_concurrent_trials"] != 1
+        or spec["retry"]["max_retries"] != 0
+        or "execution" not in (spec.get("stage_resources") or {})
+        or not spec["tasks"][0].get("images")
+    ):
+        raise Rejected(
+            "RUNNER_INPUT_INVALID", "one prepared trial and zero Harbor retries are required"
+        )
     limits = spec["artifact_limits"]
     names = ("max_files", "max_file_bytes", "max_total_bytes")
     if not isinstance(limits, dict) or set(limits) != set(names):

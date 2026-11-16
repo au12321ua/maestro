@@ -24,7 +24,7 @@ from maestro.core.errors import MaestroError, not_found
 from maestro.core.ids import new_id
 from maestro.db import schema as t
 from maestro.db.engine import Database
-from maestro.domain.states import RUN_TERMINAL, PatPermission, Role, UserStatus
+from maestro.domain.states import RUN_TERMINAL, CleanupState, PatPermission, Role, UserStatus
 from maestro.execution.attachments import display
 from maestro.services import audit, deleted, pagination
 from maestro.services.attachments import release_contents
@@ -140,6 +140,35 @@ class RunHandler(Handler):
 
     def purge(self, conn, row, service, actor_id):
         run_id = row["id"]
+        # Cleanup needs these identities and permits until release is confirmed,
+        # even when the run already has a terminal result and is in the bin.
+        held = conn.execute(
+            select(t.execution_attempts.c.id)
+            .join(t.trials, t.trials.c.id == t.execution_attempts.c.trial_id)
+            .where(
+                t.trials.c.run_id == run_id,
+                or_(
+                    t.execution_attempts.c.slot_held.is_(True),
+                    t.execution_attempts.c.id.in_(
+                        select(t.stage_permits.c.attempt_id).where(
+                            t.stage_permits.c.state == "granted"
+                        )
+                    ),
+                ),
+            )
+            .limit(1)
+        ).first()
+        if (
+            held
+            or row["lease_token"] is not None
+            or row["cleanup_state"]
+            in (CleanupState.PENDING, CleanupState.RUNNING, CleanupState.FAILED)
+        ):
+            raise MaestroError(
+                "RUN_CLEANUP_PENDING",
+                "Run resources must be confirmed released before permanent deletion",
+                409,
+            )
         artifacts = conn.execute(
             select(t.artifacts.c.id, t.artifacts.c.storage_key).where(
                 t.artifacts.c.run_id == run_id
@@ -163,6 +192,7 @@ class RunHandler(Handler):
         conn.execute(delete(t.artifacts).where(t.artifacts.c.run_id == run_id))
         conn.execute(delete(t.preparation_waiters).where(t.preparation_waiters.c.run_id == run_id))
         conn.execute(delete(t.trial_results).where(t.trial_results.c.trial_id.in_(trials)))
+        conn.execute(delete(t.stage_permits).where(t.stage_permits.c.attempt_id.in_(attempts)))
         conn.execute(delete(t.execution_attempts).where(t.execution_attempts.c.id.in_(attempts)))
         conn.execute(delete(t.work_items).where(t.work_items.c.trial_id.in_(trials)))
         conn.execute(delete(t.trials).where(t.trials.c.run_id == run_id))

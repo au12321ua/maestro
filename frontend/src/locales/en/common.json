@@ -63,7 +63,12 @@
     "CAPACITY_MEMORY": "Waiting for free memory",
     "PROVIDER_LIMIT": "Waiting for model provider concurrency",
     "STORAGE_LOW": "Storage low, starts paused",
-    "UPDATE_PENDING": "Waiting for the system update to finish or be cancelled"
+    "UPDATE_PENDING": "Waiting for the system update to finish or be cancelled",
+    "RUN_CONCURRENCY": "Run concurrency limit reached",
+    "WAITING_PRIORITY": "Waiting for an older resource request",
+    "RETRY_BACKOFF": "Waiting for retry backoff",
+    "PREPARING_CACHE": "Waiting for shared cache preparation",
+    "CLEANUP_PENDING": "Waiting for the previous attempt to be cleaned up"
   },
   "invitationState": {
     "pending": "Unused",

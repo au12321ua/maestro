@@ -45,7 +45,9 @@ def test_restart_stops_leftovers_and_records_cleanup(service, owner, version_id,
         "sweep_released": True,
         "preparation": {"temporary_images_removed": []},
     }
-    (leftover,) = executor.reconciled
+    assert executor.reconciled
+    assert all(item.attempt_id for item in executor.reconciled)
+    leftover = next(item for item in executor.reconciled if item.runner)
     assert leftover.labels["io.maestro.run_id"] == data["run_id"].lower()
     assert leftover.runner["runner_id"] == "fake"
     instance = service.worker.instance_id
@@ -64,6 +66,47 @@ def test_unconfirmed_cleanup_is_recorded_as_failed(service, owner, version_id, e
     executor.release = False
     asyncio.run(service.worker.recover())
     assert service.runs.get(owner, data["run_id"])["cleanup_state"] == "failed"
+
+
+def test_restart_reconciles_each_attempt_of_a_terminal_run_before_releasing_capacity(
+    service, owner, version_id, executor
+):
+    from maestro.boundaries.environment import CleanupReport
+    from maestro.services.capacity import in_use
+
+    data = accept(service, owner, version_id, concurrency=3)
+    executor.release = False
+    service.worker.start_epoch()
+    asyncio.run(service.worker.drain())
+    assert service.runs.get(owner, data["run_id"])["state"] == "finished"
+    service.worker.start_epoch()
+    leftovers = list(service.worker.leftovers)
+    assert len(leftovers) == 3 and all(item.attempt_id and item.runner for item in leftovers)
+    failed_attempt = leftovers[0].attempt_id
+
+    async def reconcile(item):
+        executor.reconciled.append(item)
+        return CleanupReport(item.attempt_id != failed_attempt)
+
+    executor.reconcile = reconcile
+    executor.release = True
+    result = asyncio.run(service.worker.recover())
+    assert result["runs"] == {data["run_id"]: False}
+    assert len(executor.reconciled) == 3
+    with service.db.read() as conn:
+        assert in_use(conn)["slots"] == 1
+    assert service.runs.get(owner, data["run_id"])["counts"]["scored"] == 3
+
+    async def retry():
+        nonlocal failed_attempt
+        failed_attempt = None
+        service.worker.cleanup_retry_seconds = 0
+        await service.worker.tick()
+
+    asyncio.run(retry())
+    with service.db.read() as conn:
+        assert in_use(conn)["slots"] == 0
+    assert service.runs.get(owner, data["run_id"])["cleanup_state"] == "complete"
 
 
 def test_claimed_run_that_never_started_is_requeued(service, owner, version_id):

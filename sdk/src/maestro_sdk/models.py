@@ -1434,6 +1434,15 @@ class ResourceOverrides(BaseModel):
     memory_mb: int | None = None
 
 
+class ResourceUsage(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    cpus: float
+    memory_mb: int
+    slots: int
+
+
 class RestoreProgress(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -1449,6 +1458,17 @@ class RestoreResult(BaseModel):
     )
     output: PreparedOutputView
     waiters: int
+
+
+class RetryPolicy(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    exclude_exceptions: list[str]
+    max_retries: int
+    max_wait_sec: float
+    min_wait_sec: float
+    wait_multiplier: float
 
 
 class RevisionRef(BaseModel):
@@ -1749,6 +1769,20 @@ class SourceVersionDetail(BaseModel):
     resolved_digest: str
     tasks: list[SourceTask]
     upstream_ref: str
+
+
+class StagePermit(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    cpus: float
+    granted_at: str | None
+    id: str
+    memory_mb: int
+    phase: Literal["execution", "verification"]
+    released_at: str | None
+    requested_at: str
+    state: Literal["waiting", "granted", "released"]
 
 
 class StatusChange(BaseModel):
@@ -3389,7 +3423,7 @@ class Run(BaseModel):
     ]
     finished_at: str | None
     heartbeat_at: Annotated[
-        str | None, Field(description="Last sign of life from the run's Runner")
+        str | None, Field(description="Last sign of life from any of the run's Runners")
     ]
     id: str
     links: dict[str, str]
@@ -3403,11 +3437,16 @@ class Run(BaseModel):
     queue_reason: Annotated[
         str | None,
         Field(
-            description="Why a queued run waits: CAPACITY_SLOTS, CAPACITY_CPU, CAPACITY_MEMORY or PROVIDER_LIMIT"
+            description="Current dispatch wait reason, including stage capacity, run concurrency, retry backoff or priority protection"
         ),
     ]
     relation: Literal["initial", "rerun", "modified"]
+    resource_usage: ResourceUsage
     result_completeness: Literal["none", "partial", "complete"]
+    scheduling_order: Annotated[
+        int | None,
+        Field(description="Persistent acceptance order key; lower runs dispatch first"),
+    ]
     scoring: RunScoring | None
     source_run_id: str | None
     started_at: str | None
@@ -3511,6 +3550,7 @@ class RunPolicy(BaseModel):
     aggregation_version: int
     executor_id: str | None
     policy_version: str
+    retry: RetryPolicy | None
     scoring: ScoringContract
     team_policy_revision: int
 
@@ -3724,6 +3764,8 @@ class Attempt(BaseModel):
         extra="allow",
     )
     attempt_index: int
+    backfilled: bool
+    cleanup_state: str
     ended_at: str | None
     error: AttemptError | None
     executor_ref: Annotated[
@@ -3736,6 +3778,8 @@ class Attempt(BaseModel):
         int | None,
         Field(description="Setup network revision this attempt's setup was given; none for Oracle"),
     ]
+    slot_held: bool
+    stage_permits: list[StagePermit]
     started_at: str
     state: Literal[
         "starting",
@@ -4469,6 +4513,10 @@ class Trial(BaseModel):
     cleanup_state: Literal["pending", "running", "complete", "failed", "not_required"]
     id: str
     phase: str | None
+    queue_reason: Annotated[
+        str | None,
+        Field(description="Capacity or priority wait, separate from execution failures"),
+    ]
     reason_code: str | None
     repetition_index: int
     result: TrialResult | None
@@ -4812,7 +4860,7 @@ class RunDetail(BaseModel):
     ]
     finished_at: str | None
     heartbeat_at: Annotated[
-        str | None, Field(description="Last sign of life from the run's Runner")
+        str | None, Field(description="Last sign of life from any of the run's Runners")
     ]
     id: str
     links: dict[str, str]
@@ -4826,11 +4874,16 @@ class RunDetail(BaseModel):
     queue_reason: Annotated[
         str | None,
         Field(
-            description="Why a queued run waits: CAPACITY_SLOTS, CAPACITY_CPU, CAPACITY_MEMORY or PROVIDER_LIMIT"
+            description="Current dispatch wait reason, including stage capacity, run concurrency, retry backoff or priority protection"
         ),
     ]
     relation: Literal["initial", "rerun", "modified"]
+    resource_usage: ResourceUsage
     result_completeness: Literal["none", "partial", "complete"]
+    scheduling_order: Annotated[
+        int | None,
+        Field(description="Persistent acceptance order key; lower runs dispatch first"),
+    ]
     scoring: RunScoring | None
     snapshot: RunSnapshot
     source_run_id: str | None

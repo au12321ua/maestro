@@ -1,7 +1,9 @@
 """Two-step deletion, who may do what, and what survives."""
 
+import asyncio
 import uuid
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select, update
 from support import (
@@ -13,9 +15,12 @@ from support import (
     submit,
     wait_operation,
 )
-from support.results import bin_entry, finished_run, purge
+from support.results import bin_entry, finished_run, make_owner, purge, run
+from support.runs import accept
 
+from maestro.core.errors import MaestroError
 from maestro.db import schema as t
+from maestro.services.capacity import in_use
 from maestro.testing.fakes import FakeDatasetSource
 
 
@@ -83,6 +88,52 @@ def test_active_runs_cannot_be_deleted(service, version_id):
         assert refused.json()["error"]["suggested_actions"][0]["type"] == "cancel_run"
         admin.post(f"/api/v1/runs/{run_id}/cancel", expect=200)
         admin.delete(f"/api/v1/runs/{run_id}", expect=200)
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_run_purge_preserves_unconfirmed_capacity(service, version_id, executor, legacy):
+    owner = make_owner(service)
+    service.worker.start_epoch()
+    executor.release = False
+    if legacy:
+        run_id = accept(service, owner, version_id)["run_id"]
+        service.runs.cancel(owner, run_id)
+        with service.db.write() as conn:
+            conn.execute(
+                update(t.runs)
+                .where(t.runs.c.id == run_id)
+                .values(
+                    cleanup_state="failed",
+                    reservation_json={"slots": 2, "cpus": 4, "memory_mb": 8192},
+                )
+            )
+    else:
+        run_id = run(service, owner, version_id)
+    entry = service.recycle.delete(owner, "run", run_id)
+    with service.db.read() as conn:
+        before = in_use(conn)
+        trial_ids = list(conn.execute(select(t.trials.c.id)).scalars())
+    assert before["slots"] > 0 and before["cpus"] > 0
+
+    with pytest.raises(MaestroError) as refused:
+        service.recycle.purge(owner, entry["id"])
+    assert refused.value.code == "RUN_CLEANUP_PENDING"
+    assert refused.value.status == 409
+    with service.db.read() as conn:
+        assert in_use(conn) == before
+        assert list(conn.execute(select(t.trials.c.id)).scalars()) == trial_ids
+        assert conn.execute(select(t.deletions.c.state)).scalar() == "recycled"
+
+    executor.release = True
+    service.worker.cleanup_retry_seconds = 0
+    asyncio.run(service.worker.drain())
+    with service.db.read() as conn:
+        assert in_use(conn)["slots"] == 0
+    assert service.recycle.purge(owner, entry["id"])["state"] == "purged"
+    with service.db.read() as conn:
+        assert conn.execute(select(t.stage_permits)).first() is None
+        assert conn.execute(select(t.execution_attempts)).first() is None
+        assert conn.execute(select(t.trials)).first() is None
 
 
 def test_experiment_pat_may_bin_own_run(service, version_id):

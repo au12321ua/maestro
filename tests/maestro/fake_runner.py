@@ -11,13 +11,13 @@ import sys
 import time
 from pathlib import Path
 
-spec = json.loads(sys.stdin.read())
+spec = json.loads(sys.stdin.readline())
 if spec.get("command") == "probe":
     # The wrapper's argument scripts the host: network, no-network, or silent.
     answer = sys.argv[1] if len(sys.argv) > 1 else "network"
     if answer != "silent":
         payload = {"status": "ok", "data": {"network_restriction": answer == "network"}}
-        print(json.dumps({"protocol_version": 2, "type": "result", "payload": payload}))
+        print(json.dumps({"protocol_version": 3, "type": "result", "payload": payload}))
     sys.exit(0)
 if spec.get("command") == "hub" and spec.get("op") == "validate_tasks":
     import tomllib
@@ -43,7 +43,7 @@ if spec.get("command") == "hub" and spec.get("op") == "validate_tasks":
         if errors
         else {"status": "ok", "data": {"valid": True}}
     )
-    print(json.dumps({"protocol_version": 2, "type": "result", "payload": payload}))
+    print(json.dumps({"protocol_version": 3, "type": "result", "payload": payload}))
     sys.exit(0)
 out = Path(spec["output_dir"])
 mode = spec["tasks"][0]["task_key"]
@@ -56,7 +56,7 @@ def emit(kind, run_id=None, **payload):
     global sequence
     sequence += 1
     line = {
-        "protocol_version": 2,
+        "protocol_version": 3,
         "run_id": run_id or spec["run_id"],
         "sequence": sequence,
         "type": kind,
@@ -109,12 +109,39 @@ trials = [t for task in spec["tasks"] for t in task["trial_ids"]]
 harbor = "9.9.9" if mode == "harbor-mismatch" else "0.24.0"
 emit("started", harbor_version=harbor, runner_version="fake", n_trials=len(trials))
 
-if mode in ("deliverables", "deliverables-retry"):
+if mode == "resources":
+    import select
+
+    trial_id = trials[0]
+    emit("attempt_started", trial_id=trial_id, attempt=1)
+
+    def command():
+        while not select.select([sys.stdin], [], [], 0.02)[0]:
+            emit("heartbeat")
+            emit("log", trial_id=trial_id, attempt=1, source="agent/wait.log", text="waiting\n")
+        return json.loads(sys.stdin.readline())
+
+    emit("resource_requested", attempt_id=spec["attempt_id"], phase="execution")
+    grant = command()
+    emit("model_finished", attempt_id=spec["attempt_id"])
+    emit(
+        "resource_released",
+        attempt_id=spec["attempt_id"],
+        phase="execution",
+        permit_id=grant["permit_id"],
+    )
+    command()
+    emit("resource_requested", attempt_id=spec["attempt_id"], phase="verification")
+    command()
+    finish_attempt(trial_id, 1, {"reward": 1.0})
+    emit("completed", status="completed")
+elif mode in ("deliverables", "deliverables-retry"):
     import hashlib
 
-    attempts = 2 if mode == "deliverables-retry" else 1
+    attempts = 2 if mode == "deliverables-retry" and not spec.get("attempt_id") else 1
     for trial_id in trials:
         for attempt in range(1, attempts + 1):
+            platform_attempt = spec.get("attempt_index", attempt)
             if attempt == 1:
                 run_trial(trial_id)
             else:
@@ -125,18 +152,18 @@ if mode in ("deliverables", "deliverables-retry"):
             collected = archive / "artifacts" / "logs" / "artifacts" / "nested"
             collected.mkdir(parents=True)
             data = b"api_key=sk-abcdefghijklmnopqrstuv\n" + b"STEP;" * 100
-            if attempt == 2:
+            if platform_attempt == 2:
                 data += b"FINAL"
             (collected / "output.step").write_bytes(data)
             record = b'[{"source": "/logs/artifacts", "destination": "artifacts/logs/artifacts"}]'
             (archive / "artifacts" / "manifest.json").write_bytes(record)
-            retry = attempt < attempts
+            retry = (platform_attempt < 2) if mode == "deliverables-retry" else False
             finish_attempt(
                 trial_id,
                 attempt,
                 None if retry else {"reward": 1.0},
                 exception="ApiRateLimitError" if retry else None,
-                retry=retry,
+                retry=retry and not spec.get("attempt_id"),
                 files=[
                     {
                         "path": "artifacts/logs/artifacts/nested/output.step",

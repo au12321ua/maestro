@@ -51,3 +51,27 @@ def post_batch(api, body, key=None):
     return api.post(
         "/api/v1/run-batches", json=body, headers={"Idempotency-Key": key or uuid.uuid4().hex}
     )
+
+
+async def dispatch_until(service, predicate, timeout=5):
+    """Drive the worker, checking the resource invariant after every scheduling turn."""
+    import asyncio
+
+    from maestro.services.capacity import in_use, provider_limits
+
+    end = asyncio.get_running_loop().time() + timeout
+    while True:
+        await service.worker.tick()
+        with service.db.read() as conn:
+            used = in_use(conn)
+            limits = provider_limits(conn)
+        host = service.worker.capacity
+        assert used["slots"] <= host.slots
+        assert used["cpus"] <= host.cpus + 1e-9
+        assert used["memory_mb"] <= host.memory_mb
+        assert all(used["providers"].get(p, 0) <= limit for p, limit in limits.items())
+        if value := predicate():
+            return value
+        if asyncio.get_running_loop().time() >= end:
+            raise AssertionError("scheduler condition not reached")
+        await asyncio.sleep(0.005)

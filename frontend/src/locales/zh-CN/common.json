@@ -63,7 +63,12 @@
     "CAPACITY_MEMORY": "等待空闲内存",
     "PROVIDER_LIMIT": "等待模型提供商并发额度",
     "STORAGE_LOW": "存储空间不足，暂停启动",
-    "UPDATE_PENDING": "等待系统更新完成或取消"
+    "UPDATE_PENDING": "等待系统更新完成或取消",
+    "RUN_CONCURRENCY": "已达到本运行的活动试次上限",
+    "WAITING_PRIORITY": "等待较早的资源请求启动",
+    "RETRY_BACKOFF": "等待重试退避结束",
+    "PREPARING_CACHE": "等待共享缓存准备",
+    "CLEANUP_PENDING": "等待上一尝试确认清理"
   },
   "invitationState": {
     "pending": "待使用",

@@ -37,7 +37,7 @@ from maestro.domain.states import (
     trial_counts,
 )
 from maestro.execution.attachments import installed_packages
-from maestro.execution.policy import POLICY_VERSION
+from maestro.execution.policy import POLICY_VERSION, harbor_retry_config
 from maestro.services import (
     audit,
     deleted,
@@ -205,6 +205,8 @@ def public_run(
         "stop_requested": row["stop_requested"],
         "stop_reason": row["stop_reason"],
         "queue_reason": row["queue_reason"],
+        "scheduling_order": row.get("scheduling_order"),
+        "resource_usage": {k: row.get("used_" + k, 0) or 0 for k in ("slots", "cpus", "memory_mb")},
         "heartbeat_at": row["heartbeat_at"],
         "counts": counts,
         "scoring": compact(summary) if summary else None,
@@ -228,6 +230,29 @@ def public_run(
 def runs_with_owner():
     return select(
         t.runs,
+        select(func.min(t.work_items.c.enqueue_seq))
+        .join(t.trials, t.trials.c.id == t.work_items.c.trial_id)
+        .where(t.trials.c.run_id == t.runs.c.id)
+        .correlate(t.runs)
+        .scalar_subquery()
+        .label("scheduling_order"),
+        select(func.count())
+        .select_from(t.execution_attempts)
+        .join(t.trials, t.trials.c.id == t.execution_attempts.c.trial_id)
+        .where(t.trials.c.run_id == t.runs.c.id, t.execution_attempts.c.slot_held.is_(True))
+        .correlate(t.runs)
+        .scalar_subquery()
+        .label("used_slots"),
+        *[
+            select(func.coalesce(func.sum(t.stage_permits.c[k]), 0))
+            .join(t.execution_attempts, t.execution_attempts.c.id == t.stage_permits.c.attempt_id)
+            .join(t.trials, t.trials.c.id == t.execution_attempts.c.trial_id)
+            .where(t.trials.c.run_id == t.runs.c.id, t.stage_permits.c.state == "granted")
+            .correlate(t.runs)
+            .scalar_subquery()
+            .label("used_" + k)
+            for k in ("cpus", "memory_mb")
+        ],
         t.users.c.username.label("owner_username"),
         t.users.c.display_name.label("owner_display_name"),
     ).join(t.users, t.users.c.id == t.runs.c.owner_id)
@@ -1028,10 +1053,13 @@ class Runs:
         policy = {
             "aggregation_version": AGGREGATION_VERSION,
             "policy_version": POLICY_VERSION,
+            "retry": harbor_retry_config(),
             "team_policy_revision": res.references["team_policy"],
             "executor_id": self.resolver.executor_id,
             "scoring": contract_for(res.version["manifest_json"]),
         }
+        if source and source.get("relation") == "rerun":
+            policy["retry"] = source["policy"].get("retry") or harbor_retry_config()
         config_digest = res.config_digest
         snapshot_digest = digest_json(
             {"effective": effective, "provenance": provenance, "policy": policy}
@@ -1261,6 +1289,31 @@ class Runs:
                 .mappings()
                 .all()
             )
+            permits: dict[str, list] = {}
+            for permit in conn.execute(
+                select(t.stage_permits)
+                .join(
+                    t.execution_attempts, t.execution_attempts.c.id == t.stage_permits.c.attempt_id
+                )
+                .join(t.trials, t.trials.c.id == t.execution_attempts.c.trial_id)
+                .where(t.trials.c.run_id == run_id)
+                .order_by(t.stage_permits.c.requested_at, t.stage_permits.c.id)
+            ).mappings():
+                permits.setdefault(permit["attempt_id"], []).append(
+                    {
+                        k: permit[k]
+                        for k in (
+                            "id",
+                            "phase",
+                            "state",
+                            "cpus",
+                            "memory_mb",
+                            "requested_at",
+                            "granted_at",
+                            "released_at",
+                        )
+                    }
+                )
             attempts: dict[str, list] = {}
             for a in conn.execute(
                 select(t.execution_attempts)
@@ -1272,6 +1325,10 @@ class Runs:
                     {
                         "id": a["id"],
                         "attempt_index": a["attempt_index"],
+                        "slot_held": a["slot_held"],
+                        "cleanup_state": a["cleanup_state"],
+                        "backfilled": a["backfilled"],
+                        "stage_permits": permits.get(a["id"], []),
                         "state": a["state"],
                         "phase": a["phase"],
                         "steps": a["steps_json"] or [],
@@ -1291,6 +1348,7 @@ class Runs:
                 "state": r["state"],
                 "phase": r["phase"],
                 "reason_code": r["reason_code"],
+                "queue_reason": r["queue_reason"],
                 "artifact_state": r["artifact_state"],
                 "artifact_counts": {
                     "available": stored.get(r["id"], {}).get("available", 0),

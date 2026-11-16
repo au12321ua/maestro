@@ -335,6 +335,7 @@ const run = {
   id: "run_x", name: "fixture run", owner_id: "usr_2",
   owner: { username: "gone", display_name: "Gone", deleted: true },
   scoring: null, deletion: null, queue_reason: null, heartbeat_at: null,
+  scheduling_order: 1, resource_usage: { slots: 0, cpus: 0, memory_mb: 0 },
   dataset_version_deletion: { state: "recycled", deleted_at: "2026-10-22T01:00:00Z", purged_at: null },
   pat_id: null, relation: "initial",
   source_run_id: null, dataset_version_id: "dsv_1", operation_id: "op_1",
@@ -349,10 +350,11 @@ const run = {
 };
 const trial = (key: string, state: string, result: unknown, reason: string | null) => ({
   id: `trl_${key}`, task_id: `tsk_${key}`, task_key: key, repetition_index: 1, state,
-  phase: null, reason_code: reason, artifact_state: "complete", cleanup_state: "complete",
+  phase: null, reason_code: reason, queue_reason: null, artifact_state: "complete", cleanup_state: "complete",
   artifact_counts: { available: 1, failed: 0, expired: 0 },
   result, attempts: [{ id: `att_${key}`, attempt_index: 1, state: "failed", phase: "executing",
-    steps: [], executor_ref: null,
+    steps: [], executor_ref: null, backfilled: false, slot_held: false,
+    cleanup_state: "complete", stage_permits: [],
     started_at: "2026-10-22T00:00:00Z", ended_at: "2026-10-22T00:00:01Z",
     error: { code: "AGENT_TIMEOUT", message: "agent timed out" } }],
 });
@@ -431,8 +433,47 @@ test("score and dimension rendering", async ({ page }) => {
   await expect(page.getByText("AGENT_TIMEOUT：agent timed out")).toBeVisible();
 });
 
-// Long names and long lines stay inside their boxes (U-45): no page is wider than the window,
-// on a desktop or a phone.
+test("stage permits, waiting, backfill and current capacity are visible", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  const waiting = trial("stage", "verifying", null, null);
+  const permits = [
+    { id: "prm_exec", phase: "execution", state: "released", cpus: 1, memory_mb: 2048 },
+    { id: "prm_verify", phase: "verification", state: "waiting", cpus: 4, memory_mb: 8192 },
+  ];
+  const attempt = { ...waiting.attempts[0], state: "verifying", phase: "verifying",
+    error: null, ended_at: null, slot_held: true, backfilled: true, stage_permits: permits };
+  const current = { ...run, state: "running", artifact_state: "pending", cleanup_state: "pending",
+    scheduling_order: 42, queue_reason: "CAPACITY_CPU" as string | null, dataset_version_deletion: null,
+    resource_usage: { slots: 1, cpus: 0, memory_mb: 0 } };
+  const selected = { ...waiting, phase: "verifying", queue_reason: "CAPACITY_CPU" as string | null, attempts: [attempt] };
+  await serveFixtures(page, { ...sessionRoutes, "/api/v1/runs/run_x": current,
+    "/api/v1/runs/run_x/trials": [selected], "/api/v1/runs/run_x/artifacts": [] });
+  await page.goto("/runs/run_x");
+  await expect(page).toHaveTitle("Maestro");
+  await expect(page.getByText("受理顺序", { exact: true })).toBeVisible();
+  await expect(page.getByText("1 个槽位 · 0 核 · 0 MiB", { exact: true })).toBeVisible();
+  await expect(page.getByText("等待空闲 CPU").first()).toBeVisible();
+  await expect(page.getByText("填空派发", { exact: true })).toBeVisible();
+  const stages = page.getByRole("list", { name: "环境阶段资源" });
+  await expect(stages.getByText("已确认释放", { exact: true })).toBeVisible();
+  await expect(stages.getByText("等待许可", { exact: true })).toBeVisible();
+  await page.screenshot({ path: `${shots}/stage-wait-desktop.png`, fullPage: true });
+  permits[1].state = "granted";
+  current.resource_usage = { slots: 1, cpus: 4, memory_mb: 8192 };
+  current.queue_reason = null;
+  selected.queue_reason = null;
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await expect(page.getByText("1 个槽位 · 4 核 · 8192 MiB", { exact: true })).toBeVisible();
+  await expect(stages.getByText("已获批，尚未确认释放", { exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(stages).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: `${shots}/stage-granted-mobile.png`, fullPage: true });
+  expect(errors).toEqual([]);
+});
+
+// Long names and long lines stay inside their boxes on a desktop or a phone.
 test("long content does not widen the page", async ({ page }) => {
   const prefix = "swebench-verified-django__django-";
   const keys = [`${prefix}11099`, `${prefix}11133`, `${prefix}${"x".repeat(300)}`];

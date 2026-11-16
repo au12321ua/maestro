@@ -1,6 +1,6 @@
 """Harbor executor against a scripted Runner: protocol, failures, cancel, cleanup.
 
-No Harbor or Docker: ``fake_runner.py`` speaks protocol v1 and a recording Docker
+No Harbor or Docker: ``fake_runner.py`` speaks the Runner protocol and a recording Docker
 double confirms that label cleanup always runs.
 """
 
@@ -45,15 +45,19 @@ def test_normal_run_maps_results_and_uploads_redacted_files(runner_python, mater
     assert not (tmp_path / "work" / "run_ok").exists()  # removed after confirmed cleanup
 
 
-def test_job_internal_retry_is_a_new_attempt(runner_python, materials, tmp_path):
+def test_managed_runner_cannot_retry_internally(runner_python, materials, tmp_path):
+    from dataclasses import replace
+
     sink = RecordingSink()
-    execute(
+    spec = make_spec(materials, tmp_path, "retry")
+    report = execute(
         make_executor(runner_python, materials, tmp_path),
-        make_spec(materials, tmp_path, "retry"),
+        replace(spec, attempt_id="att_test", trials=spec.trials[:1], concurrency=1),
         sink,
     )
     first = [e for e in sink.events if e[0] == "finished" and e[1] == "trl_1"]
-    assert [(e[2], e[4]) for e in first] == [(1, False), (2, True)]
+    assert report.failure_code == "RUNNER_PROTOCOL_ERROR"
+    assert [(e[2], e[4]) for e in first] == [(1, False)]
     outcome = first[0][3]
     assert outcome.failure_cause == "model_provider_failed" and outcome.retry_recommended
 
@@ -298,3 +302,59 @@ def test_a_purged_or_changed_attachment_fails_the_run_without_starting_it(
     assert set(outcomes) == {"trl_1", "trl_2"}
     assert {o.exception_type for o in outcomes.values()} == {"AttachmentContentMissing"}
     assert all(not o.grade_requested for o in outcomes.values())
+
+
+@pytest.mark.parametrize("cancel_wait", [False, True])
+def test_resource_wait_does_not_block_heartbeats_logs_or_cancel(
+    runner_python, materials, tmp_path, cancel_wait
+):
+    from dataclasses import replace
+
+    cancel = Cancel()
+
+    class ResourceSink(RecordingSink):
+        def __init__(self):
+            super().__init__()
+            self.waiting = False
+            self.heartbeats = 0
+            self.ready = asyncio.Event()
+
+        async def resource_requested(self, phase):
+            if phase == "verification":
+                self.waiting = True
+                await self.ready.wait()
+            return "permit_" + phase
+
+        async def resource_released(self, phase, permit_id):
+            self._record("released", phase, permit_id)
+
+        async def model_finished(self):
+            self._record("model_finished")
+
+        async def heartbeat(self):
+            if self.waiting:
+                self.heartbeats += 1
+                if self.heartbeats == 3:
+                    if cancel_wait:
+                        cancel.event.set()
+                    else:
+                        self.ready.set()
+            await super().heartbeat()
+
+    spec = replace(
+        make_spec(materials, tmp_path, "resources", trials=1),
+        attempt_id="att_resource",
+        stage_resources={
+            "execution": {"cpus": 4, "memory_mb": 8192},
+            "verification": {"cpus": 1, "memory_mb": 2048},
+        },
+    )
+    sink, docker = ResourceSink(), RecordingDocker()
+    report = execute(make_executor(runner_python, materials, tmp_path, docker), spec, sink, cancel)
+    assert report.cleanup_complete and report.failure_code is None
+    assert sink.heartbeats >= 3 and any("waiting" in t for t in sink.texts)
+    assert {**spec.labels, "io.maestro.phase": "execution"} in docker.calls
+    if not cancel_wait:
+        assert finished(sink)["trl_1"][3].raw_score == 1
+    else:
+        assert not finished(sink)

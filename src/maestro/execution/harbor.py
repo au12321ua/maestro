@@ -1,4 +1,4 @@
-"""Harbor executor: one Runner subprocess per run, speaking the Runner protocol.
+"""Harbor executor: one Runner subprocess per attempt, speaking the Runner protocol.
 
 The service never imports Harbor. The Runner lives in its own uv environment with
 the locked Harbor version; this adapter starts it in a new process group, feeds it
@@ -31,14 +31,14 @@ from maestro.boundaries.executor import (
 from maestro.execution import process
 from maestro.execution.agents import endpoint_host
 from maestro.execution.attachments import AttachmentStore, display, installed_packages
-from maestro.execution.docker import DockerResources
+from maestro.execution.docker import LABEL_PHASE, DockerResources
 from maestro.execution.materials import TaskMaterials
 from maestro.execution.policy import HARBOR_VERSION, MAPPING_ID, harbor_outcome, harbor_retry_config
 from maestro.security.redaction import redact
 
 log = logging.getLogger(__name__)
 
-PROTOCOL_VERSION = 2
+PROTOCOL_VERSION = 3
 EVENT_TYPES = {
     "started",
     "attempt_started",
@@ -49,6 +49,9 @@ EVENT_TYPES = {
     "cancel_requested",
     "network_plan",
     "completed",
+    "resource_requested",
+    "resource_released",
+    "model_finished",
 }
 # Inherited by the Runner; nothing else, in particular no provider keys.
 ENV_KEEP = (
@@ -118,6 +121,8 @@ class _Session:
     secrets: tuple[str, ...] = ()
     network_plans: dict = field(default_factory=dict)
     deliverable_bytes: dict[str, int] = field(default_factory=dict)
+    controls: set = field(default_factory=set)
+    permits: dict = field(default_factory=dict)
 
 
 class _StderrTail:
@@ -369,6 +374,8 @@ class HarborExecutor:
         self, spec: RunSpec, sink: ExecutionSink, cancel: CancelToken
     ) -> ExecutionReport:
         workdir = self._workdir(spec.run_id)
+        if spec.attempt_id:
+            workdir = workdir / spec.attempt_id.lower()
         shutil.rmtree(workdir, ignore_errors=True)
         workdir.mkdir(parents=True)
         tasks: dict[str, dict] = {}
@@ -432,6 +439,10 @@ class HarborExecutor:
             "protocol_version": PROTOCOL_VERSION,
             "command": "execute",
             "run_id": spec.run_id,
+            "attempt_id": spec.attempt_id,
+            "attempt_index": spec.attempt_index,
+            "deliverable_bytes": spec.deliverable_bytes,
+            "stage_resources": spec.stage_resources,
             "output_dir": str(workdir),
             "agent": self._agent(spec),
             "network": self._network(spec),
@@ -450,7 +461,7 @@ class HarborExecutor:
                 spec.setup_network.harness_setup_timeout_sec if harness else None
             ),
             "n_concurrent_trials": spec.concurrency,
-            "retry": harbor_retry_config(),
+            "retry": {**harbor_retry_config(), "max_retries": 0},
             "tasks": list(tasks.values()),
             "labels": spec.labels,
             "log_cap_bytes": self.log_cap_bytes,
@@ -459,6 +470,7 @@ class HarborExecutor:
             "tail_interval_sec": self.tail_interval_sec,
         }
         session = _Session(spec, workdir, {t for task in tasks.values() for t in task["trial_ids"]})
+        session.deliverable_bytes.update(spec.deliverable_bytes)
         # A proxy address with a password in it is a secret too.
         session.secrets = tuple(v for v in spec.secrets.values() if v) + tuple(
             {v for v in spec.setup_network.container_env().values() if "@" in v}
@@ -484,9 +496,8 @@ class HarborExecutor:
                 process.identity(proc.pid)
                 | {"runner_id": self.runner_id, "protocol_version": PROTOCOL_VERSION}
             )
-            proc.stdin.write(json.dumps(request).encode())
+            proc.stdin.write((json.dumps(request) + "\n").encode())
             await proc.stdin.drain()
-            proc.stdin.close()
             await self._read(proc, sink, session)
         except ProtocolError as error:
             log.warning("run %s: runner protocol error: %s", spec.run_id, error)
@@ -509,6 +520,11 @@ class HarborExecutor:
             raise
         finally:
             stopper.cancel()
+            for control in list(session.controls):
+                control.cancel()
+            await asyncio.gather(*session.controls, return_exceptions=True)
+            if proc.stdin:
+                proc.stdin.close()
             if proc.returncode is None:
                 await self._terminate(proc, graceful=False)
             with contextlib.suppress(asyncio.CancelledError, Exception):
@@ -587,9 +603,59 @@ class HarborExecutor:
             if not line:
                 return
             event = self._parse(line, session)
-            await self._dispatch(event, sink, session)
+            if event["type"] in {"resource_requested", "resource_released"}:
+                control = asyncio.create_task(self._control(proc, event, sink, session))
+                session.controls.add(control)
+                control.add_done_callback(session.controls.discard)
+            else:
+                await self._dispatch(event, sink, session)
             if event["type"] == "completed":
                 session.completed = event["payload"]
+
+    async def _control(self, proc, event, sink, session):
+        p = event["payload"]
+        try:
+            phase = p.get("phase")
+            if (
+                phase not in session.spec.stage_resources
+                or p.get("attempt_id") != session.spec.attempt_id
+            ):
+                raise ProtocolError("resource message for another attempt or stage")
+            if event["type"] == "resource_requested":
+                permit = await sink.resource_requested(phase)
+                session.permits[phase] = permit
+                command = "permit_granted"
+            else:
+                permit = p.get("permit_id")
+                if not permit or session.permits.get(phase) != permit:
+                    raise ProtocolError("release for an unknown permit")
+                # Progress is not proof. Independently remove and list every resource
+                # in this attempt's environment group, including auxiliary services.
+                report = await self.docker.cleanup({**session.spec.labels, LABEL_PHASE: phase})
+                if not report.released:
+                    raise ProtocolError("environment release could not be confirmed")
+                await sink.resource_released(phase, permit)
+                command = "permit_released"
+            proc.stdin.write(
+                (
+                    json.dumps(
+                        {
+                            "command": command,
+                            "attempt_id": session.spec.attempt_id,
+                            "phase": phase,
+                            "permit_id": permit,
+                        }
+                    )
+                    + "\n"
+                ).encode()
+            )
+            await proc.stdin.drain()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("attempt %s resource control failed", session.spec.attempt_id)
+            session.failure = "RUNNER_PROTOCOL_ERROR"
+            await self._terminate(proc, graceful=False)
 
     def _parse(self, line: bytes, session: _Session) -> dict:
         try:
@@ -610,9 +676,15 @@ class HarborExecutor:
         if "trial_id" in payload and payload["trial_id"] not in session.trial_ids:
             raise ProtocolError("event for an unknown trial")
         if "attempt" in payload and not (
-            isinstance(payload["attempt"], int) and payload["attempt"] >= 1
+            type(payload["attempt"]) is int
+            and payload["attempt"] >= 1
+            and (not session.spec.attempt_id or payload["attempt"] == 1)
         ):
             raise ProtocolError("invalid attempt number")
+        if event["type"] in {"resource_requested", "resource_released", "model_finished"} and (
+            not session.spec.attempt_id or payload.get("attempt_id") != session.spec.attempt_id
+        ):
+            raise ProtocolError("resource message for another attempt")
         session.sequence += 1
         return event
 
@@ -626,6 +698,8 @@ class HarborExecutor:
                 raise ProtocolError(f"Runner has Harbor {p.get('harbor_version')}")
         elif kind == "heartbeat":
             await sink.heartbeat()
+        elif kind == "model_finished":
+            await sink.model_finished()
         elif kind == "network_plan":
             session.network_plans[str(p.get("task_key"))] = p.get("plan")
         elif kind == "attempt_started":
@@ -766,7 +840,18 @@ class HarborExecutor:
     async def reconcile(self, leftover: Leftover) -> CleanupReport:
         if process.kill_recorded(leftover.runner):
             log.warning("run %s: killed leftover Runner group", leftover.run_id)
+        # A successful signal is not proof the old process can no longer start
+        # containers. Confirm its identity has disappeared before sweeping Docker.
+        for _ in range(100):
+            if not process.matches(leftover.runner):
+                break
+            await asyncio.sleep(0.01)
+        else:
+            return CleanupReport(False, ["runner_process"])
         report = await self.docker.cleanup(leftover.labels)
         if report.released:
-            shutil.rmtree(self._workdir(leftover.run_id), ignore_errors=True)
+            path = self._workdir(leftover.run_id)
+            if leftover.attempt_id:
+                path = path / leftover.attempt_id.lower()
+            shutil.rmtree(path, ignore_errors=True)
         return report

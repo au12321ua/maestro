@@ -16,6 +16,9 @@ log = logging.getLogger(__name__)
 
 LABEL_INSTANCE = "io.maestro.instance_id"
 LABEL_RUN = "io.maestro.run_id"
+LABEL_TRIAL = "io.maestro.trial_id"
+LABEL_ATTEMPT = "io.maestro.attempt_id"
+LABEL_PHASE = "io.maestro.phase"
 
 _LIST = {
     "container": ["ps", "-aq", "--no-trunc"],

@@ -707,6 +707,14 @@
             "title": "Attempt Index",
             "type": "integer"
           },
+          "backfilled": {
+            "title": "Backfilled",
+            "type": "boolean"
+          },
+          "cleanup_state": {
+            "title": "Cleanup State",
+            "type": "string"
+          },
           "ended_at": {
             "anyOf": [
               {
@@ -770,6 +778,17 @@
             "description": "Setup network revision this attempt's setup was given; none for Oracle",
             "title": "Setup Network Revision"
           },
+          "slot_held": {
+            "title": "Slot Held",
+            "type": "boolean"
+          },
+          "stage_permits": {
+            "items": {
+              "$ref": "#/components/schemas/StagePermit"
+            },
+            "title": "Stage Permits",
+            "type": "array"
+          },
           "started_at": {
             "title": "Started At",
             "type": "string"
@@ -799,6 +818,10 @@
         },
         "required": [
           "id",
+          "slot_held",
+          "cleanup_state",
+          "backfilled",
+          "stage_permits",
           "attempt_index",
           "state",
           "phase",
@@ -13599,6 +13622,30 @@
         "title": "ResourceOverrides",
         "type": "object"
       },
+      "ResourceUsage": {
+        "additionalProperties": false,
+        "properties": {
+          "cpus": {
+            "title": "Cpus",
+            "type": "number"
+          },
+          "memory_mb": {
+            "title": "Memory Mb",
+            "type": "integer"
+          },
+          "slots": {
+            "title": "Slots",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slots",
+          "cpus",
+          "memory_mb"
+        ],
+        "title": "ResourceUsage",
+        "type": "object"
+      },
       "RestoreOperation": {
         "additionalProperties": false,
         "properties": {
@@ -13785,6 +13832,43 @@
         "title": "RestoreResult",
         "type": "object"
       },
+      "RetryPolicy": {
+        "additionalProperties": false,
+        "properties": {
+          "exclude_exceptions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Exclude Exceptions",
+            "type": "array"
+          },
+          "max_retries": {
+            "title": "Max Retries",
+            "type": "integer"
+          },
+          "max_wait_sec": {
+            "title": "Max Wait Sec",
+            "type": "number"
+          },
+          "min_wait_sec": {
+            "title": "Min Wait Sec",
+            "type": "number"
+          },
+          "wait_multiplier": {
+            "title": "Wait Multiplier",
+            "type": "number"
+          }
+        },
+        "required": [
+          "max_retries",
+          "exclude_exceptions",
+          "min_wait_sec",
+          "wait_multiplier",
+          "max_wait_sec"
+        ],
+        "title": "RetryPolicy",
+        "type": "object"
+      },
       "RevisionRef": {
         "additionalProperties": false,
         "properties": {
@@ -13915,7 +13999,7 @@
                 "type": "null"
               }
             ],
-            "description": "Last sign of life from the run's Runner",
+            "description": "Last sign of life from any of the run's Runners",
             "title": "Heartbeat At"
           },
           "id": {
@@ -13986,7 +14070,7 @@
                 "type": "null"
               }
             ],
-            "description": "Why a queued run waits: CAPACITY_SLOTS, CAPACITY_CPU, CAPACITY_MEMORY or PROVIDER_LIMIT",
+            "description": "Current dispatch wait reason, including stage capacity, run concurrency, retry backoff or priority protection",
             "title": "Queue Reason"
           },
           "relation": {
@@ -13998,6 +14082,9 @@
             "title": "Relation",
             "type": "string"
           },
+          "resource_usage": {
+            "$ref": "#/components/schemas/ResourceUsage"
+          },
           "result_completeness": {
             "enum": [
               "none",
@@ -14006,6 +14093,18 @@
             ],
             "title": "Result Completeness",
             "type": "string"
+          },
+          "scheduling_order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Persistent acceptance order key; lower runs dispatch first",
+            "title": "Scheduling Order"
           },
           "scoring": {
             "anyOf": [
@@ -14089,6 +14188,8 @@
           "stop_requested",
           "stop_reason",
           "queue_reason",
+          "scheduling_order",
+          "resource_usage",
           "heartbeat_at",
           "counts",
           "scoring",
@@ -14583,7 +14684,7 @@
                 "type": "null"
               }
             ],
-            "description": "Last sign of life from the run's Runner",
+            "description": "Last sign of life from any of the run's Runners",
             "title": "Heartbeat At"
           },
           "id": {
@@ -14654,7 +14755,7 @@
                 "type": "null"
               }
             ],
-            "description": "Why a queued run waits: CAPACITY_SLOTS, CAPACITY_CPU, CAPACITY_MEMORY or PROVIDER_LIMIT",
+            "description": "Current dispatch wait reason, including stage capacity, run concurrency, retry backoff or priority protection",
             "title": "Queue Reason"
           },
           "relation": {
@@ -14666,6 +14767,9 @@
             "title": "Relation",
             "type": "string"
           },
+          "resource_usage": {
+            "$ref": "#/components/schemas/ResourceUsage"
+          },
           "result_completeness": {
             "enum": [
               "none",
@@ -14674,6 +14778,18 @@
             ],
             "title": "Result Completeness",
             "type": "string"
+          },
+          "scheduling_order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Persistent acceptance order key; lower runs dispatch first",
+            "title": "Scheduling Order"
           },
           "scoring": {
             "anyOf": [
@@ -14760,6 +14876,8 @@
           "stop_requested",
           "stop_reason",
           "queue_reason",
+          "scheduling_order",
+          "resource_usage",
           "heartbeat_at",
           "counts",
           "scoring",
@@ -14967,6 +15085,16 @@
             "title": "Policy Version",
             "type": "string"
           },
+          "retry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RetryPolicy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "scoring": {
             "$ref": "#/components/schemas/ScoringContract"
           },
@@ -14976,6 +15104,7 @@
           }
         },
         "required": [
+          "retry",
           "aggregation_version",
           "policy_version",
           "team_policy_revision",
@@ -16707,6 +16836,78 @@
         "title": "SourceVersionDetail",
         "type": "object"
       },
+      "StagePermit": {
+        "additionalProperties": false,
+        "properties": {
+          "cpus": {
+            "title": "Cpus",
+            "type": "number"
+          },
+          "granted_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Granted At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "memory_mb": {
+            "title": "Memory Mb",
+            "type": "integer"
+          },
+          "phase": {
+            "enum": [
+              "execution",
+              "verification"
+            ],
+            "title": "Phase",
+            "type": "string"
+          },
+          "released_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Released At"
+          },
+          "requested_at": {
+            "title": "Requested At",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "waiting",
+              "granted",
+              "released"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "phase",
+          "state",
+          "cpus",
+          "memory_mb",
+          "requested_at",
+          "granted_at",
+          "released_at"
+        ],
+        "title": "StagePermit",
+        "type": "object"
+      },
       "StatusChange": {
         "additionalProperties": false,
         "properties": {
@@ -17958,6 +18159,18 @@
             ],
             "title": "Phase"
           },
+          "queue_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Capacity or priority wait, separate from execution failures",
+            "title": "Queue Reason"
+          },
           "reason_code": {
             "anyOf": [
               {
@@ -18015,6 +18228,7 @@
           "state",
           "phase",
           "reason_code",
+          "queue_reason",
           "artifact_state",
           "artifact_counts",
           "cleanup_state",

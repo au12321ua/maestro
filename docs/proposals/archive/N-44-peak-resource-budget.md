@@ -1,6 +1,12 @@
 # N-44 按试次与阶段动态调度资源
 
-状态：已确认，待实施 · 更新：2026-11-16 · 相关：[配置解析](../design/03-configuration-attachments.md)、[调度与执行](../design/05-scheduling-execution.md)、[Harbor 集成](../design/15-stack-harbor.md)、[N-13 试次粒度调度](N-13-trial-granularity.md)、U-54、U-105、U-106、U-107、D-020
+状态：完成 · 更新：2026-11-16 · 相关：[配置解析](../../design/03-configuration-attachments.md)、[调度与执行](../../design/05-scheduling-execution.md)、[Harbor 集成](../../design/15-stack-harbor.md)、[N-13 试次粒度调度](../N-13-trial-granularity.md)、U-54、U-105、U-106、U-107、D-020
+
+## 实施结论
+
+平台统一派发单试次尝试并负责重试，持久化阶段许可沿实际环境生命周期授予与回收；运行受理顺序、有限填空、等待保护、共享准备独立推进、提供商阶段名额、取消与恢复对账已经实现。网页 / SDK 契约、旧快照派生与追加迁移同步更新，版本号保持 0.5.2。现行机制见[调度与执行](../../design/05-scheduling-execution.md)及[Harbor 集成](../../design/15-stack-harbor.md)，验证范围见[测试与验收](../../design/13-testing-plan.md)。实施证据在本次提交与 PR 描述中；PR 等待用户验收后合并。
+
+以下保留确认时的设计与调查依据。
 
 ## 目标与授权状态
 

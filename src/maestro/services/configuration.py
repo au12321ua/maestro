@@ -1078,9 +1078,8 @@ class Resolver:
 
     @staticmethod
     def _task_settings(definition: dict, overrides: dict, team) -> dict:
-        """A trial's resources are the sum over its containers, reserved together even
-        though a separate verifier starts after the agent's environment stops. An
-        override is a new total; what it adds goes to the main environment."""
+        """Container limits retain the total override input. Stage budgets are derived
+        separately; only an override's positive difference goes to main."""
         timeouts = definition.get("timeouts") or {}
         environments = Resolver.environments(definition, team)
 
@@ -1322,7 +1321,15 @@ class Resolver:
         provider = (effective.get("model") or {}).get("provider")
         res.reservation = reservation(
             effective["concurrency"],
-            [{"resources": x} for x in effective["tasks"]],
+            [
+                {
+                    "resources": x,
+                    "definition": next(
+                        t["definition"] for t in res.tasks if t["task_key"] == x["task_key"]
+                    ),
+                }
+                for x in effective["tasks"]
+            ],
             provider,
             trials,
         )

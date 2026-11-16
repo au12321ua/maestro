@@ -405,7 +405,9 @@ function RunDetailView({ runId }: { runId: string }) {
           {run.snapshot.effective.model != null && (
             <Info label={t("runs.detail.modelHarness")} value={<AgentSummary snapshot={run.snapshot} />} />
           )}
-          {run.state === "queued" && run.queue_reason && (
+          <Info label={t("runs.detail.schedulingOrder")} value={run.scheduling_order ?? "—"} />
+          <Info label={t("runs.detail.resourceUsage")} value={t("runs.detail.resourceUsageValue", run.resource_usage)} />
+          {run.queue_reason && (
             <Info
               label={t("runs.detail.queueReason")}
               value={<span className="text-amber-800">{QUEUE_REASON[run.queue_reason] ?? run.queue_reason}</span>}
@@ -874,6 +876,11 @@ function ExecutionView({
           </div>
         </CardHeader>
         <CardContent className="grid gap-2">
+          {selected.queue_reason && !TRIAL_TERMINAL.has(selected.state) && (
+            <p className="text-sm text-amber-800" role="status">
+              {QUEUE_REASON[selected.queue_reason] ?? selected.queue_reason}
+            </p>
+          )}
           <AttemptSteps key={selected.id} trial={selected} artifacts={own} live={live} />
           {own.length > 0 && (
             <div>
@@ -946,10 +953,23 @@ function AttemptSteps({
                 {t("runs.execution.attempt", { index: attempt.attempt_index })}
               </span>
               <StatusPill value={label(ATTEMPT_STATE, attempt.state)} />
+              {attempt.backfilled && <StatusPill value={[t("runs.execution.backfilled"), "muted"]} />}
+              {attempt.slot_held && <span className="text-xs text-muted-foreground">{t("runs.execution.slotHeld")}</span>}
               <span className="ml-auto text-xs text-muted-foreground">
                 {fmtTime(attempt.started_at)} · {duration(attempt)}
               </span>
             </div>
+            {attempt.stage_permits.length > 0 && (
+              <ul className="mt-2 grid gap-1 text-xs" aria-label={t("runs.execution.resources")}>
+                {attempt.stage_permits.map((permit) => (
+                  <li key={permit.id} className="flex flex-wrap gap-x-2 text-muted-foreground">
+                    <span>{t(`runs.execution.resourcePhase.${permit.phase}`)}</span>
+                    <span>{t(`runs.execution.permitState.${permit.state}`)}</span>
+                    <span>{t("runs.execution.stageUsage", { cpus: permit.cpus, memory: permit.memory_mb })}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
             <StepList
               attempt={attempt}
               artifacts={artifacts.filter((a) => a.attempt_id === attempt.id)}

@@ -1,10 +1,4 @@
-"""In-process run-level worker driving the executor boundary.
-
-The worker is the single scheduling coordinator: it claims queued runs in FIFO order
-when capacity allows, holds a per-run lease, commits executor events in short
-lease-checked transactions, enforces cancellation and deadlines, and on start
-reconciles whatever an earlier process left behind.
-"""
+"""In-process trial scheduler with durable stage permits and run leases."""
 
 import asyncio
 import contextlib
@@ -13,6 +7,7 @@ import logging
 import os
 import secrets
 from dataclasses import replace
+from datetime import timedelta
 
 from sqlalchemy import func, insert, null, select, update
 
@@ -44,19 +39,27 @@ from maestro.domain.states import (
     trial_can_move,
 )
 from maestro.execution.attachments import installed_packages
-from maestro.execution.docker import LABEL_INSTANCE, LABEL_RUN
+from maestro.execution.docker import LABEL_ATTEMPT, LABEL_INSTANCE, LABEL_RUN, LABEL_TRIAL
 from maestro.execution.policy import (
     MAX_RETRIES,
     POLICY_VERSION,
     RETRY_MAX_WAIT_SEC,
     RETRY_MIN_WAIT_SEC,
     RETRY_WAIT_MULTIPLIER,
+    harbor_retry_config,
     legal_score,
 )
+from maestro.execution.resources import stage_resources
 from maestro.security.redaction import redact
-from maestro.services import setup_network, updates
+from maestro.services import scheduling, setup_network, updates
 from maestro.services.artifacts import expiry_for, stamp_expiry
-from maestro.services.capacity import HostCapacity, provider_of, reservation, waiting_reason
+from maestro.services.capacity import (
+    HostCapacity,
+    in_use,
+    provider_limits,
+    provider_of,
+    waiting_reason,
+)
 from maestro.services.instance import instance_id
 from maestro.services.preparation import (
     PreparationFailure,
@@ -222,6 +225,15 @@ class RunSink:
         with self.db.write() as conn:
             trial = self._check(conn, trial_id)
             attempt_id = self._attempt(conn, trial_id, attempt_index)
+            if (
+                conn.execute(
+                    select(t.execution_attempts.c.ended_at).where(
+                        t.execution_attempts.c.id == attempt_id
+                    )
+                ).scalar()
+                is not None
+            ):
+                return
             steps = conn.execute(
                 select(t.execution_attempts.c.steps_json).where(
                     t.execution_attempts.c.id == attempt_id
@@ -432,6 +444,7 @@ class RunSink:
                 trial,
                 state,
                 phase=None,
+                queue_reason=None,
                 reason_code=None
                 if state == TrialState.SCORED
                 else (cause or "unclassified").upper(),
@@ -449,7 +462,7 @@ class RunSink:
             conn.execute(
                 update(t.trials)
                 .where(t.trials.c.id.in_(trial_ids), t.trials.c.state == TrialState.QUEUED)
-                .values(phase=phase)
+                .values(phase=phase, queue_reason="PREPARING_CACHE" if phase else None)
             )
             refresh_operation(conn, self.run_id)
 
@@ -487,6 +500,215 @@ class RunSink:
         self.platform_attempts[trial_id] = self.platform_attempts.get(trial_id, 0) + 1
 
 
+class AttemptSink(RunSink):
+    """Fence one dispatched attempt, including delayed resource messages."""
+
+    def __init__(self, worker, spec, lease, attempt_index, attempt_id):
+        super().__init__(worker, spec.run_id, lease)
+        self.spec = spec
+        self.trial_id = spec.trials[0].trial_id
+        self.index = attempt_index
+        self.attempt_id = attempt_id
+        self.attempt_ids[(self.trial_id, self.index)] = attempt_id
+        self.outcome = None
+        self.retry = False
+
+    def _index(self, trial_id, attempt_index):
+        if trial_id != self.trial_id or attempt_index != 1:
+            raise StaleLease()
+        return self.index
+
+    def _check_run(self, conn):
+        super()._check_run(conn)
+        attempt = (
+            conn.execute(
+                select(t.execution_attempts).where(t.execution_attempts.c.id == self.attempt_id)
+            )
+            .mappings()
+            .one()
+        )
+        if (
+            attempt["lease_token"] != self.lease
+            or attempt["service_epoch"] != self.worker.epoch
+            or not attempt["slot_held"]
+        ):
+            raise StaleLease()
+
+    async def runner_started(self, identity):
+        with self.db.write() as conn:
+            self._check_run(conn)
+            conn.execute(
+                update(t.execution_attempts)
+                .where(t.execution_attempts.c.id == self.attempt_id)
+                .values(
+                    process_identity_json=identity,
+                    protocol_version=identity.get("protocol_version"),
+                )
+            )
+            conn.execute(
+                update(t.runs)
+                .where(t.runs.c.id == self.run_id)
+                .values(heartbeat_at=clock.to_text(clock.now()))
+            )
+
+    async def attempt_started(self, trial_id, attempt_index, detail=None):
+        self._index(trial_id, attempt_index)
+        with self.db.write() as conn:
+            self._check_run(conn)
+            conn.execute(
+                update(t.execution_attempts)
+                .where(t.execution_attempts.c.id == self.attempt_id)
+                .values(executor_ref_json=detail, runner_id=(detail or {}).get("runner_id"))
+            )
+
+    async def run_artifact(self, kind, relative_path, data):
+        await self.artifact(self.trial_id, 1, kind, relative_path, data)
+
+    def _check_resources(self, conn):
+        self._check_run(conn)
+        attempt = conn.execute(
+            select(t.execution_attempts.c.ended_at, t.execution_attempts.c.cleanup_state).where(
+                t.execution_attempts.c.id == self.attempt_id
+            )
+        ).one()
+        if attempt.ended_at is not None or attempt.cleanup_state != CleanupState.PENDING:
+            raise StaleLease()
+
+    async def resource_requested(self, phase):
+        if phase not in self.spec.stage_resources:
+            raise StaleLease()
+        with self.db.write() as conn:
+            self._check_resources(conn)
+            if conn.execute(
+                select(t.runs.c.stop_requested).where(t.runs.c.id == self.run_id)
+            ).scalar():
+                raise StaleLease()
+            row = (
+                conn.execute(
+                    select(t.stage_permits).where(
+                        t.stage_permits.c.attempt_id == self.attempt_id,
+                        t.stage_permits.c.phase == phase,
+                    )
+                )
+                .mappings()
+                .first()
+            )
+            if row and row["state"] == "granted":
+                return row["id"]
+            if row and row["state"] == "released":
+                raise StaleLease()
+            if row is None:
+                # The old environment must be confirmed gone before waiting for a
+                # larger verifier. Never hold one environment while asking for another.
+                held = conn.execute(
+                    select(t.stage_permits.c.id).where(
+                        t.stage_permits.c.attempt_id == self.attempt_id,
+                        t.stage_permits.c.state == "granted",
+                    )
+                ).first()
+                if held or phase != "verification":
+                    raise StaleLease()
+                permit_id = new_id("prm")
+                conn.execute(
+                    t.stage_permits.insert().values(
+                        id=permit_id,
+                        attempt_id=self.attempt_id,
+                        phase=phase,
+                        state="waiting",
+                        **self.spec.stage_resources[phase],
+                        requested_at=clock.to_text(clock.now()),
+                    )
+                )
+            else:
+                permit_id = row["id"]
+        future = self.worker.permit_waiters.get(permit_id)
+        if future is None or future.cancelled():
+            future = asyncio.get_running_loop().create_future()
+            self.worker.permit_waiters[permit_id] = future
+        self.worker.wake()
+        return await asyncio.shield(future)
+
+    async def resource_released(self, phase, permit_id):
+        with self.db.write() as conn:
+            self._check_resources(conn)
+            row = (
+                conn.execute(
+                    select(t.stage_permits).where(
+                        t.stage_permits.c.id == permit_id,
+                        t.stage_permits.c.attempt_id == self.attempt_id,
+                        t.stage_permits.c.phase == phase,
+                    )
+                )
+                .mappings()
+                .first()
+            )
+            if row is None or row["state"] == "waiting":
+                raise StaleLease()
+            if row["state"] == "granted":
+                conn.execute(
+                    update(t.stage_permits)
+                    .where(t.stage_permits.c.id == permit_id)
+                    .values(state="released", released_at=clock.to_text(clock.now()), provider=None)
+                )
+                continuing = conn.execute(
+                    select(t.execution_attempts.c.ended_at, t.runs.c.stop_requested)
+                    .join(t.trials, t.trials.c.id == t.execution_attempts.c.trial_id)
+                    .join(t.runs, t.runs.c.id == t.trials.c.run_id)
+                    .where(t.execution_attempts.c.id == self.attempt_id)
+                ).one()
+                if (
+                    phase == "execution"
+                    and "verification" in self.spec.stage_resources
+                    and continuing.ended_at is None
+                    and not continuing.stop_requested
+                ):
+                    # Reserve a fitting verifier in the same transaction that returns
+                    # execution capacity. A larger verifier waits holding no old budget.
+                    need = self.spec.stage_resources["verification"]
+                    at = clock.to_text(clock.now())
+                    granted = (
+                        waiting_reason(
+                            conn, self.worker.capacity, {"slots": 0, "provider": None, **need}
+                        )
+                        is None
+                    )
+                    conn.execute(
+                        t.stage_permits.insert().values(
+                            id=new_id("prm"),
+                            attempt_id=self.attempt_id,
+                            phase="verification",
+                            state="granted" if granted else "waiting",
+                            **need,
+                            requested_at=at,
+                            granted_at=at if granted else None,
+                        )
+                    )
+        self.worker.wake()
+
+    async def model_finished(self):
+        with self.db.write() as conn:
+            self._check_resources(conn)
+            conn.execute(
+                update(t.stage_permits)
+                .where(t.stage_permits.c.attempt_id == self.attempt_id)
+                .values(provider=None)
+            )
+        self.worker.wake()
+
+    async def attempt_finished(self, trial_id, attempt_index, outcome, final):
+        self._index(trial_id, attempt_index)
+        if self.outcome is not None:
+            return
+        self.outcome = outcome
+        self.retry = (
+            outcome.retry_recommended
+            and outcome.exception_type not in self.spec.retry_policy.get("exclude_exceptions", [])
+            and not (outcome.reward_valid and legal_score(outcome.raw_score))
+            and self.index <= self.spec.retry_policy.get("max_retries", MAX_RETRIES)
+        )
+        await super().attempt_finished(trial_id, attempt_index, outcome, final=not self.retry)
+
+
 class Worker:
     def __init__(
         self,
@@ -519,10 +741,14 @@ class Worker:
         self.instance_id: str | None = None
         self.leftovers: list[Leftover] = []
         self.active: dict[str, tuple[asyncio.Task, _Cancel]] = {}
+        self.ready: dict[str, tuple[RunSpec, str]] = {}
+        self.attempt_tasks: dict[str, tuple[asyncio.Task, str]] = {}
+        self.permit_waiters: dict[str, asyncio.Future] = {}
         self._wake = asyncio.Event()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._stopping = False
         self._last_cleanup_retry = 0.0
+        self._recovery_blocked = False
 
     def labels(self, run_id: str | None = None) -> dict[str, str]:
         labels = {LABEL_INSTANCE: self.instance_id}
@@ -561,7 +787,32 @@ class Worker:
             )
             for run in stale:
                 run_id = run["id"]
-                leftovers.append(Leftover(run_id, self.labels(run_id), run["runner_json"]))
+                attempts = (
+                    conn.execute(
+                        select(t.execution_attempts)
+                        .join(t.trials, t.trials.c.id == t.execution_attempts.c.trial_id)
+                        .where(
+                            t.trials.c.run_id == run_id, t.execution_attempts.c.slot_held.is_(True)
+                        )
+                    )
+                    .mappings()
+                    .all()
+                )
+                for attempt in attempts:
+                    leftovers.append(
+                        Leftover(
+                            run_id,
+                            {
+                                **self.labels(run_id),
+                                LABEL_TRIAL: attempt["trial_id"].lower(),
+                                LABEL_ATTEMPT: attempt["id"].lower(),
+                            },
+                            attempt["process_identity_json"],
+                            attempt["id"],
+                        )
+                    )
+                if not attempts:
+                    leftovers.append(Leftover(run_id, self.labels(run_id), run["runner_json"]))
                 trial_states = set(
                     conn.execute(
                         select(t.trials.c.state).where(t.trials.c.run_id == run_id)
@@ -643,6 +894,48 @@ class Worker:
                 )
                 finalize(conn, run_id, "SERVICE_RESTARTED", cleanup=CleanupState.PENDING)
                 report["interrupted_runs"].append(run_id)
+            seen_attempts = {item.attempt_id for item in leftovers if item.attempt_id}
+            # A run can already be terminal while a failed cleanup still holds its
+            # attempts. Reconcile those process identities before the instance sweep.
+            held = (
+                conn.execute(
+                    select(t.execution_attempts, t.trials.c.run_id)
+                    .join(t.trials, t.trials.c.id == t.execution_attempts.c.trial_id)
+                    .where(t.execution_attempts.c.slot_held.is_(True))
+                )
+                .mappings()
+                .all()
+            )
+            for attempt in held:
+                if attempt["id"] not in seen_attempts:
+                    leftovers.append(
+                        Leftover(
+                            attempt["run_id"],
+                            {
+                                **self.labels(attempt["run_id"]),
+                                LABEL_TRIAL: attempt["trial_id"].lower(),
+                                LABEL_ATTEMPT: attempt["id"].lower(),
+                            },
+                            attempt["process_identity_json"],
+                            attempt["id"],
+                        )
+                    )
+            seen_runs = {item.run_id for item in leftovers}
+            legacy = (
+                conn.execute(
+                    select(t.runs.c.id, t.runs.c.runner_json).where(
+                        t.runs.c.reservation_json.is_not(None),
+                        t.runs.c.cleanup_state.in_([CleanupState.PENDING, CleanupState.FAILED]),
+                    )
+                )
+                .mappings()
+                .all()
+            )
+            for run in legacy:
+                if run["id"] not in seen_runs:
+                    leftovers.append(
+                        Leftover(run["id"], self.labels(run["id"]), run["runner_json"])
+                    )
         self.leftovers = leftovers
         if self.preparer is not None:
             report["preparation"] = self.preparer.start_epoch(self.epoch, self.instance_id)
@@ -654,9 +947,21 @@ class Worker:
         released = {}
         for leftover in self.leftovers:
             report = await self.executor.reconcile(leftover)
-            released[leftover.run_id] = report.released
-            self._set_cleanup(leftover.run_id, report.released)
+            released[leftover.run_id] = released.get(leftover.run_id, True) and report.released
+            if leftover.attempt_id:
+                self._release_attempt(leftover.attempt_id, report.released)
+            else:
+                self._set_cleanup(leftover.run_id, report.released)
         sweep = await self.executor.cleanup(self.labels())
+        for run_id, was_released in released.items():
+            with self.db.read() as conn:
+                held = conn.execute(
+                    select(t.execution_attempts.c.id)
+                    .join(t.trials, t.trials.c.id == t.execution_attempts.c.trial_id)
+                    .where(t.trials.c.run_id == run_id, t.execution_attempts.c.slot_held.is_(True))
+                ).first()
+            self._set_cleanup(run_id, not held and was_released)
+        self._recovery_blocked = not sweep.released
         self.leftovers = []
         result = {"runs": released, "sweep_released": sweep.released}
         if self.preparer is not None:
@@ -717,6 +1022,7 @@ class Worker:
         try:
             await self.recover()
         except Exception:
+            self._recovery_blocked = True
             log.exception("restart reconciliation failed")
         self._last_cleanup_retry = self._loop.time()
         while not self._stopping:
@@ -755,6 +1061,7 @@ class Worker:
             cancel = _Cancel()
             task = asyncio.create_task(self._execute(run_id, lease, spec, cancel))
             self.active[run_id] = (task, cancel)
+        self._dispatch()
 
     async def drain(self, timeout: float = 10) -> None:
         """Test helper: tick until nothing is queued or active."""
@@ -764,7 +1071,7 @@ class Worker:
             await self.tick()
             with self.db.read() as conn:
                 queued = conn.execute(
-                    select(t.runs.c.id).where(t.runs.c.state == RunState.QUEUED).limit(1)
+                    select(t.runs.c.id).where(t.runs.c.state.not_in(RUN_TERMINAL)).limit(1)
                 ).first()
             busy = self.preparer is not None and (self.preparer.jobs or self.preparer.active)
             if not self.active and not queued and not busy:
@@ -812,26 +1119,81 @@ class Worker:
         if loop.time() - self._last_cleanup_retry < self.cleanup_retry_seconds:
             return
         self._last_cleanup_retry = loop.time()
+        if self.leftovers:
+            await self.recover()
         with self.db.read() as conn:
             pending = (
                 conn.execute(
-                    select(t.runs.c.id).where(
+                    select(t.runs.c.id, t.runs.c.runner_json).where(
                         t.runs.c.lease_token.is_(None),
                         t.runs.c.state.in_([s.value for s in RUN_TERMINAL]),
                         t.runs.c.cleanup_state.in_([CleanupState.PENDING, CleanupState.FAILED]),
                         t.runs.c.reservation_json.is_not(None),
                     )
                 )
-                .scalars()
+                .mappings()
                 .all()
             )
-        for run_id in pending:
-            report = await self.executor.cleanup(self.labels(run_id))
-            self._set_cleanup(run_id, report.released)
+        with self.db.read() as conn:
+            attempts = (
+                conn.execute(
+                    select(
+                        t.execution_attempts.c.id,
+                        t.trials.c.run_id,
+                        t.trials.c.id.label("trial_id"),
+                        t.execution_attempts.c.service_epoch,
+                        t.execution_attempts.c.process_identity_json,
+                    )
+                    .join(t.trials, t.trials.c.id == t.execution_attempts.c.trial_id)
+                    .where(
+                        t.execution_attempts.c.slot_held.is_(True),
+                        t.execution_attempts.c.cleanup_state.in_(
+                            [CleanupState.PENDING, CleanupState.FAILED]
+                        ),
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        for attempt in attempts:
+            if attempt["id"] in self.attempt_tasks:
+                continue
+            labels = {
+                **self.labels(attempt["run_id"]),
+                LABEL_TRIAL: attempt["trial_id"].lower(),
+                LABEL_ATTEMPT: attempt["id"].lower(),
+            }
+            if attempt["service_epoch"] != self.epoch:
+                report = await self.executor.reconcile(
+                    Leftover(
+                        attempt["run_id"], labels, attempt["process_identity_json"], attempt["id"]
+                    )
+                )
+            else:
+                report = await self.executor.cleanup(labels)
+            self._release_attempt(attempt["id"], report.released)
+            if report.released:
+                with self.db.read() as conn:
+                    held = conn.execute(
+                        select(t.execution_attempts.c.id)
+                        .join(t.trials, t.trials.c.id == t.execution_attempts.c.trial_id)
+                        .where(
+                            t.trials.c.run_id == attempt["run_id"],
+                            t.execution_attempts.c.slot_held.is_(True),
+                        )
+                    ).first()
+                if not held:
+                    self._set_cleanup(attempt["run_id"], True)
+        if self._recovery_blocked:
+            self._recovery_blocked = not (await self.executor.cleanup(self.labels())).released
+        for run in pending:
+            report = await self.executor.reconcile(
+                Leftover(run["id"], self.labels(run["id"]), run["runner_json"])
+            )
+            self._set_cleanup(run["id"], report.released)
 
     def _claim(self):
-        """First queued run that fits current capacity; later small runs may pass a
-        large one that does not fit yet. Waiting runs show why."""
+        """Lease a run for preparation without reserving execution capacity."""
         lease = secrets.token_urlsafe(24)
         paused = "STORAGE_LOW" if self.disk and not self.disk.dispatching() else None
         with self.db.write() as conn:
@@ -856,26 +1218,22 @@ class Worker:
                         t.runs.c.stop_requested.is_(False),
                         t.runs.c.lease_token.is_(None),
                     )
-                    .order_by(t.runs.c.accepted_at, t.runs.c.id)
+                    .order_by(
+                        t.runs.c.accepted_at,
+                        select(func.min(t.work_items.c.enqueue_seq))
+                        .join(t.trials, t.trials.c.id == t.work_items.c.trial_id)
+                        .where(t.trials.c.run_id == t.runs.c.id)
+                        .scalar_subquery(),
+                        t.runs.c.id,
+                    )
                     .limit(CLAIM_SCAN)
                 )
                 .mappings()
                 .all()
             )
-            chosen = None
-            for run in queued:
-                need = self._reservation(conn, run["id"], run["concurrency"])
-                reason = waiting_reason(conn, self.capacity, need)
-                if reason is None:
-                    chosen = (run, need)
-                    break
-                if run["queue_reason"] != reason:
-                    conn.execute(
-                        update(t.runs).where(t.runs.c.id == run["id"]).values(queue_reason=reason)
-                    )
-            if chosen is None:
+            if not queued:
                 return None
-            run, need = chosen
+            run = queued[0]
             conn.execute(
                 update(t.runs)
                 .where(t.runs.c.id == run["id"])
@@ -885,7 +1243,7 @@ class Worker:
                     state=RunState.PREPARING,
                     started_at=clock.to_text(clock.now()),
                     queue_reason=None,
-                    reservation_json=need,
+                    reservation_json=null(),
                     cleanup_state=CleanupState.PENDING,
                 )
             )
@@ -938,64 +1296,496 @@ class Worker:
             deadline_at=row["deadline_at"],
             labels=self.labels(row["id"]),
             metric_id=snapshot_contract(policy)["metric_id"],
+            retry_policy=policy.get("retry") or harbor_retry_config(),
         )
         return row["id"], lease, spec
 
+    def _dispatch(self):
+        """Grant continuation stages first, then pack trials in run acceptance order."""
+        launches = []
+        if self._recovery_blocked or self._stopping:
+            return
+        with self.db.write() as conn:
+            pending = (
+                conn.execute(
+                    select(t.stage_permits, t.trials.c.id.label("trial_id"), t.trials.c.run_id)
+                    .join(
+                        t.execution_attempts,
+                        t.execution_attempts.c.id == t.stage_permits.c.attempt_id,
+                    )
+                    .join(t.trials, t.trials.c.id == t.execution_attempts.c.trial_id)
+                    .join(t.runs, t.runs.c.id == t.trials.c.run_id)
+                    .where(
+                        t.stage_permits.c.state == "waiting",
+                        t.runs.c.stop_requested.is_(False),
+                        t.execution_attempts.c.service_epoch == self.epoch,
+                        t.execution_attempts.c.slot_held.is_(True),
+                        t.execution_attempts.c.cleanup_state == CleanupState.PENDING,
+                        t.execution_attempts.c.ended_at.is_(None),
+                    )
+                    .order_by(t.stage_permits.c.requested_at, t.stage_permits.c.id)
+                )
+                .mappings()
+                .all()
+            )
+            protected_stage = False
+            for permit in pending:
+                need = {
+                    "slots": 0,
+                    "cpus": permit["cpus"],
+                    "memory_mb": permit["memory_mb"],
+                    "provider": None,
+                }
+                reason = waiting_reason(conn, self.capacity, need)
+                self._waiting(conn, permit, reason)
+                if (
+                    reason
+                    and (clock.now() - clock.from_text(permit["requested_at"])).total_seconds()
+                    >= scheduling.PROTECT_AFTER_SECONDS
+                ):
+                    # New attempts must eventually drain for a larger verifier;
+                    # continuation priority alone cannot prevent endless backfill.
+                    protected_stage = True
+                if reason is None:
+                    conn.execute(
+                        update(t.stage_permits)
+                        .where(t.stage_permits.c.id == permit["id"])
+                        .values(state="granted", granted_at=clock.to_text(clock.now()))
+                    )
+                    future = self.permit_waiters.pop(permit["id"], None)
+                    if future is not None and not future.done():
+                        future.set_result(permit["id"])
+            paused = "STORAGE_LOW" if self.disk and not self.disk.dispatching() else None
+            if updates.dispatch_paused(conn):
+                paused = "UPDATE_PENDING"
+            rows = (
+                conn.execute(
+                    select(t.work_items, t.trials.c.run_id, t.runs.c.concurrency)
+                    .join(t.trials, t.trials.c.id == t.work_items.c.trial_id)
+                    .join(t.runs, t.runs.c.id == t.trials.c.run_id)
+                    .where(
+                        t.trials.c.id.in_(list(self.ready)),
+                        t.trials.c.state == TrialState.QUEUED,
+                        t.runs.c.stop_requested.is_(False),
+                        t.runs.c.service_epoch == self.epoch,
+                        t.work_items.c.eligible_at <= clock.to_text(clock.now()),
+                    )
+                    .order_by(t.runs.c.accepted_at, t.work_items.c.enqueue_seq)
+                )
+                .mappings()
+                .all()
+            )
+            running = dict(
+                conn.execute(
+                    select(t.trials.c.run_id, func.count())
+                    .join(t.execution_attempts, t.execution_attempts.c.trial_id == t.trials.c.id)
+                    .where(t.execution_attempts.c.slot_held.is_(True))
+                    .group_by(t.trials.c.run_id)
+                ).all()
+            )
+            active_trials = set(
+                conn.execute(
+                    select(t.execution_attempts.c.trial_id).where(
+                        t.execution_attempts.c.slot_held.is_(True)
+                    )
+                ).scalars()
+            )
+            candidates = []
+            for row in rows:
+                if row["trial_id"] in active_trials:
+                    self._waiting(conn, row, "CLEANUP_PENDING")
+                    continue
+                spec, lease = self.ready[row["trial_id"]]
+                settings = next(
+                    (
+                        x
+                        for x in spec.effective_config.get("tasks") or []
+                        if x["task_key"] == spec.trials[0].task_key
+                    ),
+                    {},
+                )
+                stages = stage_resources(settings, spec.trials[0].task_definition)
+                provider = (
+                    provider_of(spec.effective_config)
+                    if spec.effective_config.get("execution_mode") == "agent"
+                    else None
+                )
+                need = {"slots": 1, **stages["execution"], "provider": provider}
+                reason = (
+                    paused
+                    or ("WAITING_PRIORITY" if protected_stage else None)
+                    or (
+                        "RUN_CONCURRENCY"
+                        if running.get(row["run_id"], 0) >= row["concurrency"]
+                        else None
+                    )
+                )
+                if reason:
+                    self._waiting(conn, row, reason)
+                    continue
+                candidates.append(
+                    {**row, "spec": spec, "lease": lease, "stages": stages, "need": need}
+                )
+            bypassed = {}
+            while candidates:
+                run_id = candidates[0]["run_id"]
+                group = [x for x in candidates if x["run_id"] == run_id]
+                protected = next((x for x in group if scheduling.protected(x, clock.now())), None)
+                used = in_use(conn)
+                limits = provider_limits(conn)
+                slots = min(
+                    self.capacity.slots - used["slots"],
+                    group[0]["concurrency"] - running.get(run_id, 0),
+                )
+                provider = group[0]["need"]["provider"]
+                if provider in limits:
+                    slots = min(slots, limits[provider] - used["providers"].get(provider, 0))
+                # Drain capacity for an aged request. Already-started continuations
+                # above are exempt so every occupied Runner can still finish.
+                chosen = []
+                if protected is not None:
+                    reason = waiting_reason(conn, self.capacity, protected["need"])
+                    if reason and slots > 0:
+                        for item in candidates:
+                            self._waiting(
+                                conn, item, reason if item is protected else "WAITING_PRIORITY"
+                            )
+                        break
+                    if slots > 0:
+                        chosen = [protected]
+                    protected = None
+                elif slots > 0:
+                    # Bound each packing search, but inspect every window before
+                    # letting a later run consume capacity this run could use.
+                    for start in range(0, len(group), scheduling.CANDIDATES):
+                        chosen = scheduling.pack(
+                            group[start : start + scheduling.CANDIDATES],
+                            slots,
+                            self.capacity.cpus - used["cpus"],
+                            self.capacity.memory_mb - used["memory_mb"],
+                            self.capacity.cpus,
+                            self.capacity.memory_mb,
+                        )
+                        if chosen:
+                            break
+                for item in chosen:
+                    launches.append(
+                        self._grant_attempt(
+                            conn,
+                            item,
+                            backfilled=any(
+                                older["run_id"] != run_id
+                                and older["enqueue_seq"] < item["enqueue_seq"]
+                                for older in rows
+                            ),
+                        )
+                    )
+                    running[run_id] = running.get(run_id, 0) + 1
+                skipped = [x for x in group if x not in chosen]
+                for item in skipped:
+                    reason = waiting_reason(conn, self.capacity, item["need"])
+                    if running.get(run_id, 0) >= item["concurrency"]:
+                        reason = "RUN_CONCURRENCY"
+                    self._waiting(conn, item, reason or "WAITING_PRIORITY")
+                # Count actual bypasses, including within this run, rather than
+                # polling ticks. Preparation and backoff never accrue bypasses.
+                bypassed.update((item["id"], item) for item in skipped)
+                for item in chosen:
+                    bypassed.pop(item["id"], None)
+                if chosen:
+                    for item in bypassed.values():
+                        item["bypass_count"] += len(chosen)
+                        conn.execute(
+                            update(t.work_items)
+                            .where(t.work_items.c.id == item["id"])
+                            .values(bypass_count=t.work_items.c.bypass_count + len(chosen))
+                        )
+                candidates = [
+                    x for x in candidates if x not in chosen and (chosen or x["run_id"] != run_id)
+                ]
+        for spec, lease, sink in launches:
+            cancel = self.active[spec.run_id][1]
+            task = asyncio.create_task(self._execute_attempt(spec, lease, sink, cancel))
+            self.attempt_tasks[spec.attempt_id] = (task, spec.run_id)
+
     @staticmethod
-    def _reservation(conn, run_id: str, concurrency: int) -> dict:
-        """From the snapshot: each task's effective resources, as resolved."""
-        trial_count = conn.execute(
-            select(func.count()).select_from(t.trials).where(t.trials.c.run_id == run_id)
-        ).scalar()
-        effective = conn.execute(
-            select(t.run_snapshots.c.effective_json).where(t.run_snapshots.c.run_id == run_id)
-        ).scalar()
-        return reservation(
-            concurrency,
-            [{"resources": task} for task in effective["tasks"]],
-            provider_of(effective),
-            trial_count,
+    def _waiting(conn, item, reason):
+        conn.execute(
+            update(t.trials).where(t.trials.c.id == item["trial_id"]).values(queue_reason=reason)
+        )
+        conn.execute(
+            update(t.runs).where(t.runs.c.id == item["run_id"]).values(queue_reason=reason)
         )
 
+    def _grant_attempt(self, conn, item, backfilled):
+        spec, lease = item["spec"], item["lease"]
+        trial_id = item["trial_id"]
+        index = (
+            conn.execute(
+                select(func.coalesce(func.max(t.execution_attempts.c.attempt_index), 0)).where(
+                    t.execution_attempts.c.trial_id == trial_id
+                )
+            ).scalar()
+            + 1
+        )
+        attempt_id, at = new_id("att"), clock.to_text(clock.now())
+        conn.execute(
+            t.execution_attempts.insert().values(
+                id=attempt_id,
+                trial_id=trial_id,
+                attempt_index=index,
+                worker_id=self.worker_id,
+                service_epoch=self.epoch,
+                lease_token=lease,
+                state=AttemptState.STARTING,
+                phase="starting",
+                started_at=at,
+                steps_json=[{"step": "starting", "at": at}],
+                slot_held=True,
+                cleanup_state=CleanupState.PENDING,
+                backfilled=backfilled,
+            )
+        )
+        conn.execute(
+            t.stage_permits.insert().values(
+                id=new_id("prm"),
+                attempt_id=attempt_id,
+                phase="execution",
+                state="granted",
+                **item["stages"]["execution"],
+                provider=item["need"]["provider"],
+                requested_at=at,
+                granted_at=at,
+            )
+        )
+        conn.execute(
+            update(t.trials)
+            .where(t.trials.c.id == trial_id)
+            .values(
+                state=TrialState.PREPARING,
+                phase="starting",
+                queue_reason=None,
+                cleanup_state=CleanupState.PENDING,
+            )
+        )
+        conn.execute(
+            update(t.work_items)
+            .where(t.work_items.c.trial_id == trial_id)
+            .values(state="claimed", bypass_count=0)
+        )
+        conn.execute(update(t.runs).where(t.runs.c.id == spec.run_id).values(queue_reason=None))
+        spec = replace(
+            spec,
+            attempt_id=attempt_id,
+            attempt_index=index,
+            stage_resources=item["stages"],
+            labels={
+                **spec.labels,
+                LABEL_TRIAL: trial_id.lower(),
+                LABEL_ATTEMPT: attempt_id.lower(),
+            },
+        )
+        refresh_operation(conn, spec.run_id)
+        return spec, lease, AttemptSink(self, spec, lease, index, attempt_id)
+
+    async def _execute_attempt(self, spec, lease, sink, cancel):
+        released = False
+        try:
+            with self.db.read() as conn:
+                previous_bytes = dict(
+                    conn.execute(
+                        select(
+                            t.artifacts.c.trial_id,
+                            func.coalesce(func.sum(t.artifacts.c.size_bytes), 0),
+                        )
+                        .where(
+                            t.artifacts.c.trial_id == spec.trials[0].trial_id,
+                            t.artifacts.c.kind == "output",
+                        )
+                        .group_by(t.artifacts.c.trial_id)
+                    ).all()
+                )
+                spec = replace(
+                    spec,
+                    setup_network=setup_network.current(conn),
+                    deliverable_bytes=previous_bytes,
+                )
+            if spec.effective_config.get("harness") or installed_packages(spec.effective_config):
+                sink.setup_network_revision = spec.setup_network.revision
+                with self.db.write() as conn:
+                    conn.execute(
+                        update(t.execution_attempts)
+                        .where(t.execution_attempts.c.id == spec.attempt_id)
+                        .values(setup_network_revision=spec.setup_network.revision)
+                    )
+            report = await self.executor.execute(spec, sink, cancel)
+            released = report.cleanup_complete
+            if sink.outcome is None and not cancel.cancelled:
+                await sink.attempt_finished(
+                    spec.trials[0].trial_id,
+                    1,
+                    AttemptOutcome(
+                        raw_score=None,
+                        reward_valid=False,
+                        failure_cause=(report.failure_code or "EXECUTOR_NO_RESULT").lower(),
+                        exception_type=report.failure_code or "ExecutorNoResult",
+                        retry_recommended=report.failure_code
+                        not in {
+                            "NETWORK_POLICY_UNSUPPORTED",
+                            "RUNNER_INPUT_INVALID",
+                            "ATTACHMENT_CONTENT_MISMATCH",
+                            "RUNNER_EXITED",
+                            "RUNNER_PROTOCOL_ERROR",
+                            "RUNNER_UNRESPONSIVE",
+                        },
+                    ),
+                    True,
+                )
+        except StaleLease:
+            log.warning("attempt %s lost its lease", spec.attempt_id)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("attempt %s executor failed", spec.attempt_id)
+            if not cancel.cancelled:
+                with contextlib.suppress(StaleLease):
+                    await sink.attempt_finished(
+                        spec.trials[0].trial_id,
+                        1,
+                        AttemptOutcome(
+                            raw_score=None,
+                            reward_valid=False,
+                            failure_cause="sandbox_failed",
+                            exception_type="ExecutorFailed",
+                            retry_recommended=True,
+                        ),
+                        True,
+                    )
+            with contextlib.suppress(Exception):
+                released = (await self.executor.cleanup(spec.labels)).released
+        finally:
+            self.attempt_tasks.pop(spec.attempt_id, None)
+            self._release_attempt(spec.attempt_id, released)
+            if sink.retry:
+                delay = self._retry_delay(spec, sink.index)
+                with self.db.write() as conn:
+                    conn.execute(
+                        update(t.work_items)
+                        .where(t.work_items.c.trial_id == spec.trials[0].trial_id)
+                        .values(
+                            state="queued",
+                            eligible_at=clock.to_text(clock.now() + timedelta(seconds=delay)),
+                            ready_at=clock.to_text(clock.now()),
+                            bypass_count=0,
+                        )
+                    )
+                    conn.execute(
+                        update(t.trials)
+                        .where(t.trials.c.id == spec.trials[0].trial_id)
+                        .values(queue_reason="RETRY_BACKOFF" if released else "CLEANUP_PENDING")
+                    )
+            self.wake()
+
+    def _retry_delay(self, spec, index):
+        low, factor, high = self.retry_waits
+        if self.retry_waits == (RETRY_MIN_WAIT_SEC, RETRY_WAIT_MULTIPLIER, RETRY_MAX_WAIT_SEC):
+            low, factor, high = (
+                spec.retry_policy[k] for k in ("min_wait_sec", "wait_multiplier", "max_wait_sec")
+            )
+        return min(low * factor ** (index - 1), high)
+
+    def _release_attempt(self, attempt_id, released):
+        with self.db.write() as conn:
+            conn.execute(
+                update(t.execution_attempts)
+                .where(t.execution_attempts.c.id == attempt_id)
+                .values(
+                    slot_held=not released,
+                    cleanup_state=CleanupState.COMPLETE if released else CleanupState.FAILED,
+                )
+            )
+            permit_ids = list(
+                conn.execute(
+                    select(t.stage_permits.c.id).where(t.stage_permits.c.attempt_id == attempt_id)
+                ).scalars()
+            )
+            for permit_id in permit_ids:
+                future = self.permit_waiters.pop(permit_id, None)
+                if future is not None and not future.done():
+                    future.cancel()
+            conn.execute(
+                update(t.stage_permits)
+                .where(
+                    t.stage_permits.c.attempt_id == attempt_id,
+                    t.stage_permits.c.state != "released"
+                    if released
+                    else t.stage_permits.c.state == "waiting",
+                )
+                .values(state="released", provider=None, released_at=clock.to_text(clock.now()))
+            )
+
+    def _ready_trials(self, spec: RunSpec, lease: str) -> None:
+        with self.db.write() as conn:
+            for trial in spec.trials:
+                self.ready[trial.trial_id] = (replace(spec, trials=(trial,), concurrency=1), lease)
+                conn.execute(
+                    update(t.work_items)
+                    .where(t.work_items.c.trial_id == trial.trial_id)
+                    .values(ready_at=clock.to_text(clock.now()))
+                )
+        asyncio.get_running_loop().call_soon(self._dispatch)
+        self.wake()
+
     async def _execute(self, run_id: str, lease: str, spec: RunSpec, cancel: _Cancel) -> None:
+        self.active.setdefault(run_id, (asyncio.current_task(), cancel))
         sink = RunSink(self, run_id, lease)
-        cleanup = CleanupState.FAILED
-        failure = "EXECUTOR_FAILED"
-        close = True
+        cleanup, failure, close = CleanupState.COMPLETE, None, True
         try:
             spec = replace(spec, secrets=self._secrets(spec))
             if self.preparer is not None:
-                spec = await self._prepare(spec, sink, cancel)
-            if spec.trials and not cancel.cancelled:
-                # Read now, not at acceptance: a replaced mirror reaches queued runs.
-                with self.db.read() as conn:
-                    spec = replace(spec, setup_network=setup_network.current(conn))
-                if spec.effective_config.get("harness") or installed_packages(
-                    spec.effective_config
-                ):
-                    sink.setup_network_revision = spec.setup_network.revision
-                report = await self.executor.execute(spec, sink, cancel)
-                cleanup = CleanupState.COMPLETE if report.cleanup_complete else CleanupState.FAILED
-                failure = report.failure_code
-                if report.detail:
-                    log.info("run %s executor report: %s", run_id, report.detail)
+                await self._prepare(spec, sink, cancel)
             else:
-                # Nothing was started outside the platform: no execution resources.
-                cleanup, failure = CleanupState.COMPLETE, None
+                self._ready_trials(spec, lease)
+            while not cancel.cancelled:
+                self._dispatch()
+                with self.db.read() as conn:
+                    remaining = conn.execute(
+                        select(t.trials.c.id)
+                        .where(t.trials.c.run_id == run_id, t.trials.c.state.not_in(TRIAL_TERMINAL))
+                        .limit(1)
+                    ).first()
+                if remaining is None:
+                    break
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(cancel.wait(), 0.05)
         except StaleLease:
             log.warning("run %s lost its lease", run_id)
         except CredentialUnavailable as error:
-            # Nothing started: the run ends without executing, naming the credential.
+            failure = "CREDENTIAL_UNAVAILABLE"
             log.warning("run %s: credential %s cannot be used", run_id, error.credential_id)
-            cleanup, failure = CleanupState.COMPLETE, "CREDENTIAL_UNAVAILABLE"
         except asyncio.CancelledError:
-            # Service shutdown: leave the run claimed; the next start reconciles it
-            # as interrupted instead of inventing an outcome here.
             close = False
+            cancel.event.set()
             raise
         except Exception:
-            log.exception("executor failed for run %s", run_id)
+            failure = "EXECUTOR_FAILED"
+            cancel.event.set()
+            log.exception("execution coordinator failed for run %s", run_id)
         finally:
+            tasks = [task for task, owner in self.attempt_tasks.values() if owner == run_id]
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            with self.db.read() as conn:
+                held = conn.execute(
+                    select(t.execution_attempts.c.id)
+                    .join(t.trials, t.trials.c.id == t.execution_attempts.c.trial_id)
+                    .where(t.trials.c.run_id == run_id, t.execution_attempts.c.slot_held.is_(True))
+                    .limit(1)
+                ).first()
+            cleanup = CleanupState.FAILED if held else CleanupState.COMPLETE
+            self.ready = {
+                key: value for key, value in self.ready.items() if value[0].run_id != run_id
+            }
             self.active.pop(run_id, None)
             if close and not self._stopping:
                 self._close(run_id, lease, cleanup, failure)
@@ -1051,21 +1841,27 @@ class Worker:
                         deadline_at=spec.deadline_at,
                     )
                     sink.mark_waiting(ids, None)
+                    self._ready_trials(
+                        replace(
+                            spec,
+                            trials=tuple(replace(t, prepared_images=output.refs()) for t in trials),
+                        ),
+                        sink.lease,
+                    )
                     return task_id, output.refs()
                 except PreparationFailure as error:
                     if error.kind == "cancelled" or cancel.cancelled:
                         return task_id, None
                     failures += 1
-                    final = not error.retryable or failures > MAX_RETRIES
+                    final = not error.retryable or failures > spec.retry_policy.get(
+                        "max_retries", MAX_RETRIES
+                    )
                     for trial_id in ids:
                         await sink.preparation_failed(trial_id, error.error, final)
                     if final:
                         return task_id, None
-                    low, factor, high = self.retry_waits
                     with contextlib.suppress(TimeoutError):
-                        await asyncio.wait_for(
-                            cancel.wait(), min(low * factor ** (failures - 1), high)
-                        )
+                        await asyncio.wait_for(cancel.wait(), self._retry_delay(spec, failures))
                     if cancel.cancelled:
                         return task_id, None
 
@@ -1130,14 +1926,29 @@ class Worker:
                     ended_at=at,
                 )
             )
-            conn.execute(
-                update(t.trials)
-                .where(
-                    t.trials.c.run_id == run_id,
-                    t.trials.c.cleanup_state != CleanupState.NOT_REQUIRED,
-                )
-                .values(cleanup_state=cleanup)
+            held_trials = set(
+                conn.execute(
+                    select(t.execution_attempts.c.trial_id).where(
+                        t.execution_attempts.c.slot_held.is_(True)
+                    )
+                ).scalars()
             )
+            conn.execute(
+                update(t.trials).where(t.trials.c.run_id == run_id).values(queue_reason=None)
+            )
+            for trial_id in conn.execute(
+                select(t.trials.c.id).where(t.trials.c.run_id == run_id)
+            ).scalars():
+                conn.execute(
+                    update(t.trials)
+                    .where(t.trials.c.id == trial_id)
+                    .values(
+                        cleanup_state=CleanupState.FAILED
+                        if trial_id in held_trials
+                        else CleanupState.COMPLETE
+                    )
+                )
+
             conn.execute(
                 update(t.work_items).where(t.work_items.c.lease_token == lease).values(state="done")
             )

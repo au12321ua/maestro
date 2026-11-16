@@ -453,13 +453,11 @@ def test_provider_concurrency_follows_the_model(service, version_id):
             json={"max_concurrent_trials": 1},
             expect=200,
         )
-        over = resolve(admin, version_id, **agent_body(model_id, harness_id, concurrency=2))
-        assert codes(over) == ["PROVIDER_LIMIT"]
+        resolved = resolve(admin, version_id, **agent_body(model_id, harness_id, concurrency=2))
+        assert codes(resolved) == []
         assert (
-            submit(admin, version_id, **agent_body(model_id, harness_id, concurrency=2)).json()[
-                "error"
-            ]["code"]
-            == "RUN_EXCEEDS_CAPACITY"
+            submit(admin, version_id, **agent_body(model_id, harness_id, concurrency=2)).status_code
+            == 202
         )
         # Oracle runs call no provider, so the limit does not apply to them.
         assert resolve(admin, version_id, concurrency=2)["blockers"] == []

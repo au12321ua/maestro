@@ -1,9 +1,4 @@
-"""Experiment executor boundary.
-
-One call executes a whole run (Harbor: one Job). The executor reports
-per-trial attempts, steps, results and artifacts through ``ExecutionSink``;
-the platform owns trial state, scoring decisions, retry policy and leases.
-"""
+"""One executor call runs one trial attempt; the platform owns retries and permits."""
 
 from dataclasses import dataclass, field
 from typing import Protocol
@@ -50,6 +45,12 @@ class RunSpec:
     effective_config: dict
     deadline_at: str
     labels: dict[str, str] = field(default_factory=dict)
+    attempt_id: str | None = None
+    attempt_index: int = 1
+    stage_resources: dict = field(default_factory=dict)
+    retry_policy: dict = field(default_factory=dict)
+    deliverable_bytes: dict[str, int] = field(default_factory=dict)
+    """Bytes already stored by previous attempts of each trial, for its total cap."""
     metric_id: str = DEFAULT_METRIC_ID
     """The reward the run's frozen scoring contract scores by; the executor
     maps its raw reward for ``raw_score`` from this key and reports the rest as metrics."""
@@ -88,6 +89,18 @@ class ExecutionSink(Protocol):
 
     async def heartbeat(self) -> None: ...
 
+    async def resource_requested(self, phase: str) -> str:
+        """Wait for a durable permit before starting this environment."""
+        ...
+
+    async def resource_released(self, phase: str, permit_id: str) -> None:
+        """The executor has independently confirmed this environment is gone."""
+        ...
+
+    async def model_finished(self) -> None:
+        """This attempt can no longer call the model."""
+        ...
+
     async def attempt_started(
         self, trial_id: str, attempt_index: int, detail: dict | None = None
     ) -> None: ...
@@ -113,7 +126,7 @@ class ExecutionSink(Protocol):
     async def attempt_finished(
         self, trial_id: str, attempt_index: int, outcome: AttemptOutcome, final: bool
     ) -> None:
-        """``final=False`` means the executor will retry this trial."""
+        """``final`` is advisory; the platform alone decides and schedules retries."""
         ...
 
 
@@ -139,6 +152,7 @@ class Leftover:
     run_id: str
     labels: dict[str, str]
     runner: dict | None
+    attempt_id: str | None = None
 
 
 class Executor(Protocol):

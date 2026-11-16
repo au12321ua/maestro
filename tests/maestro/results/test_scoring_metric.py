@@ -82,12 +82,12 @@ def test_the_default_metric_is_unchanged():
 
 RUNNER = """\
 import json, sys
-spec = json.loads(sys.stdin.read())
+spec = json.loads(sys.stdin.readline())
 n = 0
 def emit(kind, **payload):
     global n
     n += 1
-    print(json.dumps({"protocol_version": 2, "run_id": spec["run_id"], "sequence": n,
+    print(json.dumps({"protocol_version": 3, "run_id": spec["run_id"], "sequence": n,
                       "type": kind, "at": "2026-10-23T00:00:00+00:00", "payload": payload}),
           flush=True)
 emit("started", harbor_version="0.24.0", runner_version="fake", n_trials=1)
@@ -185,7 +185,7 @@ def test_a_confirmed_metric_reaches_the_executor_and_scores_the_run(service, ver
             after: "accuracy",
         }
     # The run snapshot fixed the metric before execution: both specs say what they scored by.
-    assert [spec.metric_id for spec in executor.specs] == ["reward", "accuracy"]
+    assert [spec.metric_id for spec in executor.specs] == ["reward"] * 3 + ["accuracy"] * 3
     with service.db.read() as conn:
         stored = conn.execute(select(t.trial_results.c.metrics_json)).scalars().all()
     assert {"accuracy": 0.5, "f1": 0.7} in stored  # every reward is kept as evidence

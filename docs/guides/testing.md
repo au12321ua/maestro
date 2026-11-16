@@ -44,6 +44,7 @@
 这些测试不在 CI 里，按开关在本机手动运行。Runner 环境先在 `runner/` 执行 `uv sync --locked`。
 
 - **真实 Docker（Oracle）**：`MAESTRO_DOCKER_TESTS=1 uv run pytest -q tests/maestro/live/test_harbor_docker.py`。只用本地 Oracle 任务和已有的 `ubuntu:22.04`，需要 buildx 与 Compose 2.24 以上，不调用模型。独立验证器与辅助服务的用例（`fixtures/n01-tasks`）拉取 `ubuntu:22.04` 时会问 Docker Hub，守护进程要能联网或有代理。每个测试模块启动一个临时镜像仓库容器（`registry:3.0.0`，`conftest.py` 的 `local_registry`，结束时删除）；执行资源都带每个测试独立的实例标签，准备好的镜像在 `<仓库>/maestro-prep/<实例>` 名下，结束时都核对清空。两项故意失败的用例核对错误分类：一个 `RUN` 步骤失败的 Dockerfile，和一个指定了不存在镜像的任务（连不上注册表时跳过）。运行前后建议对 `docker images`、`ps -a`、`network ls`、`volume ls` 各留快照对比。
+  阶段调度及进程开销的定向入口：在同一文件使用 `-k "environment_stage_capacity or ten_active_attempt_runner"`；输出记录阶段交接、十个活动 Runner 的启动时间与 RSS。完整 Oracle 验证另覆盖共享 / 独立验证、Compose、取消、强杀与服务重启。
 - **Terminus-2**（同一文件）：需要本地镜像 `maestro-test/ubuntu-tmux:22.04`（`FROM ubuntu:22.04` 加 `apt-get install tmux`，没有时跳过）；模型是测试进程里的假服务，不花钱。它要求容器能访问 example.com，用来对照 Oracle 运行能出网、模型运行出不了网。
 - **真实模型**（会产生费用）：
   - Terminus-2：`MAESTRO_DOCKER_TESTS=1 MAESTRO_MODEL_TESTS=1 MAESTRO_MODEL_ENDPOINT=<OpenAI 兼容地址> MAESTRO_MODEL_ID=<模型> MAESTRO_MODEL_KEY_FILE=<key 文件> uv run pytest -q -s tests/maestro/live/test_harbor_docker.py -k real_model`，一个试次、最多 5 轮。

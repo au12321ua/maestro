@@ -119,7 +119,7 @@
     "limitCleared": "Removed the concurrency limit for {{provider}}",
     "limitSet": "{{provider}} limit set to {{value}}",
     "title": "Execution capacity",
-    "description": "A run takes capacity as a whole (concurrency × per-trial resources) and returns it only once the resources are confirmed released; runs whose cleanup failed keep holding it. Host totals come from the deployment configuration; here you only set how many trials each model provider may run at once.",
+    "description": "CPU and memory count each attempt’s granted environment stage until its release is confirmed. Waiting for verification still holds a trial slot; unconfirmed releases keep their capacity. Provider slots return when model execution ends; verification needs none. Host totals come from deployment configuration.",
     "slots": "Trial slots",
     "cpus": "CPU (cores)",
     "memory": "Memory (MiB)",

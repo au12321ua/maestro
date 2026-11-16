@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | 服务端 | Python 3.12–3.13、FastAPI、Pydantic | 业务模型独立于 Harbor 类型 |
 | Harbor 集成 | `runner/` 下独立 uv 项目 `maestro-runner`，锁定 Harbor 0.24.0 | 服务进程不 import harbor，经 JSON 协议与文件交接 |
-| 数据库与队列 | SQLite WAL、SQLAlchemy 2 Core、Alembic；asyncio 调度 | 同步短事务，写事务一律 `BEGIN IMMEDIATE`；按运行领取（D-020），单一协调器分配容量 |
+| 数据库与队列 | SQLite WAL、SQLAlchemy 2 Core、Alembic；asyncio 调度 | 同步短事务，写事务一律 `BEGIN IMMEDIATE`；运行租约、统一试次派发与持久化阶段资源许可 |
 | 产物 | 本地文件系统，`ArtifactStore` 接口 | 日志和大文件不进数据库 |
 | 网页 | Vite + React + TypeScript + shadcn/ui + Tailwind | 构建产物打进服务 wheel 由服务托管，运行主机无需 Node |
 | 客户端契约 | `tools/generate_clients.py` 导出 `openapi/maestro-v1.json` 并生成 SDK 模型；前端 `npm run gen:api` 从同一文件生成类型 | 生成文件入库，契约漂移是测试失败；SDK（`sdk/`，httpx）不依赖服务端或 Harbor |
@@ -44,7 +44,7 @@ flowchart LR
     API --> B[Docker CLI：准备与清理]
 ~~~
 
-Worker 在服务进程内，负责领取、租约、取消、资源和结果确认；Harbor 调用都在 Runner 子进程中。一个运行对应一个 Runner 进程和一个 Harbor Job（D-020），Job 内按运行并发执行全部试次。改为试次粒度的设想见 [N-13](../proposals/N-13-trial-granularity.md)。
+Worker 在服务进程内，负责领取、租约、取消、资源和结果确认；Harbor 调用都在 Runner 子进程中。每个执行尝试对应一个 Runner 和一个单试次 Harbor Job；Worker 按运行顺序、并发上限和阶段资源许可派发，平台负责重试。
 
 系统级安装由 `maestroctl` 完成，目录见 [12](12-operations.md) 第 1 节。与 Harbor 集成相关的是服务与 Runner 的环境分开：服务环境在 `/opt/maestro/versions/<build>/venv`，Runner 环境在 `/opt/maestro/harbor/<harbor-version>/<runner-revision>/venv`。
 
@@ -63,26 +63,26 @@ Worker 在服务进程内，负责领取、租约、取消、资源和结果确�
 | 通道 | 内容 | 要求 |
 | --- | --- | --- |
 | 启动 | `python -I -m maestro_runner`，新会话 / 进程组 | 不经 shell；环境只继承白名单变量，不含提供商密钥 |
-| stdin | 一个 JSON：protocol_version、命令（`execute` / `hub` / `probe`）、运行规格 | `execute` 的规格含 run_id、任务路径与 trial_ids、Agent、网络计划、标签、重试设置、产物上限、凭据 |
+| stdin | 协议 v3；首行 JSON 规格，执行期间持续接收许可 / 释放确认与停止命令 | 规格固定尝试、单个试次、环境阶段、Agent、网络、标签、产物限额和凭据；命令绑定尝试与许可，通道丢失不得启动新环境 |
 | stdout | NDJSON 事件，一行一个 | envelope 为 protocol_version、run_id、无间断的 sequence、type、at、payload；Runner 在导入 Harbor 前把 fd 1 留给协议，其余输出全部转到 stderr |
 | stderr | 诊断输出 | 服务持续读取，只保留有界的头尾并脱敏，防止管道阻塞；不作评分依据 |
 | 工作目录 | 每个执行尝试的归档目录 | Runner 按产物上限复制，超限的列为跳过；服务入库时对日志与其他产品中的文本脱敏，`artifacts/` 交付物保持原字节，超限或收集不完整时不发布部分交付物 |
 
-`execute` 的事件：started（Harbor 与 Runner 版本、试次数、PID）、network_plan、attempt_started、phase_changed、log、attempt_finished（结果、是否还会重试、归档目录与逐文件摘要清单、用量、耗时、附件安装记录）、heartbeat、cancel_requested、completed。`hub`（含本地上传任务检查）与 `probe` 只回一条 result。阶段事件来自 Harbor Job 的试次生命周期钩子（`Job.add_hook`），不解析终端输出；log 事件是 Runner 定期读取 Agent 与验证日志、渲染 Agent 轨迹得到的。
+`execute` 的事件：started（Harbor 与 Runner 版本、试次数、PID）、network_plan、attempt_started、phase_changed、log、attempt_finished（结果、是否还会重试、归档目录与逐文件摘要清单、用量、耗时、附件安装记录）、heartbeat、cancel_requested、completed，以及 resource_requested、resource_released、model_finished。`hub`（含本地上传任务检查）与 `probe` 只回一条 result。阶段事件来自 Harbor Job 的试次生命周期钩子（`Job.add_hook`），不解析终端输出；log 事件是 Runner 定期读取 Agent 与验证日志、渲染 Agent 轨迹得到的。
 
-没有单独的结果目录完成标记：平台按 attempt_finished 的清单逐个核对归档文件的摘要后入库。进程退出码（0 完成、2 Runner 错误、3 取消、4 拒绝）不决定业务结果，平台按事件、租约和错误策略决定试次状态；退出码 0 不等于任务通过，非零也不抹去已确认的结果。Runner 长时间无事件（`runner_silence_sec`）视为失联并停止。
+没有单独的结果目录完成标记：平台按 attempt_finished 的清单逐个核对归档文件的摘要后入库。进程退出码（0 完成、2 Runner 错误、3 取消、4 拒绝）不决定业务结果，平台按事件、租约和错误策略决定试次状态；退出码 0 不等于任务通过，非零也不抹去已确认的结果。Runner 长时间无事件（`runner_silence_sec`）视为失联并停止。资源控制任务独立处理，等待许可不堵塞 stdout、日志、心跳和取消；环境停止先由执行器按阶段标签核对，再向 Runner 确认释放。
 
 **凭据。** 服务在执行时解密凭据，经 stdin 交给 Runner，不放进命令行、环境变量或可导出的作业配置。模型密钥只留在 Runner 内存；Terminus-2 在 Runner 内调用模型，OpenCode、Codex、Claude Code 在容器内调用，密钥以权限 400 的临时文件进入容器，Agent 结束即删除（[09](09-identity-security.md) 第 5 节）。作者参数值（含秘密参数）放进 Runner 环境变量，供 Harbor 解析任务模板。stderr 中出现的密钥值与带口令的代理地址由服务端脱敏。
 
 ## 6. 作业生成与预检
 
-一个运行生成一个 Harbor Job（D-020，`runner/src/maestro_runner/job.py`）：
+一个执行尝试生成一个 Harbor Job（`runner/src/maestro_runner/job.py`）：
 
-- 任务列表为该运行的全部任务（每个任务一份私有副本，`task.toml` 写入主环境与独立验证器的准备好的镜像、各环境的 CPU 与内存、收紧后的网络策略）；`n_attempts` 为每任务计划试次数，所以一个运行内各任务的试次数必须相同；`n_concurrent_trials` 为运行并发。
+- 只包含一个已准备的任务与一个平台试次。任务私有副本的 `task.toml` 写入固定镜像、容器限制和网络策略；Job 的试次数、并发都为一，最大重试数为零。
 - 作者的 Compose 文件不改写（PyYAML 的 YAML 1.1 与 Compose 对 `yes`、`22:22` 等写法解读不同）。Runner 为每个环境目录（`environment/`，有独立验证器时还有 `tests/`）生成一份 override：把每个服务钉到本机仓库中的 digest、`pull_policy: never`、用 `!reset` 去掉作者的 `build:`（镜像缺失时 Compose 即使 `pull_policy: never` 也会构建；`!reset` 需要 Compose 2.24 以上）、给没有声明资源的辅助服务加团队默认上限（U-56），并给服务、网络、卷加平台标签。
 - Harbor 只把 Job 的 `extra_docker_compose` 交给 Agent 环境，创建独立验证环境时有意清空它（上游 PR #1676 的理由是判分不受运行时覆盖影响，#3193 只加了提示）。Runner 因此在 Harbor 创建环境的唯一入口 `EnvironmentFactory.create_environment_from_config` 处按 `environment_dir` 补上该目录的 override，独立验证环境另外补上平台标签；Harbor 自己的验证器挂载、网络策略与会话不变。没有这一步，验证容器既没有标签（被强杀后清理找不到它），也拿不到镜像钉定与资源上限。
-- `RetryConfig` 由平台错误策略推出并显式下发：最大重试次数、退避参数，以及不重试的异常名单（`exclude_exceptions`）；不使用 Harbor 默认名单，平台也不在外层再重试，避免两层相乘（U-15、D-006）。Harbor 内的每次重试在平台记为一次执行尝试。
-- 时限覆盖（Agent / 验证超时）与平台标签的 compose override 一并写入。资源覆盖是试次内所有容器的新总量，多出的部分写进主环境；独立验证器照主环境起新容器时两者设置相同，各得一半（[03](03-configuration-attachments.md) 第 3 节）。
+- `RetryConfig` 显式关闭 Harbor 重试。平台依据运行冻结的异常策略、次数和退避安排下一尝试，上一尝试清理确认后才重试。Runner 上报原始异常与结果，不决定重试。
+- 时限覆盖（Agent / 验证超时）与平台标签的 compose override 一并写入。资源覆盖是试次内所有容器的新总量，多出的部分写进主环境；独立验证器保留其冻结的作者份额，不因主环境覆盖而被抬高（[03](03-configuration-attachments.md) 第 3 节）。
 
 Agent 必须显式指定：Harbor 的默认 Agent 是 oracle，不能因为漏填而执行参考答案。Oracle 只作为 `execution_mode = oracle` 的测试模式；带附件时使用继承 Harbor OracleAgent 的包装类，在 setup 共用安装器，之后保留参考解的原 run。无附件 Oracle 保留上游类与空 setup，不依赖安装网络。提交评分使用继承 Harbor NopAgent 的包装类，在 setup 安装待评提交，run 不做任何事；Harbor 0.24.0 的 `Trial.run` 在准备成功后进入 `SingleStepTrial._run`，空 run 后仍正常调用 verifier，准备失败则两者都不执行。这两种运行均不混入模型能力比较。
 
@@ -96,7 +96,7 @@ Runner 为每个任务私有副本的环境目录记录作者任务名（显式 
 
 Runner 在独立会话与进程组中启动。取消先发 SIGTERM，Runner 协作停止（Harbor 结束各试次并停止容器），宽限期（`runner_term_grace_sec`）后向进程组发 SIGKILL。服务进程退出时 Runner 通过 `PR_SET_PDEATHSIG` 收到 SIGTERM；协议管道断开时也按取消处理，不继续执行。
 
-结束进程组不能保证 Docker daemon 管理的容器、网络和出口控制 sidecar 都已消失，Harbor 被强杀后也不清理任何容器。所以每次执行后都按标签清理：运行的容器（含独立验证器与辅助服务）、网络、卷和构建出的镜像都带 `io.maestro.instance_id` 与 `io.maestro.run_id`，清理只删带这些标签的资源，再确认没有残留（`src/maestro/execution/docker.py`）；其他实例、无标签和手工创建的资源不碰。清理失败保留记录，运行的资源预留在确认释放前不归还。
+结束进程组不能保证 Docker daemon 管理的容器、网络和出口控制 sidecar 都已消失，Harbor 被强杀后也不清理任何容器。所以每次执行后都按标签清理：运行的容器（含独立验证器与辅助服务）、网络、卷和构建出的镜像都带 `io.maestro.instance_id` 与 `io.maestro.run_id`，清理只删带这些标签的资源，再确认没有残留（`src/maestro/execution/docker.py`）；其他实例、无标签和手工创建的资源不碰。清理失败保留记录，具体尝试的槽位与已授予阶段许可在确认释放前不归还。执行资源还带试次、尝试和环境阶段标签，阶段交接只清理对应组；共享准备镜像保持其缓存归属。
 
 服务意外退出可能留下 Runner 与容器。启动对账检查持久记录中的进程身份：PID 之外还比对内核启动时刻与 boot id，只向确属自己启动的进程组发信号，再按标签清理；保留已确认评分，未完成部分按 [05](05-scheduling-execution.md) 标记中断，不自动续跑。准备的租约与构建资源同样在启动时对账，不因能够重建缓存而续跑旧试次。
 
@@ -122,7 +122,7 @@ Runner 依赖 Harbor 的私有接口与内部行为，升级 Harbor 时须逐项
 - OpenCode 2.x 借用 Harbor 1.x OpenCode 类的配置写入、事件解析与用量统计，自己重写安装、版本解析与运行命令；上游 2.x 改事件格式时用量会变成未知。
 - 容器内 Harness 的包装层覆盖了 `_env_sources`（不读 Runner 环境）与 `install`（已有同一版本则跳过）；Codex 覆盖 `_resolve_auth_json_path` 并依赖 `_REMOTE_CODEX_SECRETS_DIR`，Claude Code 依赖 `config` 作为 `--settings` 上传与 `ANTHROPIC_BASE_URL` 的读取方式，并重写了安装命令。实时日志按 `agent/opencode.txt`、`agent/codex.txt`、`agent/claude-code.txt` 的事件格式渲染（`job.py`），上游改格式时只影响可读日志，不影响评分。
 - Oracle 带附件时为本 Runner 作业注册 `AgentFactory._AGENT_MAP[AgentName.ORACLE]` 包装类，保留 Harbor 仅对 oracle 名称注入的 `task_dir` 与 `trial_paths`；依赖内置名称优先于 import_path 的工厂行为。提交评分依赖 NopAgent 的空 run 后仍进入 verifier、setup 错误阻止 run 与 verifier 的顺序，升级须复核 `Trial.run` 与 `SingleStepTrial._run`。
-- Runner 照搬 Harbor 0.24.0 TrialQueue 的重试规则推断 attempt_finished 中的“是否还会重试”（`_will_retry`）。
+- 环境创建处包装 start / stop，以尝试和阶段许可放行；独立验证通过 `Trial._separate_verifier_env` 在环境构建超时之外等待许可。依赖主环境在完整收集后停止、独立验证随后创建的顺序；平台按标签独立核对停止结果，不能只相信生命周期钩子。共享多步骤任务保留模型额度到最终结束，避免中间验证后再次调用模型超额。
 
 ## 9. 为什么仍然自建
 
@@ -156,7 +156,7 @@ TECH-01～04 是重写前对 Harbor 集成风险的四项验证，已在 M1 用�
 4. 未满足：镜像构建资源不计入主机容量（第 7 节）。
 5. 依赖 Harbor 私有接口与内部行为（第 8 节），每次升级须人工复核。
 
-其余接入项（服务端不加载 Harbor、Job 内重试显式下发、Oracle 真实链路、错误映射、分阶段网络、标签清理、客户端生成、共享恢复、附件逐试次安装）已由测试覆盖，见 [13](13-testing-plan.md)。
+其余接入项（服务端不加载 Harbor、单尝试 Job、平台重试与阶段资源许可、Oracle 真实链路、错误映射、分阶段网络、标签清理、客户端生成、共享恢复、附件逐试次安装）已由测试覆盖，见 [13](13-testing-plan.md)。
 
 ## 12. 核查来源
 

@@ -123,6 +123,7 @@
     "RESULT_CONFLICT": "A different result is already recorded",
     "REVISION_CONFLICT": "Changed by someone else; refresh",
     "RUN_ACTIVE": "Run has not ended",
+    "RUN_CLEANUP_PENDING": "Wait for run resources to be released before permanent deletion",
     "RUN_EXCEEDS_CAPACITY": "Run exceeds the execution capacity",
     "RUN_NOT_FINISHED": "Source run has not ended",
     "RUN_TOO_LARGE": "Run exceeds the size limit",

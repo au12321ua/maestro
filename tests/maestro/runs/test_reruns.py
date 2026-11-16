@@ -32,6 +32,44 @@ def snapshot(api, run_id) -> dict:
     return api.get(f"/api/v1/runs/{run_id}", expect=200).json()["data"]["snapshot"]
 
 
+def test_rerun_preserves_the_source_retry_policy(service, owner, version_id, executor):
+    import asyncio
+
+    from sqlalchemy import select, update
+    from support.runs import accept
+
+    from maestro.db import schema as t
+    from maestro.testing.fakes import failed, scored
+
+    source = accept(service, owner, version_id)
+    with service.db.write() as conn:
+        policy = conn.execute(
+            select(t.run_snapshots.c.policy_json).where(
+                t.run_snapshots.c.run_id == source["run_id"]
+            )
+        ).scalar()
+        policy["retry"] = {**policy["retry"], "max_retries": 0}
+        conn.execute(
+            update(t.run_snapshots)
+            .where(t.run_snapshots.c.run_id == source["run_id"])
+            .values(policy_json=policy)
+        )
+    _, repeated, _ = service.runs.rerun(owner, uuid.uuid4().hex, source["run_id"], {})
+    after = service.runs.get(owner, repeated["run_id"])
+    assert after["snapshot"]["policy"]["retry"] == policy["retry"]
+    assert after["scheduling_order"] > service.runs.get(owner, source["run_id"])["scheduling_order"]
+    executor.script = {
+        key: [failed("sandbox_failed", retry=True), scored(1)]
+        for key in ("add-01", "add-02", "mul-01")
+    }
+    service.worker.start_epoch()
+    asyncio.run(service.worker.drain())
+    assert all(
+        len(trial["attempts"]) == 1 and trial["state"] == "execution_error"
+        for trial in service.runs.trials(repeated["run_id"])
+    )
+
+
 def test_cancel_then_rerun_what_did_not_finish_then_modify(service, version_id, executor):
     """Rerun a selected task without changing the source run."""
     executor.script = {"add-02": ["hang"]}

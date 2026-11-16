@@ -2683,6 +2683,10 @@ export interface components {
         Attempt: {
             /** Attempt Index */
             attempt_index: number;
+            /** Backfilled */
+            backfilled: boolean;
+            /** Cleanup State */
+            cleanup_state: string;
             /** Ended At */
             ended_at: string | null;
             error: components["schemas"]["AttemptError"] | null;
@@ -2702,6 +2706,10 @@ export interface components {
              * @description Setup network revision this attempt's setup was given; none for Oracle
              */
             setup_network_revision: number | null;
+            /** Slot Held */
+            slot_held: boolean;
+            /** Stage Permits */
+            stage_permits: components["schemas"]["StagePermit"][];
             /** Started At */
             started_at: string;
             /**
@@ -6813,6 +6821,15 @@ export interface components {
             /** Memory Mb */
             memory_mb?: number | null;
         };
+        /** ResourceUsage */
+        ResourceUsage: {
+            /** Cpus */
+            cpus: number;
+            /** Memory Mb */
+            memory_mb: number;
+            /** Slots */
+            slots: number;
+        };
         /** RestoreOperation */
         RestoreOperation: {
             /** Allowed Actions */
@@ -6865,6 +6882,19 @@ export interface components {
             /** Waiters */
             waiters: number;
         };
+        /** RetryPolicy */
+        RetryPolicy: {
+            /** Exclude Exceptions */
+            exclude_exceptions: string[];
+            /** Max Retries */
+            max_retries: number;
+            /** Max Wait Sec */
+            max_wait_sec: number;
+            /** Min Wait Sec */
+            min_wait_sec: number;
+            /** Wait Multiplier */
+            wait_multiplier: number;
+        };
         /** RevisionRef */
         RevisionRef: {
             /** Id */
@@ -6904,7 +6934,7 @@ export interface components {
             finished_at: string | null;
             /**
              * Heartbeat At
-             * @description Last sign of life from the run's Runner
+             * @description Last sign of life from any of the run's Runners
              */
             heartbeat_at: string | null;
             /** Id */
@@ -6928,7 +6958,7 @@ export interface components {
             plan_revision: number | null;
             /**
              * Queue Reason
-             * @description Why a queued run waits: CAPACITY_SLOTS, CAPACITY_CPU, CAPACITY_MEMORY or PROVIDER_LIMIT
+             * @description Current dispatch wait reason, including stage capacity, run concurrency, retry backoff or priority protection
              */
             queue_reason: string | null;
             /**
@@ -6936,11 +6966,17 @@ export interface components {
              * @enum {string}
              */
             relation: "initial" | "rerun" | "modified";
+            resource_usage: components["schemas"]["ResourceUsage"];
             /**
              * Result Completeness
              * @enum {string}
              */
             result_completeness: "none" | "partial" | "complete";
+            /**
+             * Scheduling Order
+             * @description Persistent acceptance order key; lower runs dispatch first
+             */
+            scheduling_order: number | null;
             scoring: components["schemas"]["RunScoring"] | null;
             /** Source Run Id */
             source_run_id: string | null;
@@ -7119,7 +7155,7 @@ export interface components {
             finished_at: string | null;
             /**
              * Heartbeat At
-             * @description Last sign of life from the run's Runner
+             * @description Last sign of life from any of the run's Runners
              */
             heartbeat_at: string | null;
             /** Id */
@@ -7143,7 +7179,7 @@ export interface components {
             plan_revision: number | null;
             /**
              * Queue Reason
-             * @description Why a queued run waits: CAPACITY_SLOTS, CAPACITY_CPU, CAPACITY_MEMORY or PROVIDER_LIMIT
+             * @description Current dispatch wait reason, including stage capacity, run concurrency, retry backoff or priority protection
              */
             queue_reason: string | null;
             /**
@@ -7151,11 +7187,17 @@ export interface components {
              * @enum {string}
              */
             relation: "initial" | "rerun" | "modified";
+            resource_usage: components["schemas"]["ResourceUsage"];
             /**
              * Result Completeness
              * @enum {string}
              */
             result_completeness: "none" | "partial" | "complete";
+            /**
+             * Scheduling Order
+             * @description Persistent acceptance order key; lower runs dispatch first
+             */
+            scheduling_order: number | null;
             scoring: components["schemas"]["RunScoring"] | null;
             snapshot: components["schemas"]["RunSnapshot"];
             /** Source Run Id */
@@ -7228,6 +7270,7 @@ export interface components {
             executor_id: string | null;
             /** Policy Version */
             policy_version: string;
+            retry: components["schemas"]["RetryPolicy"] | null;
             scoring: components["schemas"]["ScoringContract"];
             /** Team Policy Revision */
             team_policy_revision: number;
@@ -7832,6 +7875,31 @@ export interface components {
             /** Upstream Ref */
             upstream_ref: string;
         };
+        /** StagePermit */
+        StagePermit: {
+            /** Cpus */
+            cpus: number;
+            /** Granted At */
+            granted_at: string | null;
+            /** Id */
+            id: string;
+            /** Memory Mb */
+            memory_mb: number;
+            /**
+             * Phase
+             * @enum {string}
+             */
+            phase: "execution" | "verification";
+            /** Released At */
+            released_at: string | null;
+            /** Requested At */
+            requested_at: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "waiting" | "granted" | "released";
+        };
         /** StatusChange */
         StatusChange: {
             /** Expected Revision */
@@ -8219,6 +8287,11 @@ export interface components {
             id: string;
             /** Phase */
             phase: string | null;
+            /**
+             * Queue Reason
+             * @description Capacity or priority wait, separate from execution failures
+             */
+            queue_reason: string | null;
             /** Reason Code */
             reason_code: string | null;
             /** Repetition Index */
