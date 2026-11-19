@@ -2121,6 +2121,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/runs/{run_id}/artifact-retention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Artifact Retention
+         * @description Preview files and team quota for an ended run.
+         */
+        get: operations["artifact_retention"];
+        /**
+         * Retain Artifacts
+         * @description Retain all currently available files without changing their links or expiry dates.
+         */
+        put: operations["retain_artifacts"];
+        post?: never;
+        /**
+         * Release Artifacts
+         * @description Release the run's files back to ordinary expiry.
+         */
+        delete: operations["release_artifacts"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/runs/{run_id}/artifacts": {
         parameters: {
             query?: never;
@@ -2502,7 +2530,7 @@ export interface components {
             digest: string | null;
             /**
              * Expires At
-             * @description When the file is reclaimed: trial (or run) end + TTL; null until it ends
+             * @description Ordinary expiry: trial (or run) end + TTL; manual retention does not alter it
              */
             expires_at: string | null;
             /** Id */
@@ -2539,6 +2567,59 @@ export interface components {
              * @description Not saved, or found missing from storage
              */
             failed: number;
+        };
+        /** ArtifactRetention */
+        ArtifactRetention: {
+            /**
+             * Additional Bytes
+             * @description Extra bytes needed to retain all available files
+             */
+            additional_bytes: number;
+            /** Available Bytes */
+            available_bytes: number;
+            /** Files */
+            files: components["schemas"]["ArtifactRetentionFile"][];
+            /**
+             * Quota Bytes
+             * @description Team-wide quota for manual retention
+             */
+            quota_bytes: number;
+            /** Retained Bytes */
+            retained_bytes: number;
+            /**
+             * Used Bytes
+             * @description Team-wide space charged to manual retention
+             */
+            used_bytes: number;
+        };
+        /** ArtifactRetentionFile */
+        ArtifactRetentionFile: {
+            /** Artifact Id */
+            artifact_id: string;
+            /** Attempt Id */
+            attempt_id: string | null;
+            /** Expires At */
+            expires_at: string | null;
+            /**
+             * Past Expiry
+             * @description The ordinary expiry deadline has passed
+             */
+            past_expiry: boolean;
+            /** Relative Path */
+            relative_path: string;
+            /** Retained */
+            retained: boolean;
+            /** Size Bytes */
+            size_bytes: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "available" | "failed" | "deleting" | "expired" | "unavailable" | "deleted";
+            /** Status Reason */
+            status_reason: string | null;
+            /** Trial Id */
+            trial_id: string | null;
         };
         /** Attachment */
         Attachment: {
@@ -4470,6 +4551,11 @@ export interface components {
         /** Envelope[AdmissionRevoked] */
         Envelope_AdmissionRevoked_: {
             data: components["schemas"]["AdmissionRevoked"];
+            meta: components["schemas"]["Meta"];
+        };
+        /** Envelope[ArtifactRetention] */
+        Envelope_ArtifactRetention_: {
+            data: components["schemas"]["ArtifactRetention"];
             meta: components["schemas"]["Meta"];
         };
         /** Envelope[AttachmentDiff] */
@@ -6973,6 +7059,11 @@ export interface components {
              */
             result_completeness: "none" | "partial" | "complete";
             /**
+             * Retained Artifact Bytes
+             * @description Team retention space charged to this run; null without any retained files
+             */
+            retained_artifact_bytes: number | null;
+            /**
              * Scheduling Order
              * @description Persistent acceptance order key; lower runs dispatch first
              */
@@ -7193,6 +7284,11 @@ export interface components {
              * @enum {string}
              */
             result_completeness: "none" | "partial" | "complete";
+            /**
+             * Retained Artifact Bytes
+             * @description Team retention space charged to this run; null without any retained files
+             */
+            retained_artifact_bytes: number | null;
             /**
              * Scheduling Order
              * @description Persistent acceptance order key; lower runs dispatch first
@@ -12860,6 +12956,7 @@ export interface operations {
                 client_request_id?: string | null;
                 accepted_after?: string | null;
                 accepted_before?: string | null;
+                artifacts_retained?: boolean | null;
                 cursor?: string | null;
                 limit?: number | null;
             };
@@ -12973,6 +13070,99 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Envelope_RecycleEntry_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    artifact_retention: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_ArtifactRetention_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    retain_artifacts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_ArtifactRetention_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    release_artifacts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_ArtifactRetention_"];
                 };
             };
             /** @description Structured error */

@@ -1422,6 +1422,10 @@ class Run(Model):
     client_request_id: str | None
     state: RunStateName
     result_completeness: Literal["none", "partial", "complete"]
+    retained_artifact_bytes: int | None = Field(
+        None,
+        description="Team retention space charged to this run; null without any retained files",
+    )
     artifact_state: Literal["pending", "saving", "complete", "partial", "failed", "expired"]
     cleanup_state: Literal["pending", "running", "complete", "failed", "not_required"]
     stop_requested: bool
@@ -1705,8 +1709,32 @@ class Artifact(Model):
     )
     created_at: str
     expires_at: str | None = Field(
-        description="When the file is reclaimed: trial (or run) end + TTL; null until it ends"
+        description="Ordinary expiry: trial (or run) end + TTL; manual retention does not alter it"
     )
+
+
+class ArtifactRetentionFile(Model):
+    artifact_id: str
+    relative_path: str
+    trial_id: str | None
+    attempt_id: str | None
+    status: Literal[
+        "pending", "available", "failed", "deleting", "expired", "unavailable", "deleted"
+    ]
+    status_reason: str | None
+    size_bytes: int | None
+    retained: bool
+    expires_at: str | None
+    past_expiry: bool = Field(description="The ordinary expiry deadline has passed")
+
+
+class ArtifactRetention(Model):
+    available_bytes: int
+    additional_bytes: int = Field(description="Extra bytes needed to retain all available files")
+    retained_bytes: int
+    used_bytes: int = Field(description="Team-wide space charged to manual retention")
+    quota_bytes: int = Field(description="Team-wide quota for manual retention")
+    files: list[ArtifactRetentionFile]
 
 
 class ExportCreate(Model):

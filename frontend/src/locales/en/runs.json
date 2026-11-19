@@ -119,6 +119,24 @@
     "size": "Size",
     "expires": "Expires"
   },
+  "retention": {
+    "title": "Artifact retention",
+    "retain": "Retain artifacts",
+    "manage": "Manage retention",
+    "close": "Close retention details",
+    "confirm": "Confirm retention",
+    "release": "Release retention",
+    "retainedSize": "Retained · {{size}}",
+    "filter": "Retained artifacts only",
+    "available": "Available to retain {{size}} ({{additional}} additional)",
+    "quota": "Team retention space used {{used}} / {{quota}}",
+    "missing_one": "{{count}} file unavailable for retention",
+    "missing_other": "{{count}} files unavailable for retention",
+    "releaseHint": "Released files return to their original expiry schedule.",
+    "releaseExpired_one": "{{count}} retained file has passed its expiry date and can be reclaimed after release.",
+    "releaseExpired_other": "{{count}} retained files have passed their expiry date and can be reclaimed after release.",
+    "shortfall": "Free up {{size}} more retention space before retaining these files."
+  },
   "detail": {
     "cancelConfirm": "Cancel this run? Scores already obtained are kept; unfinished trials will stop.",
     "cancelRequested": "Cancellation requested",
@@ -185,6 +203,8 @@
     "installTimeout_other": " (install time limit per trial: {{count}} seconds)",
     "submission": "Submission scoring",
     "schedulingOrder": "Acceptance order",
+    "concurrency": "Concurrency",
+    "concurrencyValue": "{{active}} occupied / {{max}} max",
     "resourceUsage": "Current resource use",
     "resourceUsageValue": "{{slots}} slots · {{cpus}} CPUs · {{memory_mb}} MiB"
   },

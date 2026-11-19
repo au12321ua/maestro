@@ -112,6 +112,22 @@
     "size": "大小",
     "expires": "到期"
   },
+  "retention": {
+    "title": "产物保留",
+    "retain": "保留产物",
+    "manage": "管理保留",
+    "close": "收起保留详情",
+    "confirm": "确认保留",
+    "release": "解除保留",
+    "retainedSize": "已保留 · {{size}}",
+    "filter": "仅显示已保留产物的运行",
+    "available": "可保留 {{size}}，新增占用 {{additional}}",
+    "quota": "团队保留空间已用 {{used}} / {{quota}}",
+    "missing": "{{count}} 个文件无法保留",
+    "releaseHint": "解除后按文件原到期时间恢复清扫。",
+    "releaseExpired": "以下 {{count}} 个文件的普通保留期已过，解除后可被清扫。",
+    "shortfall": "保留这些文件还需释放 {{size}} 的团队保留空间。"
+  },
   "detail": {
     "cancelConfirm": "确定取消该运行？已获得的评分结果会保留，未完成的试次将停止。",
     "cancelRequested": "已请求取消",
@@ -175,6 +191,8 @@
     "installTimeout": "（每试次安装时限 {{count}} 秒）",
     "submission": "提交评分",
     "schedulingOrder": "受理顺序",
+    "concurrency": "并发",
+    "concurrencyValue": "已占用 {{active}} / 上限 {{max}}",
     "resourceUsage": "当前资源占用",
     "resourceUsageValue": "{{slots}} 个槽位 · {{cpus}} 核 · {{memory_mb}} MiB"
   },

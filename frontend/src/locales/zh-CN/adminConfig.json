@@ -124,6 +124,7 @@
       "pat_max_run_limit": "访问令牌可提交运行数（上限）",
       "invitation_hours": "邀请有效期（小时）",
       "login_attempts_per_minute": "每账户每地址每分钟允许的登录失败次数",
+      "artifact_retention_quota_bytes": "团队产物手动保留配额（字节）",
       "artifact_ttl_days": "原始产物保留天数",
       "export_ttl_hours": "导出包保留小时数",
       "export_max_runs": "单次导出的运行数上限",

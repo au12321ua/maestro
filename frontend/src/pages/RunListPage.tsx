@@ -28,6 +28,7 @@ import {
   RESULT_COMPLETENESS,
   RUN_STATE,
   dayToApiTime,
+  fmtBytes,
   fmtTime,
   label,
   shortId,
@@ -43,6 +44,7 @@ export function RunListPage() {
   const [cursor, setCursor] = useState<string | null>(null);
   const [error, setError] = useState<unknown>();
   const [loading, setLoading] = useState(true);
+  const [retainedOnly, setRetainedOnly] = useState(false);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -57,6 +59,7 @@ export function RunListPage() {
         const res = await api.get("/runs", {
           query: {
             owner_id: scope === "mine" ? me.id : undefined,
+            artifacts_retained: retainedOnly ? true : undefined,
             accepted_after: dayToApiTime(from),
             accepted_before: dayToApiTime(to, 1),
             cursor: after,
@@ -72,7 +75,7 @@ export function RunListPage() {
         setLoading(false);
       }
     },
-    [scope, me.id, from, to],
+    [scope, me.id, retainedOnly, from, to],
   );
 
   useEffect(() => {
@@ -162,6 +165,10 @@ export function RunListPage() {
             value={to}
             onChange={(e) => setTo(e.target.value)}
           />
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={retainedOnly} onChange={(e) => setRetainedOnly(e.target.checked)} />
+          {t("runs.retention.filter")}
         </label>
         <Button
           variant="outline"
@@ -281,6 +288,11 @@ export function RunListPage() {
                   </TableCell>
                   <TableCell>
                     <StatusPill value={label(ARTIFACT_STATE, run.artifact_state)} />
+                    {run.retained_artifact_bytes != null && (
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {t("runs.retention.retainedSize", { size: fmtBytes(run.retained_artifact_bytes) })}
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell>
                     <StatusPill value={label(CLEANUP_STATE, run.cleanup_state)} />

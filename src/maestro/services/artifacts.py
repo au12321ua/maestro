@@ -2,8 +2,8 @@
 
 Raw artifacts expire a fixed TTL after their trial's execution ended (run-level
 artifacts: after the run finished). The index row, digest and status stay as
-business metadata after the file is reclaimed. Read pins (exports) hold a file
-for a bounded time; nothing holds one forever.
+business metadata after the file is reclaimed. Team retention reserves space for
+selected files; read pins protect in-progress exports for a bounded time.
 """
 
 import hashlib
@@ -12,16 +12,16 @@ import os
 import time
 from typing import BinaryIO
 
-from sqlalchemy import Connection, delete, select, update
+from sqlalchemy import Connection, delete, func, insert, or_, select, update
 
 from maestro.boundaries.storage import ArtifactStore
 from maestro.core import clock
 from maestro.core.errors import MaestroError, not_found
 from maestro.db import schema as t
 from maestro.db.engine import Database
-from maestro.domain.states import ArtifactState
-from maestro.services import deleted, policy, task_reads
-from maestro.services.principal import Principal
+from maestro.domain.states import RUN_TERMINAL, ArtifactState
+from maestro.services import audit, deleted, policy, task_reads
+from maestro.services.principal import Principal, require_experiment
 
 log = logging.getLogger(__name__)
 SWEEP_BATCH = 500
@@ -148,6 +148,29 @@ def check_readable(row) -> None:
         )
 
 
+def release_removed_files(conn: Connection, keys: list[str]) -> None:
+    """Release reservations only for keys whose unlink succeeded (or were already absent)."""
+    for start in range(0, len(keys), SWEEP_BATCH):
+        conn.execute(
+            delete(t.artifact_retentions).where(
+                t.artifact_retentions.c.storage_key.in_(keys[start : start + SWEEP_BATCH])
+            )
+        )
+
+
+def _purged_retention_keys(conn: Connection) -> set[str]:
+    """Retry a purge interrupted after committing index changes, even after an unlink."""
+    return set(
+        conn.scalars(
+            select(t.artifact_retentions.c.storage_key)
+            .outerjoin(
+                t.artifacts, t.artifacts.c.storage_key == t.artifact_retentions.c.storage_key
+            )
+            .where(or_(t.artifacts.c.id.is_(None), t.artifacts.c.status == "deleted"))
+        )
+    )
+
+
 class Artifacts:
     def __init__(self, db: Database, store: ArtifactStore):
         self.db = db
@@ -231,6 +254,192 @@ class Artifacts:
 
     # --- retention ---------------------------------------------------------------
 
+    @staticmethod
+    def _retention_rows(conn: Connection, run_id: str, *, retaining: bool = False) -> list:
+        state = conn.scalar(select(t.runs.c.state).where(t.runs.c.id == run_id))
+        if state is None:
+            raise not_found("Run")
+        deletion = deleted.state(conn, "run", run_id)
+        if deletion and deletion["state"] == deleted.PURGED:
+            raise deleted.purged_error("Run")
+        if retaining and deletion:
+            raise MaestroError("RUN_RECYCLED", "Restore the run before retaining artifacts", 409)
+        if state not in RUN_TERMINAL:
+            raise MaestroError(
+                "RUN_ACTIVE", "Wait for the run to end before retaining artifacts", 409
+            )
+
+        return list(
+            conn.execute(
+                select(
+                    t.artifacts,
+                    t.artifact_retentions.c.storage_key.is_not(None).label("retained"),
+                    (~deleted.visible(t.artifacts.c.id, "artifact")).label("in_bin"),
+                )
+                .outerjoin(
+                    t.artifact_retentions,
+                    t.artifact_retentions.c.storage_key == t.artifacts.c.storage_key,
+                )
+                .where(t.artifacts.c.run_id == run_id)
+                .order_by(t.artifacts.c.created_at, t.artifacts.c.id)
+            ).mappings()
+        )
+
+    def _check_retention_files(self, rows: list) -> dict:
+        # Only file probes happen here. Recheck index state under the write lock before
+        # retaining so a file already claimed for expiry or purge cannot be protected.
+        return {
+            row["storage_key"]: (
+                row["digest"],
+                row["size_bytes"],
+                self.store.exists(row["storage_key"]),
+            )
+            for row in rows
+            if row["status"] == "available" and not row["in_bin"]
+        }
+
+    @staticmethod
+    def _retention_view(conn: Connection, run_id: str, rows: list, checked: dict) -> dict:
+        used, run_bytes = conn.execute(
+            select(
+                func.coalesce(func.sum(t.artifact_retentions.c.size_bytes), 0),
+                func.coalesce(
+                    func.sum(t.artifact_retentions.c.size_bytes).filter(
+                        t.artifact_retentions.c.run_id == run_id
+                    ),
+                    0,
+                ),
+            )
+        ).one()
+        at = clock.to_text(clock.now())
+        files = []
+        for row in rows:
+            status, reason = row["status"], row["status_reason"]
+            if row["in_bin"]:
+                status, reason = "deleted", "DELETED"
+            elif status == "available" and not checked[row["storage_key"]][2]:
+                status, reason = "unavailable", MISSING_REASON
+            files.append(
+                {
+                    "artifact_id": row["id"],
+                    "relative_path": row["relative_path"],
+                    "trial_id": row["trial_id"],
+                    "attempt_id": row["attempt_id"],
+                    "status": status,
+                    "status_reason": reason,
+                    "size_bytes": row["size_bytes"],
+                    "retained": row["retained"] and row["status"] != "deleted",
+                    "expires_at": row["expires_at"],
+                    "past_expiry": bool(row["expires_at"] and row["expires_at"] <= at),
+                }
+            )
+        available = [file for file in files if file["status"] == "available"]
+        return {
+            "available_bytes": sum(file["size_bytes"] or 0 for file in available),
+            "additional_bytes": sum(
+                file["size_bytes"] or 0 for file in available if not file["retained"]
+            ),
+            "retained_bytes": run_bytes,
+            "used_bytes": used,
+            "quota_bytes": policy.current(conn).artifact_retention_quota_bytes,
+            "files": files,
+        }
+
+    def retention(self, run_id: str) -> dict:
+        with self.db.read() as conn:
+            rows = self._retention_rows(conn, run_id)
+            return self._retention_view(conn, run_id, rows, self._check_retention_files(rows))
+
+    def retain(self, principal: Principal, run_id: str) -> dict:
+        require_experiment(principal)
+        for _ in range(3):
+            with self.db.read() as conn:
+                rows = self._retention_rows(conn, run_id, retaining=True)
+            checked = self._check_retention_files(rows)
+            with self.db.write() as conn:
+                rows = self._retention_rows(conn, run_id, retaining=True)
+                candidates = [
+                    row for row in rows if row["status"] == "available" and not row["in_bin"]
+                ]
+                if any(
+                    checked.get(row["storage_key"], ())[:2] != (row["digest"], row["size_bytes"])
+                    for row in candidates
+                ):
+                    continue
+                view = self._retention_view(conn, run_id, rows, checked)
+                new = [
+                    {
+                        "storage_key": row["storage_key"],
+                        "run_id": run_id,
+                        "size_bytes": row["size_bytes"],
+                    }
+                    for row in candidates
+                    if not row["retained"] and checked[row["storage_key"]][2]
+                ]
+                if not new:
+                    return view
+                needed = view["additional_bytes"]
+                shortfall = view["used_bytes"] + needed - view["quota_bytes"]
+                if needed and shortfall > 0:
+                    raise MaestroError(
+                        "ARTIFACT_RETENTION_QUOTA",
+                        f"Free {shortfall} more bytes of retention space to retain this run's artifacts",
+                        409,
+                        suggested_actions=[
+                            {"type": "release_artifact_retention", "shortfall_bytes": shortfall}
+                        ],
+                    )
+                conn.execute(insert(t.artifact_retentions), new)
+                audit.record(
+                    conn,
+                    principal,
+                    "run.artifact_retention.retain",
+                    object_type="run",
+                    object_id=run_id,
+                    detail={"files": len(new), "bytes": needed},
+                )
+                return self._retention_view(
+                    conn, run_id, self._retention_rows(conn, run_id), checked
+                )
+        raise MaestroError(
+            "ARTIFACT_RETENTION_CHANGED",
+            "Artifacts changed while checking storage; try again",
+            409,
+            retryable=True,
+        )
+
+    def release(self, principal: Principal, run_id: str) -> dict:
+        require_experiment(principal)
+        with self.db.write() as conn:
+            self._retention_rows(conn, run_id)
+            # Purged keys still pending unlink must stay charged until cleanup succeeds.
+            removed = (
+                conn.execute(
+                    delete(t.artifact_retentions)
+                    .where(
+                        t.artifact_retentions.c.run_id == run_id,
+                        t.artifact_retentions.c.storage_key.in_(
+                            select(t.artifacts.c.storage_key).where(
+                                t.artifacts.c.run_id == run_id, t.artifacts.c.status != "deleted"
+                            )
+                        ),
+                    )
+                    .returning(t.artifact_retentions.c.size_bytes)
+                )
+                .scalars()
+                .all()
+            )
+            if removed:
+                audit.record(
+                    conn,
+                    principal,
+                    "run.artifact_retention.release",
+                    object_type="run",
+                    object_id=run_id,
+                    detail={"files": len(removed), "bytes": sum(removed)},
+                )
+        return self.retention(run_id)
+
     def sweep(self) -> dict:
         """Reclaim expired, unpinned files: mark deleting, delete, then mark expired.
 
@@ -246,6 +455,7 @@ class Artifacts:
                     t.artifacts.c.status.in_(["available", "deleting"]),
                     t.artifacts.c.expires_at <= at,
                     t.artifacts.c.id.not_in(select(t.artifact_pins.c.artifact_id)),
+                    t.artifacts.c.storage_key.not_in(select(t.artifact_retentions.c.storage_key)),
                 )
                 .limit(SWEEP_BATCH)
             ).all()
@@ -295,6 +505,7 @@ class Artifacts:
         ]
         status: dict[str, str] = {}
         with self.db.read() as conn:
+            pending = _purged_retention_keys(conn)
             for start in range(0, len(old), SWEEP_BATCH):
                 status.update(
                     conn.execute(
@@ -305,18 +516,27 @@ class Artifacts:
                 )
         # Rows that are not available any more, and 'deleting' ones that retention is
         # still working on, do not need the file; everything else does.
-        stray = [key for key in old if status.get(key) in {None, "deleted", "expired"}]
-        removed = failed = 0
-        for key in stray:
-            try:
-                self.store.delete(key)
-                removed += 1
-            except OSError:
-                failed += 1
-                log.warning("stray file %s could not be removed; will retry", key)
+        stray = pending | {key for key in old if status.get(key) in {None, "deleted", "expired"}}
+        removed, failed = self._remove_stray(stray, pending)
         if removed:
             log.warning("removed %d stored files that no artifact row needs", removed)
         return {"removed": removed, "failed": failed}
+
+    def _remove_stray(self, keys: set[str], pending: set[str]) -> tuple[int, int]:
+        removed = []
+        failed = 0
+        for key in keys:
+            try:
+                self.store.delete(key)
+                removed.append(key)
+            except OSError:
+                failed += 1
+                log.warning("stray file %s could not be removed; will retry", key)
+        released = [key for key in removed if key in pending]
+        if released:
+            with self.db.write() as conn:
+                release_removed_files(conn, released)
+        return len(removed), failed
 
     def reconcile(self) -> dict:
         """At start, before any run executes: an indexed file that is missing
@@ -327,6 +547,7 @@ class Artifacts:
         when small), is available again."""
         partial = self.store.discard_partial()
         with self.db.read() as conn:
+            pending = _purged_retention_keys(conn)
             indexed = {
                 r.storage_key: r
                 for r in conn.execute(
@@ -349,16 +570,13 @@ class Artifacts:
             and row.status_reason == MISSING_REASON
             and self._intact(key, row)
         ]
-        orphans = [
+        stored_keys = self.store.keys()
+        orphans = pending | {
             key
-            for key in list(self.store.keys())
+            for key in stored_keys
             if key not in indexed or indexed[key].status in {"expired", "deleted", "deleting"}
-        ]
-        for key in orphans:
-            try:
-                self.store.delete(key)
-            except OSError:
-                log.warning("orphan file %s could not be removed", key)
+        }
+        self._remove_stray(orphans, pending)
         if missing or readopted:
             with self.db.write() as conn:
                 conn.execute(

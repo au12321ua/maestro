@@ -139,6 +139,7 @@ export function NewRunPage() {
   // A modified run starts from that run's request; its differences are recorded.
   const sourceRunId = params.get("from");
   const plans = useLoad(async () => (await api.get("/plans")).data);
+  const teamPolicy = useLoad(async () => (await api.get("/team-policy")).data);
   // From a collection: its fixed fields are filled in and locked, and the run joins it.
   const copyCollectionId = params.get("copy_collection");
   const collectionId = copyCollectionId ? null : params.get("collection");
@@ -215,7 +216,6 @@ export function NewRunPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [overrides, setOverrides] = useState({
     repetitions: "",
-    concurrency: "",
     run_deadline_hours: "",
     agent_sec: "",
     verifier_sec: "",
@@ -223,6 +223,22 @@ export function NewRunPage() {
     cpus: "",
     memory_mb: "",
   });
+  const [inheritedConcurrency, setInheritedConcurrency] = useState<{
+    value: number;
+    source: "plan" | "run" | "collection";
+  } | null>(null);
+  const [concurrencyLimit, setConcurrencyLimit] = useState("");
+  const teamConcurrency = teamPolicy.data?.values.run_default_concurrency
+    ?? limit(capabilities, "run_default_concurrency", 4);
+  const allowedConcurrency = teamPolicy.data?.values.run_max_concurrency
+    ?? limit(capabilities, "run_max_concurrency", 10);
+  const baselineConcurrency = inheritedConcurrency?.value ?? teamConcurrency;
+  const requestedConcurrency = numberOrNull(concurrencyLimit) ?? inheritedConcurrency?.value;
+  const inheritedConcurrencyLabel = inheritedConcurrency
+    ? t(`newRun.scale.inheritedConcurrency.${inheritedConcurrency.source}`, {
+        count: inheritedConcurrency.value,
+      })
+    : null;
   // Attachment snapshot ids in load order.
   const [chosenAttachments, setChosenAttachments] = useState<string[]>([]);
   const [submissionId, setSubmissionId] = useState("");
@@ -350,7 +366,7 @@ export function NewRunPage() {
       attachments: executionMode === "submission" ? [] : chosenAttachments,
       submission: executionMode === "submission" ? submissionId || null : null,
       repetitions: numberOrNull(overrides.repetitions),
-      concurrency: numberOrNull(overrides.concurrency),
+      ...(requestedConcurrency === undefined ? {} : { concurrency: requestedConcurrency }),
       run_deadline_hours: numberOrNull(overrides.run_deadline_hours),
       resources: {
         cpus: numberOrNull(overrides.cpus),
@@ -375,7 +391,9 @@ export function NewRunPage() {
   });
 
   /** Fill the form from a (partial) request: a plan's template or a run's request. */
-  const applyRequest = (req: PartialRequest) => {
+  const applyRequest = (req: PartialRequest, source: "plan" | "run" | "collection") => {
+    setInheritedConcurrency(req.concurrency == null ? null : { value: req.concurrency, source });
+    setConcurrencyLimit("");
     if (req.dataset_version_id) setChosenVersion(req.dataset_version_id);
     if (req.execution_mode) setExecutionMode(req.execution_mode);
     if (req.model_config_id) setModelId(req.model_config_id);
@@ -396,7 +414,6 @@ export function NewRunPage() {
     const text = (v: number | null | undefined) => (v == null ? "" : String(v));
     setOverrides({
       repetitions: text(req.repetitions),
-      concurrency: text(req.concurrency),
       run_deadline_hours: text(req.run_deadline_hours),
       agent_sec: text(req.timeouts?.agent_sec),
       verifier_sec: text(req.timeouts?.verifier_sec),
@@ -425,7 +442,7 @@ export function NewRunPage() {
     if (!chosen || planApplied.current) return;
     planApplied.current = true;
     setPlanId(chosen.id);
-    applyRequest(chosen.template);
+    applyRequest(chosen.template, "plan");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wanted, plans.data]);
 
@@ -433,7 +450,7 @@ export function NewRunPage() {
   useEffect(() => {
     if (!collection.data || collectionApplied.current) return;
     collectionApplied.current = true;
-    applyRequest(collection.data.template);
+    applyRequest(collection.data.template, "collection");
     if (copyCollectionId) {
       setCollectionName(t("newRun.copy.copyName", { name: collection.data.name }));
       setCollectionDescription(collection.data.description);
@@ -506,7 +523,7 @@ export function NewRunPage() {
           api.get("/runs/{run_id}/request", { path: { run_id: sourceRunId } }),
           api.get("/runs/{run_id}", { path: { run_id: sourceRunId } }),
         ]);
-        applyRequest(req.data);
+        applyRequest(req.data, "run");
         setName(t("newRun.modifiedName", { name: run.data.name }));
       } catch (err) {
         setError(err);
@@ -825,8 +842,8 @@ export function NewRunPage() {
                     try {
                       if (runId) {
                         const req = await api.get("/runs/{run_id}/request", { path: { run_id: runId } });
-                        applyRequest(req.data);
-                      } else if (collection.data) applyRequest(collection.data.template);
+                        applyRequest(req.data, "run");
+                      } else if (collection.data) applyRequest(collection.data.template, "collection");
                     } catch (err) {
                       setError(err);
                     } finally {
@@ -883,8 +900,11 @@ export function NewRunPage() {
                 onChange={(e) => {
                   const chosen = (plans.data ?? []).find((p) => p.id === e.target.value);
                   setPlanId(e.target.value);
-                  if (chosen) applyRequest(chosen.template);
-                  else setResolution(null);
+                  if (chosen) applyRequest(chosen.template, "plan");
+                  else {
+                    if (inheritedConcurrency?.source === "plan") setInheritedConcurrency(null);
+                    setResolution(null);
+                  }
                 }}
               >
                 <option value="">{t("newRun.plan.none")}</option>
@@ -1337,20 +1357,41 @@ export function NewRunPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-3">
+              <div className="grid gap-2 md:col-span-3">
+                <p className="text-sm font-medium">
+                  {concurrencyLimit
+                    ? t("newRun.scale.limitedConcurrency", { count: Number(concurrencyLimit) })
+                    : inheritedConcurrencyLabel ?? t("newRun.scale.autoConcurrency", { count: teamConcurrency })}
+                </p>
+                {concurrencyLimit && inheritedConcurrencyLabel && (
+                  <p className="text-xs text-muted-foreground">{inheritedConcurrencyLabel}</p>
+                )}
+                <details className="text-sm">
+                  <summary className="w-fit cursor-pointer">{t("newRun.scale.limitConcurrency")}</summary>
+                  <div className="mt-2 max-w-64">
+                    <TextField
+                      id="run-concurrency"
+                      label={t("newRun.scale.concurrency")}
+                      type="number"
+                      min={1}
+                      max={Math.min(baselineConcurrency, allowedConcurrency)}
+                      step={1}
+                      placeholder={String(baselineConcurrency)}
+                      value={concurrencyLimit}
+                      onChange={(e) => changed(setConcurrencyLimit)(e.target.value)}
+                      onInvalid={(e) => e.currentTarget.closest("details")?.setAttribute("open", "")}
+                      hint={t("newRun.scale.concurrencyHint")}
+                      error={fieldErr("concurrency")}
+                    />
+                  </div>
+                </details>
+              </div>
               {override(
                 "repetitions",
                 t("newRun.scale.repetitions"),
                 t("newRun.scale.teamDefault", {
                   default: limit(capabilities, "repetitions_default", 1),
                   max: limit(capabilities, "repetitions_max", 20),
-                }),
-              )}
-              {override(
-                "concurrency",
-                t("newRun.scale.concurrency"),
-                t("newRun.scale.teamDefault", {
-                  default: limit(capabilities, "run_default_concurrency", 4),
-                  max: limit(capabilities, "run_max_concurrency", 10),
                 }),
               )}
               {override(
@@ -1549,7 +1590,10 @@ export function NewRunPage() {
               variant="outline"
               disabled={busy || !versionId || sourceRunId != null}
               title={sourceRunId ? t("newRun.submit.separateHint") : undefined}
-              onClick={addToDraft}
+              onClick={(e) => {
+                const concurrency = e.currentTarget.form?.querySelector<HTMLInputElement>("#run-concurrency");
+                if (concurrency?.reportValidity() !== false) addToDraft();
+              }}
             >
               {t("newRun.submit.addToDraft")}
             </Button>
@@ -1729,6 +1773,9 @@ function ResolutionReview({
             : t("newRun.resolution.passed", { count: resolution.planned_trials })}
         </CardTitle>
         <CardDescription>
+          {effective && (
+            <span className="block">{t("newRun.resolution.concurrency", { count: effective.concurrency })}</span>
+          )}
           {t("newRun.resolution.validUntil", { time: fmtTime(resolution.expires_at) })}
         </CardDescription>
       </CardHeader>

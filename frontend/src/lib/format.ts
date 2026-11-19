@@ -14,7 +14,9 @@ export function fmtBytes(size: number | null | undefined): string {
   if (size == null) return "—";
   if (size < 1024) return `${size} B`;
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KiB`;
-  return `${(size / 1024 / 1024).toFixed(1)} MiB`;
+  if (size < 1024 ** 3) return `${(size / 1024 ** 2).toFixed(1)} MiB`;
+  if (size < 1024 ** 4) return `${(size / 1024 ** 3).toFixed(1)} GiB`;
+  return `${(size / 1024 ** 4).toFixed(1)} TiB`;
 }
 
 export function shortId(id: string | null | undefined, length = 12): string {

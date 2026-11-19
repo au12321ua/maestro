@@ -31,6 +31,8 @@ const adminNav = (page: Page, name: string) =>
 
 test("setup, run, PAT, admin and invitation flow", async ({ page, browser }) => {
   test.skip(!token, "MAESTRO_SETUP_TOKEN not set");
+  const runtimeErrors: string[] = [];
+  page.on("pageerror", (error) => runtimeErrors.push(error.message));
   await page.goto("/");
   await expect(page).toHaveTitle("Maestro");
   await page.getByLabel("初始化令牌").fill(token!);
@@ -87,7 +89,14 @@ test("setup, run, PAT, admin and invitation flow", async ({ page, browser }) => 
   await page.getByLabel("选择 mul-01").check();
   // The demo executor has no model: Oracle. Check the configuration, then submit it.
   await page.getByLabel(/^Oracle/).check();
+  await expect(page.getByText("自动并发，本次最多 4 个试次同时执行")).toBeVisible();
+  await expect(page.getByLabel("并发数", { exact: true })).toBeHidden();
   await page.getByRole("button", { name: "检查配置" }).click();
+  await expect(page.getByText("本次并发上限为 4")).toBeVisible();
+  await page.getByText("限制本次并发", { exact: true }).click();
+  await page.getByLabel("并发数", { exact: true }).fill("1");
+  await page.getByRole("button", { name: "检查配置" }).click();
+  await expect(page.getByText("本次并发上限为 1")).toBeVisible();
   await page.getByRole("button", { name: "按此配置提交运行" }).click();
   await expect(page).toHaveURL(/\/runs\/(?!new$)[^/]+$/);
   const runUrl = page.url();
@@ -147,7 +156,28 @@ test("setup, run, PAT, admin and invitation flow", async ({ page, browser }) => 
     expect(zip.headers()["content-type"]).toBe("application/zip");
     expect((await zip.body()).subarray(0, 2).toString()).toBe("PK");
   }
+  await page.getByRole("button", { name: "保留产物", exact: true }).click();
+  await expect(page.getByText(/团队保留空间已用/)).toBeVisible();
+  await page.getByRole("button", { name: "确认保留" }).click();
+  await expect(page.getByText(/^已保留 · /)).toBeVisible();
   await page.screenshot({ path: `${shots}/run-artifacts.png`, fullPage: true });
+  const desktop = page.viewportSize()!;
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByText(/团队保留空间已用/).scrollIntoViewIfNeeded();
+  await expect(page.getByRole("button", { name: "解除保留" })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await page.screenshot({ path: `${shots}/run-retention-mobile.png` });
+  await page.setViewportSize(desktop);
+  await nav(page, "运行").click();
+  await page.getByLabel("仅显示已保留产物的运行").check();
+  const retained = page.getByRole("row", { name: /smoke run/ });
+  await expect(retained.getByText(/^已保留 · /)).toBeVisible();
+  await retained.getByRole("link", { name: "smoke run" }).click();
+  await page.getByRole("tab", { name: /^产物/ }).click();
+  await page.getByRole("button", { name: "管理保留" }).click();
+  await page.getByRole("button", { name: "解除保留" }).click();
+  await expect(page.getByText(/^已保留 · /)).toHaveCount(0);
+  expect(runtimeErrors).toEqual([]);
 
   // Workflow records: a tab of their own on the run. A member adds one like a comment, in
   // Markdown, with an optional JSON body under "advanced"; the author edits it and sees its
@@ -549,6 +579,8 @@ test("rerun, plan and batch", async ({ page }) => {
   await newRun(page);
   await page.getByLabel("运行名称").fill("m5 source");
   await page.getByLabel(/^Oracle/).check();
+  await page.getByText("限制本次并发", { exact: true }).click();
+  await page.getByLabel("并发数", { exact: true }).fill("2");
   await page.getByLabel("把当前表单另存为方案").fill("smoke plan");
   await page.getByRole("button", { name: "保存", exact: true }).click();
   await expect(page.getByText("已保存方案")).toBeVisible();
@@ -569,12 +601,14 @@ test("rerun, plan and batch", async ({ page }) => {
   await page.getByRole("link", { name: "修改后运行" }).click();
   await expect(page.getByText("基于运行")).toBeVisible();
   await expect(page.getByLabel("运行名称")).toHaveValue("m5 source（修改）");
+  await expect(page.getByText("沿用来源运行，最多 2 个试次同时执行")).toBeVisible();
 
   // A plan, then two runs from it in one batch.
   await nav(page, "方案").click();
   await expect(page.getByText("smoke plan")).toBeVisible();
   await page.getByRole("link", { name: "用它新建运行" }).click();
   await expect(page.getByLabel("选用方案")).not.toHaveValue("");
+  await expect(page.getByText("沿用方案，最多 2 个试次同时执行")).toBeVisible();
   await page.getByLabel("运行名称").fill("batch one");
   await page.getByRole("button", { name: "加入批次草稿" }).click();
   await page.getByLabel("运行名称").fill("batch two");

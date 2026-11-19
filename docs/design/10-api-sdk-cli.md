@@ -58,6 +58,7 @@ SDK 要求 api_version 为 v1 且所需功能开启，否则抛 UNSUPPORTED_CAPA
 - `GET /api/v1/dataset-versions/{version_id}/archive` 返回流式发送的 `application/zip`，`Content-Disposition` 文件名为 `<name>-<label 或摘要前 12 位>.zip`。包内以 `<name>/` 为顶层，保留原相对路径、字节与可执行位，不附 manifest。`client.catalog.download(version_id, destination) -> Path` 保存 zip 文件，权限、删除状态与 Hub 错误和原始文件清单一致；发送前先为每道题提交 `task_files` 读取，失败不返回 zip。
 
 - 附件与待评提交共用增量发布（[03](03-configuration-attachments.md) 第 6 节）：`POST /attachment-contents/missing` 问出缺哪些文件内容，逐个 `PUT /attachment-contents/{sha256}` 上传，再 `POST /attachments` 提交文件清单，同步返回快照；内容相同返回 200 与原快照。单个文件、整包 zip 与两份快照的文件差异分别在 `/attachments/{id}/files/{path}`、`/archive`、`/diff`。`GET /attachments?kind=attachment|submission` 与 SDK `attachments.list(kind=...)` 按清单类别筛选；省略时列出两类。SDK 的 `attachments.publish(目录)`、`publish_commit(仓库, 提交)` 与 `fetch(快照, 目录)` 都只传差异的文件。
+- `runs.artifact_retention` 查看已结束运行的逐项状态与团队配额，`runs.retain_artifacts` 与 `runs.release_artifacts` 共用网页的保留操作和权限。
 - 日志也是产物，通过 `GET /artifacts/{id}/download` 读取，可带 offset / length 分段读（单段上限 1 MiB）。已结束运行的产物可按运行、任务、试次或尝试打成 zip（`GET /runs/{id}/artifacts/archive`，[07](07-artifacts-export.md) 第 5 节），SDK 为 `runs.download_archive`。`content=all` 默认包含全部产物，`content=deliverables` 只包含最终尝试的交付物，按 `<任务键>/<重复序号>/<文件>` 排列并在根目录附 manifest；两种模式都在传输前检查大小并提交所含试次的任务读取汇总，不创建 Operation。
 - 修改后运行没有专门接口：`GET /runs/{id}/request` 取原请求，修改后重新解析，提交时带 source_run_id。
 - 维护（更新、备份、恢复）不在 HTTP API 中（[12](12-operations.md)）。

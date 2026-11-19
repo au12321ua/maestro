@@ -104,9 +104,22 @@
   },
   "scale": {
     "title": "Scale and resources",
-    "description": "Leave blank to inherit: repetitions, concurrency and the total time limit come from team defaults; resources and timeouts come from the task authors. Values over the team limits are rejected, not silently lowered.",
+    "description": "Repetitions and the run deadline inherit team defaults. Resources and timeouts inherit the task authors' settings.",
     "teamDefault": "Team default {{default}}, max {{max}}",
     "repetitions": "Repetitions per task",
+    "autoConcurrency_one": "Automatic concurrency · up to {{count}} trial at once",
+    "autoConcurrency_other": "Automatic concurrency · up to {{count}} trials at once",
+    "limitConcurrency": "Limit concurrency for this run",
+    "limitedConcurrency": "Concurrency limit for this run · {{count}}",
+    "concurrencyHint": "Enter a lower limit, or clear this field to use the value above.",
+    "inheritedConcurrency": {
+      "plan_one": "From the plan · up to {{count}} trial at once",
+      "plan_other": "From the plan · up to {{count}} trials at once",
+      "run_one": "From the source run · up to {{count}} trial at once",
+      "run_other": "From the source run · up to {{count}} trials at once",
+      "collection_one": "From the collection · up to {{count}} trial at once",
+      "collection_other": "From the collection · up to {{count}} trials at once"
+    },
     "concurrency": "Concurrency",
     "runDeadline": "Run time limit (hours, including queueing)",
     "agentTimeout": "Agent timeout (seconds)",
@@ -180,6 +193,7 @@
     "bootstrapTimeout": "Attachment install timeout (seconds)"
   },
   "resolution": {
+    "concurrency": "Resolved concurrency limit · {{count}}",
     "executorDefault": "Executor default",
     "credential": "(credential)",
     "blocked": "The configuration has blockers and cannot be submitted",

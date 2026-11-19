@@ -248,3 +248,156 @@ def test_storage_watermarks_pause_acceptance_then_dispatch(local, settings):
     assert service.runs.cancel(owner, queued["run_id"])["state"] == "cancelled"
     free["bytes"] = 100 * GIB
     assert watch.accepting() and watch.dispatching()
+
+
+def test_manual_retention_survives_expiry_and_restart_on_original_links(local, monkeypatch):
+    from maestro.db.engine import Database
+    from maestro.services.artifacts import Artifacts
+
+    service, owner, version = local
+    kept = run(service, owner, version)
+    ordinary = run(service, owner, version)
+    original = service.artifacts.for_run(kept)
+    scores = {run_id: service.runs.summary(run_id) for run_id in (kept, ordinary)}
+    view = service.artifacts.retain(owner, kept)
+    assert view["retained_bytes"] == sum(a["size_bytes"] for a in original) > 0
+    assert view["additional_bytes"] == 0
+    assert {"log", "output"} <= {a["kind"] for a in original}
+    future = clock.now() + clock.timedelta(days=8)
+    monkeypatch.setattr(clock, "now", lambda: future)
+
+    db = Database.open(service.artifacts.db.engine.url.database)
+    try:
+        reopened = Artifacts(db, service.artifacts.store)
+        reopened.reconcile()
+        assert reopened.sweep()["reclaimed"] == len(service.artifacts.for_run(ordinary))
+        assert {status for status, _ in statuses(service, ordinary).values()} == {"expired"}
+        for artifact in original:
+            metadata, data = reopened.read(artifact["id"])
+            assert len(data) == artifact["size_bytes"] and metadata == artifact
+        view = reopened.retention(kept)
+        assert all(file["past_expiry"] and file["retained"] for file in view["files"])
+        assert reopened.release(owner, kept)["used_bytes"] == 0
+        assert reopened.release(owner, kept)["used_bytes"] == 0
+        assert reopened.sweep()["reclaimed"] == len(original)
+        assert {status for status, _ in statuses(service, kept).values()} == {"expired"}
+        assert {run_id: service.runs.summary(run_id) for run_id in scores} == scores
+    finally:
+        db.dispose()
+
+
+def test_manual_retention_ignores_missing_and_files_claimed_by_sweep(local, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    service, owner, version = local
+    run_id = run(service, owner, version)
+    expired, missing, reclaiming, *_ = service.artifacts.for_run(run_id)
+    backdate(service, expired["id"])
+    assert service.artifacts.sweep()["reclaimed"] == 1
+    with service.db.read() as conn:
+        missing_key = conn.scalar(
+            select(t.artifacts.c.storage_key).where(t.artifacts.c.id == missing["id"])
+        )
+    store = service.artifacts.store
+    remove = store.delete
+    remove(missing_key)
+    backdate(service, reclaiming["id"])
+    deleting, finish = Event(), Event()
+
+    def wait_to_remove(key):
+        deleting.set()
+        assert finish.wait(5)
+        remove(key)
+
+    monkeypatch.setattr(store, "delete", wait_to_remove)
+    with ThreadPoolExecutor() as pool:
+        sweeping = pool.submit(service.artifacts.sweep)
+        try:
+            assert deleting.wait(5)
+            view = service.artifacts.retain(owner, run_id)
+        finally:
+            finish.set()
+        assert sweeping.result()["reclaimed"] == 1
+    files = {file["artifact_id"]: file for file in view["files"]}
+    for artifact, status in [
+        (expired, "expired"),
+        (missing, "unavailable"),
+        (reclaiming, "deleting"),
+    ]:
+        assert files[artifact["id"]]["status"] == status
+        assert not files[artifact["id"]]["retained"]
+    assert files[missing["id"]]["status_reason"] == "STORAGE_CONTENT_MISSING"
+    assert view["used_bytes"] == view["retained_bytes"] > 0
+    assert view["available_bytes"] == view["retained_bytes"]
+
+
+def test_manual_retention_serializes_same_run_and_competing_quota(local, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    service, owner, version = local
+    runs = [run(service, owner, version) for _ in range(3)]
+    sizes = [service.artifacts.retention(run_id)["additional_bytes"] for run_id in runs]
+    quota = sum(sizes) - min(sizes)
+    service.policies.update(owner, {"artifact_retention_quota_bytes": quota}, 0)
+    probe = service.artifacts._check_retention_files
+
+    def compete(*run_ids):
+        barrier = Barrier(2)
+
+        def check(rows):
+            result = probe(rows)
+            barrier.wait(timeout=5)
+            return result
+
+        def retain(run_id):
+            try:
+                return service.artifacts.retain(owner, run_id)
+            except MaestroError as error:
+                return error
+
+        with monkeypatch.context() as patch, ThreadPoolExecutor() as pool:
+            patch.setattr(service.artifacts, "_check_retention_files", check)
+            return list(pool.map(retain, run_ids))
+
+    first, repeated = compete(runs[0], runs[0])
+    assert first == repeated and first["used_bytes"] == sizes[0]
+    outcomes = compete(*runs[1:])
+    winners = [outcome for outcome in outcomes if isinstance(outcome, dict)]
+    refused = [outcome for outcome in outcomes if isinstance(outcome, MaestroError)]
+    assert len(winners) == len(refused) == 1
+    assert refused[0].code == "ARTIFACT_RETENTION_QUOTA"
+    assert refused[0].suggested_actions[0]["shortfall_bytes"] == sum(sizes) - quota
+    assert service.artifacts.retention(runs[0])["retained_bytes"] == sizes[0]
+    assert service.artifacts.retention(runs[0])["used_bytes"] == winners[0]["used_bytes"]
+
+
+def test_purge_releases_only_removed_artifact_bytes_and_retries_leftovers(local, monkeypatch):
+    service, owner, version = local
+    run_id = run(service, owner, version)
+    original = service.artifacts.retain(owner, run_id)["used_bytes"]
+    a, b, *_ = service.artifacts.for_run(run_id)
+    assert a["size_bytes"] > 0 and b["size_bytes"] > 0
+    service.recycle.purge(owner, service.recycle.delete(owner, "artifact", a["id"])["id"])
+    assert service.artifacts.retention(run_id)["used_bytes"] == original - a["size_bytes"]
+
+    with service.db.read() as conn:
+        key = conn.scalar(select(t.artifacts.c.storage_key).where(t.artifacts.c.id == b["id"]))
+    store = service.artifacts.store
+    remove = store.delete
+
+    def failed_unlink(candidate):
+        if candidate == key:
+            raise OSError("temporarily unavailable")
+        remove(candidate)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(store, "delete", failed_unlink)
+        entry = service.recycle.delete(owner, "run", run_id)
+        service.recycle.purge(owner, entry["id"])
+        other = run(service, owner, version)
+        assert service.artifacts.retention(other)["used_bytes"] == b["size_bytes"]
+        assert store.exists(key)
+    assert service.artifacts.sweep_unindexed()["removed"] == 1
+    assert service.artifacts.retention(other)["used_bytes"] == 0
