@@ -23,13 +23,19 @@
   "page": {
     "title": "Datasets",
     "intro": "Browse Hub and uploaded datasets, fixed versions and task admission. Upload converted Harbor task directories here or with the SDK.",
+    "name": "Dataset name",
+    "sourceColumn": "Source",
+    "versions": "Versions",
+    "version": "Version",
+    "tasks": "Tasks",
+    "back": "Back to datasets",
+    "versionMismatch": "This version belongs to a different dataset.",
     "empty": "No datasets yet.",
     "deleteDatasetConfirm": "Delete dataset \"{{name}}\" and all its versions? It moves to the recycle bin; existing runs are kept, but it can no longer be used to submit or rerun.",
     "deleteVersionConfirm": "Delete version \"{{dataset}} {{ref}}\"? It moves to the recycle bin; existing runs are kept, but it can no longer be used to submit or rerun.",
     "deleted": "Moved to the recycle bin",
     "deleteFailed": "Delete failed: {{error}}",
     "deleteDataset": "Delete dataset",
-    "deleteDatasetLabel": "Delete dataset {{name}}",
     "source": "Source: {{kind}}",
     "teamCredential": " · uses a team credential",
     "anonymous": " · anonymous read",
@@ -38,7 +44,6 @@
     "versionCounts": "Submittable {{submittable}}/{{total}} · cache ready {{ready}}",
     "deleteVersion": "Delete this version",
     "deleteVersionLabel": "Delete version {{ref}}",
-    "notListed": "This version is not in the dataset list: it was deleted or does not exist. A deleted version can still be viewed, but not used to submit.",
     "uploadNoUpstream": "Uploaded (web or SDK): new versions come only by upload; no upstream update check or Hub credential applies."
   },
   "diff": {

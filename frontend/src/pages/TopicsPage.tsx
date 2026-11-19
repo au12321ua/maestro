@@ -14,6 +14,7 @@ import { Markdown } from "@/components/Markdown";
 import { DirectoryCheck, MoreItems, useDirectorySelection } from "@/components/TopicDirectory";
 import { RecordEvidence, WorkflowRecords } from "@/components/WorkflowRecords";
 import { t } from "@/i18n";
+import { datasetPath } from "@/lib/datasets";
 import { api, errorText } from "@/lib/api";
 import { fmtTime, label, RUN_STATE } from "@/lib/format";
 import { useCursorList, useLoad, useSession } from "@/lib/hooks";
@@ -289,7 +290,7 @@ function objectPath(item: TopicReference | TopicMaterial, topicId: string) {
   switch (item.kind) {
     case "run": return scopedPath(`/runs/${item.id}`, topicId);
     case "collection": return scopedPath(`/collections/${item.id}`, topicId);
-    case "dataset": return scopedPath(`/datasets?dataset=${item.id}`, topicId);
+    case "dataset": return scopedPath(datasetPath(item.id), topicId);
     case "dataset_version": return scopedPath(`/datasets?version=${item.id}`, topicId);
     case "attachment_snapshot": return scopedPath(`/attachments?snapshot=${item.id}`, topicId);
   }
