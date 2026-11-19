@@ -5,6 +5,10 @@
     "requestFailed": "请求失败"
   },
   "codes": {
+    "TOPIC_NOT_FOUND": "实验专题不存在",
+    "TOPIC_DELETED": "实验专题已删除",
+    "TOPIC_REFERENCE_UNAVAILABLE": "引用的对象不存在或已删除",
+    "TOPIC_INVALID": "专题资料无效",
     "DATASET_LABEL_TAKEN": "该数据集的版本标签已被占用，请使用其他标签",
     "DATASET_SOURCE_CONFLICT": "该命名空间和名称已属于另一种来源的数据集，请使用新名称",
     "DATASET_VERSION_NOT_UPLOADED": "Hub 版本的内容保存在上游，仅上传版本提供原始文件清单与整包下载",

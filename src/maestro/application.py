@@ -37,6 +37,7 @@ from maestro.services.records import Records
 from maestro.services.recycle import Recycle
 from maestro.services.runs import Runs
 from maestro.services.setup_network import SetupNetworks
+from maestro.services.topics import Topics
 from maestro.services.updates import Updates
 from maestro.services.upstream import UpstreamVersions
 from maestro.services.worker import Worker
@@ -63,6 +64,7 @@ class Maestro:
     collections: Collections
     snapshots: Snapshots
     records: Records
+    topics: Topics
     artifacts: Artifacts
     artifact_archives: ArtifactArchives
     exports: Exports
@@ -176,6 +178,7 @@ class Maestro:
             collections=runs.collections,
             snapshots=Snapshots(db, runs.collections),
             records=Records(db),
+            topics=Topics(db),
             artifacts=artifacts,
             artifact_archives=ArtifactArchives(db, store, settings.export_max_bytes),
             exports=exports,

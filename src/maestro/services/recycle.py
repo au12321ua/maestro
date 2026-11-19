@@ -700,6 +700,54 @@ class CollectionHandler(Handler):
         return Purged({"runs": removed})
 
 
+class TopicHandler(Handler):
+    object_type = "topic"
+    table = t.topics
+
+    def label(self, conn, row):
+        return row["name"]
+
+    def owner(self, row):
+        return row["owner_id"]
+
+    def authorize(self, principal, row):
+        require_manage_owned(principal, row["owner_id"])
+
+    def purge(self, conn, row, service, actor_id):
+        topic_id = row["id"]
+        records = t.workflow_records.c
+        record_ids = select(records.id).where(
+            records.target_type == "topic", records.target_id == topic_id
+        )
+        # A recycled handoff cannot be restored after its topic is destroyed.
+        conn.execute(
+            update(t.deletions)
+            .where(
+                t.deletions.c.object_type == "workflow_record",
+                t.deletions.c.object_id.in_(record_ids),
+                t.deletions.c.state == deleted.RECYCLED,
+            )
+            .values(state=deleted.PURGED, purged_at=clock.to_text(clock.now()), purged_by=actor_id)
+        )
+        conn.execute(
+            delete(t.workflow_record_revisions).where(
+                t.workflow_record_revisions.c.record_id.in_(record_ids)
+            )
+        )
+        notes = conn.execute(
+            delete(t.workflow_records).where(
+                records.target_type == "topic", records.target_id == topic_id
+            )
+        ).rowcount
+        refs = conn.execute(
+            delete(t.topic_references).where(t.topic_references.c.topic_id == topic_id)
+        ).rowcount
+        conn.execute(
+            update(t.topics).where(t.topics.c.id == topic_id).values(purpose="", settings_json={})
+        )
+        return Purged({"references": refs, "records": notes})
+
+
 class RecordHandler(Handler):
     object_type = "workflow_record"
     table = t.workflow_records
@@ -772,6 +820,7 @@ HANDLERS: dict[str, Handler] = {
         AttachmentHandler(),
         PlanHandler(),
         CollectionHandler(),
+        TopicHandler(),
         SnapshotHandler(),
         RecordHandler(),
     )

@@ -35,7 +35,7 @@ from maestro.domain.comparison import (
 )
 from maestro.domain.scoring import contract_for, snapshot_contract
 from maestro.domain.states import RUN_TERMINAL, PatPermission
-from maestro.services import audit, deleted, task_identity, task_reads
+from maestro.services import audit, deleted, pagination, task_identity, task_reads
 from maestro.services.configuration import (
     Blocker,
     Resolution,
@@ -51,6 +51,7 @@ from maestro.services.principal import (
     can_manage_owned,
     require_experiment,
 )
+from maestro.services.topics import require_topic, topic_objects
 
 SCOPES = ("common", "all")
 LAYOUTS = ("leaderboard", "matrix")
@@ -611,24 +612,53 @@ class Collections:
             "allowed_actions": allowed,
         }
 
-    def list(self, principal: Principal) -> list[dict]:
+    def _list_query(self):
         counts = (
             select(t.collection_members.c.collection_id, func.count().label("n"))
             .group_by(t.collection_members.c.collection_id)
             .subquery()
         )
-        query = (
+        return (
             self._query()
             .add_columns(func.coalesce(counts.c.n, 0).label("run_count"))
             .outerjoin(counts, counts.c.collection_id == t.collections.c.id)
             .where(deleted.visible(t.collections.c.id, "collection"))
-            .order_by(t.collections.c.updated_at.desc(), t.collections.c.id)
         )
+
+    def list(self, principal: Principal) -> list[dict]:
+        query = self._list_query().order_by(t.collections.c.updated_at.desc(), t.collections.c.id)
         with self.db.read() as conn:
             return [
                 self._public(conn, r, principal, r["run_count"])
                 for r in conn.execute(query).mappings()
             ]
+
+    def list_page(
+        self,
+        principal: Principal,
+        topic_id: str | None,
+        q: str | None,
+        cursor: str | None,
+        limit: int | None,
+    ):
+        limit = pagination.check_limit(limit)
+        c = t.collections.c
+        filters = {"topic_id": topic_id, "q": q}
+        query = self._list_query()
+        if topic_id is not None:
+            query = query.where(c.id.in_(topic_objects(topic_id, "collection")))
+        if q:
+            query = query.where(pagination.matching(q, c.name, c.description, c.id))
+        with self.db.read() as conn:
+            if topic_id is not None:
+                require_topic(conn, topic_id)
+            rows = (
+                conn.execute(pagination.page(query, c.updated_at, c.id, cursor, limit, filters))
+                .mappings()
+                .all()
+            )
+            rows, next_cursor = pagination.split(rows, limit, "updated_at", filters)
+            return [self._public(conn, r, principal, r["run_count"]) for r in rows], next_cursor
 
     def get(self, principal: Principal, collection_id: str) -> dict:
         with self.db.read() as conn:

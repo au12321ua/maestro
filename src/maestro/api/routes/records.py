@@ -29,24 +29,21 @@ def list_records(
     target_id: str,
     snapshot_id: str | None = None,
     kind: str | None = None,
+    cursor: str | None = None,
+    limit: int | None = None,
     who: Principal = Depends(principal),
 ):
     """An attachment name lists all its records; snapshot_id selects only pinned ones.
 
     Recycled targets remain readable. Purged targets return an empty list.
+    Request a limit for newest-first pagination.
     """
-    return ok(
-        request,
-        maestro(request).records.list(
-            who,
-            {
-                "type": target_type,
-                "id": target_id,
-                "snapshot_id": snapshot_id,
-            },
-            kind,
-        ),
-    )
+    target = {"type": target_type, "id": target_id, "snapshot_id": snapshot_id}
+    records = maestro(request).records
+    if cursor is None and limit is None:
+        return ok(request, records.list(who, target, kind))
+    items, next_cursor = records.list_page(who, target, kind, cursor, limit)
+    return ok(request, items, next_cursor)
 
 
 @router.get("/{record_id}", response_model=Envelope[WorkflowRecord])

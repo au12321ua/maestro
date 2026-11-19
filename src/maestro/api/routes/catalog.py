@@ -99,10 +99,21 @@ def list_datasets(
     request: Request,
     cursor: str | None = None,
     limit: int | None = None,
+    q: str | None = None,
+    topic_id: str | None = None,
+    include_versions: bool = True,
     _: Principal = Depends(principal),
 ):
-    items, next_cursor = maestro(request).catalog.list_datasets(cursor, limit)
+    items, next_cursor = maestro(request).catalog.list_datasets(
+        cursor, limit, q=q, topic_id=topic_id, include_versions=include_versions
+    )
     return ok(request, items, next_cursor)
+
+
+@router.get("/datasets/{dataset_id}", response_model=Envelope[Dataset])
+def get_dataset(dataset_id: str, request: Request, _: Principal = Depends(principal)):
+    """Load the versions of one dataset."""
+    return ok(request, maestro(request).catalog.get_dataset(dataset_id))
 
 
 @router.get("/dataset-versions/{version_id}", response_model=Envelope[DatasetVersionDetail])

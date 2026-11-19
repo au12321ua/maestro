@@ -10,10 +10,11 @@ import { ErrorAlert, SelectField, TextField } from "@/components/common";
 import { FolderUpload, type Chosen, type FolderBase } from "@/components/FolderUpload";
 import { OperationLine } from "@/components/OperationLine";
 import { t } from "@/i18n";
+import { findDataset } from "@/lib/datasets";
 import { api } from "@/lib/api";
 import { entries, type ModedFile } from "@/lib/folder";
 import { fmtTime, versionName } from "@/lib/format";
-import { limit, useSession } from "@/lib/hooks";
+import { limit, useLoad, useSession } from "@/lib/hooks";
 import type { Dataset, Operation } from "@/lib/types";
 
 const NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
@@ -36,12 +37,10 @@ function outsideTasks(files: ModedFile[]): string[] {
 }
 
 export function UploadDataset({
-  datasets,
   target,
   onClose,
   onImported,
 }: {
-  datasets: Dataset[];
   /** An upload dataset to add a version to; null for a new dataset. */
   target: Dataset | null;
   onClose: () => void;
@@ -58,7 +57,10 @@ export function UploadDataset({
   const [operation, setOperation] = useState<string>();
   const [failed, setFailed] = useState<{ op: Operation; tasks: TaskError[] }>();
 
-  const existing = datasets.find((d) => d.namespace === namespace && d.name === name);
+  const lookup = useLoad(() =>
+    !target && NAME.test(namespace) && NAME.test(name) ? findDataset(namespace, name) : Promise.resolve(null),
+  [target?.id, namespace, name]);
+  const existing = target ?? (lookup.data?.namespace === namespace && lookup.data.name === name ? lookup.data : null);
   const own =
     existing?.source_kind === "upload"
       ? [...existing.versions].sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
@@ -155,7 +157,7 @@ export function UploadDataset({
         {!target && existing?.source_kind === "upload" && (
           <p className="text-xs">{t("datasets.upload.addsVersion")}</p>
         )}
-        <ErrorAlert error={baseError} />
+        <ErrorAlert error={lookup.error ?? baseError} />
         {own.length > 0 && (
           <div className="grid gap-3 md:grid-cols-2">
             <TextField

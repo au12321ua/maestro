@@ -98,7 +98,7 @@ Operation 有 kind、resource、status、phase、progress、error、result、all
 
 ## 7. 查询、轮询与 SDK
 
-列表用 created_at + id 稳定游标，游标绑定筛选条件；默认与最大 limit 见 `src/maestro/domain/limits.py`。运行列表可按提交者、状态、数据集版本、模型、Harness、附件、方案、client_request_id 和受理时间筛选。
+列表用 created_at + id 稳定游标，游标绑定筛选条件；默认与最大 limit 见 `src/maestro/domain/limits.py`。运行列表可按提交者、状态、数据集版本、模型、Harness、附件、方案、client_request_id、受理时间、专题、名称、活动状态和产物保留状态筛选。
 
 ~~~python
 client = MaestroClient(service_url, token=pat)
@@ -115,6 +115,12 @@ client.runs.download_artifacts(submitted.run_id, local_directory)
 - 下载校验摘要；`download_artifacts` 列出跳过的过期 / 失败 / 已删产物及原因，拒绝越出目标目录的路径。
 - 类型区分 None、0、未知用量与已清理产物。
 - 发布附件后在本地按同一规则算出 `content_digest` 与返回的快照核对，不符抛 ContentMismatch。`publish_commit` 只读 git 对象中该提交跟踪的文件，仓库根目录就是附件根目录，可执行位取自文件模式，拒绝符号链接与子模块，工作目录有未提交的修改时警告；平台不记录提交（U-51）。
+
+### 从专题链接接手
+
+`client.topics.list(q=...)` 按名称或标识查找候选及实验目的。`client.topics.open(url_or_id)` 为调用方生成一个绑定专题的句柄，重命名后链接仍可用。概览返回有限的活动和近期运行、评分覆盖、最近的交接及作者，以及手动选入对象与运行实际用到的版本。更多条目用句柄的 `runs.list`、`references` 和 `materials` 分页；追查具体试次时再打开对应证据。
+
+句柄的 `runs.submit`、`runs.rerun` 与 `batches.submit` 在请求中明确传入专题，独立句柄可用于并行操作。交接复用目标为 `topic`、类型为 `handoff` 的工作流记录，历史可由 `topic.handoffs()` 分页。完整示例见 [Agent skill](../../skills/maestro-sdk/references/topics.md)。
 
 ### 给 Agent 的本地工具
 

@@ -8,12 +8,22 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Literal
 
 from maestro_sdk import models
-from maestro_sdk._transport import _body, _key, _query, _Resource, _save
+from maestro_sdk._transport import Transport, _body, _key, _query, _Resource, _save
 from maestro_sdk.errors import ApiError, MaestroError
 from maestro_sdk.results import Download, Submission
 
 
+def topic_destination(bound: str | None, explicit: str | None) -> str | None:
+    if bound is not None and explicit is not None and bound != explicit:
+        raise ValueError("The request already names a different experiment topic")
+    return bound if bound is not None else explicit
+
+
 class Runs(_Resource):
+    def __init__(self, client: Transport, *, topic_id: str | None = None):
+        super().__init__(client)
+        self._topic_id = topic_id
+
     def submit(
         self,
         config: models.ConfigRequestInput | Mapping[str, Any] | None = None,
@@ -23,6 +33,7 @@ class Runs(_Resource):
         client_request_id: str | None = None,
         source_run_id: str | None = None,
         collection_id: str | None = None,
+        topic_id: str | None = None,
         idempotency_key: str | None = None,
     ) -> Submission:
         """Submit a resolved configuration (``resolution_id``) or one given inline.
@@ -34,6 +45,8 @@ class Runs(_Resource):
         failures are retried here under that key; the run is never submitted twice.
         """
         body: dict[str, Any] = dict(_body(config) or {})
+        destination = topic_destination(self._topic_id, topic_id)
+        destination = topic_destination(destination, body.get("topic_id"))
         body.update(
             _query(
                 {
@@ -42,6 +55,7 @@ class Runs(_Resource):
                     "client_request_id": client_request_id,
                     "source_run_id": source_run_id,
                     "collection_id": collection_id,
+                    "topic_id": destination,
                 }
             )
         )
@@ -61,12 +75,19 @@ class Runs(_Resource):
         task_ids: list[str] | None = None,
         name: str | None = None,
         client_request_id: str | None = None,
+        topic_id: str | None = None,
         idempotency_key: str | None = None,
     ) -> Submission:
         """A new run from the source's snapshot: ``all``, ``unfinished`` or ``explicit``."""
         body = {
             "task_selection": _query({"mode": mode, "task_ids": task_ids}),
-            **_query({"name": name, "client_request_id": client_request_id}),
+            **_query(
+                {
+                    "name": name,
+                    "client_request_id": client_request_id,
+                    "topic_id": topic_destination(self._topic_id, topic_id),
+                }
+            ),
         }
         key = _key(idempotency_key)
         response = self._c._call("POST", f"runs/{run_id}/rerun", json=body, idempotency_key=key)
@@ -86,7 +107,11 @@ class Runs(_Resource):
     def list(self, *, limit: int | None = None, **filters: Any) -> Iterator[models.Run]:
         """Newest first, all pages. Filters: owner_id, state, dataset_version_id,
         model_config_id, harness_version_id, attachment_version_id, plan_id,
-        client_request_id, accepted_after, accepted_before (RFC 3339 UTC), artifacts_retained."""
+        client_request_id, accepted_after, accepted_before (RFC 3339 UTC), topic_id,
+        artifacts_retained, q (name or id), and active (true for active, false for ended)."""
+        destination = topic_destination(self._topic_id, filters.get("topic_id"))
+        if destination is not None:
+            filters["topic_id"] = destination
         return self._c._iterate("runs", models.Run, limit=limit, **filters)
 
     def find(self, client_request_id: str) -> list[models.Run]:

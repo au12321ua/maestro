@@ -879,6 +879,32 @@ snapshot_notes = Table(
     Index("ix_snapshot_notes_snapshot", "snapshot_id", "created_at"),
 )
 
+# Experiment topics curate shared objects without altering those objects' lifecycles.
+topics = Table(
+    "topics",
+    metadata,
+    _id(),
+    _ref("owner_id", "users"),
+    Column("name", String(128), nullable=False),
+    Column("purpose", Text, nullable=False),
+    _json("settings_json"),
+    _time("created_at"),
+    _time("updated_at"),
+    Index("ix_topics_created", "created_at", "id"),
+)
+
+topic_references = Table(
+    "topic_references",
+    metadata,
+    _ref("topic_id", "topics"),
+    Column("kind", String(24), nullable=False),
+    Column("object_id", String(40), nullable=False),
+    _time("added_at"),
+    PrimaryKeyConstraint("topic_id", "kind", "object_id"),
+    CheckConstraint("kind IN ('run','collection','dataset','attachment_snapshot')", name="kind"),
+    Index("ix_topic_references_added", "topic_id", "kind", "added_at", "object_id"),
+)
+
 # Targets use a type and identifier rather than one nullable column per object type.
 # Attachment identifiers are names; a record can also pin one immutable snapshot.
 workflow_records = Table(

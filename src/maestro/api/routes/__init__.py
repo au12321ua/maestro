@@ -10,6 +10,7 @@ from maestro.api.routes import (
     records,
     runs,
     system,
+    topics,
 )
 
 
@@ -26,4 +27,5 @@ def routers():
         batches.router,
         collections.router,
         records.router,
+        topics.router,
     ]

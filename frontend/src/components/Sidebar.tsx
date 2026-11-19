@@ -6,6 +6,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import {
   ClipboardList,
   Database,
+  FolderKanban,
   LayoutDashboard,
   Layers,
   Library,
@@ -37,6 +38,7 @@ const GROUPS: { title?: string; links: Link[] }[] = [
   {
     title: t("common.nav.experiments"),
     links: [
+      { to: "/topics", label: t("topics.title"), icon: FolderKanban },
       { to: "/runs", label: t("common.nav.runs"), icon: Play },
       { to: "/batches", label: t("common.nav.batches"), icon: Layers },
       { to: "/collections", label: t("common.nav.collections"), icon: Library },

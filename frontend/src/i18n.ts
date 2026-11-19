@@ -17,6 +17,7 @@ import zhNewRun from "./locales/zh-CN/newRun.json";
 import zhPlans from "./locales/zh-CN/plans.json";
 import zhRuns from "./locales/zh-CN/runs.json";
 import zhSettings from "./locales/zh-CN/settings.json";
+import zhTopics from "./locales/zh-CN/topics.json";
 import zhWorkbench from "./locales/zh-CN/workbench.json";
 import enAdmin from "./locales/en/admin.json";
 import enAdminConfig from "./locales/en/adminConfig.json";
@@ -31,6 +32,7 @@ import enNewRun from "./locales/en/newRun.json";
 import enPlans from "./locales/en/plans.json";
 import enRuns from "./locales/en/runs.json";
 import enSettings from "./locales/en/settings.json";
+import enTopics from "./locales/en/topics.json";
 import enWorkbench from "./locales/en/workbench.json";
 
 const zhCN = {
@@ -47,6 +49,7 @@ const zhCN = {
   plans: zhPlans,
   runs: zhRuns,
   settings: zhSettings,
+  topics: zhTopics,
   workbench: zhWorkbench,
 };
 
@@ -65,6 +68,7 @@ const en = {
   plans: enPlans,
   runs: enRuns,
   settings: enSettings,
+  topics: enTopics,
   workbench: enWorkbench,
 };
 

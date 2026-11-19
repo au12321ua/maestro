@@ -157,3 +157,9 @@ export type ReleaseInfo = S["ReleaseInfo"];
 export type InFlightWork = S["InFlightWork"];
 export type UpdateRequest = S["UpdateRequest"];
 export type UpdateNotice = S["UpdateNotice"];
+
+export type Topic = components["schemas"]["Topic"];
+export type TopicReferenceKind = components["schemas"]["TopicObject"]["kind"];
+export type TopicReference = components["schemas"]["TopicReference"];
+export type TopicMaterial = components["schemas"]["TopicMaterial"];
+export type TopicRunSummary = components["schemas"]["TopicRunSummary"];

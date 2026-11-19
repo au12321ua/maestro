@@ -18,10 +18,10 @@ from maestro.db.engine import Database
 from maestro.domain import limits
 from maestro.domain.states import PatPermission
 from maestro.security.redaction import redact
-from maestro.services import audit, deleted
+from maestro.services import audit, deleted, pagination
 from maestro.services.principal import Principal, can_manage_owned, require_experiment
 
-TARGET_TYPES = ("collection", "run", "attachment", "dataset_version")
+TARGET_TYPES = ("collection", "run", "attachment", "dataset_version", "topic")
 REFERENCE_TABLES = {
     "run": t.runs,
     "trial": t.trials,
@@ -57,7 +57,9 @@ def check_target(raw: dict) -> dict:
         raise _invalid("/target", "Invalid record target")
     kind, identity, snapshot = raw.get("type"), raw.get("id"), raw.get("snapshot_id")
     if kind not in TARGET_TYPES or not isinstance(identity, str) or not 1 <= len(identity) <= 128:
-        raise _invalid("/target", "Choose a collection, run, attachment name or dataset version")
+        raise _invalid(
+            "/target", "Choose a collection, run, attachment name, dataset version or topic"
+        )
     if snapshot is not None and (kind != "attachment" or not isinstance(snapshot, str)):
         raise _invalid("/target/snapshot_id", "Only an attachment can pin a snapshot")
     return {"type": kind, "id": identity, "snapshot_id": snapshot}
@@ -68,7 +70,9 @@ def target_state(conn: Connection, target: dict) -> dict | None:
     exist through their snapshots, and remain live while any snapshot is live."""
     kind, identity = target["type"], target["id"]
     if kind != "attachment":
-        table = t.dataset_versions if kind == "dataset_version" else REFERENCE_TABLES[kind]
+        table = {"dataset_version": t.dataset_versions, "topic": t.topics}.get(kind)
+        if table is None:
+            table = REFERENCE_TABLES[kind]
         if conn.execute(select(table.c.id).where(table.c.id == identity)).first() is None:
             raise not_found("Record target")
         return (
@@ -320,32 +324,78 @@ class Records:
         with self.db.read() as conn:
             return self._public(conn, principal, self._row(conn, record_id))
 
+    @classmethod
+    def latest(
+        cls, conn: Connection, principal: Principal, target_type: str, target_id: str, kind: str
+    ) -> dict | None:
+        c = t.workflow_records.c
+        row = (
+            conn.execute(
+                cls._query()
+                .where(
+                    c.target_type == target_type,
+                    c.target_id == target_id,
+                    c.kind == kind,
+                    deleted.visible(c.id, "workflow_record"),
+                )
+                .order_by(c.created_at.desc(), c.id.desc())
+                .limit(1)
+            )
+            .mappings()
+            .first()
+        )
+        return cls._public(conn, principal, row) if row is not None else None
+
+    def _list_query(self, conn: Connection, target: dict, kind: str | None):
+        state = target_state(conn, target)
+        if state and state["state"] == deleted.PURGED:
+            return None
+        c = t.workflow_records.c
+        query = self._query().where(
+            c.target_type == target["type"],
+            c.target_id == target["id"],
+            deleted.visible(c.id, "workflow_record"),
+        )
+        if target["snapshot_id"] is not None:
+            query = query.where(c.target_snapshot_id == target["snapshot_id"])
+        if kind is not None:
+            query = query.where(c.kind == kind)
+        return query
+
+    def _visible_records(self, conn: Connection, principal: Principal, rows) -> list[dict]:
+        result = []
+        for row in rows:
+            state = target_state(conn, _target(row))
+            if not state or state["state"] != deleted.PURGED:
+                result.append(self._public(conn, principal, row))
+        return result
+
     def list(self, principal: Principal, target: dict, kind: str | None = None) -> list[dict]:
         target = check_target(target)
+        c = t.workflow_records.c
         with self.db.read() as conn:
-            state = target_state(conn, target)
-            if state and state["state"] == deleted.PURGED:
+            query = self._list_query(conn, target, kind)
+            if query is None:
                 return []
-            query = self._query().where(
-                t.workflow_records.c.target_type == target["type"],
-                t.workflow_records.c.target_id == target["id"],
-                deleted.visible(t.workflow_records.c.id, "workflow_record"),
+            rows = conn.execute(query.order_by(c.created_at, c.id)).mappings()
+            return self._visible_records(conn, principal, rows)
+
+    def list_page(self, principal: Principal, target: dict, kind: str | None, cursor, limit):
+        target = check_target(target)
+        filters = {"target": target, "kind": kind}
+        limit = pagination.check_limit(limit)
+        c = t.workflow_records.c
+        with self.db.read() as conn:
+            query = self._list_query(conn, target, kind)
+            if query is None:
+                return [], None
+            rows = (
+                conn.execute(pagination.page(query, c.created_at, c.id, cursor, limit, filters))
+                .mappings()
+                .all()
             )
-            if target["snapshot_id"] is not None:
-                query = query.where(
-                    t.workflow_records.c.target_snapshot_id == target["snapshot_id"]
-                )
-            if kind is not None:
-                query = query.where(t.workflow_records.c.kind == kind)
-            rows = conn.execute(
-                query.order_by(t.workflow_records.c.created_at, t.workflow_records.c.id)
-            ).mappings()
-            result = []
-            for row in rows:
-                state = target_state(conn, _target(row))
-                if not state or state["state"] != deleted.PURGED:
-                    result.append(self._public(conn, principal, row))
-            return result
+            rows, next_cursor = pagination.split(rows, limit, "created_at", filters)
+            return self._visible_records(conn, principal, rows), next_cursor
 
     def update(self, principal: Principal, record_id: str, body: dict) -> dict:
         require_experiment(principal)

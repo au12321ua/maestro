@@ -4,14 +4,14 @@
 // recycle bin. A record has Markdown text written for people and a JSON body for programs;
 // the body is shown as a readable outline with the raw JSON behind a toggle, and is only
 // edited under "advanced". References and evidence excerpts are checked against the
-// objects they cite and are written through the SDK; here they are shown as links.
+// objects they cite. Topic handoffs also accept reference IDs in the web form.
 import { useId, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { History, MessageSquareText, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { EmptyNote, ErrorAlert, Loading } from "@/components/common";
+import { EmptyNote, ErrorAlert, Loading, SelectField, TextField } from "@/components/common";
 import { Markdown, ReadableJson } from "@/components/Markdown";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -98,9 +98,16 @@ interface Draft {
   body: string;
 }
 
-type Content = { kind: string; title: string; text: string; body: Record<string, unknown> };
+type Content = {
+  kind: string;
+  title: string;
+  text: string;
+  body: Record<string, unknown>;
+  references?: Reference[];
+};
 
 function emptyDraft(targetType: RecordTargetType): Draft {
+  if (targetType === "topic") return { kind: "handoff", title: "", text: "", body: "" };
   return targetType === "dataset_version"
     ? { kind: "provenance", title: t("common.records.provenanceTitle"), text: "", body: "" }
     : { kind: "note", title: "", text: "", body: "" };
@@ -173,6 +180,7 @@ export function WorkflowRecords({
         {adding && (
           <RecordForm
             initial={emptyDraft(targetType)}
+            initialReferences={targetType === "topic" ? [] : undefined}
             textHint={targetType === "dataset_version" ? t("common.records.provenanceHint") : undefined}
             kinds={kinds}
             submitLabel={t("common.records.save")}
@@ -244,6 +252,7 @@ function RecordItem({
             text: record.text,
             body: bodyText(record.body),
           }}
+          initialReferences={record.target.type === "topic" ? record.references : undefined}
           kinds={kinds}
           submitLabel={t("common.records.saveEdit")}
           onSubmit={save}
@@ -298,6 +307,15 @@ function RecordItem({
       </div>
       {record.text && <Markdown className="mt-2">{record.text}</Markdown>}
       <RecordBody value={record.body} />
+      <RecordEvidence record={record} />
+      {record.revision > 1 && <RecordHistory recordId={record.id} revision={record.revision} />}
+    </article>
+  );
+}
+
+export function RecordEvidence({ record }: { record: WorkflowRecord }) {
+  return (
+    <>
       {record.references.length > 0 && (
         <details className="mt-2">
           <summary className="cursor-pointer text-xs">
@@ -329,8 +347,7 @@ function RecordItem({
           ))}
         </div>
       )}
-      {record.revision > 1 && <RecordHistory recordId={record.id} revision={record.revision} />}
-    </article>
+    </>
   );
 }
 
@@ -403,6 +420,7 @@ function RevisionList({ recordId }: { recordId: string }) {
 
 function RecordForm({
   initial,
+  initialReferences,
   textHint,
   kinds,
   submitLabel,
@@ -411,6 +429,7 @@ function RecordForm({
   onReload,
 }: {
   initial: Draft;
+  initialReferences?: Reference[];
   /** What the text usually says for this kind of target. */
   textHint?: string;
   kinds: string[];
@@ -422,6 +441,10 @@ function RecordForm({
 }) {
   const id = useId();
   const [draft, setDraft] = useState(initial);
+  const [references, setReferences] = useState(initialReferences);
+  const changeReference = (index: number, patch: Partial<Reference>) => {
+    setReferences((items) => items?.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  };
   const [problems, setProblems] = useState<Partial<Record<keyof Draft, string>>>({});
   const [error, setError] = useState<unknown>();
   const [busy, setBusy] = useState(false);
@@ -454,6 +477,7 @@ function RecordForm({
         title: draft.title.trim(),
         text: draft.text,
         body: body as Record<string, unknown>,
+        references: references?.map((reference) => ({ ...reference, id: reference.id.trim() })),
       });
     } catch (err) {
       setError(err);
@@ -504,6 +528,37 @@ function RecordForm({
           onChange={(e) => set("text")(e.target.value)}
         />
       </Field>
+      {references && (
+        <div className="grid gap-2">
+          {references.map((reference, index) => (
+            <div key={index} className="flex flex-wrap items-end gap-2">
+              <SelectField
+                id={`${id}-reference-type-${index}`}
+                label={t("topics.evidenceType")}
+                value={reference.type}
+                onChange={(e) => changeReference(index, { type: e.target.value as Reference["type"] })}
+              >
+                {(["run", "trial", "artifact", "attachment_snapshot", "collection", "analysis_snapshot"] as const).map((type) => (
+                  <option key={type} value={type}>{t(`common.records.referenceType.${type}`)}</option>
+                ))}
+              </SelectField>
+              <TextField
+                id={`${id}-reference-id-${index}`}
+                label={t("topics.evidenceId")}
+                value={reference.id}
+                onChange={(e) => changeReference(index, { id: e.target.value })}
+                required
+              />
+              <Button type="button" size="sm" variant="ghost" onClick={() =>
+                setReferences((items) => items?.filter((_, i) => i !== index))
+              }>{t("topics.removeEvidence")}</Button>
+            </div>
+          ))}
+          <div><Button type="button" size="sm" variant="outline" onClick={() =>
+            setReferences((items) => [...(items ?? []), { type: "run", id: "" }])
+          }>{t("topics.addEvidence")}</Button></div>
+        </div>
+      )}
       <details open={!!initial.body || !!problems.body} className="grid gap-2">
         <summary className="cursor-pointer text-xs text-muted-foreground">
           {t("common.records.advanced")}

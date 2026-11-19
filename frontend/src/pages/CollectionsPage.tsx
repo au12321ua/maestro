@@ -27,13 +27,22 @@ import { t } from "@/i18n";
 import { api } from "@/lib/api";
 import { DIMENSION, SCENARIO } from "@/lib/comparison";
 import { fmtTime } from "@/lib/format";
-import { useLoad } from "@/lib/hooks";
+import { useCursorList, useLoad } from "@/lib/hooks";
+import { DIRECTORY_PAGE_SIZE, DirectoryCheck, MoreItems, TopicDirectory, TopicMembershipActions, useDirectorySelection } from "@/components/TopicDirectory";
+import { scopedPath, useTopicScope } from "@/lib/topics";
 import type { Dimension, Scenario, VariableDimension } from "@/lib/types";
 
 export function CollectionsPage() {
-  const collections = useLoad(async () => (await api.get("/collections")).data);
+  const { topicId } = useTopicScope();
+  const [q, setQuery] = useState("");
+  const key = JSON.stringify([topicId, q.trim()]);
+  const collections = useCursorList((cursor) => api.get("/collections", {
+    query: { topic_id: topicId ?? undefined, q: q.trim() || undefined, cursor, limit: DIRECTORY_PAGE_SIZE },
+  }), key);
+  const selection = useDirectorySelection(key);
   const snapshots = useLoad(
-    async () => (await api.get("/analysis-snapshots")).data,
+    async () => topicId ? undefined : (await api.get("/analysis-snapshots")).data,
+    [topicId],
   );
   const [creating, setCreating] = useState(false);
   return (
@@ -48,6 +57,11 @@ export function CollectionsPage() {
         {t("comparison.collections.intro")}
       </p>
       {creating && <NewCollection onClose={() => setCreating(false)} />}
+      <TopicDirectory search={q} onSearch={setQuery} />
+      <TopicMembershipActions kind="collection" ids={selection.selected} onChanged={async () => {
+        selection.setSelected(new Set());
+        await collections.reload();
+      }} />
       <ErrorAlert error={collections.error} />
       {collections.loading && !collections.data && <Loading />}
       {collections.data && collections.data.length === 0 && (
@@ -58,6 +72,12 @@ export function CollectionsPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>
+                  <DirectoryCheck name={t("topics.loaded")} checked={collections.data.every((item) => selection.selected.has(item.id))}
+                    onChange={() => selection.setSelected(new Set(
+                      collections.data?.every((item) => selection.selected.has(item.id)) ? [] : collections.data?.map((item) => item.id),
+                    ))} />
+                </TableHead>
                 <TableHead>{t("comparison.shared.name")}</TableHead>
                 <TableHead>{t("comparison.shared.scenario")}</TableHead>
                 <TableHead>{t("comparison.collections.dataset")}</TableHead>
@@ -71,10 +91,11 @@ export function CollectionsPage() {
             <TableBody>
               {collections.data.map((c) => (
                 <TableRow key={c.id}>
+                  <TableCell><DirectoryCheck name={c.name} checked={selection.selected.has(c.id)} onChange={() => selection.toggle(c.id)} /></TableCell>
                   <TableCell className="max-w-[24rem]">
                     <Link
                       className="block truncate font-medium text-primary hover:underline"
-                      to={`/collections/${c.id}`}
+                      to={scopedPath(`/collections/${c.id}`, topicId)}
                       title={c.name}
                     >
                       {c.name}
@@ -114,7 +135,8 @@ export function CollectionsPage() {
           </Table>
         </div>
       )}
-      <Card>
+      <MoreItems page={collections} />
+      {!topicId && <Card>
         <CardHeader>
           <CardTitle className="text-base">
             {t("comparison.shared.snapshots")}
@@ -129,7 +151,7 @@ export function CollectionsPage() {
             <SnapshotList items={snapshots.data} />
           )}
         </CardContent>
-      </Card>
+      </Card>}
     </div>
   );
 }

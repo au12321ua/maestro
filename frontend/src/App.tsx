@@ -12,6 +12,8 @@ import type { Capabilities, Me, SessionInfo, SystemStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { InvitePage, LoginPage, SetupPage } from "@/pages/AuthPages";
 import { RunListPage } from "@/pages/RunListPage";
+import { TopicPage, TopicsPage } from "@/pages/TopicsPage";
+import { TopicScopeProvider } from "@/lib/topics";
 import { NewRunPage } from "@/pages/NewRunPage";
 import { RunDetailPage } from "@/pages/RunDetailPage";
 import { DatasetsPage } from "@/pages/DatasetsPage";
@@ -188,9 +190,12 @@ function SignedIn({
 
   return (
     <SessionContext.Provider value={session}>
+      <TopicScopeProvider key={me.id} userId={me.id}>
       <Shell>
         <Routes>
           <Route path="/" element={<WorkbenchPage />} />
+          <Route path="/topics" element={<TopicsPage />} />
+          <Route path="/topics/:topicId" element={<TopicPage />} />
           <Route path="/runs" element={<RunListPage />} />
           <Route path="/runs/new" element={<NewRunPage />} />
           <Route path="/runs/:runId" element={<RunDetailPage />} />
@@ -212,6 +217,7 @@ function SignedIn({
           <Route path="*" element={<NotFound />} />
         </Routes>
       </Shell>
+      </TopicScopeProvider>
     </SessionContext.Provider>
   );
 }

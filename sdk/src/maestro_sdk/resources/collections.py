@@ -13,8 +13,12 @@ class Collections(_Resource):
     """Run lists the team keeps up. The specification is fixed at creation: which
     dimensions may vary, and the values of the others; only matching runs get in."""
 
-    def list(self) -> list[models.Collection]:
-        return self._c._get("collections", list[models.Collection])
+    def list(
+        self, *, q: str | None = None, topic_id: str | None = None, limit: int | None = None
+    ) -> list[models.Collection]:
+        return list(
+            self._c._iterate("collections", models.Collection, q=q, topic_id=topic_id, limit=limit)
+        )
 
     def get(self, collection_id: str) -> models.Collection:
         return self._c._get(f"collections/{collection_id}", models.Collection)

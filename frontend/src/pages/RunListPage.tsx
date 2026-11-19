@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { GitCompare, Package, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { DIRECTORY_PAGE_SIZE, TopicDirectory, TopicMembershipActions, useDirectorySelection } from "@/components/TopicDirectory";
+import { scopedPath, useTopicScope } from "@/lib/topics";
 import { AddToCollection } from "@/components/AddToCollection";
 import {
   EmptyNote,
@@ -19,6 +21,7 @@ import {
   PageTitle,
   ScoreCoverage,
   StatusPill,
+  SelectField,
 } from "@/components/common";
 import { t } from "@/i18n";
 import { api, errorText } from "@/lib/api";
@@ -33,60 +36,45 @@ import {
   label,
   shortId,
 } from "@/lib/format";
-import { useSession } from "@/lib/hooks";
-import type { Run } from "@/lib/types";
+import { useCursorList, useSession } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 
 export function RunListPage() {
   const { me } = useSession();
   const [scope, setScope] = useState<"mine" | "all">("all");
-  const [runs, setRuns] = useState<Run[]>([]);
-  const [cursor, setCursor] = useState<string | null>(null);
-  const [error, setError] = useState<unknown>();
-  const [loading, setLoading] = useState(true);
   const [retainedOnly, setRetainedOnly] = useState(false);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [q, setQuery] = useState("");
+  const [state, setState] = useState("");
+  const { topicId } = useTopicScope();
+  const [params] = useSearchParams();
+  const datasetVersion = params.get("dataset_version_id");
+  const attachmentVersion = params.get("attachment_version_id");
   const [exporting, setExporting] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const navigate = useNavigate();
 
-  const load = useCallback(
-    async (after: string | null) => {
-      setLoading(true);
-      try {
-        const res = await api.get("/runs", {
-          query: {
-            owner_id: scope === "mine" ? me.id : undefined,
-            artifacts_retained: retainedOnly ? true : undefined,
-            accepted_after: dayToApiTime(from),
-            accepted_before: dayToApiTime(to, 1),
-            cursor: after,
-          },
-        });
-        setRuns((prev) => (after ? [...prev, ...res.data] : res.data));
-        if (!after) setSelected(new Set());
-        setCursor(res.meta.next_cursor ?? null);
-        setError(undefined);
-      } catch (err) {
-        setError(err);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [scope, me.id, retainedOnly, from, to],
-  );
-
-  useEffect(() => {
-    void load(null);
-  }, [load]);
-
-  const toggle = (id: string) => {
-    const next = new Set(selected);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setSelected(next);
+  const query = {
+    owner_id: scope === "mine" ? me.id : undefined,
+    accepted_after: dayToApiTime(from),
+    accepted_before: dayToApiTime(to, 1),
+    q: q.trim() || undefined,
+    state: state || undefined,
+    topic_id: topicId ?? undefined,
+    artifacts_retained: retainedOnly || undefined,
+    dataset_version_id: datasetVersion ?? undefined,
+    attachment_version_id: attachmentVersion ?? undefined,
+    limit: DIRECTORY_PAGE_SIZE,
+  };
+  const queryKey = JSON.stringify(query);
+  const page = useCursorList((cursor) => api.get("/runs", { query: { ...query, cursor } }), queryKey);
+  const { cursor, error, loading } = page;
+  const runs = page.data ?? [];
+  const { selected, setSelected, toggle } = useDirectorySelection(queryKey);
+  const reload = async () => {
+    setSelected(new Set());
+    await page.reload();
   };
   const allSelected = runs.length > 0 && runs.every((r) => selected.has(r.id));
 
@@ -127,7 +115,7 @@ export function RunListPage() {
     if (failed === 0) toast.success(t("runs.list.deleted", { count: done }));
     else toast.error(t("runs.list.deletePartial", { done, failed, error: errorText(firstError) }));
     setDeleting(false);
-    await load(null);
+    await reload();
   };
 
   return (
@@ -209,17 +197,29 @@ export function RunListPage() {
           {t("runs.list.delete")}
           {deletable.length > 0 && t("runs.list.selectedCount", { n: deletable.length })}
         </Button>
-        <Button variant="outline" size="sm" onClick={() => void load(null)}>
+        <Button variant="outline" size="sm" onClick={() => void reload()}>
           <RefreshCw />
           {t("runs.list.refresh")}
         </Button>
         <Button asChild size="sm">
-          <Link to="/runs/new">
+          <Link to={scopedPath("/runs/new", topicId)}>
             <Plus />
             {t("runs.list.newRun")}
           </Link>
         </Button>
       </PageTitle>
+      <TopicDirectory search={q} onSearch={setQuery}>
+        <SelectField id="run-state" label={t("topics.state")} value={state} onChange={(e) => setState(e.target.value)}>
+          <option value="">{t("topics.anyState")}</option>
+          {Object.entries(RUN_STATE).map(([value, [name]]) => <option key={value} value={value}>{name}</option>)}
+        </SelectField>
+        {(datasetVersion || attachmentVersion) && (
+          <Button size="sm" variant="outline" asChild>
+            <Link to={scopedPath("/runs", topicId)}>{t("topics.clearMaterial", { id: datasetVersion ?? attachmentVersion })}</Link>
+          </Button>
+        )}
+      </TopicDirectory>
+      <TopicMembershipActions kind="run" ids={selected} onChanged={reload} />
       <ErrorAlert error={error} />
       {runs.length === 0 && !loading && !error && <EmptyNote>{t("runs.list.empty")}</EmptyNote>}
       {runs.length > 0 && (
@@ -262,7 +262,7 @@ export function RunListPage() {
                   <TableCell className="max-w-[24rem]">
                     <Link
                       className="block truncate font-medium text-primary hover:underline"
-                      to={`/runs/${run.id}`}
+                      to={scopedPath(`/runs/${run.id}`, topicId)}
                       title={run.name}
                     >
                       {run.name}
@@ -308,7 +308,7 @@ export function RunListPage() {
       {loading && <Loading />}
       {cursor && !loading && (
         <div className="mt-4 flex justify-center">
-          <Button variant="outline" onClick={() => void load(cursor)}>
+          <Button variant="outline" onClick={() => void page.more()}>
             {t("runs.list.loadMore")}
           </Button>
         </div>

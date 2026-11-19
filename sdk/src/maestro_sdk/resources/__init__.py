@@ -13,6 +13,7 @@ from maestro_sdk.resources.plans import Plans
 from maestro_sdk.resources.records import Records
 from maestro_sdk.resources.runs import Runs
 from maestro_sdk.resources.snapshots import Snapshots
+from maestro_sdk.resources.topics import Topics
 
 __all__ = [
     "Artifacts",
@@ -28,4 +29,5 @@ __all__ = [
     "Records",
     "Runs",
     "Snapshots",
+    "Topics",
 ]
