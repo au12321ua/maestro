@@ -27,6 +27,7 @@ from maestro.db.engine import Database
 from maestro.domain.states import RUN_TERMINAL, CleanupState, PatPermission, Role, UserStatus
 from maestro.execution.attachments import display
 from maestro.services import audit, deleted, pagination
+from maestro.services.artifacts import release_removed_files
 from maestro.services.attachments import release_contents
 from maestro.services.collections import drop_purged_run
 from maestro.services.preparation import recorded_outputs
@@ -1041,13 +1042,17 @@ class Recycle:
     def remove_files(self, keys: list[str]) -> dict | None:
         """Try every key; a failure does not skip the rest. The failures are logged and
         returned for the receipt; the sweep of unindexed files retries them later."""
-        failed = []
+        failed, removed = [], []
         for key in keys:
             try:
                 self.store.delete(key)
+                removed.append(key)
             except Exception:
                 log.exception("file %s could not be removed after a purge", key)
                 failed.append(key)
+        if removed:
+            with self.db.write() as conn:
+                release_removed_files(conn, removed)
         if failed:
             return {"files_failed": len(failed), "failed_keys": failed[:FAILED_KEYS_SHOWN]}
         return None

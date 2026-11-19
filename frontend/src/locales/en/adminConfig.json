@@ -125,6 +125,7 @@
       "pat_max_run_limit": "Runs an access token can submit (max)",
       "invitation_hours": "Invitation lifetime (hours)",
       "login_attempts_per_minute": "Failed logins allowed per account and address per minute",
+      "artifact_retention_quota_bytes": "Team artifact retention quota (bytes)",
       "artifact_ttl_days": "Days to keep raw artifacts",
       "export_ttl_hours": "Hours to keep export packages",
       "export_max_runs": "Max runs per export",

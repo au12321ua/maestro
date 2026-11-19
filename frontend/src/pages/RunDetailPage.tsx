@@ -75,6 +75,7 @@ import type {
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { SetupNetworkRevision } from "@/pages/admin/SetupNetworkTab";
+import { RunArtifactRetention } from "@/components/RunArtifactRetention";
 import { ArtifactTree } from "@/components/ArtifactTree";
 import { AddToCollection } from "@/components/AddToCollection";
 import { ConfigDifferences, type ConfigDifference } from "@/components/ConfigDifferences";
@@ -406,6 +407,10 @@ function RunDetailView({ runId }: { runId: string }) {
             <Info label={t("runs.detail.modelHarness")} value={<AgentSummary snapshot={run.snapshot} />} />
           )}
           <Info label={t("runs.detail.schedulingOrder")} value={run.scheduling_order ?? "—"} />
+          <Info
+            label={t("runs.detail.concurrency")}
+            value={t("runs.detail.concurrencyValue", { active: run.resource_usage.slots, max: run.snapshot.effective.concurrency })}
+          />
           <Info label={t("runs.detail.resourceUsage")} value={t("runs.detail.resourceUsageValue", run.resource_usage)} />
           {run.queue_reason && (
             <Info
@@ -506,6 +511,14 @@ function RunDetailView({ runId }: { runId: string }) {
           </Card>
         </TabsContent>
         <TabsContent value="artifacts" className="mt-3">
+          {!active && (
+            <RunArtifactRetention
+              runId={run.id}
+              retainedBytes={run.retained_artifact_bytes}
+              recycled={run.deletion != null}
+              onChange={load}
+            />
+          )}
           {!artifacts && <Loading />}
           {artifacts && artifacts.length === 0 && <EmptyNote>{t("runs.detail.noArtifacts")}</EmptyNote>}
           {artifacts && artifacts.length > 0 && (

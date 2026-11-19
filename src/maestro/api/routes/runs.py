@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from maestro.api.deps import maestro, ok, principal, respond
 from maestro.api.models import (
     Artifact,
+    ArtifactRetention,
     ConfigRequest,
     Envelope,
     Export,
@@ -91,6 +92,7 @@ def list_runs(
     client_request_id: str | None = None,
     accepted_after: str | None = None,
     accepted_before: str | None = None,
+    artifacts_retained: bool | None = None,
     cursor: str | None = None,
     limit: int | None = None,
     who: Principal = Depends(principal),
@@ -108,6 +110,7 @@ def list_runs(
         client_request_id=client_request_id,
         accepted_after=accepted_after,
         accepted_before=accepted_before,
+        artifacts_retained=artifacts_retained,
         cursor=cursor,
         limit=limit,
     )
@@ -179,6 +182,36 @@ def run_artifacts(
     run_id: str, request: Request, trial_id: str | None = None, _: Principal = Depends(principal)
 ):
     return ok(request, maestro(request).artifacts.for_run(run_id, trial_id))
+
+
+@router.get(
+    "/runs/{run_id}/artifact-retention",
+    response_model=Envelope[ArtifactRetention],
+    tags=["artifacts"],
+)
+def artifact_retention(run_id: str, request: Request, _: Principal = Depends(principal)):
+    """Preview files and team quota for an ended run."""
+    return ok(request, maestro(request).artifacts.retention(run_id))
+
+
+@router.put(
+    "/runs/{run_id}/artifact-retention",
+    response_model=Envelope[ArtifactRetention],
+    tags=["artifacts"],
+)
+def retain_artifacts(run_id: str, request: Request, who: Principal = Depends(principal)):
+    """Retain all currently available files without changing their links or expiry dates."""
+    return ok(request, maestro(request).artifacts.retain(who, run_id))
+
+
+@router.delete(
+    "/runs/{run_id}/artifact-retention",
+    response_model=Envelope[ArtifactRetention],
+    tags=["artifacts"],
+)
+def release_artifacts(run_id: str, request: Request, who: Principal = Depends(principal)):
+    """Release the run's files back to ordinary expiry."""
+    return ok(request, maestro(request).artifacts.release(who, run_id))
 
 
 @router.get(

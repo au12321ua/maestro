@@ -130,6 +130,8 @@ def capabilities(request: Request):
                 "runs.delete_own": experiment,
                 "runs.delete_any": admin("override"),
                 "exports.create": read,
+                "artifacts.retention.read": read,
+                "artifacts.retention.change": experiment,
                 "artifacts.delete": admin("override"),
                 "admin.recycle_bin": admin("audit"),
                 "admin.recycle_bin_restore_purge": session_admin,

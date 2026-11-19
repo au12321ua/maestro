@@ -86,7 +86,7 @@ class Runs(_Resource):
     def list(self, *, limit: int | None = None, **filters: Any) -> Iterator[models.Run]:
         """Newest first, all pages. Filters: owner_id, state, dataset_version_id,
         model_config_id, harness_version_id, attachment_version_id, plan_id,
-        client_request_id, accepted_after, accepted_before (RFC 3339 UTC)."""
+        client_request_id, accepted_after, accepted_before (RFC 3339 UTC), artifacts_retained."""
         return self._c._iterate("runs", models.Run, limit=limit, **filters)
 
     def find(self, client_request_id: str) -> list[models.Run]:
@@ -108,6 +108,20 @@ class Runs(_Resource):
 
     def artifacts(self, run_id: str, *, trial_id: str | None = None) -> list[models.Artifact]:
         return self._c._get(f"runs/{run_id}/artifacts", list[models.Artifact], trial_id=trial_id)
+
+    def artifact_retention(self, run_id: str) -> models.ArtifactRetention:
+        """Preview the ended run's files, ordinary expiry and team retention quota."""
+        return self._c._get(f"runs/{run_id}/artifact-retention", models.ArtifactRetention)
+
+    def retain_artifacts(self, run_id: str) -> models.ArtifactRetention:
+        """Keep the ended run's available files. Repeating the call never charges twice."""
+        return self._c._send("PUT", f"runs/{run_id}/artifact-retention", models.ArtifactRetention)
+
+    def release_artifacts(self, run_id: str) -> models.ArtifactRetention:
+        """Release retention; files become subject to their original expiry again."""
+        return self._c._send(
+            "DELETE", f"runs/{run_id}/artifact-retention", models.ArtifactRetention
+        )
 
     def download_archive(
         self,

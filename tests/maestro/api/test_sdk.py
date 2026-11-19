@@ -431,6 +431,9 @@ SDK_METHODS = {
     "cancel_run": "runs.cancel",
     "delete_run": "runs.delete",
     "run_artifacts": "runs.artifacts",
+    "artifact_retention": "runs.artifact_retention",
+    "retain_artifacts": "runs.retain_artifacts",
+    "release_artifacts": "runs.release_artifacts",
     "download_run_archive": "runs.download_archive",
     "preview_batch": "batches.preview",
     "submit_batch": "batches.submit",
@@ -626,3 +629,51 @@ def test_sdk_submits_oracle_attachments_and_submission_scoring(service, version_
         assert run.snapshot.effective.submission.version_id == submission.id
         assert run.snapshot.effective.attachments == []
         assert agent.runs.request(scored.run_id).submission == submission.id
+
+
+def test_sdk_and_web_share_auto_concurrency_and_artifact_retention(service, version_id):
+    from support import invite_member
+    from support.configuration import resolve
+
+    with running(service) as client:
+        admin = setup_admin(service, client)
+        admin.put(
+            "/api/v1/admin/team-policy",
+            json={"values": {"run_default_concurrency": 3}, "expected_revision": 0},
+            expect=200,
+        )
+        member = invite_member(service, admin, "member")
+        agent = sdk(create_pat(member, ("experiment",)))
+        read_only = sdk(create_pat(member, ()))
+        config = {"dataset_version_id": version_id, "execution_mode": "oracle", "repetitions": 2}
+        default = resolve(member, version_id, repetitions=2)
+        limited = resolve(member, version_id, repetitions=2, concurrency=1)
+        assert default["effective_config"]["concurrency"] == 3
+        assert limited["effective_config"]["concurrency"] == 1
+        assert default["planned_trials"] == limited["planned_trials"]
+        accepted = agent.runs.submit(config, name="automatic")
+        assert agent.runs.get(accepted.run_id).snapshot.effective.concurrency == 3
+        assert agent.operations.wait(accepted.operation_id, interval=0.02).status == "succeeded"
+
+        path = f"/api/v1/runs/{accepted.run_id}/artifact-retention"
+        preview = read_only.runs.artifact_retention(accepted.run_id)
+        assert preview.used_bytes == 0 and preview.additional_bytes > 0
+        with pytest.raises(ApiError) as refused:
+            read_only.runs.retain_artifacts(accepted.run_id)
+        assert refused.value.code == "PAT_PERMISSION_INSUFFICIENT"
+        # Another team member can act on the run's shared retention.
+        assert (
+            admin.put(path, expect=200).json()["data"]["retained_bytes"] == preview.additional_bytes
+        )
+        kept = agent.runs.retain_artifacts(accepted.run_id)
+        assert kept.retained_bytes == kept.used_bytes == preview.additional_bytes
+        assert {
+            r.id: r.retained_artifact_bytes for r in agent.runs.list(artifacts_retained=True)
+        } == {
+            accepted.run_id: kept.used_bytes,
+        }
+        with pytest.raises(ApiError) as refused:
+            read_only.runs.release_artifacts(accepted.run_id)
+        assert refused.value.code == "PAT_PERMISSION_INSUFFICIENT"
+        assert agent.runs.release_artifacts(accepted.run_id).used_bytes == 0
+        assert list(agent.runs.list(artifacts_retained=True)) == []

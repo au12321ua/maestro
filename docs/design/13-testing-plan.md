@@ -227,6 +227,8 @@ Runner 的 `runner/test_runner_attachments.py` 使用锁定 Harbor 的真实 Tri
 
 覆盖：`results/test_collections.py`。
 
+手动保留的隔离测试覆盖重启后从原链接读取、配额并发争抢、已缺失与清扫中的文件、解除后按原期限回收，以及物理删除失败后的记账与重试（`results/test_retention.py`）。网页和 SDK 的自动并发默认值、显式调低、保留预览与解除由 `api/test_sdk.py` 和 `frontend/qa/smoke.spec.ts` 验证。
+
 ### E2E-OUT-04 按层级打包下载产物
 
 步骤：在已结束的运行上分别下载整个运行、一个任务、一个试次、一次执行尝试的 zip → 与逐个下载的文件比较 → 下载 `content=deliverables` 的 zip，与 SDK `download_deliverables` 的目录和文件字节比较，覆盖重试、有结果及无结果的试次 → 让其中一些文件过期、保存失败或进回收站后再下载 → 对未结束的运行与超过 `export_max_gb` 的范围请求两种打包。

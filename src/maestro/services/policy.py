@@ -98,6 +98,13 @@ SETTINGS: dict[str, Setting] = {
     "login_attempts_per_minute": _s(
         "login_attempts_per_minute", 1, 1000, "access", "Failed logins per account a minute"
     ),
+    "artifact_retention_quota_bytes": _s(
+        "artifact_retention_quota_bytes",
+        0,
+        1024**5,
+        "retention",
+        "Manual artifact retention quota (bytes)",
+    ),
     "artifact_ttl_days": _s("artifact_ttl_days", 1, 3650, "retention", "Raw artifacts kept (days)"),
     "export_ttl_hours": _s("export_ttl_hours", 1, 720, "retention", "Exports kept (hours)"),
     "export_max_runs": _s("export_max_runs", 1, 10000, "retention", "Most runs in one export"),

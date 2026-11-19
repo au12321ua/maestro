@@ -71,7 +71,7 @@ class Artifact(BaseModel):
     expires_at: Annotated[
         str | None,
         Field(
-            description="When the file is reclaimed: trial (or run) end + TTL; null until it ends"
+            description="Ordinary expiry: trial (or run) end + TTL; manual retention does not alter it"
         ),
     ]
     id: str
@@ -96,6 +96,24 @@ class ArtifactCounts(BaseModel):
     available: int
     expired: int
     failed: Annotated[int, Field(description="Not saved, or found missing from storage")]
+
+
+class ArtifactRetentionFile(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    artifact_id: str
+    attempt_id: str | None
+    expires_at: str | None
+    past_expiry: Annotated[bool, Field(description="The ordinary expiry deadline has passed")]
+    relative_path: str
+    retained: bool
+    size_bytes: int | None
+    status: Literal[
+        "pending", "available", "failed", "deleting", "expired", "unavailable", "deleted"
+    ]
+    status_reason: str | None
+    trial_id: str | None
 
 
 class AttachmentContents(BaseModel):
@@ -2121,6 +2139,20 @@ class User(BaseModel):
     username: str
 
 
+class ArtifactRetention(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    additional_bytes: Annotated[
+        int, Field(description="Extra bytes needed to retain all available files")
+    ]
+    available_bytes: int
+    files: list[ArtifactRetentionFile]
+    quota_bytes: Annotated[int, Field(description="Team-wide quota for manual retention")]
+    retained_bytes: int
+    used_bytes: Annotated[int, Field(description="Team-wide space charged to manual retention")]
+
+
 class Attachment(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -2616,6 +2648,14 @@ class EnvelopeAdmissionRevoked(BaseModel):
         extra="allow",
     )
     data: AdmissionRevoked
+    meta: Meta
+
+
+class EnvelopeArtifactRetention(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: ArtifactRetention
     meta: Meta
 
 
@@ -3443,6 +3483,12 @@ class Run(BaseModel):
     relation: Literal["initial", "rerun", "modified"]
     resource_usage: ResourceUsage
     result_completeness: Literal["none", "partial", "complete"]
+    retained_artifact_bytes: Annotated[
+        int | None,
+        Field(
+            description="Team retention space charged to this run; null without any retained files"
+        ),
+    ]
     scheduling_order: Annotated[
         int | None,
         Field(description="Persistent acceptance order key; lower runs dispatch first"),
@@ -4880,6 +4926,12 @@ class RunDetail(BaseModel):
     relation: Literal["initial", "rerun", "modified"]
     resource_usage: ResourceUsage
     result_completeness: Literal["none", "partial", "complete"]
+    retained_artifact_bytes: Annotated[
+        int | None,
+        Field(
+            description="Team retention space charged to this run; null without any retained files"
+        ),
+    ]
     scheduling_order: Annotated[
         int | None,
         Field(description="Persistent acceptance order key; lower runs dispatch first"),

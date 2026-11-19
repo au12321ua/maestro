@@ -207,7 +207,7 @@
                 "type": "null"
               }
             ],
-            "description": "When the file is reclaimed: trial (or run) end + TTL; null until it ends",
+            "description": "Ordinary expiry: trial (or run) end + TTL; manual retention does not alter it",
             "title": "Expires At"
           },
           "id": {
@@ -314,6 +314,155 @@
           "expired"
         ],
         "title": "ArtifactCounts",
+        "type": "object"
+      },
+      "ArtifactRetention": {
+        "additionalProperties": false,
+        "properties": {
+          "additional_bytes": {
+            "description": "Extra bytes needed to retain all available files",
+            "title": "Additional Bytes",
+            "type": "integer"
+          },
+          "available_bytes": {
+            "title": "Available Bytes",
+            "type": "integer"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/ArtifactRetentionFile"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "quota_bytes": {
+            "description": "Team-wide quota for manual retention",
+            "title": "Quota Bytes",
+            "type": "integer"
+          },
+          "retained_bytes": {
+            "title": "Retained Bytes",
+            "type": "integer"
+          },
+          "used_bytes": {
+            "description": "Team-wide space charged to manual retention",
+            "title": "Used Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "available_bytes",
+          "additional_bytes",
+          "retained_bytes",
+          "used_bytes",
+          "quota_bytes",
+          "files"
+        ],
+        "title": "ArtifactRetention",
+        "type": "object"
+      },
+      "ArtifactRetentionFile": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_id": {
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "attempt_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt Id"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "past_expiry": {
+            "description": "The ordinary expiry deadline has passed",
+            "title": "Past Expiry",
+            "type": "boolean"
+          },
+          "relative_path": {
+            "title": "Relative Path",
+            "type": "string"
+          },
+          "retained": {
+            "title": "Retained",
+            "type": "boolean"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "available",
+              "failed",
+              "deleting",
+              "expired",
+              "unavailable",
+              "deleted"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "status_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Reason"
+          },
+          "trial_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trial Id"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "relative_path",
+          "trial_id",
+          "attempt_id",
+          "status",
+          "status_reason",
+          "size_bytes",
+          "retained",
+          "expires_at",
+          "past_expiry"
+        ],
+        "title": "ArtifactRetentionFile",
         "type": "object"
       },
       "Attachment": {
@@ -6177,6 +6326,23 @@
           "meta"
         ],
         "title": "Envelope[AdmissionRevoked]",
+        "type": "object"
+      },
+      "Envelope_ArtifactRetention_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ArtifactRetention"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[ArtifactRetention]",
         "type": "object"
       },
       "Envelope_AttachmentDiff_": {
@@ -14094,6 +14260,18 @@
             "title": "Result Completeness",
             "type": "string"
           },
+          "retained_artifact_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Team retention space charged to this run; null without any retained files",
+            "title": "Retained Artifact Bytes"
+          },
           "scheduling_order": {
             "anyOf": [
               {
@@ -14183,6 +14361,7 @@
           "client_request_id",
           "state",
           "result_completeness",
+          "retained_artifact_bytes",
           "artifact_state",
           "cleanup_state",
           "stop_requested",
@@ -14779,6 +14958,18 @@
             "title": "Result Completeness",
             "type": "string"
           },
+          "retained_artifact_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Team retention space charged to this run; null without any retained files",
+            "title": "Retained Artifact Bytes"
+          },
           "scheduling_order": {
             "anyOf": [
               {
@@ -14871,6 +15062,7 @@
           "client_request_id",
           "state",
           "result_completeness",
+          "retained_artifact_bytes",
           "artifact_state",
           "cleanup_state",
           "stop_requested",
@@ -25309,6 +25501,22 @@
           },
           {
             "in": "query",
+            "name": "artifacts_retained",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Artifacts Retained"
+            }
+          },
+          {
+            "in": "query",
             "name": "cursor",
             "required": false,
             "schema": {
@@ -25498,6 +25706,131 @@
         "summary": "Get Run",
         "tags": [
           "runs"
+        ]
+      }
+    },
+    "/api/v1/runs/{run_id}/artifact-retention": {
+      "delete": {
+        "description": "Release the run's files back to ordinary expiry.",
+        "operationId": "release_artifacts",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_ArtifactRetention_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Release Artifacts",
+        "tags": [
+          "artifacts"
+        ]
+      },
+      "get": {
+        "description": "Preview files and team quota for an ended run.",
+        "operationId": "artifact_retention",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_ArtifactRetention_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Artifact Retention",
+        "tags": [
+          "artifacts"
+        ]
+      },
+      "put": {
+        "description": "Retain all currently available files without changing their links or expiry dates.",
+        "operationId": "retain_artifacts",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_ArtifactRetention_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Retain Artifacts",
+        "tags": [
+          "artifacts"
         ]
       }
     },

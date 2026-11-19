@@ -744,6 +744,17 @@ artifacts = Table(
     ),
 )
 
+# A reservation outlives the artifact index during a physical purge. Its bytes are
+# released only after the storage key has been removed.
+artifact_retentions = Table(
+    "artifact_retentions",
+    metadata,
+    Column("storage_key", String(256), primary_key=True),
+    _ref("run_id", "runs"),
+    Column("size_bytes", Integer, nullable=False),
+    Index("ix_artifact_retentions_run", "run_id"),
+)
+
 # Bounded read protection: retention skips pinned artifacts until the pin expires.
 artifact_pins = Table(
     "artifact_pins",

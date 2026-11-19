@@ -103,9 +103,18 @@
   },
   "scale": {
     "title": "规模与资源",
-    "description": "留空表示继承：次数、并发和总时限取团队默认，资源与时限取任务作者的设定。超过团队上限会被拒绝，不会被悄悄改小。",
+    "description": "重复次数和运行时限可沿用团队默认值。资源与试次时限可沿用任务作者的设置。",
     "teamDefault": "团队默认 {{default}}，上限 {{max}}",
     "repetitions": "每任务重复次数",
+    "autoConcurrency": "自动并发，本次最多 {{count}} 个试次同时执行",
+    "limitConcurrency": "限制本次并发",
+    "limitedConcurrency": "已限制本次并发为 {{count}}",
+    "concurrencyHint": "填写较低的上限，清空可沿用上方的值。",
+    "inheritedConcurrency": {
+      "plan": "沿用方案，最多 {{count}} 个试次同时执行",
+      "run": "沿用来源运行，最多 {{count}} 个试次同时执行",
+      "collection": "沿用集合，最多 {{count}} 个试次同时执行"
+    },
     "concurrency": "并发数",
     "runDeadline": "运行总时限（小时，含排队）",
     "agentTimeout": "Agent 时限（秒）",
@@ -174,6 +183,7 @@
     "bootstrapTimeout": "附件安装时限（秒）"
   },
   "resolution": {
+    "concurrency": "本次并发上限为 {{count}}",
     "executorDefault": "执行器默认",
     "credential": "（凭据）",
     "blocked": "配置有阻塞项，不能提交",

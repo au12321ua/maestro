@@ -201,6 +201,7 @@ def public_run(
         "state": state.value,
         "result_completeness": result_completeness(counts).value,
         "artifact_state": row["artifact_state"],
+        "retained_artifact_bytes": row["retained_artifact_bytes"],
         "cleanup_state": row["cleanup_state"],
         "stop_requested": row["stop_requested"],
         "stop_reason": row["stop_reason"],
@@ -230,6 +231,11 @@ def public_run(
 def runs_with_owner():
     return select(
         t.runs,
+        select(func.sum(t.artifact_retentions.c.size_bytes))
+        .where(t.artifact_retentions.c.run_id == t.runs.c.id)
+        .correlate(t.runs)
+        .scalar_subquery()
+        .label("retained_artifact_bytes"),
         select(func.min(t.work_items.c.enqueue_seq))
         .join(t.trials, t.trials.c.id == t.work_items.c.trial_id)
         .where(t.trials.c.run_id == t.runs.c.id)
@@ -1175,6 +1181,7 @@ class Runs:
         harness_version_id: str | None = None,
         attachment_version_id: str | None = None,
         plan_id: str | None = None,
+        artifacts_retained: bool | None = None,
     ) -> tuple[list, str | None]:
         """Deleted runs are hidden; the recycle bin lists them."""
         limit = pagination.check_limit(limit)
@@ -1207,6 +1214,9 @@ class Runs:
             "client_request_id": client_request_id,
             "accepted_after": accepted_after,
             "accepted_before": accepted_before,
+            **(
+                {"artifacts_retained": artifacts_retained} if artifacts_retained is not None else {}
+            ),
         }
         query = runs_with_owner().where(deleted.visible(t.runs.c.id, "run"))
         for column, value in (
@@ -1220,6 +1230,13 @@ class Runs:
         ):
             if value is not None:
                 query = query.where(column == value)
+        if artifacts_retained is not None:
+            retained = (
+                select(t.artifact_retentions.c.run_id)
+                .where(t.artifact_retentions.c.run_id == t.runs.c.id)
+                .exists()
+            )
+            query = query.where(retained if artifacts_retained else ~retained)
         if attachment_version_id is not None:
             query = query.where(
                 t.runs.c.id.in_(
