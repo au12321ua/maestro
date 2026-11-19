@@ -1371,7 +1371,7 @@ class RecordTargetInput(BaseModel):
         Field(description="Object id, or the attachment name for an attachment target"),
     ]
     snapshot_id: Annotated[str | None, Field(description="Only for attachment targets")] = None
-    type: Literal["collection", "run", "attachment", "dataset_version"]
+    type: Literal["collection", "run", "attachment", "dataset_version", "topic"]
 
 
 class RecordTargetOutput(BaseModel):
@@ -1383,7 +1383,7 @@ class RecordTargetOutput(BaseModel):
         Field(description="Object id, or the attachment name for an attachment target"),
     ]
     snapshot_id: Annotated[str | None, Field(description="Only for attachment targets")]
-    type: Literal["collection", "run", "attachment", "dataset_version"]
+    type: Literal["collection", "run", "attachment", "dataset_version", "topic"]
 
 
 class RecycleEntry(BaseModel):
@@ -1415,6 +1415,7 @@ class RecycleEntry(BaseModel):
         "collection",
         "analysis_snapshot",
         "workflow_record",
+        "topic",
     ]
     owner_id: str | None
     owner_username: str | None
@@ -1545,6 +1546,7 @@ class RunRerun(BaseModel):
     client_request_id: str | None = None
     name: str | None = None
     task_selection: Annotated[RerunSelection | None, Field(validate_default=True)] = {"mode": "all"}
+    topic_id: str | None = None
 
 
 class RunScoring(BaseModel):
@@ -1989,6 +1991,99 @@ class TimeoutOverrides(BaseModel):
         Field(description="Time for each trial to install all attachments (team default)"),
     ] = None
     verifier_sec: float | None = None
+
+
+class TopicMaterial(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    deletion: DeletionState | None
+    id: str
+    kind: Literal["dataset_version", "attachment_snapshot"]
+    label: str | None
+    name: str
+    source_run_count: int
+    source_run_ids: Annotated[list[str], Field(description="Up to eight newest source runs")]
+
+
+class TopicObject(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    id: Annotated[str, Field(max_length=40, min_length=1)]
+    kind: Literal["run", "collection", "dataset", "attachment_snapshot"]
+
+
+class TopicReference(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    added_at: str
+    deletion: DeletionState | None
+    id: Annotated[str, Field(max_length=40, min_length=1)]
+    kind: Literal["run", "collection", "dataset", "attachment_snapshot"]
+    label: str | None
+    name: str
+
+
+class TopicReferenceChanges(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    add: Annotated[list[TopicObject] | None, Field(max_length=200)] = None
+    remove: Annotated[list[TopicObject] | None, Field(max_length=200)] = None
+
+
+class TopicReferenceResult(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    added: int
+    removed: int
+
+
+class TopicRunSummary(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    accepted_at: str
+    id: str
+    name: str
+    scoring: RunScoring
+    state: Literal[
+        "queued", "preparing", "running", "finalizing", "finished", "cancelled", "interrupted"
+    ]
+
+
+class TopicSettingsInput(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    materials_expanded: bool | None = True
+
+
+class TopicSettingsOutput(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    materials_expanded: bool
+
+
+class Name(RootModel[str]):
+    root: Annotated[str, Field(max_length=128)]
+
+
+class Purpose(RootModel[str]):
+    root: Annotated[str, Field(max_length=4096)]
+
+
+class TopicUpdate(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    name: Name | None = None
+    purpose: Purpose | None = None
+    settings: TopicSettingsInput | None = None
 
 
 class TrialResult(BaseModel):
@@ -2835,6 +2930,14 @@ class EnvelopeTeamPolicy(BaseModel):
     meta: Meta
 
 
+class EnvelopeTopicReferenceResult(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: TopicReferenceResult
+    meta: Meta
+
+
 class EnvelopeUpstreamVersions(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -3000,6 +3103,22 @@ class EnvelopeListTeamPolicyRevision(BaseModel):
         extra="allow",
     )
     data: list[TeamPolicyRevision]
+    meta: Meta
+
+
+class EnvelopeListTopicMaterial(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: list[TopicMaterial]
+    meta: Meta
+
+
+class EnvelopeListTopicReference(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: list[TopicReference]
     meta: Meta
 
 
@@ -3566,6 +3685,7 @@ class RunCreate(BaseModel):
         "mode": "all_eligible"
     }
     timeouts: Annotated[TimeoutOverrides | None, Field(validate_default=True)] = {}
+    topic_id: Annotated[str | None, Field(description="Add the accepted run to this topic")] = None
 
 
 class RunOperation(BaseModel):
@@ -3748,6 +3868,35 @@ class TaskBlocker(BaseModel):
     parameters: list[str] | None = None
     resource_kind: str | None = None
     value: int | float | None = None
+
+
+class Topic(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    allowed_actions: list[str]
+    created_at: str
+    deletion: DeletionState | None
+    id: str
+    name: str
+    owner_id: str
+    purpose: str
+    settings: TopicSettingsOutput
+    updated_at: str
+    web_path: Annotated[
+        str, Field(description="The stable web path relative to the deployment root")
+    ]
+
+
+class TopicCreate(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    name: Annotated[str, Field(max_length=128)]
+    purpose: Annotated[str | None, Field(max_length=4096)] = ""
+    settings: Annotated[TopicSettingsInput | None, Field(validate_default=True)] = {
+        "materials_expanded": True
+    }
 
 
 class UpdateStatus(BaseModel):
@@ -4130,6 +4279,14 @@ class EnvelopeCapabilities(BaseModel):
     meta: Meta
 
 
+class EnvelopeDataset(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: Dataset
+    meta: Meta
+
+
 class EnvelopeModelConfig(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -4159,6 +4316,14 @@ class EnvelopeSystemStatus(BaseModel):
         extra="allow",
     )
     data: SystemStatus
+    meta: Meta
+
+
+class EnvelopeTopic(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: Topic
     meta: Meta
 
 
@@ -4223,6 +4388,14 @@ class EnvelopeListRun(BaseModel):
         extra="allow",
     )
     data: list[Run]
+    meta: Meta
+
+
+class EnvelopeListTopic(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: list[Topic]
     meta: Meta
 
 
@@ -4549,6 +4722,26 @@ class TaskDetail(BaseModel):
     warnings: list[TaskWarning]
 
 
+class TopicOverview(BaseModel):
+    """
+    Bounded previews. Use the filtered list endpoints for the remaining items.
+    """
+
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    active_run_count: int
+    active_runs: list[TopicRunSummary]
+    attachments: list[TopicReference]
+    collections: list[TopicReference]
+    datasets: list[TopicReference]
+    latest_handoff: WorkflowRecord | None
+    recent_runs: list[TopicRunSummary]
+    topic: Topic
+    used_attachment_snapshots: list[TopicMaterial]
+    used_dataset_versions: list[TopicMaterial]
+
+
 class Trial(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -4828,6 +5021,14 @@ class EnvelopeTaskDetail(BaseModel):
         extra="allow",
     )
     data: TaskDetail
+    meta: Meta
+
+
+class EnvelopeTopicOverview(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: TopicOverview
     meta: Meta
 
 

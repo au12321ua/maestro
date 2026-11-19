@@ -101,7 +101,7 @@ test("setup, run, PAT, admin and invitation flow", async ({ page, browser }) => 
   await expect(page).toHaveURL(/\/runs\/(?!new$)[^/]+$/);
   const runUrl = page.url();
   await expect(page.getByText("每 2 秒自动刷新")).toBeVisible();
-  await expect(page.getByText("已结束")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText("已结束", { exact: true })).toBeVisible({ timeout: 60_000 });
   // Oracle is a test mode: the run page offers no way into a collection.
   await expect(page.getByRole("button", { name: "加入集合" })).toHaveCount(0);
   for (const title of ["生命周期", "评分覆盖", "产物保存", "环境清理"]) {
@@ -588,7 +588,7 @@ test("rerun, plan and batch", async ({ page }) => {
   await page.getByRole("button", { name: "按此配置提交运行" }).click();
   await expect(page).toHaveURL(/\/runs\/(?!new$)[^/]+$/);
   const source = page.url();
-  await expect(page.getByText("已结束")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText("已结束", { exact: true })).toBeVisible({ timeout: 60_000 });
 
   // Rerun: a new run from the same snapshot, linked back to its source.
   await page.getByRole("button", { name: "重跑", exact: true }).click();
@@ -745,7 +745,7 @@ test("submission package and submission scoring run", async ({ page }) => {
   await page.getByRole("button", { name: "检查配置" }).click();
   await page.getByRole("button", { name: "按此配置提交运行" }).click();
   await expect(page).toHaveURL(/\/runs\/(?!new$)[^/]+$/);
-  await expect(page.getByText("已结束")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText("已结束", { exact: true })).toBeVisible({ timeout: 60_000 });
   // Shown as submission scoring, never as Oracle, and never offered to a collection.
   await expect(page.getByText("提交评分").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "加入集合" })).toHaveCount(0);
@@ -1370,4 +1370,126 @@ test("recycle restore orders parents first and filtering clears selection", asyn
   release!();
   await expect(page.getByTestId("recycle-row")).toHaveCount(0);
   expect(calls).toEqual(["parent", "child"]);
+});
+
+test("experiment topic scopes, paged runs and a handoff with evidence", async ({ page }) => {
+  test.skip(!token, "MAESTRO_SETUP_TOKEN not set");
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/");
+  await page.getByLabel("用户名").fill("admin");
+  await page.getByLabel("密码").fill(password);
+  const login = page.waitForResponse((response) =>
+    response.url().endsWith("/api/v1/session") && response.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "登录" }).click();
+  const session = (await (await login).json()).data;
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  await nav(page, "实验专题").click();
+  await page.getByRole("button", { name: "新建专题" }).click();
+  await page.getByLabel("专题名称", { exact: true }).fill("验证器回归交接");
+  await page.getByLabel("实验目的").fill("核对验证器版本与失败原因");
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "验证器回归交接" })).toBeVisible();
+  await expect(page).toHaveTitle("Maestro");
+  const topicUrl = page.url();
+  const topicId = new URL(topicUrl).pathname.split("/").at(-1)!;
+
+  await page.getByRole("link", { name: "浏览数据集" }).click();
+  const scope = page.getByRole("combobox", { name: "专题范围", exact: true });
+  await expect(scope).toHaveValue(topicId);
+  await scope.selectOption("");
+  await page.getByLabel("搜索名称或 ID").fill("demo/arith");
+  const dataset = page.getByTestId("dataset-card").filter({ hasText: "demo/arith" });
+  await dataset.getByRole("checkbox", { name: "选择 demo/arith" }).check();
+  await page.getByRole("button", { name: "加入专题（1）" }).click();
+  await page.getByLabel("目标专题").selectOption(topicId);
+  await page.getByRole("button", { name: "确认加入" }).click();
+  await expect(page.getByText("已加入专题")).toBeVisible();
+  await scope.selectOption(topicId);
+  await dataset.getByRole("button", { name: "展开 demo/arith 的版本" }).click();
+  await expect(dataset.getByRole("button", { name: /v1/ }).first()).toBeVisible();
+  await page.getByRole("link", { name: "专题概览" }).click();
+
+  await page.getByRole("link", { name: "在专题中提交运行" }).click();
+  await page.getByLabel("运行名称").fill("专题基线");
+  await page.locator("#run-dataset").selectOption({ label: "demo/arith" });
+  await expect(page.getByLabel(/提交后加入本专题/)).toBeChecked();
+  await page.getByLabel(/^Oracle/).check();
+  await page.getByLabel("手动选择").check();
+  await page.getByLabel("选择 add-01", { exact: true }).check();
+  await page.getByRole("button", { name: "检查配置" }).click();
+  await page.getByRole("button", { name: "按此配置提交运行" }).click();
+  await expect(page).toHaveURL(/\/runs\/run_[^?]+\?topic=/);
+  const runId = new URL(page.url()).pathname.split("/").at(-1)!;
+  const rawRun = await page.request.get(`/api/v1/runs/${runId}`);
+  expect(rawRun.ok()).toBeTruthy();
+  const { dataset_version_id: versionId } = (await rawRun.json()).data;
+  const trials = await page.request.get(`/api/v1/runs/${runId}/trials`);
+  const taskId = (await trials.json()).data[0].task_id;
+  // Put enough runs ahead of the baseline to exercise the directory's next cursor.
+  for (let batch = 0; batch < 2; batch++) {
+    const accepted = await page.request.post("/api/v1/run-batches", {
+      headers: { "X-CSRF-Token": session.csrf_token, "Idempotency-Key": `topic-smoke-batch-${batch}` },
+      data: {
+        name: `Topic page ${batch}`,
+        runs: Array.from({ length: 13 }, (_, index) => ({
+          name: `专题分页 ${batch}-${index}`,
+          topic_id: topicId,
+          dataset_version_id: versionId,
+          execution_mode: "oracle",
+          task_selection: { mode: "explicit", task_ids: [taskId] },
+        })),
+      },
+    });
+    expect(accepted.status(), await accepted.text()).toBe(202);
+    if (batch === 0) {
+      const cancelledRun = (await accepted.json()).data.runs.at(-1).run_id;
+      const stopped = await page.request.post(`/api/v1/runs/${cancelledRun}/cancel`, {
+        headers: { "X-CSRF-Token": session.csrf_token },
+      });
+      expect(stopped.ok()).toBeTruthy();
+    }
+  }
+  await page.goto(topicUrl);
+  await page.getByRole("link", { name: "浏览运行" }).click();
+  await expect(scope).toHaveValue(topicId);
+  await expect(page.getByRole("link", { name: "专题基线" })).toHaveCount(0);
+  await page.getByRole("button", { name: "加载更多" }).click();
+  await page.getByRole("link", { name: "专题基线" }).click();
+  await page.getByLabel("搜索任务名").fill("add-01");
+  await expect(page.getByTestId("trial-row")).toHaveCount(1);
+  await page.getByTestId("trial-row").click();
+  await expect(page).toHaveURL(/[?&]trial=/);
+  await page.goBack();
+  await expect(scope).toHaveValue(topicId);
+  await page.getByLabel("搜索名称或 ID").fill("专题分页 0-12");
+  await page.getByRole("link", { name: "专题分页 0-12", exact: true }).click();
+  await page.getByLabel("试次状态").selectOption("failed");
+  await expect(page.getByTestId("trial-row")).toHaveCount(1, { timeout: 30_000 });
+  await page.getByTestId("trial-row").click();
+  await page.goBack();
+  await expect(scope).toHaveValue(topicId);
+  await page.getByRole("link", { name: "专题概览" }).click();
+  await page.getByRole("button", { name: "交接记录", exact: true }).click();
+  await page.getByRole("button", { name: "添加记录", exact: true }).click();
+  await page.getByLabel("标题", { exact: true }).fill("下一轮只复核首题");
+  await page.getByLabel("文字（Markdown）", { exact: true }).fill("从附带的基线运行打开首题。");
+  await page.getByRole("button", { name: "添加引用" }).click();
+  await page.getByLabel("引用对象 ID").fill(runId);
+  await page.getByRole("button", { name: "添加", exact: true }).click();
+  await expect(page.getByText("下一轮只复核首题").first()).toBeVisible();
+  await page.goto(topicUrl);
+  await expect(page.getByText("从附带的基线运行打开首题。")).toBeVisible();
+  await expect(page.getByText("核对验证器版本与失败原因")).toBeVisible();
+  await page.getByText(/引用（1）/).click();
+  await expect(page.getByRole("link", { name: new RegExp(runId) })).toHaveAttribute("href", `/runs/${runId}`);
+  await page.screenshot({ path: `${shots}/topic-overview.png`, fullPage: false });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("heading", { name: "验证器回归交接" })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await page.screenshot({ path: `${shots}/topic-overview-mobile.png`, fullPage: false });
+  expect(errors).toEqual([]);
 });

@@ -5,6 +5,10 @@
     "requestFailed": "Request failed"
   },
   "codes": {
+    "TOPIC_NOT_FOUND": "Experiment topic not found",
+    "TOPIC_DELETED": "Experiment topic has been deleted",
+    "TOPIC_REFERENCE_UNAVAILABLE": "A referenced object is missing or deleted",
+    "TOPIC_INVALID": "Invalid experiment topic data",
     "DATASET_LABEL_TAKEN": "This dataset version label is already taken; choose another label",
     "DATASET_SOURCE_CONFLICT": "This namespace and name already belong to a dataset from another source; choose a new name",
     "DATASET_VERSION_NOT_UPLOADED": "Hub versions' contents live upstream; only uploaded versions offer original file lists and archive downloads",

@@ -75,8 +75,25 @@ class Catalog(_Resource):
             raise ContentMismatch("The dataset upload operation has a different content digest")
         return operation
 
-    def datasets(self, *, limit: int | None = None) -> Iterator[models.Dataset]:
-        return self._c._iterate("datasets", models.Dataset, limit=limit)
+    def datasets(
+        self,
+        *,
+        limit: int | None = None,
+        q: str | None = None,
+        topic_id: str | None = None,
+        include_versions: bool = True,
+    ) -> Iterator[models.Dataset]:
+        return self._c._iterate(
+            "datasets",
+            models.Dataset,
+            limit=limit,
+            q=q,
+            topic_id=topic_id,
+            include_versions=False if not include_versions else None,
+        )
+
+    def dataset(self, dataset_id: str) -> models.Dataset:
+        return self._c._get(f"datasets/{dataset_id}", models.Dataset)
 
     def version(self, version_id: str) -> models.DatasetVersionDetail:
         return self._c._get(f"dataset-versions/{version_id}", models.DatasetVersionDetail)

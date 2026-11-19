@@ -42,8 +42,19 @@ def compare_runs(body: ComparisonRequest, request: Request, who: Principal = Dep
 
 
 @router.get("/collections", response_model=Envelope[list[Collection]])
-def list_collections(request: Request, who: Principal = Depends(principal)):
-    return ok(request, maestro(request).collections.list(who))
+def list_collections(
+    request: Request,
+    q: str | None = None,
+    topic_id: str | None = None,
+    cursor: str | None = None,
+    limit: int | None = None,
+    who: Principal = Depends(principal),
+):
+    collections = maestro(request).collections
+    if all(value is None for value in (q, topic_id, cursor, limit)):
+        return ok(request, collections.list(who))
+    items, next_cursor = collections.list_page(who, topic_id, q, cursor, limit)
+    return ok(request, items, next_cursor)
 
 
 @router.post("/collections", response_model=Envelope[Collection], status_code=201)

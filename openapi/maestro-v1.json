@@ -6583,6 +6583,23 @@
         "title": "Envelope[DatasetVersionDetail]",
         "type": "object"
       },
+      "Envelope_Dataset_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Dataset"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[Dataset]",
+        "type": "object"
+      },
       "Envelope_DeploymentSettings_": {
         "additionalProperties": false,
         "properties": {
@@ -7057,6 +7074,57 @@
           "meta"
         ],
         "title": "Envelope[TeamPolicy]",
+        "type": "object"
+      },
+      "Envelope_TopicOverview_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/TopicOverview"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[TopicOverview]",
+        "type": "object"
+      },
+      "Envelope_TopicReferenceResult_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/TopicReferenceResult"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[TopicReferenceResult]",
+        "type": "object"
+      },
+      "Envelope_Topic_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Topic"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[Topic]",
         "type": "object"
       },
       "Envelope_UpdateStatus_": {
@@ -7776,6 +7844,69 @@
           "meta"
         ],
         "title": "Envelope[list[TeamPolicyRevision]]",
+        "type": "object"
+      },
+      "Envelope_list_TopicMaterial__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/TopicMaterial"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[list[TopicMaterial]]",
+        "type": "object"
+      },
+      "Envelope_list_TopicReference__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/TopicReference"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[list[TopicReference]]",
+        "type": "object"
+      },
+      "Envelope_list_Topic__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/Topic"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[list[Topic]]",
         "type": "object"
       },
       "Envelope_list_Trial__": {
@@ -13290,7 +13421,8 @@
               "collection",
               "run",
               "attachment",
-              "dataset_version"
+              "dataset_version",
+              "topic"
             ],
             "title": "Type",
             "type": "string"
@@ -13328,7 +13460,8 @@
               "collection",
               "run",
               "attachment",
-              "dataset_version"
+              "dataset_version",
+              "topic"
             ],
             "title": "Type",
             "type": "string"
@@ -13489,7 +13622,8 @@
               "experiment_plan",
               "collection",
               "analysis_snapshot",
-              "workflow_record"
+              "workflow_record",
+              "topic"
             ],
             "title": "Object Type",
             "type": "string"
@@ -14744,6 +14878,18 @@
           "timeouts": {
             "$ref": "#/components/schemas/TimeoutOverrides",
             "default": {}
+          },
+          "topic_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Add the accepted run to this topic",
+            "title": "Topic Id"
           }
         },
         "required": [
@@ -15473,6 +15619,17 @@
             "default": {
               "mode": "all"
             }
+          },
+          "topic_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topic Id"
           }
         },
         "title": "RunRerun",
@@ -18300,6 +18457,491 @@
         "title": "TimeoutOverrides",
         "type": "object"
       },
+      "Topic": {
+        "additionalProperties": false,
+        "properties": {
+          "allowed_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Actions",
+            "type": "array"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "deletion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeletionState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owner_id": {
+            "title": "Owner Id",
+            "type": "string"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/TopicSettings-Output"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "web_path": {
+            "description": "The stable web path relative to the deployment root",
+            "title": "Web Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "purpose",
+          "settings",
+          "owner_id",
+          "created_at",
+          "updated_at",
+          "web_path",
+          "deletion",
+          "allowed_actions"
+        ],
+        "title": "Topic",
+        "type": "object"
+      },
+      "TopicCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 128,
+            "title": "Name",
+            "type": "string"
+          },
+          "purpose": {
+            "default": "",
+            "maxLength": 4096,
+            "title": "Purpose",
+            "type": "string"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/TopicSettings-Input",
+            "default": {
+              "materials_expanded": true
+            }
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "TopicCreate",
+        "type": "object"
+      },
+      "TopicMaterial": {
+        "additionalProperties": false,
+        "properties": {
+          "deletion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeletionState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "dataset_version",
+              "attachment_snapshot"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "source_run_count": {
+            "title": "Source Run Count",
+            "type": "integer"
+          },
+          "source_run_ids": {
+            "description": "Up to eight newest source runs",
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Run Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "name",
+          "label",
+          "deletion",
+          "source_run_count",
+          "source_run_ids"
+        ],
+        "title": "TopicMaterial",
+        "type": "object"
+      },
+      "TopicObject": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "run",
+              "collection",
+              "dataset",
+              "attachment_snapshot"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ],
+        "title": "TopicObject",
+        "type": "object"
+      },
+      "TopicOverview": {
+        "additionalProperties": false,
+        "description": "Bounded previews. Use the filtered list endpoints for the remaining items.",
+        "properties": {
+          "active_run_count": {
+            "title": "Active Run Count",
+            "type": "integer"
+          },
+          "active_runs": {
+            "items": {
+              "$ref": "#/components/schemas/TopicRunSummary"
+            },
+            "title": "Active Runs",
+            "type": "array"
+          },
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/TopicReference"
+            },
+            "title": "Attachments",
+            "type": "array"
+          },
+          "collections": {
+            "items": {
+              "$ref": "#/components/schemas/TopicReference"
+            },
+            "title": "Collections",
+            "type": "array"
+          },
+          "datasets": {
+            "items": {
+              "$ref": "#/components/schemas/TopicReference"
+            },
+            "title": "Datasets",
+            "type": "array"
+          },
+          "latest_handoff": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowRecord"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recent_runs": {
+            "items": {
+              "$ref": "#/components/schemas/TopicRunSummary"
+            },
+            "title": "Recent Runs",
+            "type": "array"
+          },
+          "topic": {
+            "$ref": "#/components/schemas/Topic"
+          },
+          "used_attachment_snapshots": {
+            "items": {
+              "$ref": "#/components/schemas/TopicMaterial"
+            },
+            "title": "Used Attachment Snapshots",
+            "type": "array"
+          },
+          "used_dataset_versions": {
+            "items": {
+              "$ref": "#/components/schemas/TopicMaterial"
+            },
+            "title": "Used Dataset Versions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "topic",
+          "latest_handoff",
+          "active_run_count",
+          "active_runs",
+          "recent_runs",
+          "collections",
+          "datasets",
+          "attachments",
+          "used_dataset_versions",
+          "used_attachment_snapshots"
+        ],
+        "title": "TopicOverview",
+        "type": "object"
+      },
+      "TopicReference": {
+        "additionalProperties": false,
+        "properties": {
+          "added_at": {
+            "title": "Added At",
+            "type": "string"
+          },
+          "deletion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeletionState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "run",
+              "collection",
+              "dataset",
+              "attachment_snapshot"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "name",
+          "label",
+          "added_at",
+          "deletion"
+        ],
+        "title": "TopicReference",
+        "type": "object"
+      },
+      "TopicReferenceChanges": {
+        "additionalProperties": false,
+        "properties": {
+          "add": {
+            "items": {
+              "$ref": "#/components/schemas/TopicObject"
+            },
+            "maxItems": 200,
+            "title": "Add",
+            "type": "array"
+          },
+          "remove": {
+            "items": {
+              "$ref": "#/components/schemas/TopicObject"
+            },
+            "maxItems": 200,
+            "title": "Remove",
+            "type": "array"
+          }
+        },
+        "title": "TopicReferenceChanges",
+        "type": "object"
+      },
+      "TopicReferenceResult": {
+        "additionalProperties": false,
+        "properties": {
+          "added": {
+            "title": "Added",
+            "type": "integer"
+          },
+          "removed": {
+            "title": "Removed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "added",
+          "removed"
+        ],
+        "title": "TopicReferenceResult",
+        "type": "object"
+      },
+      "TopicRunSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted_at": {
+            "title": "Accepted At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "scoring": {
+            "$ref": "#/components/schemas/RunScoring"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "preparing",
+              "running",
+              "finalizing",
+              "finished",
+              "cancelled",
+              "interrupted"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "state",
+          "accepted_at",
+          "scoring"
+        ],
+        "title": "TopicRunSummary",
+        "type": "object"
+      },
+      "TopicSettings-Input": {
+        "additionalProperties": false,
+        "properties": {
+          "materials_expanded": {
+            "default": true,
+            "title": "Materials Expanded",
+            "type": "boolean"
+          }
+        },
+        "title": "TopicSettings",
+        "type": "object"
+      },
+      "TopicSettings-Output": {
+        "additionalProperties": false,
+        "properties": {
+          "materials_expanded": {
+            "default": true,
+            "title": "Materials Expanded",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "materials_expanded"
+        ],
+        "title": "TopicSettings",
+        "type": "object"
+      },
+      "TopicUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "purpose": {
+            "anyOf": [
+              {
+                "maxLength": 4096,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
+          "settings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TopicSettings-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "TopicUpdate",
+        "type": "object"
+      },
       "Trial": {
         "additionalProperties": false,
         "properties": {
@@ -20839,7 +21481,8 @@
                     "experiment_plan",
                     "collection",
                     "analysis_snapshot",
-                    "workflow_record"
+                    "workflow_record",
+                    "topic"
                   ],
                   "type": "string"
                 },
@@ -21879,6 +22522,70 @@
               ],
               "title": "Kind"
             }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "topic_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Topic Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
           }
         ],
         "responses": {
@@ -22274,6 +22981,72 @@
     "/api/v1/collections": {
       "get": {
         "operationId": "list_collections",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "topic_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Topic Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -23592,6 +24365,48 @@
               ],
               "title": "Limit"
             }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "topic_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Topic Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_versions",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Include Versions",
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -23617,6 +24432,49 @@
           }
         },
         "summary": "List Datasets",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/v1/datasets/{dataset_id}": {
+      "get": {
+        "description": "Load the versions of one dataset.",
+        "operationId": "get_dataset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_Dataset_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Get Dataset",
         "tags": [
           "catalog"
         ]
@@ -24773,7 +25631,7 @@
     },
     "/api/v1/records": {
       "get": {
-        "description": "An attachment name lists all its records; snapshot_id selects only pinned ones.\n\nRecycled targets remain readable. Purged targets return an empty list.",
+        "description": "An attachment name lists all its records; snapshot_id selects only pinned ones.\n\nRecycled targets remain readable. Purged targets return an empty list.\nRequest a limit for newest-first pagination.",
         "operationId": "list_records",
         "parameters": [
           {
@@ -24785,7 +25643,8 @@
                 "collection",
                 "run",
                 "attachment",
-                "dataset_version"
+                "dataset_version",
+                "topic"
               ],
               "title": "Target Type",
               "type": "string"
@@ -24830,6 +25689,38 @@
                 }
               ],
               "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
             }
           }
         ],
@@ -25513,6 +26404,54 @@
                 }
               ],
               "title": "Artifacts Retained"
+            }
+          },
+          {
+            "in": "query",
+            "name": "topic_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Topic Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "active",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Active"
             }
           },
           {
@@ -26596,6 +27535,531 @@
         "summary": "Get Team Policy",
         "tags": [
           "configuration"
+        ]
+      }
+    },
+    "/api/v1/topics": {
+      "get": {
+        "description": "Search by name or stable ID. Deleted topics are hidden.",
+        "operationId": "list_topics",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_list_Topic__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "List Topics",
+        "tags": [
+          "topics"
+        ]
+      },
+      "post": {
+        "operationId": "create_topic",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TopicCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_Topic_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Create Topic",
+        "tags": [
+          "topics"
+        ]
+      }
+    },
+    "/api/v1/topics/{topic_id}": {
+      "delete": {
+        "operationId": "delete_topic",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "topic_id",
+            "required": true,
+            "schema": {
+              "title": "Topic Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_RecycleEntry_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Delete Topic",
+        "tags": [
+          "topics"
+        ]
+      },
+      "get": {
+        "operationId": "get_topic",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "topic_id",
+            "required": true,
+            "schema": {
+              "title": "Topic Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_Topic_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Get Topic",
+        "tags": [
+          "topics"
+        ]
+      },
+      "put": {
+        "operationId": "update_topic",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "topic_id",
+            "required": true,
+            "schema": {
+              "title": "Topic Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TopicUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_Topic_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Update Topic",
+        "tags": [
+          "topics"
+        ]
+      }
+    },
+    "/api/v1/topics/{topic_id}/materials": {
+      "get": {
+        "description": "Versions and snapshots frozen by the explicitly selected live runs.",
+        "operationId": "list_topic_materials",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "topic_id",
+            "required": true,
+            "schema": {
+              "title": "Topic Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "dataset_version",
+                "attachment_snapshot"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_list_TopicMaterial__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "List Topic Materials",
+        "tags": [
+          "topics"
+        ]
+      }
+    },
+    "/api/v1/topics/{topic_id}/overview": {
+      "get": {
+        "description": "Recent and active runs, selected objects, actual materials and the latest handoff.",
+        "operationId": "topic_overview",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "topic_id",
+            "required": true,
+            "schema": {
+              "title": "Topic Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_TopicOverview_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Topic Overview",
+        "tags": [
+          "topics"
+        ]
+      }
+    },
+    "/api/v1/topics/{topic_id}/references": {
+      "get": {
+        "description": "Explicit references, including the deletion state of their original objects.",
+        "operationId": "list_topic_references",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "topic_id",
+            "required": true,
+            "schema": {
+              "title": "Topic Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "run",
+                "collection",
+                "dataset",
+                "attachment_snapshot"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_list_TopicReference__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "List Topic References",
+        "tags": [
+          "topics"
+        ]
+      },
+      "post": {
+        "description": "Add or remove a batch atomically. Repeating an add or remove is safe.",
+        "operationId": "change_topic_references",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "topic_id",
+            "required": true,
+            "schema": {
+              "title": "Topic Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TopicReferenceChanges"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_TopicReferenceResult_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Change Topic References",
+        "tags": [
+          "topics"
         ]
       }
     },

@@ -32,7 +32,7 @@ from maestro.execution.attachments import (
     PackageError,
     display,
 )
-from maestro.services import audit, deleted
+from maestro.services import audit, deleted, pagination
 from maestro.services.file_archive import write_archive
 from maestro.services.principal import (
     Principal,
@@ -40,6 +40,7 @@ from maestro.services.principal import (
     require_experiment,
     require_manage_owned,
 )
+from maestro.services.topics import require_topic, topic_objects
 
 # Contents a query names at once in ``IN (...)``.
 _CHUNK = 500
@@ -139,6 +140,19 @@ class Attachments:
             t.users, t.users.c.id == t.attachment_versions.c.owner_id
         )
 
+    def _list_query(self, name: str | None, include_disabled: bool, kind: str | None):
+        c = t.attachment_versions.c
+        query = self._select().where(deleted.visible(c.id, "attachment_version"))
+        if name:
+            query = query.where(c.name == name)
+        if not include_disabled:
+            query = query.where(c.enabled.is_(True))
+        if kind is not None:
+            query = query.where(
+                func.coalesce(c.manifest_json["kind"].as_string(), "attachment") == kind
+            )
+        return query
+
     def list(
         self,
         principal: Principal,
@@ -146,20 +160,46 @@ class Attachments:
         include_disabled: bool = True,
         kind: str | None = None,
     ) -> list[dict]:
-        query = self._select().where(
-            deleted.visible(t.attachment_versions.c.id, "attachment_version")
-        )
-        if name:
-            query = query.where(t.attachment_versions.c.name == name)
-        if not include_disabled:
-            query = query.where(t.attachment_versions.c.enabled.is_(True))
-        query = query.order_by(t.attachment_versions.c.name, t.attachment_versions.c.created_at)
+        c = t.attachment_versions.c
+        query = self._list_query(name, include_disabled, kind).order_by(c.name, c.created_at)
         with self.db.read() as conn:
-            return [
-                self._public(r, r["username"])
-                for r in conn.execute(query).mappings()
-                if kind is None or r["manifest_json"].get("kind", "attachment") == kind
-            ]
+            return [self._public(r, r["username"]) for r in conn.execute(query).mappings()]
+
+    def list_page(
+        self,
+        *,
+        name: str | None,
+        include_disabled: bool,
+        kind: str | None,
+        topic_id: str | None,
+        q: str | None,
+        cursor: str | None,
+        limit: int | None,
+    ):
+        limit = pagination.check_limit(limit)
+        c = t.attachment_versions.c
+        query = self._list_query(name, include_disabled, kind)
+        filters = {
+            "name": name,
+            "include_disabled": include_disabled,
+            "kind": kind,
+            "topic_id": topic_id,
+            "q": q,
+        }
+        if topic_id is not None:
+            query = query.where(c.id.in_(topic_objects(topic_id, "attachment_snapshot")))
+        if q:
+            query = query.where(pagination.matching(q, c.name, c.label, c.id))
+        with self.db.read() as conn:
+            if topic_id is not None:
+                require_topic(conn, topic_id)
+            rows = (
+                conn.execute(pagination.page(query, c.created_at, c.id, cursor, limit, filters))
+                .mappings()
+                .all()
+            )
+        rows, next_cursor = pagination.split(rows, limit, "created_at", filters)
+        return [self._public(r, r["username"]) for r in rows], next_cursor
 
     def _row(self, conn: Connection, attachment_id: str):
         row = (

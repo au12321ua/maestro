@@ -33,6 +33,7 @@ from maestro_sdk.resources import (
     Records,
     Runs,
     Snapshots,
+    Topics,
 )
 from maestro_sdk.results import BatchSubmission, Download, Resolution, Submission
 
@@ -78,6 +79,7 @@ class MaestroClient(Transport):
         self.collections = Collections(self)
         self.snapshots = Snapshots(self)
         self.records = Records(self)
+        self.topics = Topics(self)
         self.runs = Runs(self)
         self.batches = Batches(self)
         self.operations = Operations(self)

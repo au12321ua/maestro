@@ -1,10 +1,12 @@
 // Attachment snapshots: members publish a folder, uploading only
 // the files the service lacks; each snapshot is fixed and named by its content. Each
 // trial installs its chosen packages in its own container before execution.
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { DIRECTORY_PAGE_SIZE, DirectoryCheck, MoreItems, TopicDirectory, TopicMembershipActions, useDirectorySelection } from "@/components/TopicDirectory";
+import { useTopicScope } from "@/lib/topics";
 import { AttachmentHistory, type HistoryActions } from "@/components/AttachmentHistory";
 import { FolderUpload, type Chosen, type FolderBase } from "@/components/FolderUpload";
 import {
@@ -19,7 +21,7 @@ import { t, Trans } from "@/i18n";
 import { api } from "@/lib/api";
 import { entries, type LocalFile } from "@/lib/folder";
 import { fmtTime, snapshotName } from "@/lib/format";
-import { limit, useLoad, useSession } from "@/lib/hooks";
+import { limit, useCursorList, useLoad, useSession } from "@/lib/hooks";
 import type { Attachment } from "@/lib/types";
 
 const EXAMPLE = `{
@@ -44,9 +46,10 @@ async function manifestName(files: LocalFile[]): Promise<string | null> {
 
 export function AttachmentsPage() {
   const { me } = useSession();
-  const list = useLoad(async () => (await api.get("/attachments")).data);
   const [params] = useSearchParams();
   const { capabilities } = useSession();
+  const { topicId } = useTopicScope();
+  const [q, setQuery] = useState("");
   const [error, setError] = useState<unknown>();
   const [selectedKind, setKind] = useState<"attachment" | "submission">();
   const [manifestKind, setManifestKind] = useState("attachment");
@@ -54,28 +57,42 @@ export function AttachmentsPage() {
   const [label, setLabel] = useState("");
   const [parentId, setParentId] = useState("");
   const [base, setBase] = useState<FolderBase>();
+  const [parents, setParents] = useState<Attachment[]>([]);
   const publishCard = useRef<HTMLDivElement>(null);
 
-  const all = useMemo(() => list.data ?? [], [list.data]);
-  const byId = new Map(all.map((a) => [a.id, a]));
-  const focused =
-    byId.get(params.get("snapshot") ?? params.get("base") ?? "") ??
-    all.find((a) => a.name === params.get("name"));
-  const kind = selectedKind ?? focused?.kind ?? "attachment";
-  const sameName = (n: string | null) =>
-    all.filter((a) => a.name === n && (a.kind ?? "attachment") === kind);
+  const focusId = params.get("snapshot") || params.get("base");
+  const focusName = params.get("name");
+  const focus = useLoad(async () => {
+    if (focusId) return [(await api.get("/attachments/{attachment_id}", { path: { attachment_id: focusId } })).data];
+    if (focusName) return (await api.get("/attachments", { query: { name: focusName } })).data;
+    return [];
+  }, [focusId, focusName]);
+  const pinned = (focus.data ?? []).filter((item) => focusId ? item.id === focusId : item.name === focusName);
+  const kind = selectedKind ?? pinned[0]?.kind ?? "attachment";
+  const queryKey = JSON.stringify([topicId, q.trim(), kind]);
+  const list = useCursorList((cursor) => api.get("/attachments", {
+    query: { topic_id: topicId ?? undefined, q: q.trim() || undefined, cursor, limit: DIRECTORY_PAGE_SIZE, kind },
+  }), queryKey);
+  const selection = useDirectorySelection(queryKey);
+  const listed = new Set(list.data?.map((item) => item.id));
+  const outside = pinned.filter((item) => !listed.has(item.id) && item.kind === kind);
+  const all = [...(list.data ?? []), ...outside];
+
+  const reload = async () => {
+    selection.setSelected(new Set());
+    await Promise.all([list.reload(), focus.reload()]);
+  };
 
   /** The parent snapshot's files decide carried-over executable bits and the preview. */
   const chooseParent = async (id: string) => {
     setParentId(id);
-    const parent = byId.get(id);
-    if (!parent) {
+    if (!id) {
       setBase(undefined);
       return;
     }
     const detail = (await api.get("/attachments/{attachment_id}", { path: { attachment_id: id } }))
       .data;
-    setBase({ label: `${parent.name} · ${snapshotName(parent)}`, files: detail.files ?? [] });
+    setBase({ label: `${detail.name} · ${snapshotName(detail)}`, files: detail.files ?? [] });
   };
 
   const chooseFolder = async (_folder: string, files: LocalFile[]) => {
@@ -93,9 +110,11 @@ export function AttachmentsPage() {
     setName(found);
     // The newest snapshot of the same name is the default parent; one chosen with
     // "base a new snapshot on this" stays when the names match.
-    const chosenParent = byId.get(parentId);
-    const parent =
-      chosenParent && chosenParent.name === found ? chosenParent : sameName(found).at(-1);
+    const candidates = found
+      ? (await api.get("/attachments", { query: { name: found, kind } })).data
+      : [];
+    setParents(candidates);
+    const parent = candidates.find((item) => item.id === parentId) ?? candidates.at(-1);
     await chooseParent(parent?.id ?? "");
   };
 
@@ -118,7 +137,8 @@ export function AttachmentsPage() {
     setName(null);
     setParentId("");
     setBase(undefined);
-    await list.reload();
+    setParents([]);
+    await reload();
   };
 
   const act = async (fn: () => Promise<unknown>, done: string) => {
@@ -126,18 +146,24 @@ export function AttachmentsPage() {
     try {
       await fn();
       toast.success(done);
-      await list.reload();
+      await reload();
     } catch (err) {
       setError(err);
     }
   };
   const baseOn = (a: Attachment) => {
     setKind(a.kind ?? "attachment");
+    setParents([a]);
     void chooseParent(a.id).catch(setError);
     publishCard.current?.scrollIntoView({ behavior: "smooth" });
   };
   const actions: HistoryActions = {
-    mayManage: (a) => a.owner_id === me.id || me.role === "admin",
+    mayManage: (a) => !a.deletion && (a.owner_id === me.id || me.role === "admin"),
+    partialHistory: !!topicId || !!q.trim() || !!list.cursor || outside.length > 0,
+    snapshotControl: (a) => listed.has(a.id) ? <DirectoryCheck
+      name={`${a.name} · ${snapshotName(a)}`}
+      checked={selection.selected.has(a.id)} onChange={() => selection.toggle(a.id)}
+    /> : null,
     onBaseOn: baseOn,
     onToggleEnabled: (a) =>
       void act(
@@ -159,6 +185,8 @@ export function AttachmentsPage() {
   return (
     <div className="grid gap-4">
       <PageTitle title={t("attachments.title")} />
+      <TopicDirectory search={q} onSearch={setQuery} />
+      <TopicMembershipActions kind="attachment_snapshot" ids={selection.selected} onChanged={reload} />
       <Card>
         <CardHeader>
           <CardTitle className="text-base">{t("attachments.list.title")}</CardTitle>
@@ -171,8 +199,9 @@ export function AttachmentsPage() {
         </CardHeader>
         <CardContent className="grid gap-3 text-sm">
           {list.loading && !list.data && <Loading />}
-          <ErrorAlert error={list.error} />
-          {list.data && list.data.length === 0 && (
+          <ErrorAlert error={list.error ?? focus.error} />
+          {outside.length > 0 && <p className="text-xs text-muted-foreground">{t("topics.notOnPage")}</p>}
+          {list.data && all.length === 0 && (
             <EmptyNote>{t("attachments.list.empty")}</EmptyNote>
           )}
           <SelectField
@@ -192,15 +221,16 @@ export function AttachmentsPage() {
           </SelectField>
           {all.length > 0 && (
             <AttachmentHistory
-              all={all.filter((a) => (a.kind ?? "attachment") === kind)}
+              all={all}
               actions={actions}
               focus={{
-                snapshot: params.get("snapshot") ?? "",
+                snapshot: focusId ?? "",
                 base: params.get("base") ?? undefined,
-                name: params.get("name") ?? undefined,
+                name: focusName ?? undefined,
               }}
             />
           )}
+          <MoreItems page={list} />
         </CardContent>
       </Card>
 
@@ -262,7 +292,7 @@ export function AttachmentsPage() {
                     <option value="">
                       {t("attachments.publish.noParent")}
                     </option>
-                    {sameName(name)
+                    {parents
                       .filter((a) => (a.kind ?? "attachment") === kind)
                       .map((s) => (
                         <option key={s.id} value={s.id}>

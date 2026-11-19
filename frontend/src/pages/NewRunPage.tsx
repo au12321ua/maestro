@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { TopicSubmission } from "@/components/TopicDirectory";
+import { scopedPath } from "@/lib/topics";
 import { toast } from "sonner";
 import { HeldOutPicker } from "@/components/HeldOutPicker";
 import { Button } from "@/components/ui/button";
@@ -136,6 +138,8 @@ export function NewRunPage() {
   const { capabilities } = useSession();
   const navigate = useNavigate();
   const [params] = useSearchParams();
+  const topicId = params.get("topic") || null;
+  const [joinTopic, setJoinTopic] = useState(true);
   // A modified run starts from that run's request; its differences are recorded.
   const sourceRunId = params.get("from");
   const plans = useLoad(async () => (await api.get("/plans")).data);
@@ -257,6 +261,7 @@ export function NewRunPage() {
   const [batchName, setBatchName] = useState("");
   const [batchPreview, setBatchPreview] = useState<BatchPreview | null>(null);
   const batchKey = useRef<string>(newKey());
+  const [batchPending, setBatchPending] = useState(false);
   const [parameters, setParameters] = useState<
     Record<string, { value: string; secret: boolean }>
   >({});
@@ -621,7 +626,7 @@ export function NewRunPage() {
   };
   const batchBody = () => ({
     name: batchName.trim(),
-    runs: draft.map((m) => ({ name: m.name, ...m.request })),
+    runs: draft.map((m) => ({ name: m.name, ...m.request, topic_id: joinTopic && topicId ? topicId : undefined })),
   });
   const previewBatch = async () => {
     setError(undefined);
@@ -642,14 +647,17 @@ export function NewRunPage() {
         },
       });
       batchKey.current = newKey();
+      setBatchPending(false);
       toast.success(
         t("newRun.draft.accepted", { runs: res.data.runs.length, trials: res.data.planned_trials }),
       );
-      navigate(`/batches/${res.data.batch_id}`);
+      navigate(scopedPath(`/batches/${res.data.batch_id}`, joinTopic ? topicId : null));
     } catch (err) {
       setError(err);
       // An unknown outcome keeps the key, so a retry cannot accept the batch twice.
-      if (!(err instanceof ApiError && err.indeterminate)) batchKey.current = newKey();
+      const pending = err instanceof ApiError && err.indeterminate;
+      setBatchPending(pending);
+      if (!pending) batchKey.current = newKey();
     } finally {
       setBusy(false);
     }
@@ -680,6 +688,7 @@ export function NewRunPage() {
       client_request_id: clientRequestId || null,
       source_run_id: sourceRunId,
       collection_id: collectionId,
+      topic_id: joinTopic && topicId ? topicId : undefined,
     };
     try {
       const res = await api.post("/runs", {
@@ -691,7 +700,7 @@ export function NewRunPage() {
       key.current = newKey();
       setPendingKey(null);
       toast.success(t("newRun.submit.accepted", { count: res.data.planned_trials }));
-      navigate(`/runs/${res.data.run_id}`);
+      navigate(scopedPath(`/runs/${res.data.run_id}`, joinTopic ? topicId : null));
     } catch (err) {
       setError(err);
       if (err instanceof ApiError && err.indeterminate) {
@@ -1588,7 +1597,7 @@ export function NewRunPage() {
             <Button
               type="button"
               variant="outline"
-              disabled={busy || !versionId || sourceRunId != null}
+              disabled={busy || !versionId || sourceRunId != null || batchPending}
               title={sourceRunId ? t("newRun.submit.separateHint") : undefined}
               onClick={(e) => {
                 const concurrency = e.currentTarget.form?.querySelector<HTMLInputElement>("#run-concurrency");
@@ -1599,6 +1608,10 @@ export function NewRunPage() {
             </Button>
           </div>}
 
+          <TopicSubmission topicId={topicId} checked={joinTopic} onChange={(value) => {
+            setJoinTopic(value);
+            setBatchPreview(null);
+          }} disabled={busy || !!pendingKey || batchPending} />
           {resolution && (
             <ResolutionReview
               resolution={resolution}
@@ -1647,6 +1660,7 @@ export function NewRunPage() {
                           type="button"
                           size="sm"
                           variant="ghost"
+                          disabled={batchPending}
                           onClick={() => {
                             setDraft(draft.filter((_, j) => j !== i));
                             setBatchPreview(null);
@@ -1675,6 +1689,7 @@ export function NewRunPage() {
                 <div className="flex flex-wrap items-end gap-2">
                   <TextField
                     id="batch-name"
+                    disabled={batchPending}
                     label={t("newRun.draft.name")}
                     value={batchName}
                     onChange={(e) => setBatchName(e.target.value)}

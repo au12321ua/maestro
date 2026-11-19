@@ -261,6 +261,13 @@ Runner 的 `runner/test_runner_attachments.py` 使用锁定 Harbor 的真实 Tri
 
 覆盖：`results/test_task_reads.py`、`results/test_collections.py`、`identity/test_permissions.py`、`api/test_sdk_workflows.py`、`ops/test_migrations.py`。网页留出选择、默认开发题与题面按需读取尚无浏览器自动化覆盖。
 
+### E2E-OUT-08 实验专题的交接与范围
+
+- 用同一专题链接换一个 PAT 接手。读取活动运行、原附件快照、评分覆盖和带引用的交接，再提交后续运行。网页查看同一组事实。
+- 并行向两个专题提交，断线后用原键找回唯一运行和引用。批次任一成员被拒时，批次、运行与引用均不落库。
+- 同一运行加入两个专题。移除引用、回收、恢复及物理删除专题后，核对另一专题、原运行、集合比较与产物期限。
+- 准备跨页目录，检查专题内的筛选与游标。浏览版本或试次后仍在原范围。概览处理有限条目，读取时不打开题面或日志。
+
 ## 7. 必须覆盖的故障场景
 
 | 编号 | 故障注入 | 必须满足的不变量 | 覆盖 |

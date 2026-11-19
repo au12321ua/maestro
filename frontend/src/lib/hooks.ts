@@ -63,6 +63,57 @@ export function useLoad<T>(load: () => Promise<T>, deps: unknown[] = []): Loaded
   return { data, error, loading, reload };
 }
 
+type Page<T> = { data: T[]; meta: { next_cursor?: string | null } };
+
+/** Load one directory page at a time and discard responses from an older scope or search. */
+export function useCursorList<T>(fetchPage: (cursor?: string) => Promise<Page<T>>, key: string) {
+  const fetchRef = useRef(fetchPage);
+  const generation = useRef(0);
+  const [state, setState] = useState<{
+    key: string;
+    data?: T[];
+    cursor?: string | null;
+    loading: boolean;
+    error?: unknown;
+  }>({ key, loading: true });
+  useEffect(() => {
+    fetchRef.current = fetchPage;
+  });
+  const load = useCallback(async (cursor?: string) => {
+    const request = ++generation.current;
+    setState((prev) => ({
+      ...(prev.key === key ? prev : { key }),
+      loading: true,
+      error: undefined,
+    }));
+    try {
+      const page = await fetchRef.current(cursor);
+      if (request !== generation.current) return;
+      setState((prev) => ({
+        key,
+        data: cursor ? [...(prev.data ?? []), ...page.data] : page.data,
+        cursor: page.meta.next_cursor,
+        loading: false,
+      }));
+    } catch (error) {
+      if (request === generation.current) setState((prev) => ({ ...prev, loading: false, error }));
+    }
+  }, [key]);
+  const reload = useCallback(() => load(), [load]);
+  useEffect(() => {
+    void reload();
+    return () => { ++generation.current; };
+  }, [reload]);
+  const current = state.key === key ? state : { key, loading: true };
+  return {
+    ...current,
+    reload,
+    more: () => {
+      if (current.cursor && !current.loading) return load(current.cursor);
+    },
+  };
+}
+
 /** Calls `tick` every `ms` while `active` is true. */
 export function useInterval(tick: () => void, ms: number, active: boolean) {
   const ref = useRef(tick);

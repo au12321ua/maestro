@@ -727,6 +727,7 @@ class RunCreate(RunConfigFields):
     dataset_version_id: str | None = None
     execution_mode: Literal["agent", "oracle", "submission"] | None = None
     client_request_id: str | None = None
+    topic_id: str | None = Field(None, description="Add the accepted run to this topic")
     source_run_id: str | None = Field(
         None,
         description="Makes this a modified run of that run: its differences are recorded "
@@ -809,6 +810,7 @@ class RunRerun(Model):
     name: str | None = None
     task_selection: RerunSelection = RerunSelection()
     client_request_id: str | None = None
+    topic_id: str | None = None
 
 
 class BlockedTask(Model):
@@ -2174,7 +2176,7 @@ class Snapshot(SnapshotSummary):
 
 # --- workflow records ----------------------------------------------------------------
 
-RecordTargetType = Literal["collection", "run", "attachment", "dataset_version"]
+RecordTargetType = Literal["collection", "run", "attachment", "dataset_version", "topic"]
 RecordReferenceType = Literal[
     "run", "trial", "artifact", "attachment_snapshot", "collection", "analysis_snapshot"
 ]
@@ -2265,6 +2267,96 @@ class RecordRevision(RecordContent):
 
 # --- deletion and recycle bin ---------------------------------------------------------
 
+# --- experiment topics ---------------------------------------------------------------
+
+TopicReferenceKind = Literal["run", "collection", "dataset", "attachment_snapshot"]
+TopicMaterialKind = Literal["dataset_version", "attachment_snapshot"]
+
+
+class TopicSettings(Model):
+    materials_expanded: bool = True
+
+
+class TopicCreate(Model):
+    name: str = Field(max_length=128)
+    purpose: str = Field("", max_length=4096)
+    settings: TopicSettings = TopicSettings()
+
+
+class TopicUpdate(Model):
+    name: str | None = Field(None, max_length=128)
+    purpose: str | None = Field(None, max_length=4096)
+    settings: TopicSettings | None = None
+
+
+class Topic(Model):
+    id: str
+    name: str
+    purpose: str
+    settings: TopicSettings
+    owner_id: str
+    created_at: str
+    updated_at: str
+    web_path: str = Field(description="The stable web path relative to the deployment root")
+    deletion: DeletionState | None
+    allowed_actions: list[str]
+
+
+class TopicObject(Model):
+    kind: TopicReferenceKind
+    id: str = Field(min_length=1, max_length=40)
+
+
+class TopicReferenceChanges(Model):
+    add: list[TopicObject] = Field(default_factory=list, max_length=200)
+    remove: list[TopicObject] = Field(default_factory=list, max_length=200)
+
+
+class TopicReferenceResult(Model):
+    added: int
+    removed: int
+
+
+class TopicReference(TopicObject):
+    name: str
+    label: str | None
+    added_at: str
+    deletion: DeletionState | None
+
+
+class TopicMaterial(Model):
+    kind: TopicMaterialKind
+    id: str
+    name: str
+    label: str | None
+    deletion: DeletionState | None
+    source_run_count: int
+    source_run_ids: list[str] = Field(description="Up to eight newest source runs")
+
+
+class TopicRunSummary(Model):
+    id: str
+    name: str
+    state: RunStateName
+    accepted_at: str
+    scoring: RunScoring
+
+
+class TopicOverview(Model):
+    """Bounded previews. Use the filtered list endpoints for the remaining items."""
+
+    topic: Topic
+    latest_handoff: WorkflowRecord | None
+    active_run_count: int
+    active_runs: list[TopicRunSummary]
+    recent_runs: list[TopicRunSummary]
+    collections: list[TopicReference]
+    datasets: list[TopicReference]
+    attachments: list[TopicReference]
+    used_dataset_versions: list[TopicMaterial]
+    used_attachment_snapshots: list[TopicMaterial]
+
+
 ObjectType = Literal[
     "run",
     "artifact",
@@ -2280,6 +2372,7 @@ ObjectType = Literal[
     "collection",
     "analysis_snapshot",
     "workflow_record",
+    "topic",
 ]
 
 

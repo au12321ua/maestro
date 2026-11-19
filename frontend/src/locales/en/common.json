@@ -162,6 +162,7 @@
     "expired": "Expired"
   },
   "recycleType": {
+    "topic": "Experiment topic",
     "run": "Run",
     "artifact": "Artifact",
     "dataset": "Dataset",

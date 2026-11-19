@@ -17,6 +17,7 @@ from maestro.services import deleted, pagination, task_reads
 from maestro.services.dataset_versions import not_purged
 from maestro.services.file_archive import write_archive
 from maestro.services.principal import Principal
+from maestro.services.topics import require_topic, topic_objects
 
 ADMITTED = "admitted"
 
@@ -181,51 +182,85 @@ class Catalog:
         self.location_id = location_id
         self.store = store
 
-    def list_datasets(self, cursor: str | None, limit: int | None) -> tuple[list, str | None]:
+    def list_datasets(
+        self,
+        cursor: str | None,
+        limit: int | None,
+        *,
+        q: str | None = None,
+        topic_id: str | None = None,
+        include_versions: bool = True,
+    ) -> tuple[list, str | None]:
         limit = pagination.check_limit(limit)
-        query = pagination.page(
-            select(t.datasets).where(
-                t.datasets.c.enabled.is_(True), deleted.visible(t.datasets.c.id, "dataset")
-            ),
-            t.datasets.c.created_at,
-            t.datasets.c.id,
-            cursor,
-            limit,
-            {},
-        )
+        c = t.datasets.c
+        query = select(t.datasets).where(c.enabled.is_(True), deleted.visible(c.id, "dataset"))
+        filters = {}
+        if q:
+            filters["q"] = q
+            query = query.where(pagination.matching(q, c.namespace + "/" + c.name, c.id))
+        if topic_id is not None:
+            filters["topic_id"] = topic_id
+            query = query.where(c.id.in_(topic_objects(topic_id, "dataset")))
+        if not include_versions:
+            filters["include_versions"] = False
         with self.db.read() as conn:
-            rows = list(conn.execute(query).mappings().all())
-            rows, next_cursor = pagination.split(rows, limit, "created_at", {})
-            result = []
-            for row in rows:
-                versions = (
-                    conn.execute(
-                        select(t.dataset_versions)
-                        .where(
-                            t.dataset_versions.c.dataset_id == row["id"],
-                            deleted.visible(t.dataset_versions.c.id, "dataset_version"),
-                        )
-                        .order_by(t.dataset_versions.c.created_at.desc())
+            if topic_id is not None:
+                require_topic(conn, topic_id)
+            rows = (
+                conn.execute(pagination.page(query, c.created_at, c.id, cursor, limit, filters))
+                .mappings()
+                .all()
+            )
+            rows, next_cursor = pagination.split(rows, limit, "created_at", filters)
+            return [self._dataset(conn, row, include_versions) for row in rows], next_cursor
+
+    def get_dataset(self, dataset_id: str) -> dict:
+        with self.db.read() as conn:
+            row = (
+                conn.execute(select(t.datasets).where(t.datasets.c.id == dataset_id))
+                .mappings()
+                .first()
+            )
+            if row is None:
+                raise not_found("Dataset")
+            deleted.refuse_purged(conn, "dataset", dataset_id, "Dataset")
+            return self._dataset(conn, row, include_versions=True)
+
+    def _dataset(self, conn, row, include_versions: bool) -> dict:
+        versions = []
+        if include_versions:
+            versions = (
+                conn.execute(
+                    select(t.dataset_versions)
+                    .where(
+                        t.dataset_versions.c.dataset_id == row["id"],
+                        deleted.visible(t.dataset_versions.c.id, "dataset_version"),
                     )
-                    .mappings()
-                    .all()
+                    .order_by(
+                        t.dataset_versions.c.created_at.desc(), t.dataset_versions.c.id.desc()
+                    )
                 )
-                metadata = self._version_metadata(conn, versions)
-                result.append(
-                    {
-                        "id": row["id"],
-                        "source_kind": row["source_kind"],
-                        "namespace": row["namespace"],
-                        "name": row["name"],
-                        "description": row["description"],
-                        "credential_id": row["credential_id"],
-                        "versions": [
-                            {**self._version(v, metadata[v["id"]]), **self._counts(conn, v["id"])}
-                            for v in versions
-                        ],
-                    }
+                .mappings()
+                .all()
+            )
+        metadata = self._version_metadata(conn, versions) if versions else {}
+        return {
+            **{
+                key: row[key]
+                for key in (
+                    "id",
+                    "source_kind",
+                    "namespace",
+                    "name",
+                    "description",
+                    "credential_id",
                 )
-        return result, next_cursor
+            },
+            "versions": [
+                {**self._version(v, metadata[v["id"]]), **self._counts(conn, v["id"])}
+                for v in versions
+            ],
+        }
 
     @staticmethod
     def _version_metadata(conn, rows) -> dict:

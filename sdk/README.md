@@ -95,6 +95,18 @@ except TransportError as lost:
 
 有意再跑一次就用新键（不传即可）。幂等键在服务端保留 7 天。
 
+## 用专题链接接手实验
+
+```python
+topic = client.topics.open(topic_link)
+overview = topic.overview()
+print(overview.topic.purpose, overview.latest_handoff)
+for run in topic.runs.list(active=True, limit=25):
+    print(run.id, run.state, run.scoring)
+```
+
+`client.topics.list(q="回归")` 按名称查找候选。用 `topic.references("dataset")` 查看选入的数据集，用 `topic.materials("dataset_version")` 查看运行使用的版本。确认需要后续运行时，用 `topic.runs.submit(...)`、`topic.runs.rerun(...)` 或 `topic.batches.submit(...)` 写入同一专题。交接记录可用 `client.records.create({"type": "topic", "id": topic.id}, "handoff", ...)` 写入，`topic.handoffs()` 分页读取。把 `topic.url` 给下一位即可。见[接手示例](../skills/maestro-sdk/references/topics.md)。
+
 ## 其他操作
 
 | 想做的事 | 调用 |

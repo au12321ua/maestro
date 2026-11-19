@@ -162,6 +162,7 @@
     "expired": "已过期"
   },
   "recycleType": {
+    "topic": "实验专题",
     "run": "运行",
     "artifact": "产物",
     "dataset": "数据集",

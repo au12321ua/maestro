@@ -17,6 +17,11 @@ def check_limit(limit: int | None) -> int:
     return limit
 
 
+def matching(text: str, *columns):
+    """Search literal text across the fields that users see, including ids."""
+    return or_(*(column.icontains(text, autoescape=True) for column in columns))
+
+
 def encode(created_at: str, item_id: str, filters: dict) -> str:
     raw = json.dumps([created_at, item_id, digest_json(filters)]).encode()
     return base64.urlsafe_b64encode(raw).decode().rstrip("=")

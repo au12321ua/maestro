@@ -1,7 +1,7 @@
 // One collection: its fixed specification, the comparison of its runs with
 // the settings the team keeps, its members and history, and snapshots of it.
 import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Camera, CopyPlus, Play, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,7 @@ import { api, errorText } from "@/lib/api";
 import { DIMENSION, SCENARIO, valueText } from "@/lib/comparison";
 import { RUN_STATE, fmtTime, label } from "@/lib/format";
 import { useLoad } from "@/lib/hooks";
+import { scopedPath } from "@/lib/topics";
 import type {
   Collection,
   ComparisonSettingsInput,
@@ -45,6 +46,8 @@ const ACTION: Record<string, string> = t("comparison.collection.action", {
 export function CollectionPage() {
   const { collectionId = "" } = useParams();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const topicId = params.get("topic") || null;
   const path = { collection_id: collectionId };
   const collection = useLoad(
     async () => (await api.get("/collections/{collection_id}", { path })).data,
@@ -83,7 +86,7 @@ export function CollectionPage() {
   if (!c)
     return collection.error ? (
       <div>
-        <BackLink to="/collections">
+        <BackLink to={scopedPath("/collections", topicId)}>
           {t("common.nav.back.collections")}
         </BackLink>
         <ErrorAlert error={collection.error} />
@@ -168,11 +171,11 @@ export function CollectionPage() {
     <div className="grid gap-4">
       <PageTitle
         title={c.name}
-        back={{ to: "/collections", label: t("common.nav.back.collections") }}
+        back={{ to: scopedPath("/collections", topicId), label: t("common.nav.back.collections") }}
       >
         {can("submit") && (
           <Button asChild size="sm">
-            <Link to={`/runs/new?collection=${c.id}`}>
+            <Link to={scopedPath(`/runs/new?collection=${c.id}`, topicId)}>
               <Play />
               {t("comparison.collection.newRun")}
             </Link>
@@ -199,7 +202,7 @@ export function CollectionPage() {
         )}
         {c.allowed_actions.includes("copy") && (
           <Button asChild size="sm" variant="outline">
-            <Link to={`/runs/new?copy_collection=${c.id}`}>
+            <Link to={scopedPath(`/runs/new?copy_collection=${c.id}`, topicId)}>
               <CopyPlus />
               {t("comparison.collection.copySpec")}
             </Link>

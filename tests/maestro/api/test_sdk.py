@@ -24,7 +24,7 @@ from maestro_sdk import (
 )
 from maestro_sdk.resources.attachments import files_digest
 from support import ROOT, create_pat, running, setup_admin
-from support.sdk import sdk
+from support.sdk import LoseFirstAnswer, sdk
 
 # --- story one: datasets ----------------------------------------------------
 
@@ -51,22 +51,6 @@ def test_client_timeout_does_not_cancel_the_run(service, version_id, executor):
 
 
 # --- transport ----------------------------------------------------------------------------
-
-
-class LoseFirstAnswer(httpx.BaseTransport):
-    """Delivers the request, then drops the first answer to a matching one."""
-
-    def __init__(self, inner, method, path):
-        self.inner, self.method, self.path = inner, method, path
-        self.lost = 0
-
-    def handle_request(self, request):
-        response = self.inner.handle_request(request)
-        if request.method == self.method and request.url.path == self.path and not self.lost:
-            self.lost += 1
-            response.read()
-            raise httpx.ReadError("connection reset", request=request)
-        return response
 
 
 def test_a_lost_answer_is_retried_under_the_same_key(service, version_id):
@@ -363,6 +347,7 @@ SDK_METHODS = {
     "list_sources": "catalog.sources",
     "upload_dataset": "catalog.upload",
     "list_datasets": "catalog.datasets",
+    "get_dataset": "catalog.dataset",
     "get_dataset_version": "catalog.version",
     "list_tasks": "catalog.tasks",
     "list_dataset_version_files": "catalog.files",
@@ -415,6 +400,15 @@ SDK_METHODS = {
     "update_record": "records.update",
     "record_history": "records.history",
     "delete_record": "records.delete",
+    "list_topics": "topics.list",
+    "create_topic": "topics.create",
+    "get_topic": "topics.get",
+    "update_topic": "topics.update",
+    "delete_topic": "topics.delete",
+    "topic_overview": "topics.overview",
+    "list_topic_references": "topics.references",
+    "change_topic_references": "topics.change_references",
+    "list_topic_materials": "topics.materials",
     "list_snapshots": "snapshots.list",
     "create_snapshot": "snapshots.create",
     "get_snapshot": "snapshots.get",

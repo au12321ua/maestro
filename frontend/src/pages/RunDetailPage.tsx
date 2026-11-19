@@ -40,9 +40,11 @@ import {
   PageTitle,
   Pill,
   StatusPill,
+  SelectField,
+  TextField,
 } from "@/components/common";
 import { t, Trans } from "@/i18n";
-import { API, api, errorText } from "@/lib/api";
+import { API, api, ApiError, errorText } from "@/lib/api";
 import {
   ARTIFACT_STATE,
   ATTEMPT_STATE,
@@ -76,6 +78,8 @@ import type {
 import { cn } from "@/lib/utils";
 import { SetupNetworkRevision } from "@/pages/admin/SetupNetworkTab";
 import { RunArtifactRetention } from "@/components/RunArtifactRetention";
+import { TopicSubmission } from "@/components/TopicDirectory";
+import { scopedPath } from "@/lib/topics";
 import { ArtifactTree } from "@/components/ArtifactTree";
 import { AddToCollection } from "@/components/AddToCollection";
 import { ConfigDifferences, type ConfigDifference } from "@/components/ConfigDifferences";
@@ -101,6 +105,10 @@ function RunDetailView({ runId }: { runId: string }) {
   const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
+  const topicId = params.get("topic") || null;
+  const runsPath = scopedPath("/runs", topicId);
+  const [joinTopic, setJoinTopic] = useState(true);
+  const rerunRequest = useRef<{ mode: string; topicId: string | null; key: string } | null>(null);
   const tab = TABS.has(params.get("tab") ?? "") ? params.get("tab")! : "execution";
   const setTab = (value: string) => {
     const next = new URLSearchParams(params);
@@ -163,15 +171,24 @@ function RunDetailView({ runId }: { runId: string }) {
         : t("runs.detail.rerunUnfinishedConfirm");
     if (!window.confirm(text)) return;
     setBusy(true);
+    const destination = joinTopic ? topicId : null;
+    const pending = rerunRequest.current;
+    const key = pending?.mode === mode && pending.topicId === destination
+      ? pending.key
+      : crypto.randomUUID();
     try {
       const res = await api.post("/runs/{run_id}/rerun", {
         path: { run_id: runId },
-        body: { task_selection: { mode } },
-        headers: { "Idempotency-Key": crypto.randomUUID() },
+        body: { task_selection: { mode }, topic_id: destination ?? undefined },
+        headers: { "Idempotency-Key": key },
       });
       toast.success(t("runs.detail.rerunAccepted", { count: res.data.planned_trials }));
-      navigate(`/runs/${res.data.run_id}`);
+      rerunRequest.current = null;
+      navigate(scopedPath(`/runs/${res.data.run_id}`, destination));
     } catch (err) {
+      rerunRequest.current = err instanceof ApiError && err.indeterminate
+        ? { mode, topicId: destination, key }
+        : null;
       toast.error(t("runs.detail.rerunFailed", { error: errorText(err) }));
     } finally {
       setBusy(false);
@@ -228,7 +245,7 @@ function RunDetailView({ runId }: { runId: string }) {
   if (!run) {
     return error ? (
       <div>
-        <BackLink to="/runs">{t("common.nav.back.runs")}</BackLink>
+        <BackLink to={runsPath}>{t("common.nav.back.runs")}</BackLink>
         <ErrorAlert error={error} title={t("runs.detail.loadFailed")} />
       </div>
     ) : (
@@ -238,7 +255,7 @@ function RunDetailView({ runId }: { runId: string }) {
 
   return (
     <div className="grid gap-4">
-      <PageTitle title={run.name} back={{ to: "/runs", label: t("common.nav.back.runs") }}>
+      <PageTitle title={run.name} back={{ to: runsPath, label: t("common.nav.back.runs") }}>
         {active && (
           <span className="flex items-center gap-1 text-xs text-muted-foreground">
             <Loader2 className="size-3 animate-spin" />
@@ -273,7 +290,7 @@ function RunDetailView({ runId }: { runId: string }) {
         )}
         {run.allowed_actions.includes("modify") && (
           <Button asChild size="sm" variant="outline">
-            <Link to={`/runs/new?from=${run.id}`}>
+            <Link to={scopedPath(`/runs/new?from=${run.id}`, topicId)}>
               <PencilLine />
               {t("runs.detail.modify")}
             </Link>
@@ -301,6 +318,9 @@ function RunDetailView({ runId }: { runId: string }) {
           </Button>
         )}
       </PageTitle>
+      {run.allowed_actions.includes("rerun") && (
+        <TopicSubmission topicId={topicId} checked={joinTopic} onChange={setJoinTopic} disabled={busy} />
+      )}
       {error !== undefined && <ErrorAlert error={error} title={t("runs.refreshFailed")} />}
       {run.deletion && (
         <DeletionBanner
@@ -804,28 +824,43 @@ function ExecutionView({
   onShowArtifacts: (trialId: string) => void;
 }) {
   const [params, setParams] = useSearchParams();
-  const chosen = trials.find((t) => t.id === params.get("trial"));
-  const selected = chosen ?? trials.find((t) => TRIAL_ACTIVE.has(t.state)) ?? trials[0];
+  const [q, setQuery] = useState("");
+  const [state, setState] = useState("");
+  const matching = trials.filter((trial) => {
+    const matchesState = state === "failed"
+      ? TRIAL_TERMINAL.has(trial.state) && trial.state !== "scored"
+      : !state || state === trial.state;
+    return matchesState && trial.task_key.toLowerCase().includes(q.trim().toLowerCase());
+  });
+  const chosen = matching.find((t) => t.id === params.get("trial"));
+  const selected = chosen ?? matching.find((t) => TRIAL_ACTIVE.has(t.state)) ?? matching[0];
   const select = (id: string) => {
     const next = new URLSearchParams(params);
     next.set("trial", id);
     setParams(next, { replace: true });
   };
-  const own = artifacts.filter((a) => a.trial_id === selected.id);
+  const own = selected ? artifacts.filter((a) => a.trial_id === selected.id) : [];
   const prefix = commonPrefix(trials.map((t) => t.task_key));
   return (
     <div className="grid items-start gap-4 md:grid-cols-[minmax(14rem,20rem)_minmax(0,1fr)]">
-      <nav aria-label={t("runs.artifacts.trialFilter")} className="grid gap-0.5 rounded-md border p-1">
-        {trials.map((trial) => (
+      <div className="grid gap-2">
+        <TextField id="trial-query" label={t("topics.trialSearch")} value={q} onChange={(e) => setQuery(e.target.value)} />
+        <SelectField id="trial-state" label={t("topics.trialStatus")} value={state} onChange={(e) => setState(e.target.value)}>
+          <option value="">{t("topics.anyState")}</option>
+          <option value="failed">{t("topics.failedTrials")}</option>
+          {Object.entries(TRIAL_STATE).map(([key, [name]]) => <option key={key} value={key}>{name}</option>)}
+        </SelectField>
+        <nav aria-label={t("runs.artifacts.trialFilter")} className="grid gap-0.5 rounded-md border p-1">
+        {matching.map((trial) => (
           <button
             key={trial.id}
             type="button"
             data-testid="trial-row"
-            aria-current={trial.id === selected.id ? "true" : undefined}
+            aria-current={trial.id === selected?.id ? "true" : undefined}
             onClick={() => select(trial.id)}
             className={cn(
               "grid gap-0.5 rounded px-2 py-1.5 text-left text-sm hover:bg-muted",
-              trial.id === selected.id && "bg-muted",
+              trial.id === selected?.id && "bg-muted",
             )}
           >
             <span className="flex items-center gap-2">
@@ -846,8 +881,9 @@ function ExecutionView({
             </span>
           </button>
         ))}
-      </nav>
-      <Card data-testid="trial-panel" className="min-w-0">
+        </nav>
+      </div>
+      {selected ? <Card data-testid="trial-panel" className="min-w-0">
         <CardHeader className="gap-1">
           <CardTitle className="flex flex-wrap items-center gap-2 text-base">
             {trialIcon(selected.state)}
@@ -904,7 +940,7 @@ function ExecutionView({
             </div>
           )}
         </CardContent>
-      </Card>
+      </Card> : <EmptyNote>{t("topics.noTrials")}</EmptyNote>}
     </div>
   );
 }

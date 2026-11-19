@@ -1564,6 +1564,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/datasets/{dataset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Dataset
+         * @description Load the versions of one dataset.
+         */
+        get: operations["get_dataset"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/exports": {
         parameters: {
             query?: never;
@@ -1950,6 +1970,7 @@ export interface paths {
          * @description An attachment name lists all its records; snapshot_id selects only pinned ones.
          *
          *     Recycled targets remain readable. Purged targets return an empty list.
+         *     Request a limit for newest-first pagination.
          */
         get: operations["list_records"];
         put?: never;
@@ -2424,6 +2445,110 @@ export interface paths {
         get: operations["get_team_policy"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/topics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Topics
+         * @description Search by name or stable ID. Deleted topics are hidden.
+         */
+        get: operations["list_topics"];
+        put?: never;
+        /** Create Topic */
+        post: operations["create_topic"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/topics/{topic_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Topic */
+        get: operations["get_topic"];
+        /** Update Topic */
+        put: operations["update_topic"];
+        post?: never;
+        /** Delete Topic */
+        delete: operations["delete_topic"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/topics/{topic_id}/materials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Topic Materials
+         * @description Versions and snapshots frozen by the explicitly selected live runs.
+         */
+        get: operations["list_topic_materials"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/topics/{topic_id}/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Topic Overview
+         * @description Recent and active runs, selected objects, actual materials and the latest handoff.
+         */
+        get: operations["topic_overview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/topics/{topic_id}/references": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Topic References
+         * @description Explicit references, including the deletion state of their original objects.
+         */
+        get: operations["list_topic_references"];
+        put?: never;
+        /**
+         * Change Topic References
+         * @description Add or remove a batch atomically. Repeating an add or remove is safe.
+         */
+        post: operations["change_topic_references"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4628,6 +4753,11 @@ export interface components {
             data: components["schemas"]["DatasetVersionDetail"];
             meta: components["schemas"]["Meta"];
         };
+        /** Envelope[Dataset] */
+        Envelope_Dataset_: {
+            data: components["schemas"]["Dataset"];
+            meta: components["schemas"]["Meta"];
+        };
         /** Envelope[DeploymentSettings] */
         Envelope_DeploymentSettings_: {
             data: components["schemas"]["DeploymentSettings"];
@@ -4766,6 +4896,21 @@ export interface components {
         /** Envelope[TeamPolicy] */
         Envelope_TeamPolicy_: {
             data: components["schemas"]["TeamPolicy"];
+            meta: components["schemas"]["Meta"];
+        };
+        /** Envelope[TopicOverview] */
+        Envelope_TopicOverview_: {
+            data: components["schemas"]["TopicOverview"];
+            meta: components["schemas"]["Meta"];
+        };
+        /** Envelope[TopicReferenceResult] */
+        Envelope_TopicReferenceResult_: {
+            data: components["schemas"]["TopicReferenceResult"];
+            meta: components["schemas"]["Meta"];
+        };
+        /** Envelope[Topic] */
+        Envelope_Topic_: {
+            data: components["schemas"]["Topic"];
             meta: components["schemas"]["Meta"];
         };
         /** Envelope[UpdateStatus] */
@@ -4972,6 +5117,24 @@ export interface components {
         Envelope_list_TeamPolicyRevision__: {
             /** Data */
             data: components["schemas"]["TeamPolicyRevision"][];
+            meta: components["schemas"]["Meta"];
+        };
+        /** Envelope[list[TopicMaterial]] */
+        Envelope_list_TopicMaterial__: {
+            /** Data */
+            data: components["schemas"]["TopicMaterial"][];
+            meta: components["schemas"]["Meta"];
+        };
+        /** Envelope[list[TopicReference]] */
+        Envelope_list_TopicReference__: {
+            /** Data */
+            data: components["schemas"]["TopicReference"][];
+            meta: components["schemas"]["Meta"];
+        };
+        /** Envelope[list[Topic]] */
+        Envelope_list_Topic__: {
+            /** Data */
+            data: components["schemas"]["Topic"][];
             meta: components["schemas"]["Meta"];
         };
         /** Envelope[list[Trial]] */
@@ -6756,7 +6919,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "collection" | "run" | "attachment" | "dataset_version";
+            type: "collection" | "run" | "attachment" | "dataset_version" | "topic";
         };
         /** RecordTarget */
         "RecordTarget-Output": {
@@ -6774,7 +6937,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "collection" | "run" | "attachment" | "dataset_version";
+            type: "collection" | "run" | "attachment" | "dataset_version" | "topic";
         };
         /** RecordUpdate */
         RecordUpdate: {
@@ -6823,7 +6986,7 @@ export interface components {
              * Object Type
              * @enum {string}
              */
-            object_type: "run" | "artifact" | "dataset" | "dataset_version" | "credential" | "user" | "pat" | "model_config" | "harness_version" | "attachment_version" | "experiment_plan" | "collection" | "analysis_snapshot" | "workflow_record";
+            object_type: "run" | "artifact" | "dataset" | "dataset_version" | "credential" | "user" | "pat" | "model_config" | "harness_version" | "attachment_version" | "experiment_plan" | "collection" | "analysis_snapshot" | "workflow_record" | "topic";
             /** Owner Id */
             owner_id: string | null;
             /** Owner Username */
@@ -7213,6 +7376,11 @@ export interface components {
             task_selection?: components["schemas"]["TaskSelection-Input"];
             /** @default {} */
             timeouts?: components["schemas"]["TimeoutOverrides"];
+            /**
+             * Topic Id
+             * @description Add the accepted run to this topic
+             */
+            topic_id?: string | null;
         };
         /** RunDetail */
         RunDetail: {
@@ -7432,6 +7600,8 @@ export interface components {
              *     }
              */
             task_selection?: components["schemas"]["RerunSelection"];
+            /** Topic Id */
+            topic_id?: string | null;
         };
         /**
          * RunScoring
@@ -8363,6 +8533,172 @@ export interface components {
             bootstrap_sec?: number | null;
             /** Verifier Sec */
             verifier_sec?: number | null;
+        };
+        /** Topic */
+        Topic: {
+            /** Allowed Actions */
+            allowed_actions: string[];
+            /** Created At */
+            created_at: string;
+            deletion: components["schemas"]["DeletionState"] | null;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Owner Id */
+            owner_id: string;
+            /** Purpose */
+            purpose: string;
+            settings: components["schemas"]["TopicSettings-Output"];
+            /** Updated At */
+            updated_at: string;
+            /**
+             * Web Path
+             * @description The stable web path relative to the deployment root
+             */
+            web_path: string;
+        };
+        /** TopicCreate */
+        TopicCreate: {
+            /** Name */
+            name: string;
+            /**
+             * Purpose
+             * @default
+             */
+            purpose?: string;
+            /**
+             * @default {
+             *       "materials_expanded": true
+             *     }
+             */
+            settings?: components["schemas"]["TopicSettings-Input"];
+        };
+        /** TopicMaterial */
+        TopicMaterial: {
+            deletion: components["schemas"]["DeletionState"] | null;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "dataset_version" | "attachment_snapshot";
+            /** Label */
+            label: string | null;
+            /** Name */
+            name: string;
+            /** Source Run Count */
+            source_run_count: number;
+            /**
+             * Source Run Ids
+             * @description Up to eight newest source runs
+             */
+            source_run_ids: string[];
+        };
+        /** TopicObject */
+        TopicObject: {
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "run" | "collection" | "dataset" | "attachment_snapshot";
+        };
+        /**
+         * TopicOverview
+         * @description Bounded previews. Use the filtered list endpoints for the remaining items.
+         */
+        TopicOverview: {
+            /** Active Run Count */
+            active_run_count: number;
+            /** Active Runs */
+            active_runs: components["schemas"]["TopicRunSummary"][];
+            /** Attachments */
+            attachments: components["schemas"]["TopicReference"][];
+            /** Collections */
+            collections: components["schemas"]["TopicReference"][];
+            /** Datasets */
+            datasets: components["schemas"]["TopicReference"][];
+            latest_handoff: components["schemas"]["WorkflowRecord"] | null;
+            /** Recent Runs */
+            recent_runs: components["schemas"]["TopicRunSummary"][];
+            topic: components["schemas"]["Topic"];
+            /** Used Attachment Snapshots */
+            used_attachment_snapshots: components["schemas"]["TopicMaterial"][];
+            /** Used Dataset Versions */
+            used_dataset_versions: components["schemas"]["TopicMaterial"][];
+        };
+        /** TopicReference */
+        TopicReference: {
+            /** Added At */
+            added_at: string;
+            deletion: components["schemas"]["DeletionState"] | null;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "run" | "collection" | "dataset" | "attachment_snapshot";
+            /** Label */
+            label: string | null;
+            /** Name */
+            name: string;
+        };
+        /** TopicReferenceChanges */
+        TopicReferenceChanges: {
+            /** Add */
+            add?: components["schemas"]["TopicObject"][];
+            /** Remove */
+            remove?: components["schemas"]["TopicObject"][];
+        };
+        /** TopicReferenceResult */
+        TopicReferenceResult: {
+            /** Added */
+            added: number;
+            /** Removed */
+            removed: number;
+        };
+        /** TopicRunSummary */
+        TopicRunSummary: {
+            /** Accepted At */
+            accepted_at: string;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            scoring: components["schemas"]["RunScoring"];
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "preparing" | "running" | "finalizing" | "finished" | "cancelled" | "interrupted";
+        };
+        /** TopicSettings */
+        "TopicSettings-Input": {
+            /**
+             * Materials Expanded
+             * @default true
+             */
+            materials_expanded?: boolean;
+        };
+        /** TopicSettings */
+        "TopicSettings-Output": {
+            /**
+             * Materials Expanded
+             * @default true
+             */
+            materials_expanded: boolean;
+        };
+        /** TopicUpdate */
+        TopicUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Purpose */
+            purpose?: string | null;
+            settings?: components["schemas"]["TopicSettings-Input"] | null;
         };
         /** Trial */
         Trial: {
@@ -9850,7 +10186,7 @@ export interface operations {
         parameters: {
             query?: {
                 state?: string;
-                object_type?: ("run" | "artifact" | "dataset" | "dataset_version" | "credential" | "user" | "pat" | "model_config" | "harness_version" | "attachment_version" | "experiment_plan" | "collection" | "analysis_snapshot" | "workflow_record") | null;
+                object_type?: ("run" | "artifact" | "dataset" | "dataset_version" | "credential" | "user" | "pat" | "model_config" | "harness_version" | "attachment_version" | "experiment_plan" | "collection" | "analysis_snapshot" | "workflow_record" | "topic") | null;
                 cursor?: string | null;
                 limit?: number | null;
             };
@@ -10561,6 +10897,10 @@ export interface operations {
                 name?: string | null;
                 include_disabled?: boolean;
                 kind?: ("attachment" | "submission") | null;
+                q?: string | null;
+                topic_id?: string | null;
+                cursor?: string | null;
+                limit?: number | null;
             };
             header?: never;
             path?: never;
@@ -10854,7 +11194,12 @@ export interface operations {
     };
     list_collections: {
         parameters: {
-            query?: never;
+            query?: {
+                q?: string | null;
+                topic_id?: string | null;
+                cursor?: string | null;
+                limit?: number | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -11731,6 +12076,9 @@ export interface operations {
             query?: {
                 cursor?: string | null;
                 limit?: number | null;
+                q?: string | null;
+                topic_id?: string | null;
+                include_versions?: boolean;
             };
             header?: never;
             path?: never;
@@ -11745,6 +12093,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Envelope_list_Dataset__"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_dataset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_Dataset_"];
                 };
             };
             /** @description Structured error */
@@ -12588,10 +12967,12 @@ export interface operations {
     list_records: {
         parameters: {
             query: {
-                target_type: "collection" | "run" | "attachment" | "dataset_version";
+                target_type: "collection" | "run" | "attachment" | "dataset_version" | "topic";
                 target_id: string;
                 snapshot_id?: string | null;
                 kind?: string | null;
+                cursor?: string | null;
+                limit?: number | null;
             };
             header?: never;
             path?: never;
@@ -12957,6 +13338,9 @@ export interface operations {
                 accepted_after?: string | null;
                 accepted_before?: string | null;
                 artifacts_retained?: boolean | null;
+                topic_id?: string | null;
+                q?: string | null;
+                active?: boolean | null;
                 cursor?: string | null;
                 limit?: number | null;
             };
@@ -13725,6 +14109,305 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Envelope_TeamPolicy_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_topics: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                cursor?: string | null;
+                limit?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_list_Topic__"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_topic: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopicCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_Topic_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_topic: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                topic_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_Topic_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_topic: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                topic_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopicUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_Topic_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_topic: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                topic_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_RecycleEntry_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_topic_materials: {
+        parameters: {
+            query: {
+                kind: "dataset_version" | "attachment_snapshot";
+                cursor?: string | null;
+                limit?: number | null;
+            };
+            header?: never;
+            path: {
+                topic_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_list_TopicMaterial__"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    topic_overview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                topic_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_TopicOverview_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_topic_references: {
+        parameters: {
+            query: {
+                kind: "run" | "collection" | "dataset" | "attachment_snapshot";
+                cursor?: string | null;
+                limit?: number | null;
+            };
+            header?: never;
+            path: {
+                topic_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_list_TopicReference__"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    change_topic_references: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                topic_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopicReferenceChanges"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_TopicReferenceResult_"];
                 };
             };
             /** @description Structured error */

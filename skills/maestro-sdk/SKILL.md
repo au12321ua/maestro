@@ -1,6 +1,6 @@
 ---
 name: maestro-sdk
-description: Run, watch, compare and rerun team experiments on a Maestro service with the maestro_sdk Python client and a personal access token (PAT). Use when asked to browse or upload Maestro datasets, choose task environments, submit or rerun runs, wait for results, read scores and logs, download artifacts or export runs. Dataset upload needs an administrator PAT with datasets permission. Manage members, credentials and models on the web.
+description: Run, watch, compare and rerun team experiments on a Maestro service with the maestro_sdk Python client and a personal access token (PAT). Use when asked to resume or organize Maestro experiments by topic, browse or upload Maestro datasets, choose task environments, submit or rerun runs, wait for results, read scores and logs, download artifacts or export runs. Dataset upload needs an administrator PAT with datasets permission. Manage members, credentials and models on the web.
 ---
 
 # Maestro SDK
@@ -28,6 +28,8 @@ client = MaestroClient.from_env()      # MAESTRO_URL plus MAESTRO_TOKEN or MAEST
 - The client ignores proxy environment variables unless you pass `trust_env=True`.
 
 ## Workflow
+
+When given an experiment topic link, read [references/topics.md](references/topics.md). Read the topic overview and latest handoff before planning another run. Carry the same topic handle through submission, and share its link when handing the work over.
 
 1. **Check the service.** Run `client.require("runs", "execution")`; it raises `UnsupportedCapability` when a feature is off. Read `caps.limits` for team limits. A `ContractDriftWarning` means the SDK and service versions differ; tell the user.
 2. **Find inputs.**

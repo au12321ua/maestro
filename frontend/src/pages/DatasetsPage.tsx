@@ -1,6 +1,6 @@
 import { Fragment, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Download, Trash2, Upload } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,11 +26,14 @@ import { OperationLine } from "@/components/OperationLine";
 import { UploadDataset } from "@/pages/DatasetUpload";
 import { RecordsJumpButton, WorkflowRecords } from "@/components/WorkflowRecords";
 import { useRecords } from "@/lib/records";
+import { DIRECTORY_PAGE_SIZE, DirectoryCheck, MoreItems, TopicDirectory, TopicMembershipActions, useDirectorySelection } from "@/components/TopicDirectory";
+import { useTopicScope } from "@/lib/topics";
+import { findDataset } from "@/lib/datasets";
 import { TaskStatusCells } from "@/components/TaskStatusCells";
 import { t, Trans } from "@/i18n";
 import { API, api, errorText } from "@/lib/api";
 import { commonPrefix, fmtTime, shortId, versionName } from "@/lib/format";
-import { useInterval, useLoad, useSession } from "@/lib/hooks";
+import { useCursorList, useInterval, useLoad, useSession } from "@/lib/hooks";
 import type {
   Dataset,
   DatasetVersion,
@@ -48,29 +51,61 @@ import { SetupNetworkRevision } from "@/pages/admin/SetupNetworkTab";
 export function DatasetsPage() {
   const { me } = useSession();
   const isAdmin = me.role === "admin" && me.auth_channel === "web_session";
-  const datasets = useLoad(
-    async () => (await api.get("/datasets", { query: { limit: 200 } })).data,
-  );
-  // The selected version is in the address (?version=), so a link opens it, including a
-  // deleted version that runs still reference.
+  const { topicId } = useTopicScope();
+  const [q, setQuery] = useState("");
+  const queryKey = JSON.stringify([topicId, q.trim()]);
+  const datasets = useCursorList((cursor) => api.get("/datasets", {
+    query: {
+      topic_id: topicId ?? undefined, q: q.trim() || undefined,
+      cursor, limit: DIRECTORY_PAGE_SIZE, include_versions: false,
+    },
+  }), queryKey);
+  const selection = useDirectorySelection(queryKey);
   const [params, setParams] = useSearchParams();
-  const chosen = params.get("version") ?? "";
-  const listed = datasets.data?.some((d) => d.versions.some((v) => v.id === chosen));
-  const versionId =
-    chosen || datasets.data?.find((d) => d.versions.length > 0)?.versions[0].id || "";
-  const setVersionId = (id: string) => {
+  const chosenVersion = params.get("version") ?? "";
+  const pinnedDataset = params.get("dataset") ?? "";
+  // A shared version link can point outside the current directory page or scope.
+  const linkedVersion = useLoad(async () => {
+    if (!chosenVersion || pinnedDataset) return null;
+    return (await api.get("/dataset-versions/{version_id}", { path: { version_id: chosenVersion } })).data;
+  }, [chosenVersion, pinnedDataset]);
+  const datasetId = pinnedDataset || (linkedVersion.data?.id === chosenVersion ? linkedVersion.data?.dataset_id : "") || "";
+  const expanded = useLoad(async () => {
+    if (!datasetId) return null;
+    return (await api.get("/datasets/{dataset_id}", { path: { dataset_id: datasetId } })).data;
+  }, [datasetId]);
+  const detail = expanded.data?.id === datasetId ? expanded.data : null;
+  const versionId = chosenVersion || detail?.versions[0]?.id || "";
+  const listed = datasets.data ?? [];
+  const outsidePage = detail && !listed.some((dataset) => dataset.id === detail.id);
+  const rows = outsidePage ? [detail, ...listed] : listed;
+
+  const selectDataset = (id: string) => {
+    const next = new URLSearchParams(params);
+    if (id && datasetId !== id) next.set("dataset", id);
+    else next.delete("dataset");
+    next.delete("version");
+    setParams(next, { replace: true });
+  };
+  const setVersionId = (id: string, dataset?: string) => {
     const next = new URLSearchParams(params);
     next.set("version", id);
+    if (dataset) next.set("dataset", dataset);
+    else next.delete("dataset");
     setParams(next, { replace: true });
   };
   const [upstreamOf, setUpstreamOf] = useState<string>();
   const [adding, setAdding] = useState(false);
   // "new" for a new uploaded dataset, otherwise the upload dataset getting a version.
   const [uploadTo, setUploadTo] = useState<string | null>(null);
-  const uploadTarget = datasets.data?.find((d) => d.id === uploadTo) ?? null;
-  const upstreamDataset = datasets.data?.find((d) => d.id === upstreamOf);
+  const uploadTarget = detail?.id === uploadTo ? detail : null;
+  const upstreamDataset = detail?.id === upstreamOf ? detail : null;
+  const reload = async () => {
+    selection.setSelected(new Set());
+    await Promise.all([datasets.reload(), expanded.reload()]);
+  };
   const imported = async (id?: string) => {
-    await datasets.reload();
+    await reload();
     if (id) setVersionId(id);
   };
 
@@ -87,7 +122,7 @@ export function DatasetsPage() {
     } catch (err) {
       toast.error(t("datasets.page.deleteFailed", { error: errorText(err) }));
     }
-    await datasets.reload();
+    await reload();
   };
 
   const removeVersion = async (dataset: Dataset, version: DatasetVersion) => {
@@ -106,12 +141,14 @@ export function DatasetsPage() {
     } catch (err) {
       toast.error(t("datasets.page.deleteFailed", { error: errorText(err) }));
     }
-    await datasets.reload();
+    await reload();
   };
 
   return (
     <div>
       <PageTitle title={t("datasets.page.title")} />
+      <TopicDirectory search={q} onSearch={setQuery} />
+      <TopicMembershipActions kind="dataset" ids={selection.selected} onChanged={reload} />
       <p className="mb-4 text-sm text-muted-foreground">
         {t("datasets.page.intro")}
       </p>
@@ -128,15 +165,13 @@ export function DatasetsPage() {
       )}
       {isAdmin && adding && (
         <AddDataset
-          datasets={datasets.data ?? []}
           onImported={imported}
           onClose={() => setAdding(false)}
         />
       )}
-      {isAdmin && uploadTo && (
+      {isAdmin && (uploadTo === "new" || uploadTarget) && (
         <UploadDataset
           key={uploadTo}
-          datasets={datasets.data ?? []}
           target={uploadTarget}
           onImported={imported}
           onClose={() => setUploadTo(null)}
@@ -151,15 +186,31 @@ export function DatasetsPage() {
         />
       )}
       <ErrorAlert error={datasets.error} />
+      <ErrorAlert error={expanded.error} />
       {datasets.loading && !datasets.data && <Loading />}
-      {datasets.data && datasets.data.length === 0 && <EmptyNote>{t("datasets.page.empty")}</EmptyNote>}
+      {datasets.data && rows.length === 0 && <EmptyNote>{t("datasets.page.empty")}</EmptyNote>}
       <div className="grid gap-4 lg:grid-cols-[minmax(260px,1fr)_minmax(0,3fr)]">
         <div className="grid content-start gap-3">
-          {datasets.data?.map((dataset) => (
+          {rows.map((dataset) => (
             <Card key={dataset.id} data-testid="dataset-card">
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center justify-between gap-2 text-base">
-                  {dataset.namespace}/{dataset.name}
+                  <span className="flex min-w-0 items-center gap-2">
+                    {listed.some((row) => row.id === dataset.id) && (
+                      <DirectoryCheck name={`${dataset.namespace}/${dataset.name}`}
+                        checked={selection.selected.has(dataset.id)} onChange={() => selection.toggle(dataset.id)} />
+                    )}
+                    <button
+                      type="button"
+                      aria-expanded={dataset.id === datasetId}
+                      aria-label={t("topics.datasetVersions", { name: `${dataset.namespace}/${dataset.name}` })}
+                      onClick={() => selectDataset(dataset.id)}
+                      className="flex min-w-0 items-center gap-1 text-left text-primary hover:underline"
+                    >
+                      {dataset.id === datasetId ? <ChevronDown className="size-4 shrink-0" /> : <ChevronRight className="size-4 shrink-0" />}
+                      <span className="break-all">{dataset.namespace}/{dataset.name}</span>
+                    </button>
+                  </span>
                   {isAdmin && (
                     <Button
                       size="sm"
@@ -172,6 +223,9 @@ export function DatasetsPage() {
                     </Button>
                   )}
                 </CardTitle>
+                {outsidePage && dataset.id === detail?.id && (
+                  <p className="text-xs text-muted-foreground">{t("topics.notOnPage")}</p>
+                )}
                 <div className="text-xs text-muted-foreground">
                   {t("datasets.page.source", { kind: dataset.source_kind })}
                   {dataset.source_kind !== "upload" && (dataset.credential_id
@@ -184,7 +238,7 @@ export function DatasetsPage() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => setUpstreamOf(dataset.id)}
+                      onClick={() => { if (dataset.id !== datasetId) selectDataset(dataset.id); setUpstreamOf(dataset.id); }}
                     >
                       {t("datasets.page.checkUpstream")}
                     </Button>
@@ -195,22 +249,23 @@ export function DatasetsPage() {
                 )}
                 {isAdmin && dataset.source_kind === "upload" && (
                   <div>
-                    <Button size="sm" variant="outline" onClick={() => setUploadTo(dataset.id)}>
+                    <Button size="sm" variant="outline" onClick={() => { if (dataset.id !== datasetId) selectDataset(dataset.id); setUploadTo(dataset.id); }}>
                       <Upload />
                       {t("datasets.upload.newVersion")}
                     </Button>
                   </div>
                 )}
               </CardHeader>
-              <CardContent className="grid gap-1">
-                {dataset.versions.length === 0 && (
+              {dataset.id === datasetId && !detail && expanded.loading && <CardContent><Loading /></CardContent>}
+              {dataset.id === detail?.id && <CardContent className="grid gap-1">
+                {detail.versions.length === 0 && (
                   <span className="text-xs text-muted-foreground">{t("datasets.page.noVersions")}</span>
                 )}
-                {dataset.versions.map((version) => (
+                {detail.versions.map((version) => (
                   <div key={version.id} className="flex items-center gap-1">
                     <button
                       type="button"
-                      onClick={() => setVersionId(version.id)}
+                      onClick={() => setVersionId(version.id, dataset.id)}
                       className={cn(
                         "grid flex-1 gap-0.5 rounded-md border px-2 py-1 text-left text-sm",
                         versionId === version.id ? "border-primary bg-accent" : "hover:bg-muted",
@@ -226,7 +281,7 @@ export function DatasetsPage() {
                             <span className="text-xs text-muted-foreground">
                               {t("datasets.versions.basedOn", {
                                 base: (() => {
-                                  const b = dataset.versions.find(
+                                  const b = detail.versions.find(
                                     (v) => v.id === version.based_on_version_id,
                                   );
                                   return b ? versionName(b, true) : "—";
@@ -266,26 +321,19 @@ export function DatasetsPage() {
                     )}
                   </div>
                 ))}
-              </CardContent>
+              </CardContent>}
             </Card>
           ))}
+          <MoreItems page={datasets} />
         </div>
         {versionId && (
           <div className="grid min-w-0 content-start gap-2">
-            {datasets.data && !listed && chosen && (
-              <p className="text-sm text-amber-800">
-                {t("datasets.page.notListed")}
-              </p>
-            )}
             <VersionTasks
               key={versionId}
               versionId={versionId}
-              siblings={
-                datasets.data?.find((d) => d.versions.some((v) => v.id === versionId))?.versions ??
-                []
-              }
+              siblings={detail?.versions ?? []}
               isAdmin={isAdmin}
-              onChange={datasets.reload}
+              onChange={reload}
             />
           </div>
         )}
@@ -677,11 +725,9 @@ function SourceVersions({
 }
 
 function AddDataset({
-  datasets,
   onImported,
   onClose,
 }: {
-  datasets: Dataset[];
   onImported: (versionId?: string) => Promise<void>;
   onClose: () => void;
 }) {
@@ -714,14 +760,12 @@ function AddDataset({
     }
   };
   // Picking a dataset the platform already has compares against its versions.
-  const existing =
-    target &&
-    datasets.find(
-      (d) =>
-        d.source_kind === sourceKind &&
-        d.namespace === target.namespace &&
-        d.name === target.name,
-    );
+  const local = useLoad(
+    () => target ? findDataset(target.namespace, target.name, sourceKind) : Promise.resolve(null),
+    [target?.namespace, target?.name, sourceKind],
+  );
+  const existing = local.data?.namespace === target?.namespace
+    && local.data?.name === target?.name && local.data?.source_kind === sourceKind ? local.data : null;
 
   return (
     <Card className="mb-4">
@@ -802,6 +846,8 @@ function AddDataset({
             })}
           </div>
         )}
+        <ErrorAlert error={local.error} />
+        {target && local.loading && !existing && <Loading />}
         {target && (
           <SourceVersions
             key={`${sourceKind}/${target.namespace}/${target.name}/${credentialId}`}
@@ -812,7 +858,7 @@ function AddDataset({
               credential_id: credentialId || null,
             }}
             local={existing?.versions ?? []}
-            onImported={onImported}
+            onImported={async (id) => { await Promise.all([local.reload(), onImported(id)]); }}
           />
         )}
       </CardContent>

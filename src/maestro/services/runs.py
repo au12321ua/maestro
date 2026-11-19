@@ -70,6 +70,7 @@ from maestro.services.principal import (
     require_experiment,
     require_manage_owned,
 )
+from maestro.services.topics import link_run, require_topic, topic_objects
 
 SNAPSHOT_SCHEMA = 2
 ACTION_SUBMIT = "runs.submit"
@@ -77,7 +78,14 @@ ACTION_CANCEL = "runs.cancel"
 ACTION_RERUN = "runs.rerun"
 ACTION_BATCH = "runs.submit_batch"
 RERUN_MODES = ("all", "unfinished", "explicit")
-RUN_FIELDS = {"name", "client_request_id", "resolution_id", "source_run_id", "collection_id"}
+RUN_FIELDS = {
+    "name",
+    "client_request_id",
+    "resolution_id",
+    "source_run_id",
+    "collection_id",
+    "topic_id",
+}
 __all__ = ["EXECUTION_MODES", "Runs"]
 
 
@@ -101,6 +109,9 @@ def _check_run_fields(body: dict) -> dict:
     collection_id = body.get("collection_id")
     if collection_id is not None and not isinstance(collection_id, str):
         errors.append(FieldError("/collection_id", "TYPE"))
+    topic_id = body.get("topic_id")
+    if topic_id is not None and not isinstance(topic_id, str):
+        errors.append(FieldError("/topic_id", "TYPE"))
     if resolution_id is not None:
         # The resolution fixed the configuration; a field beside it would be ignored.
         errors += [
@@ -121,6 +132,7 @@ def _check_run_fields(body: dict) -> dict:
         "resolution_id": resolution_id,
         "source_run_id": source_run_id,
         "collection_id": collection_id,
+        "topic_id": topic_id,
     }
 
 
@@ -448,6 +460,8 @@ class Runs:
             self.disk.refuse_if_low()
         # Resolve outside the write transaction; revisions are re-checked inside.
         with self.db.read() as conn:
+            if run["topic_id"] is not None:
+                require_topic(conn, run["topic_id"], write=True)
             if run["resolution_id"]:
                 res = self._confirmed(conn, principal, run["resolution_id"])
                 self._require_collection(conn, run["collection_id"], res)
@@ -471,6 +485,8 @@ class Runs:
             if stored:
                 return stored.status_code, stored.response, True
             self._recheck_principal(conn, principal)
+            if run["topic_id"] is not None:
+                require_topic(conn, run["topic_id"], write=True)
             self._recheck(conn, res)
             if source:
                 self._source(conn, source["run_id"])
@@ -479,6 +495,8 @@ class Runs:
             response = self._insert_run(conn, principal, run, res, source)
             if run.get("collection_id"):
                 self.collections.join(conn, principal, run["collection_id"], response["run_id"])
+            if run["topic_id"] is not None:
+                link_run(conn, run["topic_id"], response["run_id"])
             idempotency.store(
                 conn, principal.idempotency_principal, action, key, req_hash, 202, response
             )
@@ -553,6 +571,10 @@ class Runs:
                 422,
                 field_errors=[FieldError("/task_selection/mode", "ENUM", ", ".join(RERUN_MODES))],
             )
+        # Preserve hashes for requests accepted before the optional destination existed.
+        body = dict(body)
+        if body.get("topic_id") is None:
+            body.pop("topic_id", None)
         req_hash = idempotency.request_hash({"source_run_id": run_id, **body})
         with self.db.read() as conn:
             stored = idempotency.lookup(
@@ -563,6 +585,8 @@ class Runs:
         if self.disk:
             self.disk.refuse_if_low()
         with self.db.read() as conn:
+            if body.get("topic_id") is not None:
+                require_topic(conn, body["topic_id"], write=True)
             source = self._source(conn, run_id)
             trials = conn.execute(
                 select(t.trials.c.task_id, t.trials.c.state, t.trials.c.reason_code).where(
@@ -611,6 +635,7 @@ class Runs:
             {
                 "name": body.get("name") or f"{source['name']} (rerun)",
                 "client_request_id": body.get("client_request_id"),
+                "topic_id": body.get("topic_id"),
             }
         )
         request = pinned_request(source["request"], source["effective"])
@@ -719,6 +744,8 @@ class Runs:
         with self.db.read() as conn:
             for index, (run, item) in enumerate(prepared):
                 with _prefixed(f"/runs/{index}"):
+                    if run["topic_id"] is not None:
+                        require_topic(conn, run["topic_id"], write=True)
                     if run["resolution_id"]:
                         res = self._confirmed(conn, principal, run["resolution_id"])
                         self._require_collection(conn, run["collection_id"], res)
@@ -745,8 +772,10 @@ class Runs:
             if stored:
                 return stored.status_code, stored.response, True
             self._recheck_principal(conn, principal)
-            for index, (_, res, source) in enumerate(members):
+            for index, (run, res, source) in enumerate(members):
                 with _prefixed(f"/runs/{index}"):
+                    if run["topic_id"] is not None:
+                        require_topic(conn, run["topic_id"], write=True)
                     self._recheck(conn, res)
                     if source:
                         self._source(conn, source["run_id"])
@@ -783,6 +812,8 @@ class Runs:
                         self.collections.join(
                             conn, principal, run["collection_id"], response["run_id"]
                         )
+                if run["topic_id"] is not None:
+                    link_run(conn, run["topic_id"], response["run_id"])
                 accepted.append(response)
             response = {
                 "batch_id": batch_id,
@@ -825,6 +856,8 @@ class Runs:
                 entry = {"index": index, "config_digest": None, "planned_trials": 0}
                 try:
                     run = _check_run_fields(item)
+                    if run["topic_id"] is not None:
+                        require_topic(conn, run["topic_id"], write=True)
                     if run["resolution_id"]:
                         stored = self._resolution_row(conn, principal, run["resolution_id"])
                         res = self.resolver.resolve(conn, stored["request_json"])
@@ -1182,6 +1215,9 @@ class Runs:
         attachment_version_id: str | None = None,
         plan_id: str | None = None,
         artifacts_retained: bool | None = None,
+        topic_id: str | None = None,
+        q: str | None = None,
+        active: bool | None = None,
     ) -> tuple[list, str | None]:
         """Deleted runs are hidden; the recycle bin lists them."""
         limit = pagination.check_limit(limit)
@@ -1219,6 +1255,16 @@ class Runs:
             ),
         }
         query = runs_with_owner().where(deleted.visible(t.runs.c.id, "run"))
+        if topic_id is not None:
+            filters["topic_id"] = topic_id
+            query = query.where(t.runs.c.id.in_(topic_objects(topic_id, "run")))
+        if q:
+            filters["q"] = q
+            query = query.where(pagination.matching(q, t.runs.c.name, t.runs.c.id))
+        if active is not None:
+            filters["active"] = active
+            condition = t.runs.c.state.in_(RUN_TERMINAL)
+            query = query.where(~condition if active else condition)
         for column, value in (
             (t.runs.c.owner_id, owner_id),
             (t.runs.c.state, state),
@@ -1251,6 +1297,8 @@ class Runs:
             query = query.where(t.runs.c.accepted_at < accepted_before)
         query = pagination.page(query, t.runs.c.accepted_at, t.runs.c.id, cursor, limit, filters)
         with self.db.read() as conn:
+            if topic_id is not None:
+                require_topic(conn, topic_id)
             rows = list(conn.execute(query).mappings().all())
             rows, next_cursor = pagination.split(rows, limit, "accepted_at", filters)
             ids = [r["id"] for r in rows]

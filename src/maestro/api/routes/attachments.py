@@ -40,9 +40,25 @@ def list_attachments(
     name: str | None = None,
     include_disabled: bool = True,
     kind: Literal["attachment", "submission"] | None = None,
+    q: str | None = None,
+    topic_id: str | None = None,
+    cursor: str | None = None,
+    limit: int | None = None,
     who: Principal = Depends(principal),
 ):
-    return ok(request, maestro(request).attachments.list(who, name, include_disabled, kind))
+    attachments = maestro(request).attachments
+    if all(value is None for value in (q, topic_id, cursor, limit)):
+        return ok(request, attachments.list(who, name, include_disabled, kind))
+    items, next_cursor = attachments.list_page(
+        name=name,
+        include_disabled=include_disabled,
+        kind=kind,
+        q=q,
+        topic_id=topic_id,
+        cursor=cursor,
+        limit=limit,
+    )
+    return ok(request, items, next_cursor)
 
 
 @router.get("/attachments/{attachment_id}", response_model=Envelope[Attachment])

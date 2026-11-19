@@ -3,7 +3,7 @@
 // in one line, and an indent only where a snapshot has been built on more than once. Once
 // the block is open, each snapshot says how many files it changed from its parent.
 // Opening a snapshot lists its files and compares it with another snapshot of the name.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { WorkflowRecords } from "@/components/WorkflowRecords";
@@ -209,6 +209,8 @@ export interface HistoryActions {
   onToggleEnabled: (a: Attachment) => void;
   onDelete: (a: Attachment) => void;
   onError: (err: unknown) => void;
+  partialHistory?: boolean;
+  snapshotControl?: (a: Attachment) => ReactNode;
 }
 
 function Tree({
@@ -281,7 +283,7 @@ function Tree({
       ? null
       : a.parent_id
         ? t("attachments.history.basedOn", {
-            name: parent ? snapshotName(parent) : t("attachments.list.deletedSnapshot"),
+            name: parent ? snapshotName(parent) : t(actions.partialHistory ? "topics.notOnPage" : "attachments.list.deletedSnapshot"),
           })
         : trees.length > 1
           ? t("attachments.history.separate")
@@ -295,13 +297,15 @@ function Tree({
           )}
         />
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          {actions.snapshotControl?.(a)}
           <button type="button" className="text-left" onClick={() => toggle(a.id)}>
             <span className="font-mono text-sm font-medium underline-offset-2 hover:underline">
               {snapshotName(a)}
             </span>
           </button>
           <Pill tone="neutral">{a.kind === "submission" ? t("attachments.kind.submission") : t("attachments.kind.attachment")}</Pill>
-          {a.id === latest.id && <Pill tone="info">{t("attachments.history.latest")}</Pill>}
+          {a.id === latest.id && !actions.partialHistory && <Pill tone="info">{t("attachments.history.latest")}</Pill>}
+          {a.deletion && <Pill tone="muted">{t("topics.objectRecycled")}</Pill>}
           {!a.enabled && <Pill tone="muted">{t("attachments.list.disabled")}</Pill>}
           {a.has_bootstrap && <Pill tone="neutral">{t("attachments.list.hasBootstrap")}</Pill>}
           {node.children.length > 1 && (
@@ -316,14 +320,14 @@ function Tree({
                 {t("attachments.download")}
               </a>
             </Button>
-            <Button
+            {!a.deletion && <Button
               size="sm"
               variant="ghost"
               className="h-7 px-2 text-xs"
               onClick={() => actions.onBaseOn(a)}
             >
               {t("attachments.list.baseOn")}
-            </Button>
+            </Button>}
             {actions.mayManage(a) && (
               <>
                 <Button
@@ -446,12 +450,13 @@ function GroupBlock({
             <span className="break-all font-medium">{group.name}</span>
             <span className="ml-2 text-xs text-muted-foreground">
               {t("attachments.history.count", { count: group.snapshots.length })}
-              {" · "}
+              {!actions.partialHistory && <>{" · "}
               {t("attachments.history.latestIs", {
                 snapshot: snapshotName(latest),
                 time: fmtTime(latest.created_at),
                 owner: latest.owner_username ?? latest.owner_id,
               })}
+              </>}
             </span>
             <span className="block text-xs text-muted-foreground">
               {latest.effects.map((e) => ATTACHMENT_EFFECT[e] ?? e).join(t("attachments.separator"))}
@@ -462,9 +467,9 @@ function GroupBlock({
             </span>
           </span>
         </button>
-        <Button size="sm" variant="outline" onClick={() => actions.onBaseOn(latest)}>
+        {!actions.partialHistory && !latest.deletion && <Button size="sm" variant="outline" onClick={() => actions.onBaseOn(latest)}>
           {t("attachments.history.baseOnLatest")}
-        </Button>
+        </Button>}
       </div>
       {expanded && (
         <div className="border-t px-3 py-4">
@@ -495,6 +500,9 @@ export function AttachmentHistory({
   const [expanded, setExpanded] = useState<Set<string>>(
     new Set([...(groups[0] ? [groups[0].name] : []), ...(focused ? [focused] : [])]),
   );
+  useEffect(() => {
+    if (focused) setExpanded((previous) => new Set([...previous, focused]));
+  }, [focused]);
   const flip = (name: string) => {
     const next = new Set(expanded);
     if (!next.delete(name)) next.add(name);
