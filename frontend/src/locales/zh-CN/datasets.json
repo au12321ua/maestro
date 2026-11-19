@@ -22,13 +22,19 @@
   "page": {
     "title": "数据集",
     "intro": "查看 Hub 与上传的数据集、固定版本和任务准入。转换好的 Harbor task 目录可以在这里或用 SDK 上传。",
+    "name": "数据集名称",
+    "sourceColumn": "来源",
+    "versions": "版本列表",
+    "version": "版本",
+    "tasks": "任务",
+    "back": "返回数据集列表",
+    "versionMismatch": "该版本不属于这个数据集。",
     "empty": "还没有数据集。",
     "deleteDatasetConfirm": "删除数据集「{{name}}」及其全部版本？它会移入回收站；已有运行记录保留，但不能再用它提交或重跑。",
     "deleteVersionConfirm": "删除版本「{{dataset}} {{ref}}」？它会移入回收站；已有运行记录保留，但不能再用它提交或重跑。",
     "deleted": "已移入回收站",
     "deleteFailed": "删除失败：{{error}}",
     "deleteDataset": "删除数据集",
-    "deleteDatasetLabel": "删除数据集 {{name}}",
     "source": "来源：{{kind}}",
     "teamCredential": " · 使用团队凭据",
     "anonymous": " · 匿名读取",
@@ -37,7 +43,6 @@
     "versionCounts": "可提交 {{submittable}}/{{total}} · 缓存就绪 {{ready}}",
     "deleteVersion": "删除该版本",
     "deleteVersionLabel": "删除版本 {{ref}}",
-    "notListed": "这个版本不在数据集列表中：它已删除或不存在；已删除的版本仍可查看，但不能再用来提交。",
     "uploadNoUpstream": "上传得到（网页或 SDK）；只能上传新版本，没有上游更新检查，不使用 Hub 凭据。"
   },
   "diff": {

@@ -67,6 +67,5 @@
   "trialStatus": "Trial state",
   "failedTrials": "Ended trials without a score",
   "noTrials": "No matching trials.",
-  "datasetVersions": "Show versions of {{name}}",
   "notOnPage": "Outside the current directory page"
 }

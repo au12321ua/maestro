@@ -67,6 +67,5 @@
   "trialStatus": "试次状态",
   "failedTrials": "未取得评分的已结束试次",
   "noTrials": "没有匹配的试次。",
-  "datasetVersions": "展开 {{name}} 的版本",
   "notOnPage": "当前目录页之外的对象"
 }

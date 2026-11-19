@@ -16,7 +16,7 @@ import { TopicPage, TopicsPage } from "@/pages/TopicsPage";
 import { TopicScopeProvider } from "@/lib/topics";
 import { NewRunPage } from "@/pages/NewRunPage";
 import { RunDetailPage } from "@/pages/RunDetailPage";
-import { DatasetsPage } from "@/pages/DatasetsPage";
+import { DatasetDetailPage, DatasetsPage } from "@/pages/DatasetsPage";
 import { AttachmentsPage } from "@/pages/AttachmentsPage";
 import { PlansPage } from "@/pages/PlansPage";
 import { BatchListPage, BatchPage } from "@/pages/BatchPage";
@@ -200,6 +200,7 @@ function SignedIn({
           <Route path="/runs/new" element={<NewRunPage />} />
           <Route path="/runs/:runId" element={<RunDetailPage />} />
           <Route path="/datasets" element={<DatasetsPage />} />
+          <Route path="/datasets/:datasetId" element={<DatasetDetailPage />} />
           <Route path="/attachments" element={<AttachmentsPage />} />
           <Route path="/plans" element={<PlansPage />} />
           <Route path="/batches" element={<BatchListPage />} />

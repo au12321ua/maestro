@@ -1,6 +1,6 @@
 import { Fragment, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
-import { ChevronDown, ChevronRight, Download, Trash2, Upload } from "lucide-react";
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Download, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,11 +27,11 @@ import { UploadDataset } from "@/pages/DatasetUpload";
 import { RecordsJumpButton, WorkflowRecords } from "@/components/WorkflowRecords";
 import { useRecords } from "@/lib/records";
 import { DIRECTORY_PAGE_SIZE, DirectoryCheck, MoreItems, TopicDirectory, TopicMembershipActions, useDirectorySelection } from "@/components/TopicDirectory";
-import { useTopicScope } from "@/lib/topics";
-import { findDataset } from "@/lib/datasets";
+import { scopedPath, useTopicScope } from "@/lib/topics";
+import { datasetPath, findDataset } from "@/lib/datasets";
 import { TaskStatusCells } from "@/components/TaskStatusCells";
 import { t, Trans } from "@/i18n";
-import { API, api, errorText } from "@/lib/api";
+import { API, ApiError, api, errorText } from "@/lib/api";
 import { commonPrefix, fmtTime, shortId, versionName } from "@/lib/format";
 import { useCursorList, useInterval, useLoad, useSession } from "@/lib/hooks";
 import type {
@@ -45,13 +45,41 @@ import type {
   Task,
   TaskChanges,
 } from "@/lib/types";
-import { cn } from "@/lib/utils";
 import { SetupNetworkRevision } from "@/pages/admin/SetupNetworkTab";
 
 export function DatasetsPage() {
+  const [params] = useSearchParams();
+  const { topicId } = useTopicScope();
+  const datasetId = params.get("dataset");
+  const versionId = params.get("version") || undefined;
+  if (datasetId) return <Navigate replace to={scopedPath(datasetPath(datasetId, versionId), topicId)} />;
+  if (versionId) return <DatasetVersionLink key={versionId} versionId={versionId} />;
+  return <DatasetDirectory />;
+}
+
+/** Existing version links identify the version without identifying its dataset. */
+function DatasetVersionLink({ versionId }: { versionId: string }) {
+  const { topicId } = useTopicScope();
+  const version = useLoad(async () =>
+    (await api.get("/dataset-versions/{version_id}", { path: { version_id: versionId } })).data,
+  [versionId]);
+  if (version.data) {
+    return <Navigate replace to={scopedPath(datasetPath(version.data.dataset_id, versionId), topicId)} />;
+  }
+  return (
+    <>
+      <PageTitle title={t("datasets.page.title")} back={{ to: scopedPath("/datasets", topicId), label: t("datasets.page.back") }} />
+      <ErrorAlert error={version.error} />
+      {version.loading && <Loading />}
+    </>
+  );
+}
+
+function DatasetDirectory() {
   const { me } = useSession();
   const isAdmin = me.role === "admin" && me.auth_channel === "web_session";
   const { topicId } = useTopicScope();
+  const navigate = useNavigate();
   const [q, setQuery] = useState("");
   const queryKey = JSON.stringify([topicId, q.trim()]);
   const datasets = useCursorList((cursor) => api.get("/datasets", {
@@ -61,281 +89,271 @@ export function DatasetsPage() {
     },
   }), queryKey);
   const selection = useDirectorySelection(queryKey);
-  const [params, setParams] = useSearchParams();
-  const chosenVersion = params.get("version") ?? "";
-  const pinnedDataset = params.get("dataset") ?? "";
-  // A shared version link can point outside the current directory page or scope.
-  const linkedVersion = useLoad(async () => {
-    if (!chosenVersion || pinnedDataset) return null;
-    return (await api.get("/dataset-versions/{version_id}", { path: { version_id: chosenVersion } })).data;
-  }, [chosenVersion, pinnedDataset]);
-  const datasetId = pinnedDataset || (linkedVersion.data?.id === chosenVersion ? linkedVersion.data?.dataset_id : "") || "";
-  const expanded = useLoad(async () => {
-    if (!datasetId) return null;
-    return (await api.get("/datasets/{dataset_id}", { path: { dataset_id: datasetId } })).data;
-  }, [datasetId]);
-  const detail = expanded.data?.id === datasetId ? expanded.data : null;
-  const versionId = chosenVersion || detail?.versions[0]?.id || "";
-  const listed = datasets.data ?? [];
-  const outsidePage = detail && !listed.some((dataset) => dataset.id === detail.id);
-  const rows = outsidePage ? [detail, ...listed] : listed;
-
-  const selectDataset = (id: string) => {
-    const next = new URLSearchParams(params);
-    if (id && datasetId !== id) next.set("dataset", id);
-    else next.delete("dataset");
-    next.delete("version");
-    setParams(next, { replace: true });
-  };
-  const setVersionId = (id: string, dataset?: string) => {
-    const next = new URLSearchParams(params);
-    next.set("version", id);
-    if (dataset) next.set("dataset", dataset);
-    else next.delete("dataset");
-    setParams(next, { replace: true });
-  };
-  const [upstreamOf, setUpstreamOf] = useState<string>();
   const [adding, setAdding] = useState(false);
-  // "new" for a new uploaded dataset, otherwise the upload dataset getting a version.
-  const [uploadTo, setUploadTo] = useState<string | null>(null);
-  const uploadTarget = detail?.id === uploadTo ? detail : null;
-  const upstreamDataset = detail?.id === upstreamOf ? detail : null;
+  const [uploading, setUploading] = useState(false);
+  const rows = datasets.data ?? [];
+  const selectedAll = rows.every((dataset) => selection.selected.has(dataset.id));
+
   const reload = async () => {
     selection.setSelected(new Set());
-    await Promise.all([datasets.reload(), expanded.reload()]);
+    await datasets.reload();
   };
   const imported = async (id?: string) => {
-    await reload();
-    if (id) setVersionId(id);
+    if (id) void navigate(scopedPath(`/datasets?version=${encodeURIComponent(id)}`, topicId));
+    else await reload();
   };
 
-  const removeDataset = async (dataset: Dataset) => {
-    if (
-      !window.confirm(
-        t("datasets.page.deleteDatasetConfirm", { name: `${dataset.namespace}/${dataset.name}` }),
-      )
-    )
-      return;
+  return (
+    <div>
+      <PageTitle title={t("datasets.page.title")}>
+        {isAdmin && (
+          <>
+            <Button variant="outline" onClick={() => setAdding(true)} disabled={adding}>
+              {t("datasets.add.open")}
+            </Button>
+            <Button variant="outline" onClick={() => setUploading(true)} disabled={uploading}>
+              <Upload data-icon="inline-start" />
+              {t("datasets.upload.open")}
+            </Button>
+          </>
+        )}
+      </PageTitle>
+      <p className="mb-4 text-sm text-muted-foreground">{t("datasets.page.intro")}</p>
+      {isAdmin && adding && (
+        <AddDataset onImported={imported} onClose={() => setAdding(false)} />
+      )}
+      {isAdmin && uploading && (
+        <UploadDataset target={null} onImported={imported} onClose={() => setUploading(false)} />
+      )}
+      <TopicDirectory search={q} onSearch={setQuery} />
+      <TopicMembershipActions kind="dataset" ids={selection.selected} onChanged={reload} />
+      <ErrorAlert error={datasets.error} />
+      {datasets.loading && !datasets.data && <Loading />}
+      {datasets.data && rows.length === 0 && <EmptyNote>{t("datasets.page.empty")}</EmptyNote>}
+      {rows.length > 0 && (
+        <div className="mb-3 rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-10">
+                  <DirectoryCheck
+                    name={t("topics.loaded")}
+                    checked={selectedAll}
+                    onChange={() => selection.setSelected(new Set(selectedAll ? [] : rows.map((dataset) => dataset.id)))}
+                  />
+                </TableHead>
+                <TableHead>{t("datasets.page.name")}</TableHead>
+                <TableHead>{t("datasets.page.sourceColumn")}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((dataset) => {
+                const name = `${dataset.namespace}/${dataset.name}`;
+                return (
+                  <TableRow key={dataset.id}>
+                    <TableCell><DirectoryCheck name={name}
+                      checked={selection.selected.has(dataset.id)} onChange={() => selection.toggle(dataset.id)} /></TableCell>
+                    <TableCell className="min-w-0 whitespace-normal">
+                      <Link
+                        to={scopedPath(datasetPath(dataset.id), topicId)}
+                        className="font-medium text-primary hover:underline [overflow-wrap:anywhere]"
+                      >
+                        {name}
+                      </Link>
+                      {dataset.description && (
+                        <div className="line-clamp-2 text-xs text-muted-foreground [overflow-wrap:anywhere]" title={dataset.description}>
+                          {dataset.description}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-xs">{dataset.source_kind}</TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+      <MoreItems page={datasets} />
+    </div>
+  );
+}
+
+export function DatasetDetailPage() {
+  const { datasetId = "" } = useParams();
+  return <DatasetDetail key={datasetId} datasetId={datasetId} />;
+}
+
+function DatasetDetail({ datasetId }: { datasetId: string }) {
+  const { me } = useSession();
+  const isAdmin = me.role === "admin" && me.auth_channel === "web_session";
+  const { topicId } = useTopicScope();
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const back = scopedPath("/datasets", topicId);
+  const dataset = useLoad(async () =>
+    (await api.get("/datasets/{dataset_id}", { path: { dataset_id: datasetId } })).data,
+  [datasetId]);
+  const detail = dataset.data;
+  const name = detail ? `${detail.namespace}/${detail.name}` : t("datasets.page.title");
+  const versions = detail?.versions ?? [];
+  const chosenVersion = params.get("version");
+  const versionId = chosenVersion || versions[0]?.id;
+  const [showSource, setShowSource] = useState(false);
+  const imported = async (id?: string) => {
+    await dataset.reload();
+    if (id) void navigate(scopedPath(datasetPath(datasetId, id), topicId));
+  };
+
+  const removeDataset = async () => {
+    if (!window.confirm(t("datasets.page.deleteDatasetConfirm", { name }))) return;
     try {
-      await api.del("/admin/datasets/{dataset_id}", { path: { dataset_id: dataset.id } });
+      await api.del("/admin/datasets/{dataset_id}", { path: { dataset_id: datasetId } });
       toast.success(t("datasets.page.deleted"));
+      void navigate(back, { replace: true });
     } catch (err) {
       toast.error(t("datasets.page.deleteFailed", { error: errorText(err) }));
     }
-    await reload();
   };
-
-  const removeVersion = async (dataset: Dataset, version: DatasetVersion) => {
-    if (
-      !window.confirm(
-        t("datasets.page.deleteVersionConfirm", {
-          dataset: dataset.name,
-          ref: version.upstream_ref,
-        }),
-      )
-    )
-      return;
+  const removeVersion = async (version: DatasetVersion) => {
+    if (!detail || !window.confirm(t("datasets.page.deleteVersionConfirm", {
+      dataset: detail.name, ref: version.upstream_ref,
+    }))) return;
     try {
       await api.del("/admin/dataset-versions/{version_id}", { path: { version_id: version.id } });
       toast.success(t("datasets.page.deleted"));
     } catch (err) {
       toast.error(t("datasets.page.deleteFailed", { error: errorText(err) }));
     }
-    await reload();
+    await dataset.reload();
   };
 
   return (
     <div>
-      <PageTitle title={t("datasets.page.title")} />
-      <TopicDirectory search={q} onSearch={setQuery} />
-      <TopicMembershipActions kind="dataset" ids={selection.selected} onChanged={reload} />
-      <p className="mb-4 text-sm text-muted-foreground">
-        {t("datasets.page.intro")}
-      </p>
-      {isAdmin && (
-        <div className="mb-4 flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => setAdding(true)} disabled={adding}>
-            {t("datasets.add.open")}
+      <PageTitle title={name} back={{ to: back, label: t("datasets.page.back") }}>
+        {topicId && (
+          <Button size="sm" variant="link" asChild>
+            <Link to={`/topics/${topicId}`}>{t("topics.overview")}</Link>
           </Button>
-          <Button variant="outline" onClick={() => setUploadTo("new")} disabled={uploadTo === "new"}>
-            <Upload />
-            {t("datasets.upload.open")}
-          </Button>
-        </div>
+        )}
+        {isAdmin && detail && (
+          <>
+            <Button size="sm" variant="outline" onClick={() => setShowSource(true)} disabled={showSource}>
+              {detail.source_kind === "upload" ? (
+                <><Upload data-icon="inline-start" />{t("datasets.upload.newVersion")}</>
+              ) : t("datasets.page.checkUpstream")}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => void removeDataset()}>
+              <Trash2 data-icon="inline-start" />
+              {t("datasets.page.deleteDataset")}
+            </Button>
+          </>
+        )}
+      </PageTitle>
+      {/* When a shared link names a version of a purged dataset, the version still has a deletion status. */}
+      {!(versionId && dataset.error instanceof ApiError && dataset.error.status === 410) && (
+        <ErrorAlert error={dataset.error} />
       )}
-      {isAdmin && adding && (
-        <AddDataset
-          onImported={imported}
-          onClose={() => setAdding(false)}
-        />
-      )}
-      {isAdmin && (uploadTo === "new" || uploadTarget) && (
-        <UploadDataset
-          key={uploadTo}
-          target={uploadTarget}
-          onImported={imported}
-          onClose={() => setUploadTo(null)}
-        />
-      )}
-      {isAdmin && upstreamDataset && (
-        <UpstreamVersions
-          key={upstreamDataset.id}
-          dataset={upstreamDataset}
-          onImported={imported}
-          onClose={() => setUpstreamOf(undefined)}
-        />
-      )}
-      <ErrorAlert error={datasets.error} />
-      <ErrorAlert error={expanded.error} />
-      {datasets.loading && !datasets.data && <Loading />}
-      {datasets.data && rows.length === 0 && <EmptyNote>{t("datasets.page.empty")}</EmptyNote>}
-      <div className="grid gap-4 lg:grid-cols-[minmax(260px,1fr)_minmax(0,3fr)]">
-        <div className="grid content-start gap-3">
-          {rows.map((dataset) => (
-            <Card key={dataset.id} data-testid="dataset-card">
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center justify-between gap-2 text-base">
-                  <span className="flex min-w-0 items-center gap-2">
-                    {listed.some((row) => row.id === dataset.id) && (
-                      <DirectoryCheck name={`${dataset.namespace}/${dataset.name}`}
-                        checked={selection.selected.has(dataset.id)} onChange={() => selection.toggle(dataset.id)} />
-                    )}
-                    <button
-                      type="button"
-                      aria-expanded={dataset.id === datasetId}
-                      aria-label={t("topics.datasetVersions", { name: `${dataset.namespace}/${dataset.name}` })}
-                      onClick={() => selectDataset(dataset.id)}
-                      className="flex min-w-0 items-center gap-1 text-left text-primary hover:underline"
-                    >
-                      {dataset.id === datasetId ? <ChevronDown className="size-4 shrink-0" /> : <ChevronRight className="size-4 shrink-0" />}
-                      <span className="break-all">{dataset.namespace}/{dataset.name}</span>
-                    </button>
-                  </span>
-                  {isAdmin && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      title={t("datasets.page.deleteDataset")}
-                      aria-label={t("datasets.page.deleteDatasetLabel", { name: dataset.name })}
-                      onClick={() => void removeDataset(dataset)}
-                    >
-                      <Trash2 />
-                    </Button>
-                  )}
-                </CardTitle>
-                {outsidePage && dataset.id === detail?.id && (
-                  <p className="text-xs text-muted-foreground">{t("topics.notOnPage")}</p>
+      {dataset.loading && !detail && <Loading />}
+      <div className="grid min-w-0 gap-4">
+        {detail && (
+          <>
+            <div className="grid gap-1 text-sm text-muted-foreground [overflow-wrap:anywhere]">
+              <p>
+                {t("datasets.page.source", { kind: detail.source_kind })}
+                {detail.source_kind !== "upload" && t(
+                  detail.credential_id ? "datasets.page.teamCredential" : "datasets.page.anonymous",
                 )}
-                <div className="text-xs text-muted-foreground">
-                  {t("datasets.page.source", { kind: dataset.source_kind })}
-                  {dataset.source_kind !== "upload" && (dataset.credential_id
-                    ? t("datasets.page.teamCredential")
-                    : t("datasets.page.anonymous"))}
-                  {dataset.description && ` · ${dataset.description}`}
-                </div>
-                {isAdmin && dataset.source_kind !== "upload" && (
-                  <div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => { if (dataset.id !== datasetId) selectDataset(dataset.id); setUpstreamOf(dataset.id); }}
-                    >
-                      {t("datasets.page.checkUpstream")}
-                    </Button>
-                  </div>
-                )}
-                {dataset.source_kind === "upload" && (
-                  <p className="text-xs text-muted-foreground">{t("datasets.page.uploadNoUpstream")}</p>
-                )}
-                {isAdmin && dataset.source_kind === "upload" && (
-                  <div>
-                    <Button size="sm" variant="outline" onClick={() => { if (dataset.id !== datasetId) selectDataset(dataset.id); setUploadTo(dataset.id); }}>
-                      <Upload />
-                      {t("datasets.upload.newVersion")}
-                    </Button>
-                  </div>
-                )}
-              </CardHeader>
-              {dataset.id === datasetId && !detail && expanded.loading && <CardContent><Loading /></CardContent>}
-              {dataset.id === detail?.id && <CardContent className="grid gap-1">
-                {detail.versions.length === 0 && (
-                  <span className="text-xs text-muted-foreground">{t("datasets.page.noVersions")}</span>
-                )}
-                {detail.versions.map((version) => (
-                  <div key={version.id} className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setVersionId(version.id, dataset.id)}
-                      className={cn(
-                        "grid flex-1 gap-0.5 rounded-md border px-2 py-1 text-left text-sm",
-                        versionId === version.id ? "border-primary bg-accent" : "hover:bg-muted",
-                      )}
-                    >
-                      {dataset.source_kind === "upload" ? (
-                        <>
-                          <span className="break-all">{versionName(version, true)}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {fmtTime(version.created_at)} · {version.created_by_username ?? "—"}
-                          </span>
-                          {version.based_on_version_id && (
-                            <span className="text-xs text-muted-foreground">
-                              {t("datasets.versions.basedOn", {
-                                base: (() => {
-                                  const b = detail.versions.find(
-                                    (v) => v.id === version.based_on_version_id,
-                                  );
-                                  return b ? versionName(b, true) : "—";
-                                })(),
+              </p>
+              {detail.description && <p>{detail.description}</p>}
+              {detail.source_kind === "upload" && <p>{t("datasets.page.uploadNoUpstream")}</p>}
+            </div>
+            {isAdmin && showSource && (detail.source_kind === "upload" ? (
+              <UploadDataset target={detail} onImported={imported} onClose={() => setShowSource(false)} />
+            ) : (
+              <UpstreamVersions dataset={detail} onImported={imported} onClose={() => setShowSource(false)} />
+            ))}
+            <section aria-labelledby="dataset-versions-title" className="grid min-w-0 gap-2">
+              <h2 id="dataset-versions-title" className="text-sm font-semibold">{t("datasets.page.versions")}</h2>
+              {versions.length === 0 ? (
+                <EmptyNote>{t("datasets.page.noVersions")}</EmptyNote>
+              ) : (
+                <div className="rounded-md border">
+                  <Table aria-labelledby="dataset-versions-title">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>{t("datasets.page.version")}</TableHead>
+                        <TableHead className="text-right">{t("datasets.page.tasks")}</TableHead>
+                        {isAdmin && <TableHead />}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {versions.map((version) => {
+                        const uploaded = detail.source_kind === "upload";
+                        const base = version.based_on_version_id
+                          ? versions.find((item) => item.id === version.based_on_version_id)
+                          : undefined;
+                        return (
+                          <TableRow key={version.id} data-state={version.id === versionId ? "selected" : undefined}>
+                            <TableCell className="min-w-0 whitespace-normal">
+                              <Link
+                                to={scopedPath(datasetPath(datasetId, version.id), topicId)}
+                                aria-current={version.id === versionId ? "true" : undefined}
+                                className="font-medium text-primary hover:underline [overflow-wrap:anywhere]"
+                              >
+                                {versionName(version, uploaded)}
+                              </Link>
+                              <div className="text-xs text-muted-foreground">
+                                {uploaded ? `${fmtTime(version.created_at)} · ${version.created_by_username ?? "—"}` : (
+                                  `(${version.ref_kind}) ${shortId(version.resolved_digest, 15)}`
+                                )}
+                              </div>
+                              {version.based_on_version_id && (
+                                <div className="text-xs text-muted-foreground">
+                                  {t("datasets.versions.basedOn", { base: base ? versionName(base, true) : "—" })}
+                                  {version.changes_from_base && ` · ${changesText(version.changes_from_base)}`}
+                                </div>
+                              )}
+                            </TableCell>
+                            <TableCell className="whitespace-nowrap text-right text-xs text-muted-foreground">
+                              {t("datasets.page.versionCounts", {
+                                submittable: version.submittable_task_count,
+                                total: version.task_count,
+                                ready: version.cache_ready_task_count,
                               })}
-                              {version.changes_from_base &&
-                                ` · ${changesText(version.changes_from_base)}`}
-                            </span>
-                          )}
-                        </>
-                      ) : (
-                        <span className="break-all">
-                          {version.upstream_ref}
-                          <span className="ml-1 text-xs text-muted-foreground">
-                            ({version.ref_kind}) {shortId(version.resolved_digest, 15)}
-                          </span>
-                        </span>
-                      )}
-                      <span className="text-xs text-muted-foreground">
-                        {t("datasets.page.versionCounts", {
-                          submittable: version.submittable_task_count,
-                          total: version.task_count,
-                          ready: version.cache_ready_task_count,
-                        })}
-                      </span>
-                    </button>
-                    {isAdmin && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        title={t("datasets.page.deleteVersion")}
-                        aria-label={t("datasets.page.deleteVersionLabel", { ref: version.upstream_ref })}
-                        onClick={() => void removeVersion(dataset, version)}
-                      >
-                        <Trash2 />
-                      </Button>
-                    )}
-                  </div>
-                ))}
-              </CardContent>}
-            </Card>
-          ))}
-          <MoreItems page={datasets} />
-        </div>
+                            </TableCell>
+                            {isAdmin && (
+                              <TableCell className="w-10">
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  title={t("datasets.page.deleteVersion")}
+                                  aria-label={t("datasets.page.deleteVersionLabel", { ref: versionName(version, uploaded) })}
+                                  onClick={() => void removeVersion(version)}
+                                >
+                                  <Trash2 />
+                                </Button>
+                              </TableCell>
+                            )}
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </section>
+          </>
+        )}
         {versionId && (
-          <div className="grid min-w-0 content-start gap-2">
-            <VersionTasks
-              key={versionId}
-              versionId={versionId}
-              siblings={detail?.versions ?? []}
-              isAdmin={isAdmin}
-              onChange={reload}
-            />
-          </div>
+          <VersionTasks
+            key={versionId}
+            datasetId={datasetId}
+            versionId={versionId}
+            siblings={versions}
+            isAdmin={isAdmin}
+            onChange={dataset.reload}
+          />
         )}
       </div>
     </div>
@@ -476,7 +494,7 @@ function TaskDiff({
 }
 
 /** Upstream versions of one dataset, a preview of one of them and its import. Used both
- * when adding a dataset and from an existing dataset's card ("检查上游更新"). */
+ * when adding a dataset and from an existing dataset's detail page ("检查上游更新"). */
 function SourceVersions({
   target,
   local,
@@ -486,6 +504,7 @@ function SourceVersions({
   local: DatasetVersion[];
   onImported: (versionId?: string) => Promise<void>;
 }) {
+  const { topicId } = useTopicScope();
   const common = {
     source_kind: target.source_kind,
     namespace: target.namespace,
@@ -586,7 +605,7 @@ function SourceVersions({
                     {imported ? (
                       <Link
                         className="text-primary underline"
-                        to={`/datasets?version=${imported.id}`}
+                        to={scopedPath(datasetPath(imported.dataset_id, imported.id), topicId)}
                       >
                         {t("datasets.source.imported", { ref: imported.upstream_ref })}
                       </Link>
@@ -906,11 +925,13 @@ function UpstreamVersions({
 }
 
 function VersionTasks({
+  datasetId,
   versionId,
   siblings,
   isAdmin,
   onChange,
 }: {
+  datasetId: string;
   versionId: string;
   /** Every listed version of the same dataset, this one included. */
   siblings: DatasetVersion[];
@@ -967,6 +988,11 @@ function VersionTasks({
       toast.error(errorText(err));
     }
   };
+
+  if (detail.data && detail.data.dataset_id !== datasetId) {
+    return <ErrorAlert error={new Error(t("datasets.page.versionMismatch"))} />;
+  }
+  if (!detail.data && !detail.error) return <Loading />;
 
   return (
     <>

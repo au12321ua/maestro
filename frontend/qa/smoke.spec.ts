@@ -53,16 +53,27 @@ test("setup, run, PAT, admin and invitation flow", async ({ page, browser }) => 
   await expect(page.getByText("add-01")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText("缓存就绪").first()).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText("已准入 3 · 可提交 3")).toBeVisible({ timeout: 30_000 });
-  await page.screenshot({ path: `${shots}/datasets.png`, fullPage: true });
+  const v1Url = new URL(page.url());
+  expect(v1Url.pathname).toMatch(/^\/datasets\/ds_/);
+  expect(v1Url.searchParams.get("version")).toMatch(/^dsv_/);
+  await page.screenshot({ path: `${shots}/dataset-detail.png`, fullPage: false });
+  await page.getByRole("link", { name: "返回数据集列表" }).click();
+  const directory = page.getByRole("table").filter({ has: page.getByRole("columnheader", { name: "数据集名称" }) });
+  const datasetLink = directory.getByRole("link", { name: "demo/arith" });
+  await expect(datasetLink).toHaveAttribute("href", v1Url.pathname);
+  await expect(page.getByText("add-01")).toHaveCount(0);
+  await page.screenshot({ path: `${shots}/datasets.png`, fullPage: false });
+  await datasetLink.click();
+  await expect(page.getByRole("heading", { name: "demo/arith", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "v1", exact: true })).toHaveAttribute("aria-current", "true");
   // Evicting a cache keeps the task submittable; the next run restores it.
   await page.getByRole("row", { name: /add-01/ }).getByRole("button", { name: "回收缓存" }).click();
   await expect(page.getByText("运行时恢复")).toBeVisible({ timeout: 30_000 });
   await page.getByRole("button", { name: "add-01" }).click();
   await expect(page.getByText("作者参数")).toBeVisible();
   await page.screenshot({ path: `${shots}/datasets-cold.png`, fullPage: true });
-  await page.getByRole("button", { name: "收起", exact: true }).click();
 
-  // A new version from the dataset's card: upstream v2 is not imported yet; its preview
+  // A new version from the dataset detail page: upstream v2 is not imported yet; its preview
   // compares tasks with v1. Added without first preparation, so v1 stays the default.
   await page.getByRole("button", { name: "检查上游更新" }).click();
   await expect(page.getByRole("row", { name: /^v1 / }).getByText("已导入（v1）")).toBeVisible();
@@ -128,8 +139,9 @@ test("setup, run, PAT, admin and invitation flow", async ({ page, browser }) => 
   await page.goto(runUrl);
   await page.getByRole("tab", { name: "配置快照" }).click();
   await expect(page.getByText("生效配置（effective）")).toBeVisible();
-  // The dataset version links to its page on the datasets page.
+  // A version link from a run opens the dataset detail with that version selected.
   await page.getByRole("link", { name: /^dsv_/ }).click();
+  await expect(page).toHaveURL(v1Url.href);
   await expect(page.getByText("demo/arith@v1")).toBeVisible();
   await page.goto(runUrl);
 
@@ -796,13 +808,14 @@ test("dataset upload: bad task, new dataset, new version, source boundary", asyn
   await expect(page.getByText("local/bench@v1")).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText("已准入 2 · 可提交 2")).toBeVisible({ timeout: 60_000 });
   // Uploaded datasets get versions only by upload; Hub datasets only from the Hub.
-  const card = page.getByTestId("dataset-card").filter({ hasText: "local/bench" });
-  await expect(card.getByRole("button", { name: "检查上游更新" })).toHaveCount(0);
+  const versions = page.getByRole("region", { name: "版本列表" });
+  await expect(page.getByRole("heading", { name: "local/bench", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "检查上游更新" })).toHaveCount(0);
 
   // A new version that changes one task: compared per task with the latest version, and
   // the scripts keep their executable bits from it.
   writeFileSync(join(folder, "oracle-pass", "instruction.md"), "Changed instruction.\n");
-  await card.getByRole("button", { name: "上传新版本" }).click();
+  await page.getByRole("button", { name: "上传新版本" }).click();
   await choose.setInputFiles(folder);
   await expect(panel.getByTestId("folder-task-diff")).toContainText(
     "新增 0 · 删除 0 · 内容变化 1 · 未变 1",
@@ -816,7 +829,7 @@ test("dataset upload: bad task, new dataset, new version, source boundary", asyn
   await expect(page.getByText("已导入新版本，首次准备已开始")).toBeVisible({ timeout: 60_000 });
 
   // The version list says what each version is based on and how many tasks changed.
-  await expect(card.getByText("基于 v1 · 新增 0 · 删除 0 · 内容变化 1 · 未变 1")).toBeVisible();
+  await expect(versions.getByText("基于 v1 · 新增 0 · 删除 0 · 内容变化 1 · 未变 1")).toBeVisible();
   await expect(page.getByText("local/bench@v2")).toBeVisible();
   const relations = page.getByTestId("uploaded-version");
   await expect(relations).toContainText("标签 v2 · 上传者 admin");
@@ -832,6 +845,7 @@ test("dataset upload: bad task, new dataset, new version, source boundary", asyn
   await page.screenshot({ path: `${shots}/dataset-versions.png`, fullPage: true });
 
   // A Hub dataset's name cannot be taken by an upload.
+  await page.getByRole("link", { name: "返回数据集列表" }).click();
   await page.getByRole("button", { name: "上传数据集" }).click();
   await panel.getByLabel("命名空间").fill("demo");
   await panel.getByLabel("名称", { exact: true }).fill("arith");
@@ -1117,11 +1131,11 @@ test("workflow records: jump button, provenance hint, reference links, edit conf
   await serveFixtures(page, {
     ...sessionRoutes,
     "/api/v1/records": [record],
-    "/api/v1/datasets": [{ id: "ds_1", namespace: "demo", name: "arith", source_kind: "hub",
+    "/api/v1/datasets/ds_1": { id: "ds_1", namespace: "demo", name: "arith", source_kind: "hub",
       versions: [{ id: "dsv_1", upstream_ref: "v1", ref_kind: "tag", status: "ready",
         created_at: "2026-10-22T00:00:00Z", task_count: 40, submittable_task_count: 0,
-        cache_ready_task_count: 0, resolved_digest: "sha256:aa" }] }],
-    "/api/v1/dataset-versions/dsv_1": { id: "dsv_1", namespace: "demo", name: "arith",
+        cache_ready_task_count: 0, resolved_digest: "sha256:aa" }] },
+    "/api/v1/dataset-versions/dsv_1": { id: "dsv_1", dataset_id: "ds_1", namespace: "demo", name: "arith",
       upstream_ref: "v1", source_kind: "hub", task_count: 40, admitted_task_count: 0,
       submittable_task_count: 0, cache_ready_task_count: 0, resolved_digest: "sha256:aa",
       materialization_digest: null, created_at: "2026-10-22T00:00:00Z", deletion: null,
@@ -1137,6 +1151,7 @@ test("workflow records: jump button, provenance hint, reference links, edit conf
       retryable: false, suggested_actions: [] }, meta } }));
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto("/datasets?version=dsv_1");
+  await expect(page).toHaveURL("/datasets/ds_1?version=dsv_1");
   const jump = page.getByRole("button", { name: "记录（1）" });
   await expect(jump).toBeInViewport();
   const section = page.getByText("工作流记录（1）");
@@ -1402,15 +1417,28 @@ test("experiment topic scopes, paged runs and a handoff with evidence", async ({
   await expect(scope).toHaveValue(topicId);
   await scope.selectOption("");
   await page.getByLabel("搜索名称或 ID").fill("demo/arith");
-  const dataset = page.getByTestId("dataset-card").filter({ hasText: "demo/arith" });
+  const dataset = page.getByRole("row").filter({ has: page.getByRole("link", { name: "demo/arith" }) });
   await dataset.getByRole("checkbox", { name: "选择 demo/arith" }).check();
   await page.getByRole("button", { name: "加入专题（1）" }).click();
   await page.getByLabel("目标专题").selectOption(topicId);
   await page.getByRole("button", { name: "确认加入" }).click();
   await expect(page.getByText("已加入专题")).toBeVisible();
   await scope.selectOption(topicId);
-  await dataset.getByRole("button", { name: "展开 demo/arith 的版本" }).click();
-  await expect(dataset.getByRole("button", { name: /v1/ }).first()).toBeVisible();
+  await dataset.getByRole("link", { name: "demo/arith" }).click();
+  await expect(page.getByRole("heading", { name: "demo/arith", exact: true })).toBeVisible();
+  const datasetUrl = new URL(page.url());
+  expect(datasetUrl.searchParams.get("topic")).toBe(topicId);
+  const version = page.getByRole("link", { name: "v1", exact: true });
+  await version.click();
+  await expect(version).toHaveAttribute("aria-current", "true");
+  await expect(page).toHaveURL(/[?&]version=dsv_/);
+  await page.reload();
+  await expect(page.getByText("demo/arith@v1")).toBeVisible();
+  await page.getByRole("link", { name: "返回数据集列表" }).click();
+  await expect(scope).toHaveValue(topicId);
+  const legacy = new URLSearchParams({ dataset: datasetUrl.pathname.split("/").at(-1)!, topic: topicId });
+  await page.goto(`/datasets?${legacy}`);
+  await expect(page).toHaveURL(datasetUrl.href);
   await page.getByRole("link", { name: "专题概览" }).click();
 
   await page.getByRole("link", { name: "在专题中提交运行" }).click();
