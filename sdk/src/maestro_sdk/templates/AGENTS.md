@@ -10,15 +10,21 @@ You work with a Maestro service through the `maestro_sdk` Python client. The ski
 - `maestro-package`: make an attachment (skill and tools for the agent under test) and
   improve it with experiments.
 
-Reinstall them after upgrading the SDK: `python -c "import maestro_sdk.skills as s; s.install()"`.
-
 ## Service
 
-- URL: <https://maestro.example>, in `MAESTRO_URL`.
-- SDK: `maestro-sdk==<the service's version>` from the index
-  <https://au12321ua.github.io/maestro/simple>.
-- Token: a personal access token in the file <path>, given as `MAESTRO_TOKEN_FILE`. Never
-  print it, log it, commit it or pass it on a command line.
+The workspace owner fills in `MAESTRO_URL` and `MAESTRO_TOKEN_FILE` in `.env` and
+loads it when starting the agent with `uv run --no-project --env-file .env -- <agent command>`.
+Use `.venv/bin/python` and `MaestroClient.from_env()` for SDK calls. The PAT file
+belongs outside the workspace. Keep its contents out of logs, commits and command lines.
+
+For a released service, sync the SDK and skills before starting the agent.
+
+```bash
+uv run --no-project --env-file .env -- .venv/bin/python -I update-maestro.py
+```
+
+For manual SDK installation, use the service's version from the
+[Maestro package index](https://au12321ua.github.io/maestro/simple).
 
 ## What you may spend
 

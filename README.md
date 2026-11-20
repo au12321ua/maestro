@@ -40,10 +40,12 @@ Agent 不登录服务器，只需要三样东西：[Python SDK](sdk/README.md)�
 ```bash
 mkdir my-work && cd my-work
 uv venv && uv pip install "maestro-sdk==<版本>" --index maestro=<索引>
-.venv/bin/python -c "import maestro_sdk.workspace as w; w.init('.')"   # AGENTS.md、notes/、attachments/ 与 skill
+.venv/bin/python -c "import maestro_sdk.workspace as w; w.init('.')"   # 工作区、.env.example 与 skill
 ```
 
-在网页“设置”页创建 `experiment` 权限的 PAT，存进工作区以外的文件。在 `AGENTS.md` 里填好服务地址、令牌文件路径、可以花多少钱和当前目标，然后在这个目录里启动 Agent：skill 装在 `.agents/skills/` 与 `.claude/skills/`。不用包索引时，也可以直接 `uv pip install ./maestro_sdk-<版本>-py3-none-any.whl`，但升级要自己换文件。
+在网页“设置”页创建 `experiment` 权限的 PAT，存进工作区以外的文件。复制 `.env.example` 为 `.env`，填写服务根地址和 PAT 文件的绝对路径。在 `AGENTS.md` 里填好预算和当前目标，再从工作区用 `uv run --no-project --env-file .env -- codex` 启动 Agent。把 `codex` 换成你使用的启动命令。skill 装在 `.agents/skills/` 与 `.claude/skills/`。
+
+更新时也用 uv 加载这份 `.env`，让 SDK 和 skill 对齐当前服务的正式版本。也可以手动安装发布包附带的 wheel，例如 `uv pip install ./maestro_sdk-<版本>-py3-none-any.whl`，再同步 skill。[工作区更新说明](sdk/README.md#给-agent-的工作区与-skill)
 
 ## 开发试用
 

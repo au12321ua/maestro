@@ -271,11 +271,17 @@ def test_the_sdk_computes_the_services_content_digest():
 def test_skills_install_and_workspace_init(tmp_path):
     root = maestro_sdk.workspace.init(tmp_path / "work")
     assert (root / "notes").is_dir() and (root / "attachments").is_dir()
-    assert "/attachments/" in (root / ".gitignore").read_text()
+    ignore = (root / ".gitignore").read_text().splitlines()
+    assert {"/.env", "/attachments/"} <= set(ignore)
     assert not (root / "notes" / "attachments-workflow.md").exists()
-    assert (root / "AGENTS.md").read_text() == (
-        ROOT / "sdk" / "src" / "maestro_sdk" / "templates" / "AGENTS.md"
-    ).read_text()
+    templates = ROOT / "sdk" / "src" / "maestro_sdk" / "templates"
+    assert (root / "AGENTS.md").read_text() == (templates / "AGENTS.md").read_text()
+    example = root / ".env.example"
+    assert example.read_bytes() == (templates / example.name).read_bytes()
+    env_file = root / ".env"
+    assert not env_file.exists()
+    updater = root / "update-maestro.py"
+    assert updater.read_bytes() == (templates / updater.name).read_bytes()
     shipped = maestro_sdk.skills.names()
     assert {"maestro-sdk", "maestro-package"} <= set(shipped)
     for target in maestro_sdk.skills.TARGETS:
@@ -293,6 +299,8 @@ def test_skills_install_and_workspace_init(tmp_path):
     # Again: the person's files stay, the skills are replaced as a whole.
     (root / "AGENTS.md").write_text("mine")
     (root / "notes" / "a.md").write_text("note")
+    env_file.write_text("MAESTRO_URL=https://my-maestro.example\n")
+    updater.write_text("my update script")
     stale = root / ".claude" / "skills" / "maestro-sdk" / "old.md"
     stale.write_text("from an older SDK")
     other = root / ".claude" / "skills" / "someone-else"
@@ -300,6 +308,8 @@ def test_skills_install_and_workspace_init(tmp_path):
     maestro_sdk.workspace.init(root)
     assert (root / "AGENTS.md").read_text() == "mine"
     assert (root / "notes" / "a.md").read_text() == "note"
+    assert env_file.read_text() == "MAESTRO_URL=https://my-maestro.example\n"
+    assert updater.read_text() == "my update script"
     assert not stale.exists() and other.is_dir()
 
 
