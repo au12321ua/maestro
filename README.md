@@ -40,10 +40,12 @@ Agent 不登录服务器，只需要三样东西：[Python SDK](sdk/README.md)�
 ```bash
 mkdir my-work && cd my-work
 uv venv && uv pip install "maestro-sdk==<版本>" --index maestro=<索引>
-.venv/bin/python -c "import maestro_sdk.workspace as w; w.init('.')"   # AGENTS.md、notes/、attachments/ 与 skill
+.venv/bin/python -c "import maestro_sdk.workspace as w; w.init('.')"   # 工作区、update-maestro.py 与 skill
 ```
 
 在网页“设置”页创建 `experiment` 权限的 PAT，存进工作区以外的文件。在 `AGENTS.md` 里填好服务地址、令牌文件路径、可以花多少钱和当前目标，然后在这个目录里启动 Agent：skill 装在 `.agents/skills/` 与 `.claude/skills/`。不用包索引时，也可以直接 `uv pip install ./maestro_sdk-<版本>-py3-none-any.whl`，但升级要自己换文件。
+
+之后可以在启动 Agent 前运行 `.venv/bin/python -I update-maestro.py`，让 SDK 和 skill 对齐 `MAESTRO_URL` 指向的正式版服务。[工作区更新说明](sdk/README.md#给-agent-的工作区与-skill)
 
 ## 开发试用
 

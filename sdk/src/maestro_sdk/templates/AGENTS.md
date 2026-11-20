@@ -10,7 +10,8 @@ You work with a Maestro service through the `maestro_sdk` Python client. The ski
 - `maestro-package`: make an attachment (skill and tools for the agent under test) and
   improve it with experiments.
 
-Reinstall them after upgrading the SDK: `python -c "import maestro_sdk.skills as s; s.install()"`.
+For a released service, run `.venv/bin/python -I update-maestro.py` before you start to sync the SDK and skills.
+Use `.venv/bin/python` for SDK calls and for reinstalling skills after a manual upgrade.
 
 ## Service
 

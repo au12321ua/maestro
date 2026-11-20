@@ -33,10 +33,12 @@ An agent never logs in to the server. It needs the [Python SDK](sdk/README.md) (
 ```bash
 mkdir my-work && cd my-work
 uv venv && uv pip install "maestro-sdk==<version>" --index maestro=https://au12321ua.github.io/maestro/simple
-.venv/bin/python -c "import maestro_sdk.workspace as w; w.init('.')"   # AGENTS.md, notes/, attachments/, skills
+.venv/bin/python -c "import maestro_sdk.workspace as w; w.init('.')"   # workspace, update-maestro.py, skills
 ```
 
 Create a token with the `experiment` scope on the web page's Settings and keep it in a file outside the workspace. Fill in the service address, the token file, the budget and the current goal in `AGENTS.md`, then start the agent in that directory; the skills are in `.agents/skills/` and `.claude/skills/`.
+
+Before starting the agent again, run `.venv/bin/python -I update-maestro.py` to match the SDK and skills to the released service configured in `MAESTRO_URL`. [Workspace update instructions](sdk/README.md#给-agent-的工作区与-skill)
 
 ## Try it from source
 

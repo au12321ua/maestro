@@ -2,12 +2,12 @@
 
     <workspace>/
       AGENTS.md          the context an agent needs every time (fill it in)
+      update-maestro.py  sync the SDK and skills with the configured service release
       .agents/skills/    the shipped skills (also .claude/skills/), not committed
       notes/             free-form notes: hypotheses, evidence excerpts, what did not work
       attachments/<name>/  one git repository per attachment, not committed here
 
-Nothing here talks to the service. The layout is a recommendation: notes have no format
-and nothing reads them back.
+Creating the layout is a local operation. Notes have no format and nothing reads them back.
 """
 
 from __future__ import annotations
@@ -38,14 +38,18 @@ def init(directory: str | os.PathLike[str] = ".", workflow: str | None = None) -
     root.mkdir(parents=True, exist_ok=True)
     for folder in ("notes", "attachments"):
         (root / folder).mkdir(exist_ok=True)
-    template = resources.files("maestro_sdk") / "templates" / "AGENTS.md"
-    context = template.read_text(encoding="utf-8")
+    templates = resources.files("maestro_sdk") / "templates"
+    context = (templates / "AGENTS.md").read_text(encoding="utf-8")
     if workflow == "attachments":
-        notes = resources.files("maestro_sdk") / "templates" / "attachments-workflow.md"
+        notes = templates / "attachments-workflow.md"
         _create(root / "notes" / "attachments-workflow.md", notes.read_text(encoding="utf-8"))
         context += "\nAttachment workflow: read `notes/attachments-workflow.md`.\n"
     _create(root / "AGENTS.md", context)
     _create(root / ".gitignore", GITIGNORE)
+    _create(
+        root / "update-maestro.py",
+        (templates / "update-maestro.py").read_text(encoding="utf-8"),
+    )
     skills.install(root)
     return root
 
