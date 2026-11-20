@@ -134,20 +134,23 @@ skill 打包在 SDK 里，与 SDK 同版本，不需要服务：
 import maestro_sdk.skills, maestro_sdk.workspace
 
 maestro_sdk.skills.install(".")          # 复制到 .agents/skills/ 与 .claude/skills/，记下 SDK 版本
-maestro_sdk.workspace.init("my-work")    # 生成 AGENTS.md、update-maestro.py 等工作区文件，并安装 skill
+maestro_sdk.workspace.init("my-work")    # 生成 AGENTS.md、.env.example 和更新脚本，并安装 skill
 maestro_sdk.workspace.init("improve", workflow="attachments")  # 另加附件工作流说明，不覆盖已有文件
 ```
 
-`maestro-sdk` 讲提交、观察、比较与诚实报告结果；`maestro-package` 讲怎样把已有材料做成附件、用实验改进它、在平台上记下当前最优的附件，以及中断后怎样只凭平台接着做。工作区是推荐布局：`AGENTS.md` 写服务地址、令牌文件位置、可花的预算与命名习惯，`notes/` 的格式完全自由，`attachments/<名称>/` 每个附件一个 git 仓库。`init` 不覆盖已有文件，只补缺并重装 skill；升级 SDK 后再运行一次即可同步 skill。
+`maestro-sdk` 讲提交、观察、比较与诚实报告结果；`maestro-package` 讲怎样把已有材料做成附件、用实验改进它、在平台上记下当前最优的附件，以及中断后怎样只凭平台接着做。工作区是推荐布局：`AGENTS.md` 写预算、命名习惯和当前目标，`notes/` 的格式完全自由，`attachments/<名称>/` 每个附件一个 git 仓库。`init` 不覆盖已有文件，只补缺并重装 skill；升级 SDK 后再运行一次即可同步 skill。
 
-使用正式版服务时，把 `MAESTRO_URL` 设为服务地址，然后从工作区运行更新脚本，再启动 Agent。
+首次配置时复制 `.env.example` 为 `.env`。在 `MAESTRO_URL` 填入服务根地址，在 `MAESTRO_TOKEN_FILE` 填入工作区外的 PAT 文件绝对路径。用 uv 加载 `.env`，更新脚本和 Agent 的 SDK 调用共用这份配置。示例中的 `codex` 可换成你的 Agent 启动命令。
 
 ```bash
-export MAESTRO_URL=https://maestro.example
-.venv/bin/python -I update-maestro.py
+# 正式版服务可先同步 SDK 和 skill
+uv run --no-project --env-file .env -- .venv/bin/python -I update-maestro.py
+uv run --no-project --env-file .env -- codex
 ```
 
-脚本读取服务版本，从 GitHub Pages 索引选择对应的 SDK wheel，装入工作区的 `.venv`，再同步两个 skill 目录。版本匹配时直接通过。已有工作区装好带这个脚本的 SDK 后，重跑一次 `workspace.init(".")` 即可补齐。开发版服务使用[随构建提供的 wheel](#安装与连接)。
+脚本读取服务版本，从 GitHub Pages 索引选择对应的 SDK wheel，装入工作区的 `.venv`，再同步两个 skill 目录。版本匹配时直接通过。开发版服务使用[随构建提供的 wheel](#安装与连接)。
+
+已有工作区升级 SDK 后，重跑 `workspace.init(".")` 可补齐模板。新版生成的 `.gitignore` 已包含 `/.env`。使用已有的 `.gitignore` 时，把这条规则补进去。
 
 `maestro_sdk.workflows.attachments` 替附件改进做机械活，只组合公开 API、写本地文件，不提交运行、不判断哪个候选更好（`workflow="attachments"` 写入的 `notes/attachments-workflow.md` 有用法说明）：
 

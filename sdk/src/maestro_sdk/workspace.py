@@ -2,6 +2,7 @@
 
     <workspace>/
       AGENTS.md          the context an agent needs every time (fill it in)
+      .env.example      service URL and path to the PAT file (copy to .env)
       update-maestro.py  sync the SDK and skills with the configured service release
       .agents/skills/    the shipped skills (also .claude/skills/), not committed
       notes/             free-form notes: hypotheses, evidence excerpts, what did not work
@@ -19,6 +20,8 @@ from pathlib import Path
 from maestro_sdk import skills
 
 GITIGNORE = """\
+# Local workspace configuration.
+/.env
 # Installed by maestro_sdk.skills.install; reinstall after upgrading the SDK.
 /.agents/skills/
 /.claude/skills/
@@ -46,10 +49,8 @@ def init(directory: str | os.PathLike[str] = ".", workflow: str | None = None) -
         context += "\nAttachment workflow: read `notes/attachments-workflow.md`.\n"
     _create(root / "AGENTS.md", context)
     _create(root / ".gitignore", GITIGNORE)
-    _create(
-        root / "update-maestro.py",
-        (templates / "update-maestro.py").read_text(encoding="utf-8"),
-    )
+    for filename in (".env.example", "update-maestro.py"):
+        _create(root / filename, (templates / filename).read_text(encoding="utf-8"))
     skills.install(root)
     return root
 
