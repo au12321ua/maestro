@@ -163,3 +163,4 @@ export type TopicReferenceKind = components["schemas"]["TopicObject"]["kind"];
 export type TopicReference = components["schemas"]["TopicReference"];
 export type TopicMaterial = components["schemas"]["TopicMaterial"];
 export type TopicRunSummary = components["schemas"]["TopicRunSummary"];
+export type TopicOverview = components["schemas"]["TopicOverview"];

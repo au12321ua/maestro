@@ -36,8 +36,6 @@
   "empty": "No matching topics.",
   "noObjects": "No items yet.",
   "newRun": "Submit a run in this topic",
-  "activeRuns": "Active runs ({{count}})",
-  "recentRuns": "Recent runs",
   "allRuns": "Browse runs",
   "allCollections": "Browse collections",
   "allDatasets": "Browse datasets",
@@ -67,5 +65,11 @@
   "trialStatus": "Trial state",
   "failedTrials": "Ended trials without a score",
   "noTrials": "No matching trials.",
-  "notOnPage": "Outside the current directory page"
+  "notOnPage": "Outside the current directory page",
+  "runs": "Runs",
+  "activeCount": "{{count}} active",
+  "noRuns": "No runs yet.",
+  "browseIn": "Browse within this topic",
+  "updatedAt": "Updated {{time}}",
+  "collapse": "Collapse"
 }
