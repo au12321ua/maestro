@@ -1,6 +1,6 @@
 import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useHref, useNavigate, useParams } from "react-router-dom";
-import { Copy, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { ChevronRight, Copy, Database, History, Library, Paperclip, Pencil, Play, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,7 +19,7 @@ import { api, errorText } from "@/lib/api";
 import { fmtTime, label, RUN_STATE } from "@/lib/format";
 import { useCursorList, useLoad, useSession } from "@/lib/hooks";
 import { scopedPath, useTopicScope } from "@/lib/topics";
-import type { Topic, TopicMaterial, TopicReference, TopicReferenceKind, TopicRunSummary } from "@/lib/types";
+import type { Topic, TopicMaterial, TopicOverview, TopicReference, TopicReferenceKind, TopicRunSummary } from "@/lib/types";
 
 const referenceKinds = ["run", "collection", "dataset", "attachment_snapshot"] as const;
 const materialKinds = ["dataset_version", "attachment_snapshot"] as const;
@@ -49,30 +49,32 @@ export function TopicsPage() {
           navigate(result.data.web_path);
         }}
       />}
-      <div className="max-w-md">
+      <div className="max-w-sm">
         <TextField id="topic-search" label={t("topics.searchTopics")} value={q} onChange={(e) => setQuery(e.target.value)} />
       </div>
       <ErrorAlert error={page.error} />
       {page.loading && !page.data && <Loading />}
       {page.data?.length === 0 && <EmptyNote>{t("topics.empty")}</EmptyNote>}
       {page.data?.length ? (
-        <ul className="grid gap-2">
-          {page.data.map((topic) => (
-            <li key={topic.id}>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">
-                    <Link to={topic.web_path} className="text-primary hover:underline">{topic.name}</Link>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="grid gap-2">
-                  {topic.purpose && <p className="line-clamp-3 whitespace-pre-line text-sm">{topic.purpose}</p>}
-                  <code className="break-all text-xs text-muted-foreground">{topic.id}</code>
-                </CardContent>
-              </Card>
-            </li>
-          ))}
-        </ul>
+        <Card className="overflow-hidden">
+          <ul className="divide-y">
+            {page.data.map((topic) => (
+              <li key={topic.id} className="relative flex flex-col gap-1 px-5 py-4 transition-colors hover:bg-muted/50 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+                <div className="grid min-w-0 gap-1">
+                  {/* The whole row opens the topic; the link keeps its own name for keyboard and screen readers. */}
+                  <Link to={topic.web_path} className="break-words font-medium text-primary after:absolute after:inset-0 hover:underline">
+                    {topic.name}
+                  </Link>
+                  {topic.purpose && <p className="line-clamp-2 whitespace-pre-line text-sm text-muted-foreground">{topic.purpose}</p>}
+                </div>
+                <div className="grid shrink-0 gap-0.5 text-xs text-muted-foreground sm:text-right">
+                  <span>{t("topics.updatedAt", { time: fmtTime(topic.updated_at) })}</span>
+                  <code className="break-all">{topic.id}</code>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
       ) : null}
       <MoreItems page={page} />
     </div>
@@ -142,7 +144,6 @@ function TopicView({ topicId }: { topicId: string }) {
   const scope = useTopicScope();
   const [editing, setEditing] = useState(false);
   const [showRecords, setShowRecords] = useState(false);
-  const [showDetails, setShowDetails] = useState<"references" | "materials" | null>(null);
   const url = useHref(`/topics/${topicId}`);
   const data = overview.data;
   const topic = data?.topic;
@@ -172,116 +173,187 @@ function TopicView({ topicId }: { topicId: string }) {
       toast.error(errorText(err));
     }
   };
+  const browse = [
+    { to: "/runs", label: t("topics.allRuns"), icon: Play },
+    { to: "/collections", label: t("topics.allCollections"), icon: Library },
+    { to: "/datasets", label: t("topics.allDatasets"), icon: Database },
+    { to: "/attachments", label: t("topics.allAttachments"), icon: Paperclip },
+  ];
 
   return (
     <div className="grid gap-4">
-      <PageTitle title={topic.name} back={back}>
-        <Button variant="outline" size="sm" onClick={() => void copy()}><Copy data-icon="inline-start" />{t("topics.copyLink")}</Button>
-        {topic.allowed_actions.includes("edit") && (
-          <Button variant="outline" size="sm" onClick={() => setEditing(true)}><Pencil data-icon="inline-start" />{t("topics.edit")}</Button>
-        )}
-        {topic.allowed_actions.includes("delete") && (
-          <Button variant="outline" size="sm" onClick={() => void remove()}><Trash2 data-icon="inline-start" />{t("topics.delete")}</Button>
-        )}
-        {topic.allowed_actions.includes("submit") && (
-          <Button size="sm" asChild><Link to={link("/runs/new")}><Plus data-icon="inline-start" />{t("topics.newRun")}</Link></Button>
-        )}
-      </PageTitle>
+      <div>
+        <PageTitle title={topic.name} back={back}>
+          <Button variant="ghost" size="icon" className="size-8" aria-label={t("topics.copyLink")} title={t("topics.copyLink")} onClick={() => void copy()}>
+            <Copy />
+          </Button>
+          {topic.allowed_actions.includes("delete") && (
+            <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-destructive" aria-label={t("topics.delete")} title={t("topics.delete")} onClick={() => void remove()}>
+              <Trash2 />
+            </Button>
+          )}
+          {topic.allowed_actions.includes("edit") && (
+            <Button variant="outline" size="sm" onClick={() => setEditing(true)} disabled={editing}>
+              <Pencil data-icon="inline-start" />{t("topics.edit")}
+            </Button>
+          )}
+          {topic.allowed_actions.includes("submit") && (
+            <Button size="sm" asChild><Link to={link("/runs/new")}><Plus data-icon="inline-start" />{t("topics.newRun")}</Link></Button>
+          )}
+        </PageTitle>
+        <div className="-mt-2 grid gap-2">
+          {topic.deletion && <div><Pill tone="warn">{t("topics.recycled")}</Pill></div>}
+          {!editing && topic.purpose && (
+            <div className="max-w-3xl text-sm text-muted-foreground"><Markdown>{topic.purpose}</Markdown></div>
+          )}
+          <p className="text-xs text-muted-foreground">{t("topics.updatedAt", { time: fmtTime(topic.updated_at) })}</p>
+        </div>
+      </div>
       <ErrorAlert error={overview.error} />
-      {topic.deletion && <Pill tone="warn">{t("topics.recycled")}</Pill>}
-      {editing ? (
+      {editing && (
         <TopicForm topic={topic} onCancel={() => setEditing(false)} onSave={async (body) => {
           await api.put("/topics/{topic_id}", { path, body });
           setEditing(false);
           await Promise.all([overview.reload(), scope.topicId === topic.id ? scope.reload() : undefined]);
         }} />
-      ) : topic.purpose ? <Markdown>{topic.purpose}</Markdown> : null}
-      <nav aria-label={t("topics.scope")} className="flex flex-wrap gap-2">
-        <Button variant="outline" size="sm" asChild><Link to={link("/runs")}>{t("topics.allRuns")}</Link></Button>
-        <Button variant="outline" size="sm" asChild><Link to={link("/collections")}>{t("topics.allCollections")}</Link></Button>
-        <Button variant="outline" size="sm" asChild><Link to={link("/datasets")}>{t("topics.allDatasets")}</Link></Button>
-        <Button variant="outline" size="sm" asChild><Link to={link("/attachments")}>{t("topics.allAttachments")}</Link></Button>
-        <Button variant="ghost" size="sm" aria-label={t("runs.list.refresh")} disabled={overview.loading} onClick={() => void overview.reload()}>
-          <RefreshCw />
+      )}
+      <nav aria-label={t("topics.scope")} className="flex flex-wrap items-center gap-1 rounded-lg border bg-card px-2 py-1.5 shadow-sm">
+        <span className="px-2 text-xs text-muted-foreground">{t("topics.browseIn")}</span>
+        {browse.map(({ to, label: text, icon: Icon }) => (
+          <Button key={to} variant="ghost" size="sm" asChild>
+            <Link to={link(to)}><Icon data-icon="inline-start" />{text}</Link>
+          </Button>
+        ))}
+        <Button variant="ghost" size="icon" className="ml-auto size-8" aria-label={t("runs.list.refresh")} title={t("runs.list.refresh")}
+          disabled={overview.loading} onClick={() => void overview.reload()}>
+          <RefreshCw className={overview.loading ? "animate-spin" : undefined} />
         </Button>
       </nav>
-      <Card>
-        <CardHeader className="flex flex-wrap items-center justify-between gap-2">
-          <CardTitle className="text-base">{t("topics.latestHandoff")}</CardTitle>
-          <Button size="sm" variant="outline" aria-expanded={showRecords} onClick={() => setShowRecords(!showRecords)}>
-            {t("topics.handoffHistory")}
-          </Button>
-        </CardHeader>
-        <CardContent className="grid gap-2">
-          {data.latest_handoff ? (
-            <>
-              <p className="break-words text-sm font-medium">{data.latest_handoff.title}</p>
-              <p className="text-xs text-muted-foreground">
-                {data.latest_handoff.author_username} · {fmtTime(data.latest_handoff.created_at)}
-              </p>
-              {data.latest_handoff.text && <Markdown>{data.latest_handoff.text}</Markdown>}
-              <RecordEvidence record={data.latest_handoff} />
-            </>
-          ) : <p className="text-sm text-muted-foreground">{t("topics.noHandoff")}</p>}
-        </CardContent>
-      </Card>
-      {showRecords && <TopicRecords topic={topic} onChanged={overview.reload} />}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <RunPreview title={t("topics.activeRuns", { count: data.active_run_count })} runs={data.active_runs} topicId={topicId} />
-        <RunPreview title={t("topics.recentRuns")} runs={data.recent_runs} topicId={topicId} />
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_26rem]">
+        <div className="grid min-w-0 gap-4">
+          <Card>
+            <SectionHeader title={t("topics.latestHandoff")} action={
+              <Button size="sm" variant={showRecords ? "secondary" : "outline"} aria-expanded={showRecords} onClick={() => setShowRecords(!showRecords)}>
+                <History data-icon="inline-start" />{t("topics.handoffHistory")}
+              </Button>
+            } />
+            <CardContent className="grid gap-1">
+              {data.latest_handoff ? (
+                <>
+                  <p className="break-words font-medium">{data.latest_handoff.title}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {data.latest_handoff.author_username} · {fmtTime(data.latest_handoff.created_at)}
+                  </p>
+                  {data.latest_handoff.text && <div className="mt-2 text-sm"><Markdown>{data.latest_handoff.text}</Markdown></div>}
+                  <RecordEvidence record={data.latest_handoff} />
+                </>
+              ) : <p className="text-sm text-muted-foreground">{t("topics.noHandoff")}</p>}
+            </CardContent>
+          </Card>
+          {showRecords && <TopicRecords topic={topic} onChanged={overview.reload} />}
+          <RunsCard active={data.active_runs} activeCount={data.active_run_count} recent={data.recent_runs} topicId={topicId} />
+        </div>
+        <div className="grid min-w-0 gap-4">
+          <ReferencesCard data={data} topic={topic} onChanged={overview.reload} />
+          <MaterialsCard data={data} topic={topic} onChanged={overview.reload} />
+        </div>
       </div>
-      <Card>
-        <CardHeader className="flex flex-wrap items-center justify-between gap-2">
-          <CardTitle className="text-base">{t("topics.selected")}</CardTitle>
-          <Button variant="outline" size="sm" aria-expanded={showDetails === "references"} onClick={() => setShowDetails(showDetails === "references" ? null : "references")}>
-            {t("topics.references")}
-          </Button>
-        </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-3">
-          <ObjectPreview heading={t("topics.kind.collection")} items={data.collections} topicId={topicId} />
-          <ObjectPreview heading={t("topics.kind.dataset")} items={data.datasets} topicId={topicId} />
-          <ObjectPreview heading={t("topics.kind.attachment_snapshot")} items={data.attachments} topicId={topicId} />
-        </CardContent>
-      </Card>
-      {showDetails === "references" && <TopicObjectDirectory mode="references" topic={topic} onChanged={overview.reload} />}
-      <Card>
-        <CardContent>
-          <details key={String(topic.settings.materials_expanded)} open={topic.settings.materials_expanded}>
-            <summary className="cursor-pointer text-sm font-semibold">{t("topics.actual")}</summary>
-            <div className="mt-3 grid gap-4 sm:grid-cols-2">
-              <ObjectPreview heading={t("topics.kind.dataset_version")} items={data.used_dataset_versions} topicId={topicId} />
-              <ObjectPreview heading={t("topics.kind.attachment_snapshot")} items={data.used_attachment_snapshots} topicId={topicId} />
-            </div>
-            <Button className="mt-3" variant="outline" size="sm" aria-expanded={showDetails === "materials"} onClick={() => setShowDetails(showDetails === "materials" ? null : "materials")}>
-              {t("topics.materials")}
-            </Button>
-          </details>
-        </CardContent>
-      </Card>
-      {showDetails === "materials" && <TopicObjectDirectory mode="materials" topic={topic} onChanged={overview.reload} />}
     </div>
   );
 }
 
-function RunPreview({ title, runs, topicId }: { title: string; runs: TopicRunSummary[]; topicId: string }) {
+function SectionHeader({ title, badge, action }: { title: ReactNode; badge?: ReactNode; action?: ReactNode }) {
+  return (
+    <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0 pb-4">
+      <div className="flex min-w-0 items-center gap-2">
+        <CardTitle className="text-base">{title}</CardTitle>
+        {badge}
+      </div>
+      {action}
+    </CardHeader>
+  );
+}
+
+/** Active runs first (they may be older than the recent ones), then the rest of the recent runs. */
+function RunsCard({ active, activeCount, recent, topicId }: {
+  active: TopicRunSummary[];
+  activeCount: number;
+  recent: TopicRunSummary[];
+  topicId: string;
+}) {
+  const shown = new Set(active.map((run) => run.id));
+  const runs = [...active, ...recent.filter((run) => !shown.has(run.id))];
   return (
     <Card>
-      <CardHeader><CardTitle className="text-base">{title}</CardTitle></CardHeader>
+      <SectionHeader
+        title={t("topics.runs")}
+        badge={activeCount > 0 ? <Pill tone="info">{t("topics.activeCount", { count: activeCount })}</Pill> : undefined}
+      />
       <CardContent>
-        {runs.length === 0 ? <p className="text-sm text-muted-foreground">{t("topics.noObjects")}</p> : (
-          <ul className="divide-y">
+        {runs.length === 0 ? <p className="text-sm text-muted-foreground">{t("topics.noRuns")}</p> : (
+          <ul className="-mx-2 divide-y">
             {runs.map((run) => (
-              <li key={run.id} className="grid gap-1 py-2 first:pt-0 last:pb-0">
-                <div className="flex flex-wrap items-center justify-between gap-1">
-                  <Link to={scopedPath(`/runs/${run.id}`, topicId)} className="break-all text-sm font-medium text-primary hover:underline">{run.name}</Link>
-                  <StatusPill value={label(RUN_STATE, run.state)} />
-                </div>
-                <ScoreCoverage scoring={run.scoring} />
+              <li key={run.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 px-2 py-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] md:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
+                <Link to={scopedPath(`/runs/${run.id}`, topicId)} className="truncate text-sm font-medium text-primary hover:underline" title={run.name}>
+                  {run.name}
+                </Link>
+                <span className="justify-self-end sm:order-last"><StatusPill value={label(RUN_STATE, run.state)} /></span>
+                <span className="text-sm"><ScoreCoverage scoring={run.scoring} /></span>
+                <span className="hidden text-xs tabular-nums text-muted-foreground md:inline">{fmtTime(run.accepted_at)}</span>
               </li>
             ))}
           </ul>
         )}
       </CardContent>
+    </Card>
+  );
+}
+
+function ReferencesCard({ data, topic, onChanged }: { data: TopicOverview; topic: Topic; onChanged: () => Promise<void> }) {
+  const [paging, setPaging] = useState(false);
+  return (
+    <Card>
+      <SectionHeader title={t("topics.selected")} action={
+        <Button variant="outline" size="sm" aria-expanded={paging} onClick={() => setPaging(!paging)}>
+          {paging ? t("topics.collapse") : t("topics.references")}
+        </Button>
+      } />
+      <CardContent>
+        {paging ? <TopicObjectDirectory mode="references" topic={topic} onChanged={onChanged} /> : (
+          <div className="grid gap-4">
+            <ObjectPreview heading={t("topics.kind.collection")} items={data.collections} topicId={topic.id} />
+            <ObjectPreview heading={t("topics.kind.dataset")} items={data.datasets} topicId={topic.id} />
+            <ObjectPreview heading={t("topics.kind.attachment_snapshot")} items={data.attachments} topicId={topic.id} />
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function MaterialsCard({ data, topic, onChanged }: { data: TopicOverview; topic: Topic; onChanged: () => Promise<void> }) {
+  const [paging, setPaging] = useState(false);
+  return (
+    <Card>
+      <details key={String(topic.settings.materials_expanded)} open={topic.settings.materials_expanded} className="group">
+        <summary className="flex cursor-pointer list-none items-center gap-2 p-6 [&::-webkit-details-marker]:hidden">
+          <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
+          <span className="font-semibold leading-none tracking-tight">{t("topics.actual")}</span>
+        </summary>
+        <div className="grid gap-4 px-6 pb-6">
+          {paging ? <TopicObjectDirectory mode="materials" topic={topic} onChanged={onChanged} /> : (
+            <>
+              <ObjectPreview heading={t("topics.kind.dataset_version")} items={data.used_dataset_versions} topicId={topic.id} />
+              <ObjectPreview heading={t("topics.kind.attachment_snapshot")} items={data.used_attachment_snapshots} topicId={topic.id} />
+            </>
+          )}
+          <div>
+            <Button variant="outline" size="sm" aria-expanded={paging} onClick={() => setPaging(!paging)}>
+              {paging ? t("topics.collapse") : t("topics.materials")}
+            </Button>
+          </div>
+        </div>
+      </details>
     </Card>
   );
 }
@@ -311,7 +383,7 @@ function ObjectRow({ item, topicId, children }: {
         {item.deletion && <Pill tone="muted">{t(item.deletion.state === "purged" ? "topics.purged" : "topics.objectRecycled")}</Pill>}
       </div>
       {"source_run_count" in item && (
-        <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs text-muted-foreground">
+        <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
           <Link className="text-primary hover:underline" to={scopedPath(
             `/runs?${item.kind === "dataset_version" ? "dataset_version_id" : "attachment_version_id"}=${item.id}`,
             topicId,
@@ -334,8 +406,11 @@ function ObjectPreview({ heading, items, topicId }: {
 }) {
   return (
     <section className="min-w-0">
-      <h3 className="mb-2 text-sm font-medium">{heading}</h3>
-      {items.length === 0 ? <p className="text-sm text-muted-foreground">{t("topics.noObjects")}</p> : (
+      <h3 className="mb-1.5 flex items-baseline gap-2 text-xs font-medium text-muted-foreground">
+        {heading}
+        {items.length > 0 && <span className="tabular-nums">{items.length}</span>}
+      </h3>
+      {items.length === 0 ? <p className="text-sm text-muted-foreground/70">{t("topics.noObjects")}</p> : (
         <ul className="divide-y">{items.map((item) => <ObjectRow key={item.id} item={item} topicId={topicId} />)}</ul>
       )}
     </section>
@@ -380,9 +455,7 @@ function TopicObjectDirectory({ mode, topic, onChanged }: {
     }
   };
   return (
-    <Card>
-      <CardHeader><CardTitle className="text-base">{t(mode === "references" ? "topics.references" : "topics.materials")}</CardTitle></CardHeader>
-      <CardContent className="grid gap-3">
+    <div className="grid gap-3">
         <div className="flex flex-wrap items-end gap-2">
           <SelectField id={id} label={t("topics.evidenceType")} value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
             {(mode === "references" ? referenceKinds : materialKinds).map((value) => (
@@ -404,8 +477,7 @@ function TopicObjectDirectory({ mode, topic, onChanged }: {
           </ObjectRow>)}
         </ul>
         <MoreItems page={page} />
-      </CardContent>
-    </Card>
+    </div>
   );
 }
 

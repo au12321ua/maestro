@@ -36,8 +36,6 @@
   "empty": "没有匹配的专题。",
   "noObjects": "暂无条目。",
   "newRun": "在专题中提交运行",
-  "activeRuns": "活动运行（{{count}}）",
-  "recentRuns": "近期运行",
   "allRuns": "浏览运行",
   "allCollections": "浏览集合",
   "allDatasets": "浏览数据集",
@@ -67,5 +65,11 @@
   "trialStatus": "试次状态",
   "failedTrials": "未取得评分的已结束试次",
   "noTrials": "没有匹配的试次。",
-  "notOnPage": "当前目录页之外的对象"
+  "notOnPage": "当前目录页之外的对象",
+  "runs": "运行",
+  "activeCount": "进行中 {{count}}",
+  "noRuns": "还没有运行。",
+  "browseIn": "在本专题内浏览",
+  "updatedAt": "更新于 {{time}}",
+  "collapse": "收起"
 }
