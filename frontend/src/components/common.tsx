@@ -86,10 +86,11 @@ export function Loading({ text = t("common.loading") }: { text?: string }) {
 
 /** A way up from a page that opens one object: always to its parent list, so it does not
  * depend on how the visitor arrived (tab and filter changes leave history entries). */
-export function BackLink({ to, children }: { to: string; children: ReactNode }) {
+export function BackLink({ to, state, children }: { to: string; state?: unknown; children: ReactNode }) {
   return (
     <Link
       to={to}
+      state={state}
       className="mb-2 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
     >
       <ArrowLeft className="size-4" />
@@ -104,12 +105,12 @@ export function PageTitle({
   children,
 }: {
   title: string;
-  back?: { to: string; label: string };
+  back?: { to: string; label: string; state?: unknown };
   children?: ReactNode;
 }) {
   return (
     <div className="mb-4">
-      {back && <BackLink to={back.to}>{back.label}</BackLink>}
+      {back && <BackLink to={back.to} state={back.state}>{back.label}</BackLink>}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="min-w-0 break-words text-xl font-semibold [overflow-wrap:anywhere]">
           {title}

@@ -7,7 +7,7 @@ import { EmptyNote, ErrorAlert, Loading, PageTitle, SelectField } from "@/compon
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api";
-import { attachmentKind, attachmentPath, directoryParams, type AttachmentKind } from "@/lib/attachment-directory";
+import { attachmentKind, attachmentPath, directoryCursor, directoryParams, type AttachmentDirectoryNavigation, type AttachmentKind } from "@/lib/attachment-directory";
 import { fmtTime, snapshotName } from "@/lib/format";
 import { useLoad } from "@/lib/hooks";
 import { useTopicScope } from "@/lib/topics";
@@ -15,6 +15,7 @@ import { t } from "@/i18n";
 
 function LegacyAttachmentLink({ id, params }: { id: string; params: URLSearchParams }) {
   const { topicId } = useTopicScope();
+  const { state } = useLocation();
   const { data, error, loading } = useLoad(async () => (
     await api.get("/attachment-directory/version", { query: { snapshot_id: id } })
   ).data);
@@ -22,7 +23,7 @@ function LegacyAttachmentLink({ id, params }: { id: string; params: URLSearchPar
   next.set("topic", topicId ?? "");
   if (data) {
     const { snapshot } = data;
-    return <Navigate replace to={attachmentPath(snapshot.name, next, snapshot.kind ?? "attachment", id, params.get("snapshot") ? params.get("base") ?? undefined : undefined)} />;
+    return <Navigate replace state={state} to={attachmentPath(snapshot.name, next, snapshot.kind ?? "attachment", id, params.get("snapshot") ? params.get("base") ?? undefined : undefined)} />;
   }
   return (
     <div>
@@ -33,17 +34,18 @@ function LegacyAttachmentLink({ id, params }: { id: string; params: URLSearchPar
   );
 }
 
-function DirectoryResults({ kind, params, revision, onPage }: {
+function DirectoryResults({ kind, params, cursor, page, revision, onPage }: {
   kind: AttachmentKind;
   params: URLSearchParams;
+  cursor: string | null;
+  page?: number;
   revision: number;
   onPage: (cursor?: string) => void;
 }) {
   const { topicId } = useTopicScope();
-  const { hash } = useLocation();
-  const pages = params.getAll("page");
+  const { hash, state } = useLocation();
   const { data, loading, error } = useLoad(() => api.get("/attachment-directory", {
-    query: { kind, topic_id: topicId, q: params.get("q")?.trim(), cursor: pages.at(-1), limit: DIRECTORY_PAGE_SIZE },
+    query: { kind, topic_id: topicId, q: params.get("q")?.trim(), cursor, limit: DIRECTORY_PAGE_SIZE },
   }), [revision]);
   const next = new URLSearchParams(params);
   next.set("topic", topicId ?? "");
@@ -71,17 +73,17 @@ function DirectoryResults({ kind, params, revision, onPage }: {
             {data.data.map(({ name, latest, match, snapshot_count: count }) => (
               <TableRow key={name} id={`attachment-${name}`}>
                 <TableCell>
-                  <Link to={attachmentPath(name, next, kind)} className="font-medium text-primary hover:underline">
+                  <Link state={state} to={attachmentPath(name, next, kind)} className="font-medium text-primary hover:underline">
                     {name}
                   </Link>
                   {match && match.id !== latest.id && (
-                    <Link className="block text-xs text-primary hover:underline" to={attachmentPath(name, next, kind, match.id)}>
+                    <Link state={state} className="block text-xs text-primary hover:underline" to={attachmentPath(name, next, kind, match.id)}>
                       {t("attachments.directory.match", { snapshot: snapshotName(match) })}
                     </Link>
                   )}
                 </TableCell>
                 <TableCell>
-                  <Link to={attachmentPath(name, next, kind, latest.id)} className="text-primary hover:underline">
+                  <Link state={state} to={attachmentPath(name, next, kind, latest.id)} className="text-primary hover:underline">
                     {snapshotName(latest)}
                   </Link>
                   {latest.description && (
@@ -97,7 +99,7 @@ function DirectoryResults({ kind, params, revision, onPage }: {
           </TableBody>
         </Table>
       )}
-      <AttachmentPagination page={pages.length + 1} next={data?.meta.next_cursor} loading={loading}
+      <AttachmentPagination page={page} next={data?.meta.next_cursor} loading={loading}
         onPrevious={() => onPage()} onNext={onPage} />
     </>
   );
@@ -105,14 +107,19 @@ function DirectoryResults({ kind, params, revision, onPage }: {
 
 export function AttachmentsPage() {
   const [params, setParams] = useSearchParams();
+  const { state } = useLocation();
   const { topicId } = useTopicScope();
   const [revision, setRevision] = useState(0);
   const snapshot = params.get("snapshot") || params.get("base");
   const name = params.get("name");
   const kind = attachmentKind(params);
+  const cursor = directoryCursor(params);
+  const previous: AttachmentDirectoryNavigation["previousAttachmentPages"] =
+    cursor ? state?.previousAttachmentPages ?? [] : [];
+  const page = cursor ? (previous[0] === null ? previous.length + 1 : undefined) : 1;
 
   if (snapshot) return <LegacyAttachmentLink key={snapshot} id={snapshot} params={params} />;
-  if (name) return <Navigate replace to={attachmentPath(name, params, kind)} />;
+  if (name) return <Navigate replace state={state} to={attachmentPath(name, params, kind)} />;
 
   const update = (field: "kind" | "q", value: string) => {
     const next = new URLSearchParams(params);
@@ -120,16 +127,17 @@ export function AttachmentsPage() {
     next.delete("page");
     setParams(next, { replace: true });
   };
-  const onPage = (cursor?: string) => {
-    const pages = params.getAll("page");
-    if (cursor) pages.push(cursor);
-    else pages.pop();
+  const onPage = (nextCursor?: string) => {
     const next = new URLSearchParams(params);
-    next.delete("page");
-    for (const page of pages) next.append("page", page);
-    setParams(next);
+    const destination = nextCursor ?? previous.at(-1);
+    if (destination) next.set("page", destination);
+    else next.delete("page");
+    const state: AttachmentDirectoryNavigation = {
+      previousAttachmentPages: nextCursor ? [...previous, cursor] : previous.slice(0, -1),
+    };
+    setParams(next, { state });
   };
-  const pageKey = JSON.stringify([topicId, kind, params.get("q")?.trim(), params.getAll("page")]);
+  const pageKey = JSON.stringify([topicId, kind, params.get("q")?.trim(), cursor]);
 
   return (
     <div className="grid gap-4">
@@ -148,7 +156,7 @@ export function AttachmentsPage() {
           <CardDescription>{t("attachments.list.description")}</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3">
-          <DirectoryResults key={pageKey} kind={kind} params={params} revision={revision} onPage={onPage} />
+          <DirectoryResults key={pageKey} kind={kind} params={params} cursor={cursor} page={page} revision={revision} onPage={onPage} />
         </CardContent>
       </Card>
       <AttachmentPublish key={kind} kind={kind} onPublished={() => setRevision((value) => value + 1)} />

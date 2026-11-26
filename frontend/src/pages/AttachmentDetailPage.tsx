@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { AttachmentPagination } from "@/components/AttachmentPagination";
 import { AttachmentPublish } from "@/components/AttachmentPublish";
@@ -12,24 +12,25 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { WorkflowRecords } from "@/components/WorkflowRecords";
 import { t } from "@/i18n";
-import { API, ApiError, api, errorText } from "@/lib/api";
+import { API, api } from "@/lib/api";
 import { attachmentKind, attachmentPath, directoryParams, type AttachmentKind } from "@/lib/attachment-directory";
+import { bulkRecycle } from "@/lib/bulk-recycle";
 import { fmtBytes, fmtTime, snapshotName } from "@/lib/format";
 import { useLoad, useSession } from "@/lib/hooks";
 import { useRecords } from "@/lib/records";
 import { useTopicScope } from "@/lib/topics";
 import type { Attachment, AttachmentVersion } from "@/lib/types";
 
-const RECYCLE_LIMIT = 500;
+type SnapshotLink = (id?: string, base?: string) => { to: string; state: unknown };
 
 function ParentLink({ version, toSnapshot }: {
   version: AttachmentVersion;
-  toSnapshot: (id: string) => string;
+  toSnapshot: SnapshotLink;
 }) {
   if (!version.parent_id) return <span className="text-muted-foreground">{t("attachments.publish.noParent")}</span>;
   if (!version.parent) return <span className="text-muted-foreground" title={version.parent_id}>{t("attachments.list.deletedSnapshot")}</span>;
   return (
-    <Link className="text-primary hover:underline" to={toSnapshot(version.parent.id)}>
+    <Link className="text-primary hover:underline" {...toSnapshot(version.parent.id)}>
       {snapshotName(version.parent)}
     </Link>
   );
@@ -52,7 +53,7 @@ function SelectedSnapshot({ id, name, kind, base, revision, path, mayManage, rec
   kind: AttachmentKind;
   base: string | null;
   revision: number;
-  path: (id?: string, base?: string) => string;
+  path: SnapshotLink;
   mayManage: (item: Attachment) => boolean;
   recycling: boolean;
   onPublish: (item: Attachment) => void;
@@ -100,7 +101,7 @@ function SelectedSnapshot({ id, name, kind, base, revision, path, mayManage, rec
           {selected.data && <p role="status">{t("attachments.detail.invalidSnapshot")}</p>}
           <div>
             <Button asChild size="sm" variant="ghost">
-              <Link to={path()}>{t("attachments.detail.close")}</Link>
+              <Link {...path()}>{t("attachments.detail.close")}</Link>
             </Button>
           </div>
         </CardContent>
@@ -119,7 +120,7 @@ function SelectedSnapshot({ id, name, kind, base, revision, path, mayManage, rec
             <code className="break-all text-xs text-muted-foreground">{snapshot.id}</code>
           </div>
           <Button variant="ghost" size="sm" asChild>
-            <Link to={path()}>{t("attachments.detail.close")}</Link>
+            <Link {...path()}>{t("attachments.detail.close")}</Link>
           </Button>
         </div>
       </CardHeader>
@@ -158,7 +159,7 @@ function SelectedSnapshot({ id, name, kind, base, revision, path, mayManage, rec
             <AttachmentComparison key={baseId} detail={detail} baseId={baseId} />
             <div>
               <Button asChild size="sm" variant="ghost">
-                <Link to={path(id, "")}>{t("attachments.detail.noCompare")}</Link>
+                <Link {...path(id, "")}>{t("attachments.detail.noCompare")}</Link>
               </Button>
             </div>
           </div>
@@ -204,7 +205,7 @@ function VersionResults({ name, kind, topicId, q, pages, revision, selected, foc
   revision: number;
   selected: ReadonlyMap<string, Attachment>;
   focused: string | null;
-  path: (id?: string, base?: string) => string;
+  path: SnapshotLink;
   onToggle: (item: Attachment) => void;
   onPage: (cursor?: string) => void;
 }) {
@@ -235,7 +236,7 @@ function VersionResults({ name, kind, topicId, q, pages, revision, selected, foc
                   <DirectoryCheck name={`${name} · ${snapshotName(item)}`} checked={selected.has(item.id)} onChange={() => onToggle(item)} />
                 </TableCell>
                 <TableCell>
-                  <Link to={path(item.id)} aria-current={item.id === focused ? "true" : undefined}
+                  <Link {...path(item.id)} aria-current={item.id === focused ? "true" : undefined}
                     className="font-medium text-primary hover:underline">
                     {snapshotName(item)}
                   </Link>
@@ -247,7 +248,7 @@ function VersionResults({ name, kind, topicId, q, pages, revision, selected, foc
                   <TableCell>
                     {item.id !== focused && (
                       <Button asChild size="sm" variant="ghost">
-                        <Link to={path(focused, item.id)} aria-label={t("attachments.detail.compareAgainst", { snapshot: snapshotName(item) })}>
+                        <Link {...path(focused, item.id)} aria-label={t("attachments.detail.compareAgainst", { snapshot: snapshotName(item) })}>
                           {t("attachments.detail.compare")}
                         </Link>
                       </Button>
@@ -267,21 +268,21 @@ function VersionResults({ name, kind, topicId, q, pages, revision, selected, foc
 
 function AttachmentDetail({ name, kind }: { name: string; kind: AttachmentKind }) {
   const [params] = useSearchParams();
+  const { state } = useLocation();
   const { me } = useSession();
   const scope = useTopicScope();
   const [q, setQuery] = useState("");
   const [pages, setPages] = useState<string[]>([]);
   const [selected, setSelected] = useState<ReadonlyMap<string, Attachment>>(new Map());
   const [confirmation, setConfirmation] = useState<Attachment[]>([]);
-  const [report, setReport] = useState<{ count: number; failures: { id: string; label: string; reason: string }[] }>();
-  const [error, setError] = useState<unknown>();
+  const [report, setReport] = useState<{ count: number; failures: Map<string, { item: Attachment; reason: string }> }>();
   const [busy, setBusy] = useState(false);
   const [revision, setRevision] = useState(0);
   const [publish, setPublish] = useState<Attachment>();
   const records = useRecords("attachment", name);
   const id = params.get("snapshot");
   const base = params.get("base");
-  const path = (id?: string, base?: string) => attachmentPath(name, params, kind, id, base);
+  const path: SnapshotLink = (id, base) => ({ to: attachmentPath(name, params, kind, id, base), state });
   const back = directoryParams(params);
   const mayManage = (a: Attachment) => !a.deletion && (a.owner_id === me.id || me.role === "admin");
   const eligible = [...selected.values()].filter(mayManage);
@@ -299,28 +300,27 @@ function AttachmentDetail({ name, kind }: { name: string; kind: AttachmentKind }
 
   const recycle = async () => {
     setBusy(true);
-    setError(undefined);
     try {
-      const { data } = await api.post("/attachments/bulk-delete", {
-        body: { ids: confirmation.map((item) => item.id) },
+      const chosen = new Map(confirmation.map((item) => [item.id, item]));
+      const { completed, failures } = await bulkRecycle("/attachments/bulk-delete", [...chosen.keys()]);
+      const failedItems = failures.flatMap(({ id, reason }) => {
+        const item = chosen.get(id);
+        return item ? [{ item, reason }] : [];
       });
-      const removed = new Set(data.items.filter((result) => result.status !== "failed").map((result) => result.id));
-      const chosen = new Map(confirmation.map((item) => [item.id, snapshotName(item)]));
-      setReport({
-        count: removed.size,
-        failures: data.items.filter((result) => result.status === "failed").map((result) => ({
-          id: result.id,
-          label: chosen.get(result.id) ?? result.id,
-          reason: result.error
-            ? errorText(new ApiError(0, { ...result.error, field_errors: result.error.field_errors ?? [] }))
-            : t("common.errorAlert.title"),
-        })),
+      setReport((current) => {
+        const remaining = new Map(current?.failures);
+        for (const id of completed) remaining.delete(id);
+        for (const failure of failedItems) remaining.set(failure.item.id, failure);
+        return { count: completed.size, failures: remaining };
       });
-      setSelected((current) => new Map([...current].filter(([id]) => !removed.has(id))));
+      setSelected((current) => {
+        const next = new Map(current);
+        for (const id of completed) next.delete(id);
+        for (const { item } of failedItems) next.set(item.id, item);
+        return next;
+      });
       setConfirmation([]);
       refresh();
-    } catch (error) {
-      setError(error);
     } finally {
       setBusy(false);
     }
@@ -328,7 +328,7 @@ function AttachmentDetail({ name, kind }: { name: string; kind: AttachmentKind }
 
   return (
     <div className="grid gap-4">
-      <PageTitle title={name} back={{ to: `/attachments?${back}#attachment-${name}`, label: t("attachments.directory.back") }}>
+      <PageTitle title={name} back={{ to: `/attachments?${back}#attachment-${name}`, label: t("attachments.directory.back"), state }}>
         <Pill tone="neutral">{t(`attachments.kind.${kind}`)}</Pill>
       </PageTitle>
       <TopicDirectory search={q} onSearch={(value) => { setQuery(value); setPages([]); }}
@@ -337,17 +337,21 @@ function AttachmentDetail({ name, kind }: { name: string; kind: AttachmentKind }
         mayManage={mayManage} recycling={busy} onPublish={setPublish} onRecycle={setConfirmation} onChanged={refresh} />}
       {!!confirmation.length && (
         <RecycleConfirmation name={name} items={confirmation} busy={busy}
-          onCancel={() => { setConfirmation([]); setError(undefined); }} onConfirm={() => void recycle()} />
+          onCancel={() => setConfirmation([])} onConfirm={() => void recycle()} />
       )}
-      <ErrorAlert error={error} />
       {report && (
         <Alert role="status">
           <AlertTitle>{t("attachments.recycle.result", { count: report.count })}</AlertTitle>
-          {!!report.failures.length && (
+          {!!report.failures.size && (
             <AlertDescription>
               <ul className="grid gap-1">
-                {report.failures.map((item) => (
-                  <li key={item.id}><code title={item.id}>{item.label}</code> · {item.reason}</li>
+                {[...report.failures.values()].map(({ item, reason }) => (
+                  <li key={item.id} className="flex flex-wrap items-center gap-2">
+                    <span><code title={item.id}>{snapshotName(item)}</code> · {reason}</span>
+                    <Button size="sm" variant="outline" disabled={busy} onClick={() => setConfirmation([item])}>
+                      {t("attachments.recycle.retry")}
+                    </Button>
+                  </li>
                 ))}
               </ul>
             </AlertDescription>
@@ -362,7 +366,7 @@ function AttachmentDetail({ name, kind }: { name: string; kind: AttachmentKind }
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <span role="status">{t("attachments.recycle.selected", { count: selected.size })}</span>
                 {!!eligible.length && (
-                  <Button size="sm" variant="outline" disabled={busy || eligible.length > RECYCLE_LIMIT}
+                  <Button size="sm" variant="outline" disabled={busy}
                     onClick={() => setConfirmation(eligible)}>
                     {t("attachments.recycle.selectedAction", { count: eligible.length })}
                   </Button>
@@ -372,7 +376,6 @@ function AttachmentDetail({ name, kind }: { name: string; kind: AttachmentKind }
                 </Button>
               </div>
               {eligible.length < selected.size && <p className="text-xs text-muted-foreground">{t("attachments.recycle.ownerOnly")}</p>}
-              {eligible.length > RECYCLE_LIMIT && <p className="text-xs text-muted-foreground">{t("attachments.recycle.limit", { count: RECYCLE_LIMIT })}</p>}
               <TopicMembershipActions kind="attachment_snapshot" ids={new Set(selected.keys())} onChanged={() => {
                 setSelected(new Map());
                 refresh();

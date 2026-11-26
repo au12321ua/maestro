@@ -99,7 +99,7 @@
     "confirm": "将 {{name}} 的 {{count}} 个快照移入回收站？",
     "result": "已将 {{count}} 个快照移入回收站",
     "clearSelection": "清空选择",
-    "ownerOnly": "快照可由其发布者或管理员移入回收站。",
-    "limit": "每次最多将 {{count}} 个快照移入回收站。"
+    "retry": "重试回收此快照",
+    "ownerOnly": "快照可由其发布者或管理员移入回收站。"
   }
 }

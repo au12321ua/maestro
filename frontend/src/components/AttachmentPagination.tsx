@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { t } from "@/i18n";
 
 export function AttachmentPagination({ page, next, loading, onPrevious, onNext }: {
-  page: number;
+  page?: number;
   next?: string | null;
   loading: boolean;
   onPrevious: () => void;
@@ -14,9 +14,11 @@ export function AttachmentPagination({ page, next, loading, onPrevious, onNext }
       <Button size="sm" variant="outline" disabled={page === 1} onClick={onPrevious}>
         {t("attachments.pagination.previous")}
       </Button>
-      <span className="text-xs tabular-nums text-muted-foreground">
-        {t("attachments.pagination.page", { page })}
-      </span>
+      {page !== undefined && (
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {t("attachments.pagination.page", { page })}
+        </span>
+      )}
       <Button size="sm" variant="outline" disabled={loading || !next} onClick={() => next && onNext(next)}>
         {t("attachments.pagination.next")}
       </Button>

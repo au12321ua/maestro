@@ -1,3 +1,11 @@
+export interface AttachmentDirectoryNavigation {
+  previousAttachmentPages: (string | null)[];
+}
+
+export function directoryCursor(params: URLSearchParams): string | null {
+  return params.getAll("page").at(-1) ?? null;
+}
+
 export type AttachmentKind = "attachment" | "submission";
 
 export function attachmentKind(params: URLSearchParams): AttachmentKind {
@@ -21,5 +29,7 @@ export function attachmentPath(
 export function directoryParams(params: URLSearchParams) {
   const next = new URLSearchParams(params);
   for (const field of ["name", "snapshot", "base"]) next.delete(field);
+  const cursor = directoryCursor(params);
+  if (cursor) next.set("page", cursor);
   return next;
 }
