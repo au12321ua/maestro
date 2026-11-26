@@ -1763,11 +1763,14 @@ class ExportSummary(Model):
     digest: str
 
 
+ExportState = Literal["queued", "building", "ready", "failed", "expired"]
+
+
 class Export(Model):
     id: str
     owner_id: str
     operation_id: str
-    state: Literal["queued", "building", "ready", "failed", "expired"]
+    state: ExportState
     request: ExportRequest
     size_bytes: int | None
     digest: str | None
@@ -1776,7 +1779,13 @@ class Export(Model):
     created_at: str
     finished_at: str | None
     expires_at: str | None
+    deletion: DeletionState | None
     links: dict[str, str]
+
+
+class ExpiredExportSelection(Model):
+    ids: list[str] = Field(description="Frozen IDs across all pages of your expired exports")
+    count: int
 
 
 # --- comparisons, collections and analysis snapshots -------------------
@@ -2360,6 +2369,7 @@ class TopicOverview(Model):
 ObjectType = Literal[
     "run",
     "artifact",
+    "export",
     "dataset",
     "dataset_version",
     "credential",

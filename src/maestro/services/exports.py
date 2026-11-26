@@ -17,14 +17,15 @@ import re
 import shutil
 import zipfile
 from pathlib import Path
+from typing import BinaryIO
 
-from sqlalchemy import delete, func, insert, select, update
+from sqlalchemy import and_, case, delete, func, insert, select, update
 
 from maestro import __version__
 from maestro.boundaries.storage import ArtifactStore
 from maestro.core import clock
 from maestro.core.errors import FieldError, MaestroError, not_found
-from maestro.core.ids import new_id
+from maestro.core.ids import is_id, new_id
 from maestro.db import schema as t
 from maestro.db.engine import Database
 from maestro.domain import limits
@@ -39,6 +40,7 @@ ARCHIVE = "export.zip"
 # Default largest export (``export_max_gb`` in config.toml).
 DEFAULT_MAX_BYTES = 10 * 1024**3
 _SAFE = re.compile(r"[^A-Za-z0-9_.-]+")
+_EXPIRABLE = ("ready", "failed")
 
 
 class ExportFailed(Exception):
@@ -54,13 +56,25 @@ def safe_name(value: str, fallback: str) -> str:
     return name or fallback
 
 
-def public_export(row) -> dict:
-    ready = row["state"] == "ready"
+def _past_expiry(at: str):
+    return and_(t.exports.c.state.in_(_EXPIRABLE), t.exports.c.expires_at <= at)
+
+
+def _visible_state():
+    return case(
+        (_past_expiry(clock.to_text(clock.now())), "expired"),
+        else_=t.exports.c.state,
+    )
+
+
+def public_export(row, *, deletion: dict | None = None) -> dict:
+    state = row.get("visible_state", row["state"])
+    downloadable = state == "ready" and deletion is None
     return {
         "id": row["id"],
         "owner_id": row["owner_id"],
         "operation_id": row["operation_id"],
-        "state": row["state"],
+        "state": state,
         "request": row["request_json"],
         "size_bytes": row["size_bytes"],
         "digest": row["digest"],
@@ -71,10 +85,11 @@ def public_export(row) -> dict:
         "created_at": row["created_at"],
         "finished_at": row["finished_at"],
         "expires_at": row["expires_at"],
+        "deletion": deletion,
         "links": {
             "self": f"/api/v1/exports/{row['id']}",
             "operation": f"/api/v1/operations/{row['operation_id']}",
-            **({"download": f"/api/v1/exports/{row['id']}/download"} if ready else {}),
+            **({"download": f"/api/v1/exports/{row['id']}/download"} if downloadable else {}),
         },
     }
 
@@ -202,8 +217,11 @@ class Exports:
             return public_export(self._row(conn, export_id))
 
     @staticmethod
-    def _row(conn, export_id: str):
-        row = conn.execute(select(t.exports).where(t.exports.c.id == export_id)).mappings().first()
+    def _row(conn, export_id: str, *, expiry_view: bool = False):
+        query = select(t.exports).where(t.exports.c.id == export_id)
+        if expiry_view:
+            query = query.add_columns(_visible_state().label("visible_state"))
+        row = conn.execute(query).mappings().first()
         if row is None:
             raise not_found("Export")
         return row
@@ -214,15 +232,28 @@ class Exports:
 
     def get(self, principal: Principal, export_id: str) -> dict:
         with self.db.read() as conn:
-            row = self._row(conn, export_id)
-        self._visible(principal, row)
-        return public_export(row)
+            row = self._row(conn, export_id, expiry_view=True)
+            self._visible(principal, row)
+            deletion = deleted.state(conn, "export", export_id)
+        if deletion and deletion["state"] == deleted.PURGED:
+            raise deleted.purged_error("Export")
+        return public_export(row, deletion=deletion)
 
-    def list(self, principal: Principal, cursor: str | None, limit: int | None):
+    def list(
+        self, principal: Principal, cursor: str | None, limit: int | None, state: str | None = None
+    ):
         limit = pagination.check_limit(limit)
         filters = {"owner_id": principal.user_id}
+        visible_state = _visible_state()
+        query = select(t.exports, visible_state.label("visible_state")).where(
+            t.exports.c.owner_id == principal.user_id,
+            deleted.visible(t.exports.c.id, "export"),
+        )
+        if state is not None:
+            filters["state"] = state
+            query = query.where(visible_state == state)
         query = pagination.page(
-            select(t.exports).where(t.exports.c.owner_id == principal.user_id),
+            query,
             t.exports.c.created_at,
             t.exports.c.id,
             cursor,
@@ -234,27 +265,59 @@ class Exports:
         rows, next_cursor = pagination.split(rows, limit, "created_at", filters)
         return [public_export(r) for r in rows], next_cursor
 
-    def archive(self, principal: Principal, export_id: str) -> tuple[dict, Path]:
+    def expired_selection(self, principal: Principal) -> dict:
+        """Return the exact IDs to confirm, independently of list pagination."""
         with self.db.read() as conn:
-            row = self._row(conn, export_id)
-        self._visible(principal, row)
-        if row["state"] == "expired":
+            ids = list(
+                conn.execute(
+                    select(t.exports.c.id)
+                    .where(
+                        t.exports.c.owner_id == principal.user_id,
+                        deleted.visible(t.exports.c.id, "export"),
+                        _visible_state() == "expired",
+                    )
+                    .order_by(t.exports.c.created_at.desc(), t.exports.c.id.desc())
+                ).scalars()
+            )
+        return {"ids": ids, "count": len(ids)}
+
+    def archive(self, principal: Principal, export_id: str) -> tuple[dict, BinaryIO]:
+        with self.db.read() as conn:
+            row = self._row(conn, export_id, expiry_view=True)
+            self._visible(principal, row)
+            deletion = deleted.state(conn, "export", export_id)
+        if deletion:
+            if deletion["state"] == deleted.PURGED:
+                raise deleted.purged_error("Export")
+            raise MaestroError("EXPORT_DELETED", "Export is in the recycle bin", 410)
+        state = row["visible_state"]
+        if state == "expired":
             raise MaestroError("EXPORT_EXPIRED", "Export package expired; create a new one", 410)
-        if row["state"] != "ready":
+        if state != "ready":
             raise MaestroError(
                 "EXPORT_NOT_READY",
-                f"Export is {row['state']}",
+                f"Export is {state}",
                 409,
-                retryable=row["state"] in {"queued", "building"},
+                retryable=state in {"queued", "building"},
             )
-        path = self.directory / export_id / ARCHIVE
-        if not path.is_file():
-            raise MaestroError("EXPORT_UNAVAILABLE", "Export package is missing", 409)
+        try:
+            reader = (self.directory / export_id / ARCHIVE).open("rb")
+        except FileNotFoundError:
+            raise MaestroError("EXPORT_UNAVAILABLE", "Export package is missing", 409) from None
+        try:
+            self._record_archive_read(principal, row, reader)
+        except BaseException:
+            reader.close()
+            raise
+        return public_export(row), reader
+
+    def _record_archive_read(self, principal: Principal, row, reader: BinaryIO) -> None:
         ids = (row["summary_json"] or {}).get("task_ids")
         if ids is None:
             # Older packages keep the exact included files in their manifest too.
-            with zipfile.ZipFile(path) as archive:
-                manifest = json.loads(archive.read(f"export-{export_id}/manifest.json"))
+            with zipfile.ZipFile(reader) as archive:
+                manifest = json.loads(archive.read(f"export-{row['id']}/manifest.json"))
+            reader.seek(0)
             artifact_paths = [f["path"] for f in manifest["files"] if f.get("artifact_id")]
             ids = []
             with self.db.read() as conn:
@@ -276,7 +339,6 @@ class Exports:
                         ).scalars()
                     )
         task_reads.record(self.db, principal, ids, "trial_artifacts")
-        return public_export(row), path
 
     # --- building (maintenance loop) ---------------------------------------------
 
@@ -617,6 +679,8 @@ class Exports:
         at = clock.to_text(now)
         with self.db.write() as conn:
             row = self._row(conn, export_id)
+            if row["state"] not in {"queued", "building"}:
+                return
             if summary and self._purged_since(conn, row):
                 # A purge ran during the build; its content must not be published.
                 shutil.rmtree(self.directory / export_id, ignore_errors=True)
@@ -688,29 +752,68 @@ class Exports:
         ).first()
         return bool(runs or files)
 
-    # --- retention -----------------------------------------------------------------
+    # --- retention and recovery from the recycle bin -------------------------------
 
-    def expire(self, run_ids: set[str] | None = None) -> int:
-        """Remove packages past their TTL, or any package containing ``run_ids``
-        (a purged run must not survive in an export)."""
-        at = clock.to_text(clock.now())
-        with self.db.read() as conn:
-            rows = conn.execute(
-                select(t.exports.c.id, t.exports.c.request_json, t.exports.c.expires_at).where(
-                    t.exports.c.state.in_(["ready", "failed"])
+    def restore(self, conn, row) -> None:
+        if row["state"] not in _EXPIRABLE:
+            return
+        deadline = row["expires_at"]
+        past_expiry = deadline is not None and deadline <= clock.to_text(clock.now())
+        missing = row["state"] == "ready" and not (self.directory / row["id"] / ARCHIVE).is_file()
+        if past_expiry or missing:
+            conn.execute(
+                update(t.exports).where(t.exports.c.id == row["id"]).values(state="expired")
+            )
+
+    @staticmethod
+    def invalidate_run(conn, run_id: str) -> list[str]:
+        """Allow no new downloads once a source run or artifact is purged."""
+        included = func.json_each(t.exports.c.request_json, "$.run_ids").table_valued("value")
+        return list(
+            conn.execute(
+                update(t.exports)
+                .where(
+                    t.exports.c.state.in_(_EXPIRABLE),
+                    select(1).where(included.c.value == run_id).exists(),
                 )
-            ).all()
-        due = [
-            r.id
-            for r in rows
-            if (r.expires_at and r.expires_at <= at)
-            or (run_ids and run_ids & set(r.request_json["run_ids"]))
-        ]
-        for export_id in due:
-            shutil.rmtree(self.directory / export_id, ignore_errors=True)
-        if due:
-            with self.db.write() as conn:
-                conn.execute(
-                    update(t.exports).where(t.exports.c.id.in_(due)).values(state="expired")
+                .values(state="expired")
+                .returning(t.exports.c.id)
+            ).scalars()
+        )
+
+    def remove_packages(self, ids) -> dict | None:
+        failed = 0
+        for export_id in ids:
+            try:
+                shutil.rmtree(self.directory / export_id)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                log.exception("export package %s could not be removed", export_id)
+                failed += 1
+        return {"packages_failed": failed} if failed else None
+
+    def expire(self) -> int:
+        """Mark packages before removing files, so restore and purge see a settled state."""
+        with self.db.write() as conn:
+            count = conn.execute(
+                update(t.exports)
+                .where(_past_expiry(clock.to_text(clock.now())))
+                .values(state="expired")
+            ).rowcount
+
+        # A previous expiry or purge may have committed before its files were removed.
+        # Read the existing directories first: a new build always has a row before it writes.
+        try:
+            candidates = {p.name for p in self.directory.iterdir() if is_id(p.name, "exp")}
+        except FileNotFoundError:
+            return count
+        if candidates:
+            with self.db.read() as conn:
+                protected = set(
+                    conn.execute(
+                        select(t.exports.c.id).where(t.exports.c.state != "expired")
+                    ).scalars()
                 )
-        return len(due)
+            self.remove_packages(candidates - protected)
+        return count

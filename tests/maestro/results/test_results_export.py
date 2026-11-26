@@ -13,8 +13,11 @@ import time
 import uuid
 import zipfile
 
+import pytest
 from sqlalchemy import select, update
 from support import PASSWORD, create_pat, invite_member, running, setup_admin, wait_operation
+from support.results import purge
+from support.sdk import sdk
 
 from maestro.boundaries.executor import AttemptOutcome
 from maestro.core import clock
@@ -217,6 +220,144 @@ def test_export_packages_expire(service, version_id):
         assert gone.status_code == 410 and gone.json()["error"]["code"] == "EXPORT_EXPIRED"
 
 
+def test_expired_selection_is_personal_and_stays_fixed_across_pages(service, version_id):
+    with running(service) as client:
+        admin = setup_admin(service, client)
+        alice = invite_member(service, admin, "alice")
+        bob = invite_member(service, admin, "bob")
+        agent = sdk(create_pat(alice))
+        run_id = run_to_end(admin, version_id)
+        alice_ids = [export(alice, run_ids=[run_id])["id"] for _ in range(5)]
+        bob_ids = [export(bob, run_ids=[run_id])["id"] for _ in range(5)]
+        later = export(alice, run_ids=[run_id])["id"]
+        due = clock.to_text(clock.now())
+        with service.db.write() as conn:
+            conn.execute(
+                update(t.exports)
+                .where(t.exports.c.id.in_(alice_ids + bob_ids))
+                .values(expires_at=due)
+            )
+
+        frozen = agent.exports.expired_selection()
+        assert frozen.count == 5
+        assert frozen.ids == [row.id for row in agent.exports.list(state="expired", limit=2)]
+        assert set(frozen.ids) == set(alice_ids)
+        assert [row.id for row in agent.exports.list(state="ready")] == [later]
+        first = alice.get("/api/v1/exports?state=expired&limit=2", expect=200).json()
+        assert len(first["data"]) == 2
+        cursor = first["meta"]["next_cursor"]
+        assert alice.get(f"/api/v1/exports?state=ready&cursor={cursor}").status_code == 400
+        assert admin.get("/api/v1/exports/expired-selection").json()["data"]["count"] == 0
+
+        with service.db.write() as conn:
+            conn.execute(update(t.exports).where(t.exports.c.id == later).values(expires_at=due))
+        assert agent.exports.expired_selection().count == 6
+        reader = create_pat(alice, ())
+        assert reader.delete(f"/api/v1/exports/{alice_ids[0]}").status_code == 403
+        assert admin.delete(f"/api/v1/exports/{alice_ids[0]}").status_code == 404
+        first = agent.exports.delete_many([*frozen.ids, bob_ids[0]])
+        expected = [(export_id, "deleted") for export_id in frozen.ids] + [(bob_ids[0], "failed")]
+        assert [(item.id, item.status) for item in first.items] == expected
+        assert first.items[-1].error.code == "NOT_FOUND"
+        repeated = agent.exports.delete_many(frozen.ids)
+        assert {item.status for item in repeated.items} == {"already_deleted"}
+        assert [row.id for row in agent.exports.list()] == [later]
+        assert bob.get("/api/v1/exports/expired-selection").json()["data"]["ids"] == bob_ids[::-1]
+
+
+def test_active_export_cannot_be_recycled_until_the_build_finishes(
+    service, version_id, monkeypatch
+):
+    with running(service) as client:
+        admin = setup_admin(service, client)
+        run_id = run_to_end(admin, version_id)
+        who = admin_principal(admin)
+        monkeypatch.setattr(service.exports, "next_queued", lambda: None)
+        pending = service.exports.create(who, {"run_ids": [run_id]})
+        ready = service.exports.create(who, {"run_ids": [run_id]})
+        service.exports.build(ready["id"])
+        path = f"/api/v1/exports/{pending['id']}"
+        assert admin.delete(path, expect=409).json()["error"]["code"] == "EXPORT_ACTIVE"
+        write = service.exports._write
+
+        def recycle_while_building(*args):
+            attempt = admin.post(
+                "/api/v1/exports/bulk-delete",
+                json={"ids": [ready["id"], pending["id"]]},
+                expect=200,
+            ).json()["data"]["items"]
+            assert attempt[0]["status"] == "deleted"
+            assert attempt[1]["status"] == "failed"
+            assert attempt[1]["error"]["code"] == "EXPORT_ACTIVE"
+            assert attempt[1]["error"]["retryable"]
+            return write(*args)
+
+        monkeypatch.setattr(service.exports, "_write", recycle_while_building)
+        service.exports.build(pending["id"])
+        admin.get(path + "/download", expect=200)
+        entry = admin.delete(path, expect=200).json()["data"]
+        assert entry["state"] == "recycled"
+
+
+@pytest.mark.parametrize("unavailable", ["expired", "missing"])
+def test_export_restore_keeps_original_deadline_and_checks_package(
+    service, version_id, unavailable
+):
+    with running(service) as client:
+        admin = setup_admin(service, client)
+        alice = invite_member(service, admin, "alice")
+        run_id = run_to_end(alice, version_id)
+        package = export(alice, run_ids=[run_id])
+        export_id = package["id"]
+        path = f"/api/v1/exports/{export_id}"
+        original = alice.get(path + "/download", expect=200).content
+        partial = alice.get(path + "/download", headers={"Range": "bytes=0-3"}, expect=206)
+        assert partial.content == original[:4]
+        entry = alice.delete(path, expect=200).json()["data"]
+        assert entry["object_type"] == "export"
+        assert alice.get("/api/v1/exports").json()["data"] == []
+        recycled = alice.get(path, expect=200).json()["data"]
+        assert recycled["request"]["run_ids"] == [run_id]
+        assert recycled["deletion"]["state"] == "recycled" and "download" not in recycled["links"]
+        assert alice.get(path + "/download", expect=410).json()["error"]["code"] == "EXPORT_DELETED"
+        restore = f"/api/v1/admin/recycle-bin/{entry['id']}/restore"
+        alice.post(restore, expect=403)
+        listed = admin.get("/api/v1/admin/recycle-bin?object_type=export", expect=200).json()
+        assert [row["id"] for row in listed["data"]] == [entry["id"]]
+
+        admin.post(restore, expect=200)
+        assert alice.get(path, expect=200).json()["data"]["expires_at"] == package["expires_at"]
+        assert alice.get(path + "/download", expect=200).content == original
+
+        entry = alice.delete(path, expect=200).json()["data"]
+        directory = service.settings.exports_dir / export_id
+        if unavailable == "expired":
+            deadline = clock.to_text(clock.now())
+            with service.db.write() as conn:
+                conn.execute(
+                    update(t.exports).where(t.exports.c.id == export_id).values(expires_at=deadline)
+                )
+        else:
+            deadline = package["expires_at"]
+            (directory / "export.zip").unlink()
+        admin.post(f"/api/v1/admin/recycle-bin/{entry['id']}/restore", expect=200)
+        restored = alice.get(path, expect=200).json()["data"]
+        assert restored["state"] == "expired" and restored["expires_at"] == deadline
+        assert alice.get(path + "/download", expect=410).json()["error"]["code"] == "EXPORT_EXPIRED"
+
+        entry = alice.delete(path, expect=200).json()["data"]
+        (directory / "leftover.tmp").write_bytes(b"partial")
+        receipt = purge(admin, entry).json()["data"]
+        assert receipt["state"] == "purged"
+        assert not directory.exists()
+        assert alice.get(path, expect=410).json()["error"]["code"] == "OBJECT_PURGED"
+        assert alice.delete(path, expect=200).json()["data"]["id"] == receipt["id"]
+
+        assert alice.get(f"/api/v1/runs/{run_id}/summary", expect=200).json()["data"]["mean"] == 1
+        (file, *_) = alice.get(f"/api/v1/runs/{run_id}/artifacts", expect=200).json()["data"]
+        alice.get(f"/api/v1/artifacts/{file['id']}/download", expect=200)
+
+
 def test_purge_during_a_build_withholds_the_package(service, version_id):
     """A purge cannot expire a package still being written; the build checks at the end."""
     with running(service) as client:
@@ -291,9 +432,9 @@ def test_a_sweep_during_a_build_cannot_take_the_files_being_packed(service, vers
     assert seen["swept"]["reclaimed"] == len(ids[elsewhere])
     package = service.exports.get(who, created["id"])
     assert package["state"] == "ready", package
-    _, path = service.exports.archive(who, created["id"])
-    archive = zipfile.ZipFile(path)
-    manifest = json.loads(archive.read(f"export-{created['id']}/manifest.json"))
+    _, reader = service.exports.archive(who, created["id"])
+    with reader, zipfile.ZipFile(reader) as archive:
+        manifest = json.loads(archive.read(f"export-{created['id']}/manifest.json"))
     assert manifest["missing"] == []
     assert {f["artifact_id"] for f in manifest["files"] if "artifact_id" in f} == set(ids[packed])
     with service.db.read() as conn:

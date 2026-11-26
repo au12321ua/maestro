@@ -35,6 +35,7 @@ from maestro.services.principal import (
     Principal,
     require_admin,
     require_admin_session,
+    require_experiment,
     require_manage_owned,
     require_web_session,
 )
@@ -109,7 +110,7 @@ class Handler:
     def check_restore(self, conn: Connection, row) -> None:
         pass
 
-    def on_restore(self, conn: Connection, row, detail: dict) -> None:
+    def on_restore(self, conn: Connection, row, detail: dict, service: Recycle) -> None:
         pass
 
     def purge(self, conn: Connection, row, service: Recycle, actor_id: str) -> Purged:
@@ -204,7 +205,7 @@ class RunHandler(Handler):
         keys = [a.storage_key for a in artifacts]
         return Purged(
             counts,
-            [lambda: service.remove_files(keys), lambda: service.expire_exports({run_id})],
+            [lambda: service.remove_files(keys), *service.invalidate_exports(conn, run_id)],
         )
 
 
@@ -233,7 +234,7 @@ class ArtifactHandler(Handler):
         key, run_id = row["storage_key"], row["run_id"]
         return Purged(
             {"size_bytes": row["size_bytes"]},
-            [lambda: service.remove_files([key]), lambda: service.expire_exports({run_id})],
+            [lambda: service.remove_files([key]), *service.invalidate_exports(conn, run_id)],
         )
 
 
@@ -492,7 +493,7 @@ class UserHandler(Handler):
             "revoked_invitations": invitations,
         }
 
-    def on_restore(self, conn, row, detail):
+    def on_restore(self, conn, row, detail, service):
         # Revoked sessions and PATs stay revoked; the account can sign in again.
         if detail.get("previous_status") == UserStatus.ACTIVE:
             conn.execute(
@@ -805,6 +806,60 @@ class SnapshotHandler(Handler):
         return Purged({"notes": notes})
 
 
+class ExportHandler(Handler):
+    object_type = "export"
+    table = t.exports
+
+    def owner(self, row):
+        return row["owner_id"]
+
+    def authorize(self, principal, row):
+        if row["owner_id"] != principal.user_id:
+            raise not_found("Export")
+        require_experiment(principal)
+
+    def check_delete(self, conn, principal, row):
+        if row["state"] in {"queued", "building"}:
+            raise MaestroError(
+                "EXPORT_ACTIVE",
+                "Queued or building exports can be deleted once they finish",
+                409,
+                retryable=True,
+            )
+
+    def on_restore(self, conn, row, detail, service):
+        if service.exports:
+            service.exports.restore(conn, row)
+
+    def purge(self, conn, row, service, actor_id):
+        export_id = row["id"]
+        conn.execute(
+            delete(t.artifact_pins).where(
+                t.artifact_pins.c.holder_kind == "export",
+                t.artifact_pins.c.holder_id == export_id,
+            )
+        )
+        conn.execute(
+            update(t.exports)
+            .where(t.exports.c.id == export_id)
+            .values(
+                state="expired",
+                request_json={},
+                summary_json=None,
+                error_json=None,
+                size_bytes=None,
+                digest=None,
+            )
+        )
+        conn.execute(
+            update(t.operations)
+            .where(t.operations.c.id == row["operation_id"])
+            .values(result_json=None, error_json=None)
+        )
+        cleanup = [lambda: service.exports.remove_packages([export_id])] if service.exports else []
+        return Purged({"size_bytes": row["size_bytes"]}, cleanup)
+
+
 HANDLERS: dict[str, Handler] = {
     h.object_type: h
     for h in (
@@ -823,6 +878,7 @@ HANDLERS: dict[str, Handler] = {
         TopicHandler(),
         SnapshotHandler(),
         RecordHandler(),
+        ExportHandler(),
     )
 }
 
@@ -975,7 +1031,7 @@ class Recycle:
             handler = self._handler(entry["object_type"])
             row = handler.load(conn, entry["object_id"])
             handler.check_restore(conn, row)
-            handler.on_restore(conn, row, entry["detail_json"] or {})
+            handler.on_restore(conn, row, entry["detail_json"] or {}, self)
             conn.execute(delete(t.deletions).where(t.deletions.c.id == entry_id))
             audit.record(
                 conn,
@@ -1183,6 +1239,8 @@ class Recycle:
                 failed = pool.submit(asyncio.run, discard()).result()
         return {"preparations_failed": failed} if failed else None
 
-    def expire_exports(self, run_ids: set[str]) -> None:
-        if self.exports:
-            self.exports.expire(run_ids)
+    def invalidate_exports(self, conn: Connection, run_id: str) -> list[Callable]:
+        if self.exports is None:
+            return []
+        ids = self.exports.invalidate_run(conn, run_id)
+        return [lambda: self.exports.remove_packages(ids)] if ids else []
