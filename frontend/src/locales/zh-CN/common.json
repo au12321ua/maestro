@@ -1,4 +1,10 @@
 {
+  "recycle": {
+    "missingResult": "服务未返回此项的回收结果。",
+    "failed": "此项无法移入回收站。",
+    "unknown": "尚未确认回收结果。{{reason}}",
+    "unattempted": "回收请求中断，尚未提交此项。"
+  },
   "runState": {
     "queued": "排队中",
     "preparing": "准备中",
@@ -162,6 +168,7 @@
     "expired": "已过期"
   },
   "recycleType": {
+    "export": "导出",
     "topic": "实验专题",
     "run": "运行",
     "artifact": "产物",

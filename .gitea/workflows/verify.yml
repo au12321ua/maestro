@@ -61,7 +61,9 @@ jobs:
           echo "HOME=$RUNNER_TEMP/home" >> "$GITHUB_ENV"
           echo "UV_PYTHON=${{ steps.python.outputs.python-path }}" >> "$GITHUB_ENV"
           echo "UV_PYTHON_DOWNLOADS=never" >> "$GITHUB_ENV"
-          python -m pip install uv==0.11.31
+          if [ -n "$CI_PROXY" ]; then export HTTPS_PROXY="$CI_PROXY" HTTP_PROXY="$CI_PROXY"; fi
+          python -m pip install --retries 1 uv==0.11.31 ||
+            python -m pip install --index-url https://pypi.org/simple uv==0.11.31
       - name: Service and Runner environments
         if: ${{ steps.reuse.outputs.verified != 'true' }}
         timeout-minutes: 15
@@ -157,7 +159,9 @@ jobs:
           echo "HOME=$RUNNER_TEMP/home" >> "$GITHUB_ENV"
           echo "UV_PYTHON=${{ steps.python.outputs.python-path }}" >> "$GITHUB_ENV"
           echo "UV_PYTHON_DOWNLOADS=never" >> "$GITHUB_ENV"
-          python -m pip install uv==0.11.31
+          if [ -n "$CI_PROXY" ]; then export HTTPS_PROXY="$CI_PROXY" HTTP_PROXY="$CI_PROXY"; fi
+          python -m pip install --retries 1 uv==0.11.31 ||
+            python -m pip install --index-url https://pypi.org/simple uv==0.11.31
       - name: Build dependencies
         timeout-minutes: 15
         run: |

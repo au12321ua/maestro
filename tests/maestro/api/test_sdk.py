@@ -119,6 +119,13 @@ def test_attachments_publish_fetch_and_compare_directories(service, tmp_path):
         diff = agent.attachments.diff(child)
         assert [c.path for c in diff.changed] == ["bin/run.sh"] and not diff.added
         assert [a.id for a in agent.attachments.list(name="helper")] == [published.id, child.id]
+        (group,) = agent.attachments.directory(q="v1", limit=1)
+        assert group.latest.id == child.id and group.match.id == published.id
+        assert group.snapshot_count == 2
+        revisions = agent.attachments.versions("helper", limit=1)
+        assert [revision.id for revision in revisions] == [child.id, published.id]
+        assert revisions[0].parent.id == published.id
+        assert agent.attachments.version(published.id).snapshot.child_count == 1
 
         # Fetching rebuilds the snapshot: only what differs is written, modes included.
         copy = tmp_path / "copy"
@@ -184,6 +191,10 @@ def test_attachments_publish_fetch_and_compare_directories(service, tmp_path):
         (package / "link").symlink_to("manifest.json")
         with pytest.raises(ValueError):
             agent.attachments.publish(package)
+        (recycled,) = agent.attachments.delete_many([flat.id]).items
+        assert recycled.id == flat.id and recycled.status == "deleted" and recycled.error is None
+        (retried,) = agent.attachments.delete_many([flat.id]).items
+        assert retried.status == "already_deleted"
 
 
 def git(repository: Path, *args: str) -> str:
@@ -373,6 +384,9 @@ SDK_METHODS = {
     "list_setup_network_revisions": "configs.setup_network_revisions",
     "resolve_config": "configs.resolve",
     "get_resolution": "configs.resolution",
+    "list_attachment_directory": "attachments.directory",
+    "list_attachment_versions": "attachments.versions",
+    "get_attachment_version": "attachments.version",
     "list_attachments": "attachments.list",
     "get_attachment": "attachments.get",
     "missing_contents": "attachments.publish",
@@ -383,6 +397,7 @@ SDK_METHODS = {
     "attachment_diff": "attachments.diff",
     "attachment_enabled": "attachments.set_enabled",
     "delete_attachment": "attachments.delete",
+    "bulk_delete_attachments": "attachments.delete_many",
     "list_plans": "plans.list",
     "get_plan": "plans.get",
     "create_plan": "plans.create",
@@ -451,6 +466,9 @@ SDK_METHODS = {
     "create_export": "exports.create",
     "get_export": "exports.get",
     "list_exports": "exports.list",
+    "select_expired_exports": "exports.expired_selection",
+    "bulk_delete_exports": "exports.delete_many",
+    "delete_export": "exports.delete",
     "download_export": "exports.download",
 }
 

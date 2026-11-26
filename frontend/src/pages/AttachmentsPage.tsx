@@ -1,320 +1,165 @@
-// Attachment snapshots: members publish a folder, uploading only
-// the files the service lacks; each snapshot is fixed and named by its content. Each
-// trial installs its chosen packages in its own container before execution.
-import { useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
-import { toast } from "sonner";
+import { useEffect, useState } from "react";
+import { Link, Navigate, useLocation, useSearchParams } from "react-router-dom";
+import { AttachmentPagination } from "@/components/AttachmentPagination";
+import { AttachmentPublish } from "@/components/AttachmentPublish";
+import { DIRECTORY_PAGE_SIZE, TopicDirectory } from "@/components/TopicDirectory";
+import { EmptyNote, ErrorAlert, Loading, PageTitle, SelectField } from "@/components/common";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { DIRECTORY_PAGE_SIZE, DirectoryCheck, MoreItems, TopicDirectory, TopicMembershipActions, useDirectorySelection } from "@/components/TopicDirectory";
-import { useTopicScope } from "@/lib/topics";
-import { AttachmentHistory, type HistoryActions } from "@/components/AttachmentHistory";
-import { FolderUpload, type Chosen, type FolderBase } from "@/components/FolderUpload";
-import {
-  EmptyNote,
-  ErrorAlert,
-  Loading,
-  PageTitle,
-  SelectField,
-  TextField,
-} from "@/components/common";
-import { t, Trans } from "@/i18n";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api";
-import { entries, type LocalFile } from "@/lib/folder";
+import { attachmentKind, attachmentPath, directoryCursor, directoryParams, type AttachmentDirectoryNavigation, type AttachmentKind } from "@/lib/attachment-directory";
 import { fmtTime, snapshotName } from "@/lib/format";
-import { limit, useCursorList, useLoad, useSession } from "@/lib/hooks";
-import type { Attachment } from "@/lib/types";
+import { useLoad } from "@/lib/hooks";
+import { useTopicScope } from "@/lib/topics";
+import { t } from "@/i18n";
 
-const EXAMPLE = `{
-  "schema_version": 1,
-  "name": "my-tools",
-  "description": "${t("attachments.publish.exampleDescription")}",
-  "effects": ["agent_tools"],
-  "compatible_harnesses": ["terminus-2"],
-  "provides": { "tools": ["mytool"], "env": [] }
-}`;
-/** The attachment name in the folder's manifest.json, if it has one. */
-async function manifestName(files: LocalFile[]): Promise<string | null> {
-  const manifest = files.find((f) => f.path === "manifest.json");
-  if (!manifest) return null;
-  try {
-    const name: unknown = JSON.parse(await manifest.file.text())?.name;
-    return typeof name === "string" ? name : null;
-  } catch {
-    return null;
+function LegacyAttachmentLink({ id, params }: { id: string; params: URLSearchParams }) {
+  const { topicId } = useTopicScope();
+  const { state } = useLocation();
+  const { data, error, loading } = useLoad(async () => (
+    await api.get("/attachment-directory/version", { query: { snapshot_id: id } })
+  ).data);
+  const next = directoryParams(params);
+  next.set("topic", topicId ?? "");
+  if (data) {
+    const { snapshot } = data;
+    return <Navigate replace state={state} to={attachmentPath(snapshot.name, next, snapshot.kind ?? "attachment", id, params.get("snapshot") ? params.get("base") ?? undefined : undefined)} />;
   }
+  return (
+    <div>
+      <PageTitle title={t("attachments.title")} back={{ to: `/attachments?${next}`, label: t("attachments.directory.back") }} />
+      {loading && <Loading />}
+      <ErrorAlert error={error} />
+    </div>
+  );
+}
+
+function DirectoryResults({ kind, params, cursor, page, revision, onPage }: {
+  kind: AttachmentKind;
+  params: URLSearchParams;
+  cursor: string | null;
+  page?: number;
+  revision: number;
+  onPage: (cursor?: string) => void;
+}) {
+  const { topicId } = useTopicScope();
+  const { hash, state } = useLocation();
+  const { data, loading, error } = useLoad(() => api.get("/attachment-directory", {
+    query: { kind, topic_id: topicId, q: params.get("q")?.trim(), cursor, limit: DIRECTORY_PAGE_SIZE },
+  }), [revision]);
+  const next = new URLSearchParams(params);
+  next.set("topic", topicId ?? "");
+
+  useEffect(() => {
+    if (hash && data) document.getElementById(hash.slice(1))?.scrollIntoView({ block: "center" });
+  }, [hash, data]);
+
+  return (
+    <>
+      {loading && !data && <Loading />}
+      <ErrorAlert error={error} />
+      {data?.data.length === 0 && <EmptyNote>{t("attachments.list.empty")}</EmptyNote>}
+      {!!data?.data.length && (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{t("attachments.directory.name")}</TableHead>
+              <TableHead>{t("attachments.directory.latest")}</TableHead>
+              <TableHead>{t("attachments.directory.published")}</TableHead>
+              <TableHead>{t("attachments.directory.snapshots")}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {data.data.map(({ name, latest, match, snapshot_count: count }) => (
+              <TableRow key={name} id={`attachment-${name}`}>
+                <TableCell>
+                  <Link state={state} to={attachmentPath(name, next, kind)} className="font-medium text-primary hover:underline">
+                    {name}
+                  </Link>
+                  {match && match.id !== latest.id && (
+                    <Link state={state} className="block text-xs text-primary hover:underline" to={attachmentPath(name, next, kind, match.id)}>
+                      {t("attachments.directory.match", { snapshot: snapshotName(match) })}
+                    </Link>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <Link state={state} to={attachmentPath(name, next, kind, latest.id)} className="text-primary hover:underline">
+                    {snapshotName(latest)}
+                  </Link>
+                  {latest.description && (
+                    <p className="line-clamp-2 max-w-sm text-xs text-muted-foreground" title={latest.description}>
+                      {latest.description}
+                    </p>
+                  )}
+                </TableCell>
+                <TableCell className="whitespace-nowrap text-xs">{fmtTime(latest.created_at)}</TableCell>
+                <TableCell className="tabular-nums">{count}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+      <AttachmentPagination page={page} next={data?.meta.next_cursor} loading={loading}
+        onPrevious={() => onPage()} onNext={onPage} />
+    </>
+  );
 }
 
 export function AttachmentsPage() {
-  const { me } = useSession();
-  const [params] = useSearchParams();
-  const { capabilities } = useSession();
+  const [params, setParams] = useSearchParams();
+  const { state } = useLocation();
   const { topicId } = useTopicScope();
-  const [q, setQuery] = useState("");
-  const [error, setError] = useState<unknown>();
-  const [selectedKind, setKind] = useState<"attachment" | "submission">();
-  const [manifestKind, setManifestKind] = useState("attachment");
-  const [name, setName] = useState<string | null>(null);
-  const [label, setLabel] = useState("");
-  const [parentId, setParentId] = useState("");
-  const [base, setBase] = useState<FolderBase>();
-  const [parents, setParents] = useState<Attachment[]>([]);
-  const publishCard = useRef<HTMLDivElement>(null);
+  const [revision, setRevision] = useState(0);
+  const snapshot = params.get("snapshot") || params.get("base");
+  const name = params.get("name");
+  const kind = attachmentKind(params);
+  const cursor = directoryCursor(params);
+  const previous: AttachmentDirectoryNavigation["previousAttachmentPages"] =
+    cursor ? state?.previousAttachmentPages ?? [] : [];
+  const page = cursor ? (previous[0] === null ? previous.length + 1 : undefined) : 1;
 
-  const focusId = params.get("snapshot") || params.get("base");
-  const focusName = params.get("name");
-  const focus = useLoad(async () => {
-    if (focusId) return [(await api.get("/attachments/{attachment_id}", { path: { attachment_id: focusId } })).data];
-    if (focusName) return (await api.get("/attachments", { query: { name: focusName } })).data;
-    return [];
-  }, [focusId, focusName]);
-  const pinned = (focus.data ?? []).filter((item) => focusId ? item.id === focusId : item.name === focusName);
-  const kind = selectedKind ?? pinned[0]?.kind ?? "attachment";
-  const queryKey = JSON.stringify([topicId, q.trim(), kind]);
-  const list = useCursorList((cursor) => api.get("/attachments", {
-    query: { topic_id: topicId ?? undefined, q: q.trim() || undefined, cursor, limit: DIRECTORY_PAGE_SIZE, kind },
-  }), queryKey);
-  const selection = useDirectorySelection(queryKey);
-  const listed = new Set(list.data?.map((item) => item.id));
-  const outside = pinned.filter((item) => !listed.has(item.id) && item.kind === kind);
-  const all = [...(list.data ?? []), ...outside];
+  if (snapshot) return <LegacyAttachmentLink key={snapshot} id={snapshot} params={params} />;
+  if (name) return <Navigate replace state={state} to={attachmentPath(name, params, kind)} />;
 
-  const reload = async () => {
-    selection.setSelected(new Set());
-    await Promise.all([list.reload(), focus.reload()]);
+  const update = (field: "kind" | "q", value: string) => {
+    const next = new URLSearchParams(params);
+    next.set(field, value);
+    next.delete("page");
+    setParams(next, { replace: true });
   };
-
-  /** The parent snapshot's files decide carried-over executable bits and the preview. */
-  const chooseParent = async (id: string) => {
-    setParentId(id);
-    if (!id) {
-      setBase(undefined);
-      return;
-    }
-    const detail = (await api.get("/attachments/{attachment_id}", { path: { attachment_id: id } }))
-      .data;
-    setBase({ label: `${detail.name} · ${snapshotName(detail)}`, files: detail.files ?? [] });
+  const onPage = (nextCursor?: string) => {
+    const next = new URLSearchParams(params);
+    const destination = nextCursor ?? previous.at(-1);
+    if (destination) next.set("page", destination);
+    else next.delete("page");
+    const state: AttachmentDirectoryNavigation = {
+      previousAttachmentPages: nextCursor ? [...previous, cursor] : previous.slice(0, -1),
+    };
+    setParams(next, { state });
   };
-
-  const chooseFolder = async (_folder: string, files: LocalFile[]) => {
-    const found = await manifestName(files);
-    const manifest = files.find((f) => f.path === "manifest.json");
-    if (manifest) {
-      try {
-        setManifestKind(
-          JSON.parse(await manifest.file.text()).kind ?? "attachment",
-        );
-      } catch {
-        setManifestKind("");
-      }
-    }
-    setName(found);
-    // The newest snapshot of the same name is the default parent; one chosen with
-    // "base a new snapshot on this" stays when the names match.
-    const candidates = found
-      ? (await api.get("/attachments", { query: { name: found, kind } })).data
-      : [];
-    setParents(candidates);
-    const parent = candidates.find((item) => item.id === parentId) ?? candidates.at(-1);
-    await chooseParent(parent?.id ?? "");
-  };
-
-  const publish = async ({ files, uploaded }: Chosen) => {
-    const res = await api.post("/attachments", {
-      body: {
-        files: entries(files),
-        label: label.trim() || null,
-        parent_id: parentId || null,
-      },
-    });
-    toast.success(
-      t("attachments.publish.done", {
-        name: res.data.name,
-        snapshot: snapshotName(res.data),
-        count: uploaded,
-      }),
-    );
-    setLabel("");
-    setName(null);
-    setParentId("");
-    setBase(undefined);
-    setParents([]);
-    await reload();
-  };
-
-  const act = async (fn: () => Promise<unknown>, done: string) => {
-    setError(undefined);
-    try {
-      await fn();
-      toast.success(done);
-      await reload();
-    } catch (err) {
-      setError(err);
-    }
-  };
-  const baseOn = (a: Attachment) => {
-    setKind(a.kind ?? "attachment");
-    setParents([a]);
-    void chooseParent(a.id).catch(setError);
-    publishCard.current?.scrollIntoView({ behavior: "smooth" });
-  };
-  const actions: HistoryActions = {
-    mayManage: (a) => !a.deletion && (a.owner_id === me.id || me.role === "admin"),
-    partialHistory: !!topicId || !!q.trim() || !!list.cursor || outside.length > 0,
-    snapshotControl: (a) => listed.has(a.id) ? <DirectoryCheck
-      name={`${a.name} · ${snapshotName(a)}`}
-      checked={selection.selected.has(a.id)} onChange={() => selection.toggle(a.id)}
-    /> : null,
-    onBaseOn: baseOn,
-    onToggleEnabled: (a) =>
-      void act(
-        () =>
-          api.post("/attachments/{attachment_id}/enabled", {
-            path: { attachment_id: a.id },
-            body: { enabled: !a.enabled },
-          }),
-        a.enabled ? t("attachments.list.disabledDone") : t("attachments.list.enabledDone"),
-      ),
-    onDelete: (a) =>
-      void act(
-        () => api.del("/attachments/{attachment_id}", { path: { attachment_id: a.id } }),
-        t("attachments.list.deleted"),
-      ),
-    onError: setError,
-  };
+  const pageKey = JSON.stringify([topicId, kind, params.get("q")?.trim(), cursor]);
 
   return (
     <div className="grid gap-4">
       <PageTitle title={t("attachments.title")} />
-      <TopicDirectory search={q} onSearch={setQuery} />
-      <TopicMembershipActions kind="attachment_snapshot" ids={selection.selected} onChanged={reload} />
+      <TopicDirectory search={params.get("q") ?? ""} onSearch={(value) => update("q", value)}
+        searchLabel={t("attachments.directory.search")} resetOnTopicChange={["page"]}>
+        <SelectField id="package-kind" label={t("attachments.kind.label")} value={kind}
+          onChange={(event) => update("kind", event.target.value)}>
+          <option value="attachment">{t("attachments.kind.attachment")}</option>
+          <option value="submission">{t("attachments.kind.submission")}</option>
+        </SelectField>
+      </TopicDirectory>
       <Card>
         <CardHeader>
           <CardTitle className="text-base">{t("attachments.list.title")}</CardTitle>
-          <CardDescription>
-            <Trans
-              i18nKey="attachments.list.description"
-              components={{ dir: <code className="mx-1" />, code: <code /> }}
-            />
-          </CardDescription>
+          <CardDescription>{t("attachments.list.description")}</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-3 text-sm">
-          {list.loading && !list.data && <Loading />}
-          <ErrorAlert error={list.error ?? focus.error} />
-          {outside.length > 0 && <p className="text-xs text-muted-foreground">{t("topics.notOnPage")}</p>}
-          {list.data && all.length === 0 && (
-            <EmptyNote>{t("attachments.list.empty")}</EmptyNote>
-          )}
-          <SelectField
-            id="package-kind"
-            label={t("attachments.kind.label")}
-            value={kind}
-            onChange={(e) =>
-              setKind(e.target.value as "attachment" | "submission")
-            }
-          >
-            <option value="attachment">
-              {t("attachments.kind.attachment")}
-            </option>
-            <option value="submission">
-              {t("attachments.kind.submission")}
-            </option>
-          </SelectField>
-          {all.length > 0 && (
-            <AttachmentHistory
-              all={all}
-              actions={actions}
-              focus={{
-                snapshot: focusId ?? "",
-                base: params.get("base") ?? undefined,
-                name: focusName ?? undefined,
-              }}
-            />
-          )}
-          <MoreItems page={list} />
+        <CardContent className="grid gap-3">
+          <DirectoryResults key={pageKey} kind={kind} params={params} cursor={cursor} page={page} revision={revision} onPage={onPage} />
         </CardContent>
       </Card>
-
-      <Card ref={publishCard}>
-        <CardHeader>
-          <CardTitle className="text-base">
-            {t("attachments.publish.title")}
-          </CardTitle>
-          <CardDescription>
-            {t("attachments.publish.description")}{" "}
-            {t("attachments.kind.manifestHint")}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-3 text-sm">
-          <ErrorAlert error={error} />
-          <FolderUpload
-            base={base}
-            maxFiles={limit(capabilities, "attachment_max_files", 10000)}
-            maxBytes={limit(capabilities, "attachment_max_bytes", 1024 ** 3)}
-            submitLabel={t("attachments.publish.submit")}
-            check={(files) => [
-              ...(!files.some((f) => f.path === "manifest.json")
-                ? [t("attachments.publish.noManifest")]
-                : []),
-              ...(manifestKind !== kind
-                ? [t("attachments.kind.mismatch")]
-                : []),
-              ...(kind === "submission" &&
-              !files.some((f) => f.path === "bootstrap.sh")
-                ? [t("attachments.kind.bootstrapRequired")]
-                : []),
-            ]}
-            onFolder={chooseFolder}
-            onSubmit={publish}
-          >
-            {() => (
-              <div className="grid gap-3">
-                <p className="text-xs">
-                  {name
-                    ? t("attachments.publish.pickedName", { name })
-                    : t("attachments.publish.noName")}
-                </p>
-                <div className="grid gap-3 md:grid-cols-2">
-                  <TextField
-                    id="attachment-label"
-                    label={t("attachments.publish.label")}
-                    value={label}
-                    placeholder={t("attachments.publish.labelPlaceholder")}
-                    onChange={(e) => setLabel(e.target.value)}
-                  />
-                  <SelectField
-                    id="attachment-parent"
-                    label={t("attachments.publish.parent")}
-                    value={parentId}
-                    onChange={(e) =>
-                      void chooseParent(e.target.value).catch(setError)
-                    }
-                  >
-                    <option value="">
-                      {t("attachments.publish.noParent")}
-                    </option>
-                    {parents
-                      .filter((a) => (a.kind ?? "attachment") === kind)
-                      .map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {snapshotName(s)} · {fmtTime(s.created_at)}
-                        </option>
-                      ))}
-                  </SelectField>
-                </div>
-              </div>
-            )}
-          </FolderUpload>
-          <details>
-            <summary className="cursor-pointer text-xs text-muted-foreground">
-              {t("attachments.publish.exampleSummary")}
-            </summary>
-            <pre className="mt-2 overflow-auto rounded-md bg-muted p-3 text-xs">{EXAMPLE}</pre>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {t("attachments.publish.exampleNote")}
-            </p>
-          </details>
-        </CardContent>
-      </Card>
+      <AttachmentPublish key={kind} kind={kind} onPublished={() => setRevision((value) => value + 1)} />
     </div>
   );
 }

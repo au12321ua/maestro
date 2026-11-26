@@ -1,6 +1,19 @@
-# Resume work from an experiment topic
+# Choose an experiment topic and hand off the evidence
 
-Use the topic link provided by the user. If they give a name, `client.topics.list(q=name)` returns candidates with IDs and purposes. Ask which candidate they mean when several match. A topic keeps the same URL after a rename.
+Before submitting a baseline or starting repeated changes, look for the topic URL in the current task or project handoff. Each topic describes an experimental question; one project can use several. Without a URL, search for relevant names, read each purpose, and reuse the topic for the same question. If none fits, propose a topic named for the question. Once chosen, put its URL in the existing project task or notes.
+
+```python
+for item in client.topics.list(q="tool discovery"):
+    print(item.id, item.name, item.purpose)
+# When creating a new topic:
+created = client.topics.create("Tool discovery", purpose="Does the new tool get invoked on the smoke task?")
+topic = client.topics.open(created.id)
+print(topic.url)
+```
+
+A one-off trial can use `client.runs.submit` directly. If it develops into a series, add it with `client.topics.change_references(topic.id, add=[{"kind": "run", "id": run_id}])`.
+
+To resume, open the topic link provided by the user or the project handoff. If they give a name, `client.topics.list(q=name)` returns candidates with IDs and purposes. Ask which candidate they mean when several match. A topic keeps the same URL after a rename.
 
 ```python
 client.require("topics")

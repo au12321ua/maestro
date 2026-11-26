@@ -30,8 +30,22 @@ class Exports(_Resource):
     def get(self, export_id: str) -> models.Export:
         return self._c._get(f"exports/{export_id}", models.Export)
 
-    def list(self, *, limit: int | None = None) -> Iterator[models.Export]:
-        return self._c._iterate("exports", models.Export, limit=limit)
+    def list(
+        self, *, state: str | None = None, limit: int | None = None
+    ) -> Iterator[models.Export]:
+        return self._c._iterate("exports", models.Export, state=state, limit=limit)
+
+    def expired_selection(self) -> models.ExpiredExportSelection:
+        """Capture all your expired export IDs so later expiry does not expand the selection."""
+        return self._c._get("exports/expired-selection", models.ExpiredExportSelection)
+
+    def delete(self, export_id: str) -> models.RecycleEntry:
+        """Move one of your finished exports into the recycle bin."""
+        return self._c._send("DELETE", f"exports/{export_id}", models.RecycleEntry)
+
+    def delete_many(self, export_ids: list[str]) -> models.BulkDeleteResult:
+        """Recycle a fixed list of your exports and report the outcome of each ID."""
+        return self._delete_many("exports/bulk-delete", export_ids)
 
     def download(self, export_id: str, destination: str | os.PathLike[str]) -> Path:
         """Save the zip package and check its digest."""

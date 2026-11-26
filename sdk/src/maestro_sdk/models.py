@@ -268,6 +268,13 @@ class BatchProgress(BaseModel):
     terminal_runs: int
 
 
+class BulkDeleteRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    ids: Annotated[list[str], Field(max_length=500, min_length=1)]
+
+
 class CacheObservation(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -618,6 +625,17 @@ class EnvironmentResources(BaseModel):
         Field(
             description="environment/main, verifier, or <directory>/<service> of a Compose service"
         ),
+    ]
+
+
+class ExpiredExportSelection(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    count: int
+    ids: Annotated[
+        list[str],
+        Field(description="Frozen IDs across all pages of your expired exports"),
     ]
 
 
@@ -1403,6 +1421,7 @@ class RecycleEntry(BaseModel):
     object_type: Literal[
         "run",
         "artifact",
+        "export",
         "dataset",
         "dataset_version",
         "credential",
@@ -2291,6 +2310,53 @@ class AttachmentDiff(BaseModel):
     removed: list[AttachmentFile]
 
 
+class AttachmentDirectoryEntry(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    latest: Attachment
+    match: Annotated[
+        Attachment | None,
+        Field(description="Snapshot matching the search by label or ID"),
+    ]
+    name: str
+    snapshot_count: Annotated[int, Field(description="Visible snapshots in the directory scope")]
+
+
+class AttachmentVersionEntry(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    child_count: Annotated[int, Field(description="Visible children across pages and topics")]
+    compatible_harnesses: Annotated[
+        list[str], Field(description='Harness agents, or ["*"] for any')
+    ]
+    content_digest: Annotated[
+        str,
+        Field(description="Identifies the snapshot: every file's path, SHA-256 and mode"),
+    ]
+    created_at: str
+    deletion: DeletionState | None
+    description: str
+    effects: list[str]
+    enabled: bool
+    file_count: int
+    files: list[AttachmentFile] | None
+    has_bootstrap: Annotated[bool, Field(description="Has bootstrap.sh, run in each trial's setup")]
+    id: str
+    kind: Literal["attachment", "submission"]
+    label: str | None
+    name: str
+    owner_id: str
+    owner_username: str | None
+    parent: Annotated[
+        Attachment | None, Field(description="Readable parent across pages and topics")
+    ]
+    parent_id: str | None
+    provides: AttachmentProvides
+    size_bytes: int
+
+
 class AttemptError(BaseModel):
     """
     Why an attempt did not produce a score, as the platform error policy classified it.
@@ -2818,6 +2884,14 @@ class EnvelopeDeploymentSettings(BaseModel):
     meta: Meta
 
 
+class EnvelopeExpiredExportSelection(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: ExpiredExportSelection
+    meta: Meta
+
+
 class EnvelopeInvitationInfo(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -2959,6 +3033,22 @@ class EnvelopeListArtifact(BaseModel):
         extra="allow",
     )
     data: list[Artifact]
+    meta: Meta
+
+
+class EnvelopeListAttachmentDirectoryEntry(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: list[AttachmentDirectoryEntry]
+    meta: Meta
+
+
+class EnvelopeListAttachmentVersionEntry(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: list[AttachmentVersionEntry]
     meta: Meta
 
 
@@ -3954,6 +4044,17 @@ class WorkflowRecord(BaseModel):
     updated_at: str
 
 
+class AttachmentVersionDetail(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    in_topic: Annotated[
+        bool,
+        Field(description="True if there is no topic filter or the snapshot is in it"),
+    ]
+    snapshot: AttachmentVersionEntry
+
+
 class Attempt(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -4051,6 +4152,22 @@ class BlockedTask(BaseModel):
     )
     blockers: list[TaskBlocker]
     task_id: str
+
+
+class BulkDeleteItem(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    error: ErrorBody | None
+    id: str
+    status: Literal["deleted", "already_deleted", "failed"]
+
+
+class BulkDeleteResult(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    items: list[BulkDeleteItem]
 
 
 class Capabilities(BaseModel):
@@ -4263,11 +4380,27 @@ class EffectiveConfig(BaseModel):
     tasks: list[EffectiveTask]
 
 
+class EnvelopeAttachmentVersionDetail(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: AttachmentVersionDetail
+    meta: Meta
+
+
 class EnvelopeBatch(BaseModel):
     model_config = ConfigDict(
         extra="allow",
     )
     data: Batch
+    meta: Meta
+
+
+class EnvelopeBulkDeleteResult(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    data: BulkDeleteResult
     meta: Meta
 
 
@@ -4442,6 +4575,7 @@ class Export(BaseModel):
         extra="allow",
     )
     created_at: str
+    deletion: DeletionState | None
     digest: str | None
     error: Problem | None
     expires_at: str | None

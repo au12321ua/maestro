@@ -13,7 +13,9 @@ a = client.attachments.publish("my-tools", label="v2", parent=previous)
 - `.git` is left out by default (`exclude=`). Links and special files are refused. Nothing in the directory runs on upload.
 - `label` names the snapshot within its attachment and never moves. `parent` records the snapshot this one was made from.
 
-To publish a git repository whose root is the attachment root:
+For a tool built inside a larger project, stage its manifest, executable and required installation files in a fresh directory using the project's normal build. Inspect the files before calling `publish`; it uploads the actual directory contents. Record the source revision, any local edits used and the returned snapshot ID in the project's task record.
+
+To publish a git repository whose root is the attachment root and whose tracked files all belong in the trial:
 
 ```python
 a = client.attachments.publish_commit("path/to/repo", "HEAD", parent=previous)
@@ -29,4 +31,5 @@ Then put an attachment-kind snapshot id in an agent or Oracle configuration: `"a
 - `client.attachments.fetch(a.id, "dir")` makes `dir` hold the snapshot, downloading only files that are missing or different. `prune=True` also removes extra files and file/directory conflicts.
 - `client.attachments.diff(a.id)` lists files added, removed and changed since the parent; pass `base=` to compare with another snapshot.
 - `client.attachments.download(a.id, "a.zip")` saves the whole snapshot as a zip.
+- `client.attachments.directory(q=...)` searches attachment names, labels and snapshot IDs across pages. `client.attachments.versions(name, q=...)` locates versions by label or ID. Both accept `topic_id` to scope the list.
 - `client.attachments.list(name=...)` and `client.attachments.get(id)` find existing snapshots.

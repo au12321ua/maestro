@@ -29,7 +29,9 @@ sudo ./maestroctl install --uv "$(command -v uv)"   # 打印访问地址与一�
 
 ## 让 Agent 使用
 
-Agent 不登录服务器，只需要三样东西：[Python SDK](sdk/README.md)（skill 打包在里面）、一个个人访问令牌（PAT）和一个工作区。SDK 从包仓库按版本安装，版本与服务相同（安装细节见 [SDK 说明](sdk/README.md#安装与连接)）：
+Agent 使用 [Python SDK](sdk/README.md) 和个人访问令牌（PAT）操作平台。在已有工具项目中，可从独立 Python 环境将随 SDK 分发的 skill 安装到项目，再从项目启动 Agent。[项目内接入步骤](sdk/README.md#在已有工具项目内评测)
+
+SDK 从包仓库按版本安装，版本与服务相同（安装细节见 [SDK 说明](sdk/README.md#安装与连接)）：
 
 | 包仓库 | 索引地址（下文的 `<索引>`） | 内容 |
 | --- | --- | --- |

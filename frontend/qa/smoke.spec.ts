@@ -677,6 +677,8 @@ test("attachment snapshots", async ({ page }) => {
   await page.getByRole("button", { name: "上传并发布" }).click();
   await expect(page.getByText("已发布 smoke-tools v1（上传 3 个文件）")).toBeVisible();
 
+  await page.getByRole("link", { name: "smoke-tools", exact: true }).click();
+  await page.getByRole("link", { name: "v1", exact: true }).click();
   writeFileSync(join(folder, "bin", "run.sh"), "#!/bin/sh\necho two\n");
   await page.getByRole("button", { name: "基于此发布" }).click();
   await expect(page.getByText("基于：smoke-tools · v1")).toBeVisible();
@@ -690,11 +692,11 @@ test("attachment snapshots", async ({ page }) => {
   await page.getByLabel("标签（可选）").fill("v2");
   await page.getByRole("button", { name: "上传并发布" }).click();
   await expect(page.getByText("已发布 smoke-tools v2（上传 1 个文件）")).toBeVisible();
-  // Under its parent, with how many files it changed from it.
-  await expect(page.getByText("较父快照")).toBeVisible();
 
   // The new snapshot against its parent, and one file's content.
-  await page.getByRole("button", { name: "v2", exact: true }).click();
+  await page.getByRole("link", { name: "v2", exact: true }).click();
+  await expect(page.locator("#attachment-selected")).toHaveCount(1);
+  await expect(page.getByText("与 v1 的文件差异")).toBeVisible();
   await expect(page.getByText("~ bin/run.sh")).toBeVisible();
   await page.getByRole("button", { name: "查看" }).first().click();
   await expect(page.getByText("echo two")).toBeVisible();
@@ -705,16 +707,167 @@ test("attachment snapshots", async ({ page }) => {
 
   // A second snapshot built on v1 makes the history a tree with two branches.
   writeFileSync(join(folder, "bin", "run.sh"), "#!/bin/sh\necho three\n");
-  await page.getByRole("button", { name: "基于此发布" }).first().click();
+  await page.locator("#attachment-selected").getByRole("link", { name: "v1", exact: true }).click();
+  await page.getByRole("button", { name: "基于此发布" }).click();
   await expect(page.getByText("基于：smoke-tools · v1")).toBeVisible();
   await choose.setInputFiles(folder);
   await page.getByLabel("标签（可选）").fill("v3");
   await page.getByRole("button", { name: "上传并发布" }).click();
   await expect(page.getByText("已发布 smoke-tools v3（上传 1 个文件）")).toBeVisible();
-  await expect(page.getByText("分出 2 支")).toBeVisible();
-  await expect(page.getByText("分支 1")).toBeVisible();
-  await expect(page.getByText("分支 2")).toBeVisible();
+  const versions = page.getByRole("table");
+  await expect(versions.getByText("分出 2 支")).toBeVisible();
+  for (const child of ["v2", "v3"]) {
+    const row = versions.getByRole("row").filter({ has: page.getByRole("link", { name: child, exact: true }) });
+    await expect(row.getByRole("link", { name: "v1", exact: true })).toBeVisible();
+  }
   await page.screenshot({ path: `${shots}/attachments.png`, fullPage: true });
+});
+
+test("attachment directory locates versions across pages and retains partial recycle results", async ({ page }) => {
+  const name = "directory-tools";
+  const file = { path: "manifest.json", size: 8, sha256: "a", executable: false };
+  const version = (i: number) => ({
+    id: `att_${i}`, label: i === 0 ? "old-release" : `v${i}`, name, kind: "attachment",
+    parent_id: null as string | null, parent: null as unknown, child_count: 0,
+    content_digest: `sha256:digest${i}`, description: "", created_at: new Date(Date.UTC(2026, 0, i + 1)).toISOString(),
+    owner_id: me.id, owner_username: me.username, enabled: true, file_count: 1, size_bytes: 8,
+    has_bootstrap: false, effects: [], compatible_harnesses: ["*"], provides: { tools: [], env: [] },
+  });
+  const versions = Array.from({ length: 51 }, (_, i) => version(i));
+  const old = versions[0];
+  const protectedVersion = versions[50];
+  old.child_count = 2;
+  versions[20].parent_id = old.id;
+  versions[20].parent = old;
+  versions[50].parent_id = old.id;
+  versions[50].parent = old;
+  const topic = { id: "top_fixture", name: "Attachment fixtures", allowed_actions: ["manage_references"] };
+  const members = new Set([versions[49].id, protectedVersion.id]);
+  const recycled = new Set<string>();
+  let fileRequests = 0;
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await serveFixtures(page, { ...sessionRoutes, "/api/v1/topics": [topic], "/api/v1/topics/top_fixture": topic });
+  await page.route(/\/api\/v1\/attachment-directory(?:\/versions?)?(?:\?.*)?$/, async (route) => {
+    const { pathname, searchParams: query } = new URL(route.request().url());
+    const scope = query.get("topic_id");
+    const q = query.get("q");
+    const available = versions.filter((v) => !recycled.has(v.id) && (!scope || members.has(v.id))).reverse();
+    let data;
+    let next_cursor: string | null = null;
+    if (pathname.endsWith("/version")) {
+      const snapshot = versions.find((v) => v.id === query.get("snapshot_id"))!;
+      data = { snapshot, in_topic: !scope || members.has(snapshot.id) };
+    } else if (pathname.endsWith("/versions")) {
+      const found = available.filter((v) => !q || v.label.includes(q) || v.id.includes(q));
+      const start = Number(query.get("cursor") || 0);
+      data = found.slice(start, start + 25);
+      if (found.length > start + 25) next_cursor = String(start + 25);
+    } else {
+      const latest = available[0];
+      const match = available.find((v) => v.label === q || v.id === q) ?? null;
+      data = latest && (!q || name.includes(q) || match) ? [{ name, latest, snapshot_count: available.length, match }] : [];
+      if (!q && !scope && !query.get("cursor")) {
+        data = [{ name: "other-tools", latest: { ...versions[45], name: "other-tools" }, snapshot_count: 1, match: null }];
+        next_cursor = "directory-next";
+      } else if (query.get("cursor") === "directory-next") {
+        data = [{ name: "middle-tools", latest: { ...versions[45], name: "middle-tools" }, snapshot_count: 1, match: null }];
+        next_cursor = "directory-last";
+      }
+    }
+    await route.fulfill({ json: { data, meta: { ...meta, next_cursor } } });
+  });
+  await page.route("**/api/v1/attachments/att_*/diff?*", (route) => {
+    const url = new URL(route.request().url());
+    const base_id = url.searchParams.get("base_id");
+    return route.fulfill({ json: { data: { base_id, attachment_id: url.pathname.split("/")[4],
+      added: [{ ...file, path: `from-${base_id}.txt` }], changed: [], removed: [] }, meta } });
+  });
+  await page.route("**/api/v1/attachments/att_*", async (route) => {
+    fileRequests++;
+    const id = new URL(route.request().url()).pathname.split("/").at(-1);
+    const snapshot = versions.find((v) => v.id === id)!;
+    await route.fulfill({ json: { data: { ...snapshot, files: [file] }, meta } });
+  });
+  await page.route("**/api/v1/attachments/bulk-delete", async (route) => {
+    const { ids } = route.request().postDataJSON();
+    if (recycled.has(old.id)) {
+      expect(ids).toEqual([protectedVersion.id]);
+      recycled.add(protectedVersion.id);
+      await route.fulfill({ json: { data: { items: [
+        { id: protectedVersion.id, status: "deleted", error: null },
+      ] }, meta } });
+      return;
+    }
+    expect(ids).toEqual([protectedVersion.id, old.id]);
+    recycled.add(old.id);
+    await route.fulfill({ json: { data: { items: [
+      { id: protectedVersion.id, status: "failed", error: { code: "ATTACHMENT_IN_USE", message: "Active run uses this snapshot" } },
+      { id: old.id, status: "deleted", error: null },
+    ] }, meta } });
+  });
+  await page.route("**/api/v1/topics/top_fixture/references", async (route) => {
+    expect(route.request().postDataJSON()).toEqual({ remove: [{ kind: "attachment_snapshot", id: protectedVersion.id }] });
+    members.delete(protectedVersion.id);
+    await route.fulfill({ json: { data: {}, meta } });
+  });
+
+  await page.goto("/attachments");
+  await expect(page.getByRole("link", { name: "other-tools" })).toBeVisible();
+  await page.getByRole("button", { name: "下一页" }).click();
+  await expect(page.getByRole("link", { name: "middle-tools" })).toBeVisible();
+  await page.getByRole("button", { name: "下一页" }).click();
+  await expect(page.getByRole("row").filter({ hasText: name })).toContainText("51");
+  await page.getByRole("link", { name, exact: true }).click();
+  await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "v50", exact: true })).toBeVisible();
+  expect(fileRequests).toBe(0);
+  await page.getByRole("link", { name: "v50", exact: true }).click();
+  await expect(page.locator("#attachment-selected")).toContainText(protectedVersion.id);
+  await page.getByRole("link", { name: "返回附件目录" }).click();
+  expect(new URL(page.url()).searchParams.getAll("page")).toEqual(["directory-last"]);
+  await expect(page.getByText("第 3 页")).toBeVisible();
+  await page.getByRole("button", { name: "上一页" }).click();
+  await expect(page.getByText("第 2 页")).toBeVisible();
+  await expect(page.getByRole("link", { name: "middle-tools" })).toBeVisible();
+  await page.getByLabel("按名称、标签或快照 ID 搜索").fill(old.label);
+  await page.getByRole("link", { name: "匹配快照：old-release" }).click();
+  await expect(page.locator("#attachment-selected")).toContainText(old.id);
+  await page.getByRole("link", { name: "与 v50 比较" }).click();
+  await expect(page.getByText("+ from-att_50.txt")).toBeVisible();
+  await page.goto(`/attachments?snapshot=${old.id}&base=${protectedVersion.id}&topic=${topic.id}`);
+  await expect(page.getByText("+ from-att_50.txt")).toBeVisible();
+  await expect(page.getByText("此快照不在当前专题内。")).toBeVisible();
+  await page.getByRole("link", { name: "返回附件目录" }).click();
+  await expect(page.getByLabel("专题范围")).toHaveValue(topic.id);
+  await expect(page.getByRole("row").filter({ hasText: name }).getByRole("cell").last()).toHaveText("2");
+
+  await page.getByRole("link", { name, exact: true }).click();
+  await page.getByLabel(`选择 ${name} · v50`).check();
+  await page.getByRole("button", { name: "移出当前专题（1）" }).click();
+  await expect(page.getByLabel(`选择 ${name} · v50`)).toHaveCount(0);
+  await page.getByLabel("专题范围").selectOption("");
+  await page.getByLabel(`选择 ${name} · v50`).check();
+  await page.getByRole("button", { name: "下一页" }).click();
+  await page.getByRole("button", { name: "下一页" }).click();
+  await page.getByLabel(`选择 ${name} · old-release`).check();
+  await expect(page.getByText("已选 2 个快照")).toBeVisible();
+  await page.getByRole("button", { name: "将 2 个快照移入回收站" }).click();
+  const confirm = page.getByRole("alert").filter({ hasText: "将 directory-tools 的 2 个快照移入回收站？" });
+  await expect(confirm).toContainText(old.id);
+  await expect(confirm).toContainText(protectedVersion.id);
+  await confirm.getByRole("button", { name: "移入回收站", exact: true }).click();
+  await expect(page.getByText("已将 1 个快照移入回收站")).toBeVisible();
+  await expect(page.getByText(/Active run uses this snapshot/)).toBeVisible();
+  await expect(page.getByText("已选 1 个快照")).toBeVisible();
+  await page.screenshot({ path: `${shots}/attachment-directory.png`, fullPage: false });
+  await page.getByRole("button", { name: "重试回收此快照" }).click();
+  const retry = page.getByRole("alert").filter({ hasText: "将 directory-tools 的 1 个快照移入回收站？" });
+  await expect(retry).toContainText(protectedVersion.id);
+  await retry.getByRole("button", { name: "移入回收站", exact: true }).click();
+  await expect(page.getByText(/Active run uses this snapshot/)).toHaveCount(0);
+  await expect(page.getByText("已选 1 个快照")).toHaveCount(0);
+  expect(pageErrors).toEqual([]);
 });
 
 test("submission package and submission scoring run", async ({ page }) => {
@@ -1212,7 +1365,7 @@ test("English pages show no Chinese text", async ({ browser }) => {
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await expect(page.getByTestId("ai-translation-notice")).toBeVisible();
   const pages = ["/", "/runs", "/runs/new", "/batches", "/collections", "/plans", "/datasets",
-    "/attachments", "/exports", "/settings"];
+    "/attachments", "/attachments/smoke-tools", "/exports", "/settings"];
   for (const admin of ["members", "credentials", "models", "harnesses", "policy", "capacity",
     "setup-network", "datasets", "recycle-bin", "audit", "maintenance"])
     pages.push(`/admin/${admin}`);
@@ -1519,5 +1672,64 @@ test("experiment topic scopes, paged runs and a handoff with evidence", async ({
   await expect(page.getByRole("heading", { name: "验证器回归交接" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await page.screenshot({ path: `${shots}/topic-overview-mobile.png`, fullPage: false });
+  expect(errors).toEqual([]);
+});
+
+test("personal export selection survives page refresh and recycles only confirmed IDs", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  const deleted = new Set<string>();
+  const batches: string[][] = [];
+  const expired = ["expired-first", "expired-last"];
+  let refreshes = 0;
+  const item = (id: string, state: string) => ({
+    id, state, request: { run_ids: ["run-source"], include_artifacts: true },
+    links: {}, created_at: "2026-01-01T00:00:00Z",
+  });
+  await serveFixtures(page, sessionRoutes);
+  await page.route("**/api/v1/exports**", route => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/expired-selection")) {
+      return route.fulfill({ json: { meta, data: { ids: [...expired], count: expired.length } } });
+    }
+    if (url.pathname.endsWith("/bulk-delete")) {
+      const { ids } = route.request().postDataJSON() as { ids: string[] };
+      batches.push(ids);
+      ids.forEach(id => deleted.add(id));
+      return route.fulfill({ json: { meta, data: { items: ids.map(id => ({ id, status: "deleted", error: null })) } } });
+    }
+    const last = url.searchParams.has("cursor");
+    if (last) refreshes++;
+    const rows = last ? [item("expired-last", "expired"), item("building", "building")]
+      : [item("expired-first", "expired"), item("ready", "ready")];
+    return route.fulfill({ json: { meta: { ...meta, next_cursor: last ? null : "page-two" },
+      data: rows.filter(row => !deleted.has(row.id)) } });
+  });
+  await page.goto("/exports");
+  await expect(page.getByRole("heading", { name: "导出" })).toBeVisible();
+  await page.getByLabel("选择导出 expired-first").check();
+  await page.getByRole("button", { name: "下一页" }).click();
+  await expect(page.getByLabel("选择导出 building")).toBeDisabled();
+  await page.getByLabel("选择导出 expired-last").check();
+  await expect.poll(() => refreshes).toBeGreaterThan(1);
+  await expect(page.getByText("第 2 页")).toBeVisible();
+  await expect(page.getByLabel("选择导出 expired-last")).toBeChecked();
+  await page.getByRole("button", { name: "选择全部已过期" }).click();
+  await expect(page.getByRole("status")).toContainText("2 条已过期记录");
+  expired.push("expired-after-selection");
+  page.once("dialog", dialog => {
+    expect(dialog.message()).toContain("2 条个人导出");
+    return dialog.accept();
+  });
+  await page.getByRole("button", { name: "将所选 2 条移入回收站" }).click();
+  await expect(page.getByLabel("选择导出 expired-last")).toHaveCount(0);
+  await expect(page.getByLabel("选择导出 building")).toBeVisible();
+  expect(batches).toEqual([["expired-first", "expired-last"]]);
+  await page.getByRole("button", { name: "上一页" }).click();
+  await expect(page.getByRole("link", { name: "下载" })).toBeVisible();
+  page.once("dialog", dialog => dialog.accept());
+  await page.getByRole("button", { name: "将导出 ready 移入回收站" }).click();
+  await expect(page.getByRole("link", { name: "下载" })).toHaveCount(0);
+  expect(batches[1]).toEqual(["ready"]);
   expect(errors).toEqual([]);
 });

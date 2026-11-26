@@ -15,9 +15,19 @@
     "provides": "Provides: ",
     "tool": "tool {{name}}",
     "env": "environment variable {{name}}",
-    "compareWith": "Compare with another snapshot",
     "noCompare": "Don't compare",
-    "parentMark": " (parent snapshot)"
+    "versions": "Snapshots",
+    "snapshot": "Snapshot",
+    "search": "Find a snapshot by label or ID",
+    "empty": "No snapshots match this scope and search.",
+    "close": "Close snapshot",
+    "compare": "Compare",
+    "compareAgainst": "Compare against {{snapshot}}",
+    "comparison": "Compared with {{snapshot}}",
+    "outsideTopic": "This snapshot is outside the selected topic.",
+    "baseOutsideTopic": "The comparison snapshot is outside the selected topic.",
+    "invalidSnapshot": "This snapshot belongs to another attachment or package kind.",
+    "invalidBase": "Select a different snapshot of this attachment as the comparison base."
   },
   "progress": {
     "reading": "Reading files…",
@@ -28,9 +38,8 @@
   "list": {
     "title": "Published attachments",
     "description": "Packages are fixed snapshots installed in each trial. Attachments support model and Oracle runs; submissions are installed for submission scoring, which runs only the verifier. Installation uses the setup network; later phases follow the task and platform network rules.",
-    "empty": "No attachments published yet.",
+    "empty": "No attachments match this scope and search.",
     "deletedSnapshot": "a deleted snapshot",
-    "anyHarness": "Any",
     "files_one": "{{count}} file · {{size}}",
     "files_other": "{{count}} files · {{size}}",
     "hasBootstrap": "Has setup script",
@@ -39,10 +48,7 @@
     "disable": "Disable",
     "enable": "Enable",
     "disabledDone": "Disabled",
-    "enabledDone": "Enabled",
-    "delete": "Delete",
-    "deleted": "Moved to the recycle bin",
-    "snapshotNotListed": "The attachment snapshot {{id}} in the address is not listed: it is in the recycle bin or was deleted."
+    "enabledDone": "Enabled"
   },
   "publish": {
     "title": "Publish a snapshot",
@@ -59,22 +65,11 @@
     "exampleSummary": "manifest.json example",
     "exampleDescription": "Description (optional)",
     "exampleNote": "effects currently supports model_call, agent_tools and task_environment; attachments that change verification or scoring are not supported yet. compatible_harnesses lists Harness adapter names, or [\"*\"] for any. provides is used to detect conflicts between two attachments. Snapshots have no version number; tell them apart by the label given at publishing.",
-    "noManifest": "The folder has no manifest.json at its top level."
+    "noManifest": "The folder has no manifest.json at its top level.",
+    "parentPending": "The parent snapshot’s files are needed before publishing."
   },
   "history": {
-    "count_one": "{{count}} snapshot",
-    "count_other": "{{count}} snapshots",
-    "latestIs": "latest {{snapshot}} · {{time}} · {{owner}}",
-    "baseOnLatest": "Publish from the latest",
-    "latest": "Latest",
-    "changes": "vs. parent ",
-    "legend": "Files added / removed / changed",
-    "noChange": "No file changes",
-    "basedOn": "Based on {{name}}",
-    "separate": "No parent (a separate line)",
-    "first": "First snapshot",
-    "branches": "{{count}} branches",
-    "branch": "Branch {{n}}"
+    "branches": "{{count}} branches"
   },
   "kind": {
     "label": "Package kind (listing and upload)",
@@ -83,5 +78,34 @@
     "manifestHint": "Choose the package kind above. It must match manifest.json: absent kind means attachment; submission requires kind: \"submission\" and bootstrap.sh, with no effects, compatible_harnesses or provides. MAESTRO_TASK_NAME is available during every install.",
     "mismatch": "The selected kind must match kind in manifest.json.",
     "bootstrapRequired": "A submission requires bootstrap.sh."
+  },
+  "directory": {
+    "back": "Back to attachments",
+    "search": "Search by name, label, or snapshot ID",
+    "name": "Name",
+    "latest": "Latest snapshot",
+    "published": "Published",
+    "snapshots": "Snapshots",
+    "match": "Matching snapshot: {{snapshot}}"
+  },
+  "pagination": {
+    "label": "Pages",
+    "previous": "Previous page",
+    "next": "Next page",
+    "page": "Page {{page}}"
+  },
+  "recycle": {
+    "action": "Move to recycle bin",
+    "selected_one": "{{count}} snapshot selected",
+    "selected_other": "{{count}} snapshots selected",
+    "selectedAction_one": "Move {{count}} snapshot to recycle bin",
+    "selectedAction_other": "Move {{count}} snapshots to recycle bin",
+    "confirm_one": "Move {{count}} snapshot of {{name}} to the recycle bin?",
+    "confirm_other": "Move {{count}} snapshots of {{name}} to the recycle bin?",
+    "result_one": "{{count}} snapshot moved to the recycle bin",
+    "result_other": "{{count}} snapshots moved to the recycle bin",
+    "clearSelection": "Clear selection",
+    "retry": "Retry recycling this snapshot",
+    "ownerOnly": "Recycling is available to snapshot owners and administrators."
   }
 }

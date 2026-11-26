@@ -7,7 +7,13 @@ description: Make an attachment (a skill and tools given to the agent under test
 
 An attachment is a set of files copied into every trial's container before the agent under test starts: usually a skill and the tools it uses. Maestro keeps the facts others rely on: each published snapshot (content-addressed, immutable, with a parent), each run, each comparison you freeze. How you work towards a better attachment is up to you. Nothing below is enforced; it is what tends to work.
 
-## Workspace
+## Test a tool in its development project
+
+Install the two skills in your project using the external SDK interpreter in [Maestro SDK setup](../maestro-sdk/SKILL.md#setup). Start the development agent there and run SDK examples with `"$MAESTRO_PYTHON"`. Use the project’s existing build, commits and handoff notes. The development agent reads the Maestro skills; the agent inside a trial receives the published tool files.
+
+Before the first baseline for a comparison, debugging series or handoff, [choose the experiment topic](../maestro-sdk/references/topics.md). Open a supplied link and check its purpose, handoff and active runs. Otherwise search for the same experimental question; clarify ambiguous matches or suggest a new topic. Keep its URL in the existing task record. For an isolated smoke test, submit directly and add its run later if it becomes part of a series.
+
+## Separate experiment workspace
 
 ```python
 import maestro_sdk.workspace
@@ -19,17 +25,23 @@ Fill in `AGENTS.md` with the person you work for: service, token file, what you 
 ## Making an attachment
 
 1. **Read the material** (a local directory, a path in an online repository, or an existing snapshot: `client.attachments.fetch(id, dir)`). Note where it came from, the commit and the license in your notes.
-2. **Choose what goes in.** Only the skill and the tools it needs. No datasets, answers or solutions to tasks, credentials, caches or large files. The repository root is the attachment root, and every tracked file is published. For system dependencies or task environment files, read [datasets and task environments](../maestro-sdk/references/datasets.md) before choosing an attachment.
+2. **Choose what goes in.** Only the skill and the tools it needs. No datasets, answers or solutions to tasks, credentials, caches or large files. For system dependencies or task environment files, read [datasets and task environments](../maestro-sdk/references/datasets.md) before choosing an attachment.
 3. **Write `manifest.json`** at the root: `{"schema_version": 1, "name": "<name>", "description": "...", "effects": ["agent_tools"], "compatible_harnesses": ["*"]}`. `effects` may also hold `model_call` and `task_environment`; `provides` (`{"tools": [...], "env": [...]}`) declares names that must not clash with other attachments. There is no `version` field: a snapshot is identified by its id.
 4. **Write `bootstrap.sh` if something must be installed.** The platform runs `bash bootstrap.sh` in the attachment's directory inside the container (also in `$MAESTRO_ATTACHMENT_DIR`), as the task's agent user, under the install time limit, with the deployment's install proxy if any. What it must do depends on the harness: find out where the harness under test reads skills or tools (its documentation, or a smoke run that lists candidate directories) and install there. A failing or slow script makes the trial `attachment_failed`, never a model zero.
-5. **Commit and publish:**
+5. **Publish the files the trial should receive.** When a repository has the manifest at its root and every tracked file at the selected revision belongs in the attachment, publish that commit:
 
    ```python
-   first = client.attachments.publish_commit("attachments/<name>")
+   first = client.attachments.publish_commit(tool_repo, revision)
    ```
 
-   It publishes what the commit tracks, read from git (never untracked or ignored files), with executable bits from git's file modes, and checks the snapshot's digest. It warns about uncommitted changes, which it leaves out. `client.attachments.publish(dir)` publishes a directory as it is, for quick trials.
-6. **Smoke run.** First submit an Oracle run with `execution_mode="oracle"`, `attachments=[snapshot.id]` and a small explicit task selection. It calls no model and incurs no model cost: check that `bootstrap.sh` installed successfully and the task still passes with its reference solution. Oracle installs no Harness and skips Harness compatibility checks; scripts that depend on Harness files or commands may fail. Then use a small real-model run with the intended Harness to check that it finds, loads and uses the attachment. That run costs money; keep it within the authorized task scope and budget. Installation alone does not prove the Harness used it.
+   This reads tracked bytes and executable modes from Git. For a component of a larger project, use its normal build to stage the manifest, tool and required installation files in a fresh directory. Check the staged file list, then publish that directory's actual contents:
+
+   ```python
+   first = client.attachments.publish(staged_tool_dir)
+   ```
+
+   Record the source revision, any uncommitted inputs used by the build, and the returned snapshot ID. Use that ID in the run configuration.
+6. **Check one observable task first.** Pick a development task where use of the tool produces a recognizable command or output. If its install works without a Harness, an Oracle run with `execution_mode="oracle"`, `attachments=[first.id]` and explicit task selection can check installation and the reference solution. For Harness-specific installation or discovery, use the intended Harness in an authorized model run. Inspect trajectory commands, output or artifacts for discovery, invocation and the expected result. Record the run or trial supporting each observation.
 
 ## Scoring an existing submission
 
@@ -95,7 +107,10 @@ aw.build_report(client, c.id, "report")             # report.json / report.md, e
 **Set up the comparison once.** Run the current best snapshot on the chosen tasks and repetitions, then build an attachment A/B collection from that run, so every later run differs only in the attachment:
 
 ```python
+baseline = topic.runs.submit(baseline_config, name="Tool baseline")
+base_run_id = baseline.run_id
 c = client.collections.create("<name> on <dataset>", "attachments", base_run_id=base_run_id)
+client.topics.change_references(topic.id, add=[{"kind": "collection", "id": c.id}])
 ```
 
 Fix the task list with `task_selection` (`{"mode": "explicit", "task_ids": [...]}`) and use the same list every time: the collection does not check the task range.
@@ -134,7 +149,7 @@ Tune on the development tasks only. Do not open the held-out tasks' instructions
 6. Submit into the collection with a `client_request_id` you can derive again, such as `<name>-<first 8 characters of the starting snapshot id>-<n>`:
 
    ```python
-   client.runs.submit({"attachments": [snapshot.id], "task_selection": tasks}, name="...",
+   topic.runs.submit({"attachments": [snapshot.id], "task_selection": tasks}, name="...",
                       collection_id=c.id, client_request_id="...")
    ```
 
@@ -145,7 +160,7 @@ Tune on the development tasks only. Do not open the held-out tasks' instructions
    aw.decide_candidate(client, record.id, "discard", reason="...", evidence_level="mechanism observed")
    ```
 
-9. Write down what you learned, including what did not work.
+9. Write a topic handoff with the judgment, supporting runs or trials, and the next check. Share `topic.url`. Include the scoring coverage and failure counts for both baseline and candidate.
 
 **Notes hold what the platform does not.** Snapshots, runs, comparisons, frozen snapshots and candidate records are already kept by the platform; refer to them by id instead of copying their contents into your notes. An attachment A/B collection already guarantees that everything except the attachment is the same, so there is no need to compare configurations yourself.
 
@@ -175,7 +190,7 @@ Freeze the comparison as well (`client.snapshots.create`) when you want the numb
 
 ## Picking up after an interruption
 
-Do not rely on your notes having any particular form. The platform has what you need:
+Open the topic link from the project task. Read its purpose, latest handoff, active runs and collection references first. For detailed evidence use:
 
 - `client.attachments.list(name="<name>")`: every snapshot, with its parent.
 - `client.collections.get(c.id).current_best`: the current best snapshot and why it was chosen.

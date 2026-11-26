@@ -41,16 +41,7 @@ def error_response(error: MaestroError, request_id: str) -> JSONResponse:
         status_code=error.status,
         headers=error.headers,
         content={
-            "error": {
-                "code": error.code,
-                "message": error.message,
-                "stage": error.stage,
-                "field_errors": [
-                    {k: v for k, v in vars(f).items() if v is not None} for f in error.field_errors
-                ],
-                "retryable": error.retryable,
-                "suggested_actions": error.suggested_actions,
-            },
+            "error": error.public(),
             "meta": {"request_id": request_id},
         },
     )

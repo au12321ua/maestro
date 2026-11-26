@@ -979,6 +979,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/attachment-directory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Attachment Directory
+         * @description Page by attachment name. Search can locate a specific snapshot in a group.
+         */
+        get: operations["list_attachment_directory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/attachment-directory/version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Attachment Version
+         * @description Locate a snapshot by ID and report its membership in an optional topic.
+         */
+        get: operations["get_attachment_version"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/attachment-directory/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Attachment Versions
+         * @description Page snapshots of an exact attachment name. Search by label or snapshot ID.
+         */
+        get: operations["list_attachment_versions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/attachments": {
         parameters: {
             query?: never;
@@ -994,6 +1054,26 @@ export interface paths {
          * @description Every content must be stored: held by another snapshot or uploaded by you.
          */
         post: operations["publish_attachment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/attachments/bulk-delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Delete Attachments
+         * @description Move the named snapshots to the recycle bin. Report checks per snapshot.
+         */
+        post: operations["bulk_delete_attachments"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1591,7 +1671,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Exports */
+        /**
+         * List Exports
+         * @description Your exports, newest first, optionally filtered by their current state.
+         */
         get: operations["list_exports"];
         put?: never;
         /**
@@ -1599,6 +1682,46 @@ export interface paths {
          * @description Accepted as an Operation; poll it or the export, then download within 24 hours.
          */
         post: operations["create_export"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exports/bulk-delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Delete Exports
+         * @description Recycle the supplied finished exports and report a result per ID.
+         */
+        post: operations["bulk_delete_exports"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exports/expired-selection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Select Expired Exports
+         * @description Capture the exact IDs of your expired exports across all pages for confirmation.
+         */
+        get: operations["select_expired_exports"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1616,7 +1739,11 @@ export interface paths {
         get: operations["get_export"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Export
+         * @description Move one of your finished exports into the recycle bin.
+         */
+        delete: operations["delete_export"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2819,6 +2946,19 @@ export interface components {
             /** Removed */
             removed: components["schemas"]["AttachmentFile"][];
         };
+        /** AttachmentDirectoryEntry */
+        AttachmentDirectoryEntry: {
+            latest: components["schemas"]["Attachment"];
+            /** @description Snapshot matching the search by label or ID */
+            match: components["schemas"]["Attachment"] | null;
+            /** Name */
+            name: string;
+            /**
+             * Snapshot Count
+             * @description Visible snapshots in the directory scope
+             */
+            snapshot_count: number;
+        };
         /** AttachmentFile */
         AttachmentFile: {
             /** Executable */
@@ -2884,6 +3024,74 @@ export interface components {
              * @description The snapshot this one was made from
              */
             parent_id?: string | null;
+        };
+        /** AttachmentVersionDetail */
+        AttachmentVersionDetail: {
+            /**
+             * In Topic
+             * @description True if there is no topic filter or the snapshot is in it
+             */
+            in_topic: boolean;
+            snapshot: components["schemas"]["AttachmentVersionEntry"];
+        };
+        /** AttachmentVersionEntry */
+        AttachmentVersionEntry: {
+            /**
+             * Child Count
+             * @description Visible children across pages and topics
+             */
+            child_count: number;
+            /**
+             * Compatible Harnesses
+             * @description Harness agents, or ["*"] for any
+             */
+            compatible_harnesses: string[];
+            /**
+             * Content Digest
+             * @description Identifies the snapshot: every file's path, SHA-256 and mode
+             */
+            content_digest: string;
+            /** Created At */
+            created_at: string;
+            deletion: components["schemas"]["DeletionState"] | null;
+            /** Description */
+            description: string;
+            /** Effects */
+            effects: string[];
+            /** Enabled */
+            enabled: boolean;
+            /** File Count */
+            file_count: number;
+            /** Files */
+            files: components["schemas"]["AttachmentFile"][] | null;
+            /**
+             * Has Bootstrap
+             * @description Has bootstrap.sh, run in each trial's setup
+             */
+            has_bootstrap: boolean;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @default attachment
+             * @enum {string}
+             */
+            kind: "attachment" | "submission";
+            /** Label */
+            label: string | null;
+            /** Name */
+            name: string;
+            /** Owner Id */
+            owner_id: string;
+            /** Owner Username */
+            owner_username: string | null;
+            /** @description Readable parent across pages and topics */
+            parent: components["schemas"]["Attachment"] | null;
+            /** Parent Id */
+            parent_id: string | null;
+            provides: components["schemas"]["AttachmentProvides"];
+            /** Size Bytes */
+            size_bytes: number;
         };
         /** Attempt */
         Attempt: {
@@ -3236,6 +3444,27 @@ export interface components {
             blockers: components["schemas"]["TaskBlocker"][];
             /** Task Id */
             task_id: string;
+        };
+        /** BulkDeleteItem */
+        BulkDeleteItem: {
+            error: components["schemas"]["ErrorBody"] | null;
+            /** Id */
+            id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "deleted" | "already_deleted" | "failed";
+        };
+        /** BulkDeleteRequest */
+        BulkDeleteRequest: {
+            /** Ids */
+            ids: string[];
+        };
+        /** BulkDeleteResult */
+        BulkDeleteResult: {
+            /** Items */
+            items: components["schemas"]["BulkDeleteItem"][];
         };
         /** CacheObservation */
         CacheObservation: {
@@ -4693,6 +4922,11 @@ export interface components {
             data: components["schemas"]["AttachmentMissing"];
             meta: components["schemas"]["Meta"];
         };
+        /** Envelope[AttachmentVersionDetail] */
+        Envelope_AttachmentVersionDetail_: {
+            data: components["schemas"]["AttachmentVersionDetail"];
+            meta: components["schemas"]["Meta"];
+        };
         /** Envelope[Attachment] */
         Envelope_Attachment_: {
             data: components["schemas"]["Attachment"];
@@ -4711,6 +4945,11 @@ export interface components {
         /** Envelope[Batch] */
         Envelope_Batch_: {
             data: components["schemas"]["Batch"];
+            meta: components["schemas"]["Meta"];
+        };
+        /** Envelope[BulkDeleteResult] */
+        Envelope_BulkDeleteResult_: {
+            data: components["schemas"]["BulkDeleteResult"];
             meta: components["schemas"]["Meta"];
         };
         /** Envelope[Capabilities] */
@@ -4761,6 +5000,11 @@ export interface components {
         /** Envelope[DeploymentSettings] */
         Envelope_DeploymentSettings_: {
             data: components["schemas"]["DeploymentSettings"];
+            meta: components["schemas"]["Meta"];
+        };
+        /** Envelope[ExpiredExportSelection] */
+        Envelope_ExpiredExportSelection_: {
+            data: components["schemas"]["ExpiredExportSelection"];
             meta: components["schemas"]["Meta"];
         };
         /** Envelope[Export] */
@@ -4937,6 +5181,18 @@ export interface components {
         Envelope_list_Artifact__: {
             /** Data */
             data: components["schemas"]["Artifact"][];
+            meta: components["schemas"]["Meta"];
+        };
+        /** Envelope[list[AttachmentDirectoryEntry]] */
+        Envelope_list_AttachmentDirectoryEntry__: {
+            /** Data */
+            data: components["schemas"]["AttachmentDirectoryEntry"][];
+            meta: components["schemas"]["Meta"];
+        };
+        /** Envelope[list[AttachmentVersionEntry]] */
+        Envelope_list_AttachmentVersionEntry__: {
+            /** Data */
+            data: components["schemas"]["AttachmentVersionEntry"][];
             meta: components["schemas"]["Meta"];
         };
         /** Envelope[list[Attachment]] */
@@ -5266,10 +5522,21 @@ export interface components {
             /** Policy Version */
             policy_version: string;
         };
+        /** ExpiredExportSelection */
+        ExpiredExportSelection: {
+            /** Count */
+            count: number;
+            /**
+             * Ids
+             * @description Frozen IDs across all pages of your expired exports
+             */
+            ids: string[];
+        };
         /** Export */
         Export: {
             /** Created At */
             created_at: string;
+            deletion: components["schemas"]["DeletionState"] | null;
             /** Digest */
             digest: string | null;
             error: components["schemas"]["Problem"] | null;
@@ -6986,7 +7253,7 @@ export interface components {
              * Object Type
              * @enum {string}
              */
-            object_type: "run" | "artifact" | "dataset" | "dataset_version" | "credential" | "user" | "pat" | "model_config" | "harness_version" | "attachment_version" | "experiment_plan" | "collection" | "analysis_snapshot" | "workflow_record" | "topic";
+            object_type: "run" | "artifact" | "export" | "dataset" | "dataset_version" | "credential" | "user" | "pat" | "model_config" | "harness_version" | "attachment_version" | "experiment_plan" | "collection" | "analysis_snapshot" | "workflow_record" | "topic";
             /** Owner Id */
             owner_id: string | null;
             /** Owner Username */
@@ -10186,7 +10453,7 @@ export interface operations {
         parameters: {
             query?: {
                 state?: string;
-                object_type?: ("run" | "artifact" | "dataset" | "dataset_version" | "credential" | "user" | "pat" | "model_config" | "harness_version" | "attachment_version" | "experiment_plan" | "collection" | "analysis_snapshot" | "workflow_record" | "topic") | null;
+                object_type?: ("run" | "artifact" | "export" | "dataset" | "dataset_version" | "credential" | "user" | "pat" | "model_config" | "harness_version" | "attachment_version" | "experiment_plan" | "collection" | "analysis_snapshot" | "workflow_record" | "topic") | null;
                 cursor?: string | null;
                 limit?: number | null;
             };
@@ -10891,6 +11158,111 @@ export interface operations {
             };
         };
     };
+    list_attachment_directory: {
+        parameters: {
+            query?: {
+                include_disabled?: boolean;
+                kind?: ("attachment" | "submission") | null;
+                topic_id?: string | null;
+                q?: string | null;
+                cursor?: string | null;
+                limit?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_list_AttachmentDirectoryEntry__"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_attachment_version: {
+        parameters: {
+            query: {
+                snapshot_id: string;
+                topic_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_AttachmentVersionDetail_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_attachment_versions: {
+        parameters: {
+            query: {
+                name: string;
+                include_disabled?: boolean;
+                kind?: ("attachment" | "submission") | null;
+                topic_id?: string | null;
+                q?: string | null;
+                cursor?: string | null;
+                limit?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_list_AttachmentVersionEntry__"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     list_attachments: {
         parameters: {
             query?: {
@@ -10955,6 +11327,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Envelope_Attachment_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    bulk_delete_attachments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_BulkDeleteResult_"];
                 };
             };
             /** @description Structured error */
@@ -12142,6 +12547,7 @@ export interface operations {
             query?: {
                 cursor?: string | null;
                 limit?: number | null;
+                state?: ("queued" | "building" | "ready" | "failed" | "expired") | null;
             };
             header?: never;
             path?: never;
@@ -12202,6 +12608,68 @@ export interface operations {
             };
         };
     };
+    bulk_delete_exports: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_BulkDeleteResult_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    select_expired_exports: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_ExpiredExportSelection_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     get_export: {
         parameters: {
             query?: never;
@@ -12220,6 +12688,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Envelope_Export_"];
+                };
+            };
+            /** @description Structured error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_export: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                export_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_RecycleEntry_"];
                 };
             };
             /** @description Structured error */

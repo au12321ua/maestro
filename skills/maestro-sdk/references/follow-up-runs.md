@@ -1,5 +1,7 @@
 # Follow-up runs
 
+For follow-ups in a selected experiment topic, use `topic.runs.rerun`, `topic.runs.submit` and `topic.batches.submit` in the examples below. The handle keeps the destination attached to retries.
+
 ## Same configuration again
 
 `client.runs.rerun(run_id)` starts a new run from the source run's fixed snapshot, so team defaults that changed since then do not apply.

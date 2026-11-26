@@ -1273,6 +1273,23 @@ class Attachment(Model):
     deletion: DeletionState | None = None
 
 
+class AttachmentDirectoryEntry(Model):
+    name: str
+    latest: Attachment
+    snapshot_count: int = Field(description="Visible snapshots in the directory scope")
+    match: Attachment | None = Field(description="Snapshot matching the search by label or ID")
+
+
+class AttachmentVersionEntry(Attachment):
+    parent: Attachment | None = Field(description="Readable parent across pages and topics")
+    child_count: int = Field(description="Visible children across pages and topics")
+
+
+class AttachmentVersionDetail(Model):
+    snapshot: AttachmentVersionEntry
+    in_topic: bool = Field(description="True if there is no topic filter or the snapshot is in it")
+
+
 class AttachmentFileChange(Model):
     path: str
     before: AttachmentFile
@@ -1763,11 +1780,14 @@ class ExportSummary(Model):
     digest: str
 
 
+ExportState = Literal["queued", "building", "ready", "failed", "expired"]
+
+
 class Export(Model):
     id: str
     owner_id: str
     operation_id: str
-    state: Literal["queued", "building", "ready", "failed", "expired"]
+    state: ExportState
     request: ExportRequest
     size_bytes: int | None
     digest: str | None
@@ -1776,7 +1796,13 @@ class Export(Model):
     created_at: str
     finished_at: str | None
     expires_at: str | None
+    deletion: DeletionState | None
     links: dict[str, str]
+
+
+class ExpiredExportSelection(Model):
+    ids: list[str] = Field(description="Frozen IDs across all pages of your expired exports")
+    count: int
 
 
 # --- comparisons, collections and analysis snapshots -------------------
@@ -2360,6 +2386,7 @@ class TopicOverview(Model):
 ObjectType = Literal[
     "run",
     "artifact",
+    "export",
     "dataset",
     "dataset_version",
     "credential",
@@ -2390,6 +2417,20 @@ class RecycleEntry(Model):
     purged_by: str | None
     purged_at: str | None
     detail: JsonObject = Field(description="What a purge removed; depends on the object type")
+
+
+class BulkDeleteRequest(Model):
+    ids: list[str] = Field(min_length=1, max_length=500)
+
+
+class BulkDeleteItem(Model):
+    id: str
+    status: Literal["deleted", "already_deleted", "failed"]
+    error: ErrorBody | None
+
+
+class BulkDeleteResult(Model):
+    items: list[BulkDeleteItem]
 
 
 class PurgeRequest(Model):

@@ -8,7 +8,7 @@ import os
 import shutil
 import subprocess
 import warnings
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path, PurePosixPath
 
 from maestro_sdk import models
@@ -17,6 +17,63 @@ from maestro_sdk.errors import ContentMismatch
 
 
 class Attachments(_Resource):
+    def directory(
+        self,
+        *,
+        include_disabled: bool = True,
+        kind: str | None = None,
+        q: str | None = None,
+        topic_id: str | None = None,
+        limit: int | None = None,
+    ) -> list[models.AttachmentDirectoryEntry]:
+        """List names with the latest visible snapshot and count in the scope."""
+        return list(
+            self._c._iterate(
+                "attachment-directory",
+                models.AttachmentDirectoryEntry,
+                include_disabled=include_disabled,
+                kind=kind,
+                q=q,
+                topic_id=topic_id,
+                limit=limit,
+            )
+        )
+
+    def versions(
+        self,
+        name: str,
+        *,
+        include_disabled: bool = True,
+        kind: str | None = None,
+        q: str | None = None,
+        topic_id: str | None = None,
+        limit: int | None = None,
+    ) -> list[models.AttachmentVersionEntry]:
+        """List snapshots of this exact name, newest first. Search by label or ID."""
+        return list(
+            self._c._iterate(
+                "attachment-directory/versions",
+                models.AttachmentVersionEntry,
+                name=name,
+                include_disabled=include_disabled,
+                kind=kind,
+                q=q,
+                topic_id=topic_id,
+                limit=limit,
+            )
+        )
+
+    def version(
+        self, snapshot_id: str, *, topic_id: str | None = None
+    ) -> models.AttachmentVersionDetail:
+        """Locate snapshot metadata and check whether it is in the optional topic."""
+        return self._c._get(
+            "attachment-directory/version",
+            models.AttachmentVersionDetail,
+            snapshot_id=snapshot_id,
+            topic_id=topic_id,
+        )
+
     def list(
         self,
         *,
@@ -207,6 +264,10 @@ class Attachments(_Resource):
 
     def delete(self, attachment_id: str) -> models.RecycleEntry:
         return self._c._send("DELETE", f"attachments/{attachment_id}", models.RecycleEntry)
+
+    def delete_many(self, attachment_ids: Sequence[str]) -> models.BulkDeleteResult:
+        """Move snapshots to the recycle bin and report the outcome of each ID."""
+        return self._delete_many("attachments/bulk-delete", attachment_ids)
 
 
 def _sha256(path: Path) -> str:

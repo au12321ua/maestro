@@ -11,7 +11,7 @@ import random
 import tempfile
 import time
 import uuid
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -19,7 +19,10 @@ from urllib.parse import urlsplit
 import httpx
 from pydantic import BaseModel, RootModel, TypeAdapter, ValidationError
 
+from maestro_sdk import models
 from maestro_sdk.errors import ApiError, ContentMismatch, MaestroError, TransportError
+
+_BULK_DELETE_LIMIT = 500
 
 # Answers that mean "not handled, try again": safe to repeat for reads and keyed submissions.
 RETRY_STATUSES = frozenset({502, 503, 504})
@@ -197,6 +200,21 @@ def _key(value: str | None) -> str:
 class _Resource:
     def __init__(self, client: Transport):
         self._c = client
+
+    def _delete_many(self, path: str, object_ids: Sequence[str]) -> models.BulkDeleteResult:
+        """Send confirmed IDs in bounded batches; repeating a completed deletion is safe."""
+        ids = list(dict.fromkeys(object_ids))
+        items = []
+        for start in range(0, len(ids), _BULK_DELETE_LIMIT):
+            batch = self._c._send(
+                "POST",
+                path,
+                models.BulkDeleteResult,
+                {"ids": ids[start : start + _BULK_DELETE_LIMIT]},
+                retry=True,
+            )
+            items.extend(batch.items)
+        return models.BulkDeleteResult(items=items)
 
 
 def _save(

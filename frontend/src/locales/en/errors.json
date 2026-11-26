@@ -64,6 +64,8 @@
     "DATASET_VERSION_IN_USE": "Dataset version is in use by runs",
     "DISPLAY_NAME_INVALID": "Invalid display name",
     "EXECUTION_UNAVAILABLE": "No executor is configured",
+    "EXPORT_ACTIVE": "Wait for this export to finish before recycling it",
+    "EXPORT_DELETED": "This export is in the recycle bin",
     "EXPORT_EXPIRED": "Export expired",
     "EXPORT_INVALID": "Invalid export request",
     "EXPORT_LIMIT_REACHED": "Too many exports in progress",
