@@ -17,7 +17,7 @@ import shutil
 from datetime import timedelta
 from pathlib import Path
 
-from sqlalchemy import Connection, delete, func, insert, select, update
+from sqlalchemy import Connection, case, delete, func, insert, or_, select, update
 
 from maestro.core import clock
 from maestro.core.errors import FieldError, MaestroError, not_found
@@ -135,15 +135,26 @@ class Attachments:
         }
 
     @staticmethod
-    def _select():
-        return select(t.attachment_versions, t.users.c.username).join(
+    def _select(*, with_files: bool = False):
+        columns = [
+            column
+            for column in t.attachment_versions.c
+            if with_files or column.name != "files_json"
+        ]
+        return select(*columns, t.users.c.username).join(
             t.users, t.users.c.id == t.attachment_versions.c.owner_id
         )
 
-    def _list_query(self, name: str | None, include_disabled: bool, kind: str | None):
+    def _list_query(
+        self,
+        name: str | None,
+        include_disabled: bool,
+        kind: str | None,
+        topic_id: str | None = None,
+    ):
         c = t.attachment_versions.c
         query = self._select().where(deleted.visible(c.id, "attachment_version"))
-        if name:
+        if name is not None:
             query = query.where(c.name == name)
         if not include_disabled:
             query = query.where(c.enabled.is_(True))
@@ -151,6 +162,8 @@ class Attachments:
             query = query.where(
                 func.coalesce(c.manifest_json["kind"].as_string(), "attachment") == kind
             )
+        if topic_id is not None:
+            query = query.where(c.id.in_(topic_objects(topic_id, "attachment_snapshot")))
         return query
 
     def list(
@@ -161,7 +174,9 @@ class Attachments:
         kind: str | None = None,
     ) -> list[dict]:
         c = t.attachment_versions.c
-        query = self._list_query(name, include_disabled, kind).order_by(c.name, c.created_at)
+        query = self._list_query(name or None, include_disabled, kind).order_by(
+            c.name, c.created_at
+        )
         with self.db.read() as conn:
             return [self._public(r, r["username"]) for r in conn.execute(query).mappings()]
 
@@ -178,7 +193,7 @@ class Attachments:
     ):
         limit = pagination.check_limit(limit)
         c = t.attachment_versions.c
-        query = self._list_query(name, include_disabled, kind)
+        query = self._list_query(name or None, include_disabled, kind, topic_id)
         filters = {
             "name": name,
             "include_disabled": include_disabled,
@@ -186,8 +201,6 @@ class Attachments:
             "topic_id": topic_id,
             "q": q,
         }
-        if topic_id is not None:
-            query = query.where(c.id.in_(topic_objects(topic_id, "attachment_snapshot")))
         if q:
             query = query.where(pagination.matching(q, c.name, c.label, c.id))
         with self.db.read() as conn:
@@ -201,9 +214,169 @@ class Attachments:
         rows, next_cursor = pagination.split(rows, limit, "created_at", filters)
         return [self._public(r, r["username"]) for r in rows], next_cursor
 
-    def _row(self, conn: Connection, attachment_id: str):
+    def directory_page(
+        self,
+        *,
+        include_disabled: bool,
+        kind: str | None,
+        topic_id: str | None,
+        q: str | None,
+        cursor: str | None,
+        limit: int | None,
+    ):
+        limit = pagination.check_limit(limit)
+        filters = {
+            "view": "attachment_directory",
+            "include_disabled": include_disabled,
+            "kind": kind,
+            "topic_id": topic_id,
+            "q": q,
+        }
+        c = t.attachment_versions.c
+        scope = (
+            self._list_query(None, include_disabled, kind, topic_id)
+            .with_only_columns(c.id, c.name, c.label, c.created_at)
+            .cte()
+        )
+        s = scope.c
+        ranked = select(
+            s.name.label("id"),
+            s.id.label("latest_id"),
+            s.created_at,
+            func.count().over(partition_by=s.name).label("snapshot_count"),
+            func.row_number()
+            .over(partition_by=s.name, order_by=(s.created_at.desc(), s.id.desc()))
+            .label("position"),
+        ).subquery()
+        r = ranked.c
+        query = select(r.id, r.latest_id, r.created_at, r.snapshot_count).where(r.position == 1)
+        if q:
+            # A search picks groups after their summaries are computed. An exact ID
+            # or label takes precedence over a newer snapshot that matches partly.
+            matching_id = (
+                select(s.id)
+                .where(s.name == r.id, pagination.matching(q, s.label, s.id))
+                .order_by(
+                    case((s.id == q, 0), (func.lower(s.label) == func.lower(q), 1), else_=2),
+                    s.created_at.desc(),
+                    s.id.desc(),
+                )
+                .limit(1)
+                .scalar_subquery()
+            )
+            groups = query.add_columns(matching_id.label("match_id")).subquery()
+            r = groups.c
+            query = select(groups).where(or_(pagination.matching(q, r.id), r.match_id.is_not(None)))
+        query = pagination.page(query, r.created_at, r.id, cursor, limit, filters)
+        with self.db.read() as conn:
+            if topic_id is not None:
+                require_topic(conn, topic_id)
+            rows, next_cursor = pagination.split(
+                conn.execute(query).mappings().all(), limit, "created_at", filters
+            )
+            ids = {row[key] for row in rows for key in ("latest_id", "match_id") if row.get(key)}
+            summaries = self._summaries(conn, ids)
+        return [
+            {
+                "name": r["id"],
+                "latest": summaries[r["latest_id"]],
+                "snapshot_count": r["snapshot_count"],
+                "match": summaries.get(r.get("match_id")),
+            }
+            for r in rows
+        ], next_cursor
+
+    def versions_page(
+        self,
+        *,
+        name: str,
+        include_disabled: bool,
+        kind: str | None,
+        topic_id: str | None,
+        q: str | None,
+        cursor: str | None,
+        limit: int | None,
+    ):
+        limit = pagination.check_limit(limit)
+        filters = {
+            "view": "attachment_versions",
+            "name": name,
+            "include_disabled": include_disabled,
+            "kind": kind,
+            "topic_id": topic_id,
+            "q": q,
+        }
+        c = t.attachment_versions.c
+        query = self._list_query(name, include_disabled, kind, topic_id)
+        if q:
+            query = query.where(pagination.matching(q, c.label, c.id))
+        query = pagination.page(query, c.created_at, c.id, cursor, limit, filters)
+        with self.db.read() as conn:
+            if topic_id is not None:
+                require_topic(conn, topic_id)
+            rows, next_cursor = pagination.split(
+                conn.execute(query).mappings().all(), limit, "created_at", filters
+            )
+            return self._version_entries(conn, rows), next_cursor
+
+    def version(self, snapshot_id: str, topic_id: str | None) -> dict:
+        with self.db.read() as conn:
+            row = self._readable(conn, snapshot_id, with_files=False)
+            in_topic = True
+            if topic_id is not None:
+                require_topic(conn, topic_id)
+                ref = topic_objects(topic_id, "attachment_snapshot").where(
+                    t.topic_references.c.object_id == snapshot_id
+                )
+                in_topic = conn.execute(select(ref.exists())).scalar_one()
+            snapshot = self._version_entries(conn, [row])[0]
+        return {"snapshot": snapshot, "in_topic": in_topic}
+
+    def _summaries(self, conn: Connection, ids: set[str]) -> dict[str, dict]:
+        if not ids:
+            return {}
+        c = t.attachment_versions.c
+        rows = conn.execute(self._select().where(c.id.in_(ids), _not_purged())).mappings()
+        return {row["id"]: self._public(row, row["username"]) for row in rows}
+
+    def _version_entries(self, conn: Connection, rows: list) -> list[dict]:
+        if not rows:
+            return []
+        ids = {r["id"] for r in rows}
+        parents = self._summaries(conn, {r["parent_id"] for r in rows if r["parent_id"]})
+        marks = deleted.states(conn, "attachment_version", ids | parents.keys())
+        for identity, parent in parents.items():
+            parent["deletion"] = marks.get(identity)
+
+        # Branches describe the global history, even when this page filters by
+        # topic, category, label or snapshot ID.
+        c = t.attachment_versions.c
+        counts = dict(
+            conn.execute(
+                select(c.parent_id, func.count())
+                .where(c.parent_id.in_(ids), deleted.visible(c.id, "attachment_version"))
+                .group_by(c.parent_id)
+            )
+            .tuples()
+            .all()
+        )
+        return [
+            {
+                **self._public(r, r["username"]),
+                "deletion": marks.get(r["id"]),
+                "parent": parents.get(r["parent_id"]),
+                "child_count": counts.get(r["id"], 0),
+            }
+            for r in rows
+        ]
+
+    def _row(self, conn: Connection, attachment_id: str, *, with_files: bool = True):
         row = (
-            conn.execute(self._select().where(t.attachment_versions.c.id == attachment_id))
+            conn.execute(
+                self._select(with_files=with_files).where(
+                    t.attachment_versions.c.id == attachment_id
+                )
+            )
             .mappings()
             .first()
         )
@@ -211,10 +384,10 @@ class Attachments:
             raise not_found("Attachment")
         return row
 
-    def _readable(self, conn: Connection, attachment_id: str):
+    def _readable(self, conn: Connection, attachment_id: str, *, with_files: bool = True):
         """Any snapshot not purged: what a purged one held is gone for readers, even
         while another snapshot still holds the same contents."""
-        row = self._row(conn, attachment_id)
+        row = self._row(conn, attachment_id, with_files=with_files)
         deleted.refuse_purged(conn, "attachment_version", attachment_id, "Attachment")
         return row
 

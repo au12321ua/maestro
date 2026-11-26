@@ -885,6 +885,22 @@ class Recycle:
 
     def delete(self, principal: Principal, object_type: str, object_id: str) -> dict:
         """Idempotent: deleting a deleted object returns its existing entry."""
+        return self._delete(principal, object_type, object_id)[0]
+
+    def delete_many(self, principal: Principal, object_type: str, object_ids: list[str]) -> dict:
+        """Apply the single-object checks in a separate write transaction per ID."""
+        items = []
+        for object_id in dict.fromkeys(object_ids):
+            try:
+                _, created = self._delete(principal, object_type, object_id)
+            except MaestroError as error:
+                items.append({"id": object_id, "status": "failed", "error": error.public()})
+            else:
+                status = "deleted" if created else "already_deleted"
+                items.append({"id": object_id, "status": status, "error": None})
+        return {"items": items}
+
+    def _delete(self, principal: Principal, object_type: str, object_id: str) -> tuple[dict, bool]:
         handler = self._handler(object_type)
         with self.db.write() as conn:
             row = handler.load(conn, object_id)
@@ -895,7 +911,7 @@ class Recycle:
                 t.deletions.c.object_id == object_id,
             )
             if existing:
-                return public_entry(existing)
+                return public_entry(existing), False
             handler.check_delete(conn, principal, row)
             detail = handler.on_delete(conn, principal, row)
             entry_id = new_id("del")
@@ -919,7 +935,7 @@ class Recycle:
                 object_type=object_type,
                 object_id=object_id,
             )
-            return public_entry(self._entry(conn, t.deletions.c.id == entry_id))
+            return public_entry(self._entry(conn, t.deletions.c.id == entry_id)), True
 
     # --- the bin (administrators only) ---------------------------------------------
 

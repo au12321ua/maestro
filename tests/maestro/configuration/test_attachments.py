@@ -29,6 +29,7 @@ from support.attachments import (
     package,
     publish,
     store_package,
+    submission_package,
     upload,
 )
 from support.configuration import agent_body, codes, error, prepare_model, resolve
@@ -301,6 +302,173 @@ def test_reading_files_archives_and_differences(service):
         "blobs",
         "snapshots",
     ]
+
+
+# --- directory and version history ---------------------------------------------------
+
+
+def test_directory_pages_names_and_searches_old_snapshots_in_scope(service):
+    root = "/api/v1/attachment-directory"
+    with running(service, run_worker=False) as client:
+        admin = setup_admin(service, client)
+        reader = create_pat(admin, permissions=())
+        old = attach(admin, label="release-1")
+        child = publish(
+            admin,
+            package(extra_files={"README": b"first revision"}),
+            label="release-1-later",
+            parent_id=old,
+            expect=201,
+        ).json()["data"]["id"]
+        sibling = publish(
+            admin,
+            package(extra_files={"README": b"second branch"}),
+            label="parallel",
+            parent_id=old,
+            expect=201,
+        ).json()["data"]["id"]
+        latest = attach(admin, label="latest", extra_files={"README": b"final"})
+        other = attach(admin, name="other-tools")
+        submission = publish(admin, submission_package("tools"), expect=201).json()["data"]["id"]
+        topic_id = admin.post("/api/v1/topics", json={"name": "Evaluation"}, expect=201).json()[
+            "data"
+        ]["id"]
+        admin.post(
+            f"/api/v1/topics/{topic_id}/references",
+            json={
+                "add": [
+                    {"kind": "attachment_snapshot", "id": identity} for identity in [old, child]
+                ]
+            },
+            expect=200,
+        )
+
+        page = reader.get(f"{root}?kind=attachment&limit=1", expect=200).json()
+        (first_group,) = page["data"]
+        assert first_group["name"] == "other-tools" and first_group["latest"]["id"] == other
+        cursor = page["meta"]["next_cursor"]
+        page = reader.get(f"{root}?kind=attachment&limit=1&cursor={cursor}", expect=200).json()
+        (tools,) = page["data"]
+        assert page["meta"]["next_cursor"] is None
+        assert tools["name"] == "tools" and tools["latest"]["id"] == latest
+        assert tools["snapshot_count"] == 4 and tools["match"] is None
+        assert tools["latest"]["files"] is None
+        bad_cursor = reader.get(f"{root}?kind=submission&cursor={cursor}")
+        assert error(bad_cursor) == (400, "CURSOR_FILTER_MISMATCH")
+        (group,) = reader.get(f"{root}?kind=submission", expect=200).json()["data"]
+        assert group["name"] == "tools" and group["latest"]["id"] == submission
+        assert group["snapshot_count"] == 1
+
+        for lookup in ("release-1", old):
+            (group,) = reader.get(f"{root}?kind=attachment&q={lookup}", expect=200).json()["data"]
+            assert group["match"]["id"] == old
+            assert group["latest"]["id"] == latest and group["snapshot_count"] == 4
+        matching_names = reader.get(f"{root}?kind=attachment&q=tools&limit=1", expect=200).json()
+        name_cursor = matching_names["meta"]["next_cursor"]
+        assert matching_names["data"][0]["match"] is None
+        name_match = reader.get(
+            f"{root}?kind=attachment&q=tools&limit=1&cursor={name_cursor}", expect=200
+        ).json()
+        assert name_match["data"][0]["name"] == "tools" and name_match["data"][0]["match"] is None
+
+        scoped = f"kind=attachment&topic_id={topic_id}"
+        (group,) = reader.get(f"{root}?{scoped}&q=release-1", expect=200).json()["data"]
+        assert group["latest"]["id"] == child and group["snapshot_count"] == 2
+        assert group["match"]["id"] == old
+        assert reader.get(f"{root}?{scoped}&q={latest}", expect=200).json()["data"] == []
+        admin.post(f"/api/v1/attachments/{child}/enabled", json={"enabled": False}, expect=200)
+        (enabled,) = reader.get(f"{root}?{scoped}&include_disabled=false", expect=200).json()[
+            "data"
+        ]
+        assert enabled["latest"]["id"] == old and enabled["snapshot_count"] == 1
+
+        params = f"{root}/versions?name=tools&kind=attachment&limit=1"
+        cursor = None
+        versions = []
+        while True:
+            page = reader.get(f"{params}&cursor={cursor}" if cursor else params, expect=200).json()
+            (row,) = page["data"]
+            versions.append(row)
+            cursor = page["meta"]["next_cursor"]
+            if cursor is None:
+                break
+        assert [version["id"] for version in versions] == [latest, sibling, child, old]
+        assert versions[1]["parent"]["id"] == old
+        assert versions[2]["parent"]["id"] == old
+        assert versions[-1]["child_count"] == 2
+        assert reader.get(f"{params}&q={old}", expect=200).json()["data"][0]["id"] == old
+        assert reader.get(f"{params}&q=tools", expect=200).json()["data"] == []
+        (in_topic_child, in_topic_parent) = reader.get(
+            f"{root}/versions?name=tools&{scoped}", expect=200
+        ).json()["data"]
+        assert in_topic_child["id"] == child and in_topic_parent["child_count"] == 2
+        located = reader.get(
+            f"{root}/version?snapshot_id={latest}&topic_id={topic_id}", expect=200
+        ).json()["data"]
+        assert located["snapshot"]["id"] == latest and located["in_topic"] is False
+        located = reader.get(
+            f"{root}/version?snapshot_id={old}&topic_id={topic_id}", expect=200
+        ).json()["data"]
+        assert located["snapshot"]["id"] == old and located["in_topic"] is True
+        compared = reader.get(
+            f"/api/v1/attachments/{latest}/diff?base_id={old}", expect=200
+        ).json()["data"]
+        assert compared["base_id"] == old
+        assert [added["path"] for added in compared["added"]] == ["README"]
+
+
+def test_bulk_recycle_rechecks_permissions_and_active_runs_per_selected_snapshot(
+    service, version_id
+):
+    root = "/api/v1/attachment-directory"
+    recycle = "/api/v1/attachments/bulk-delete"
+    with running(service, run_worker=False) as client:
+        admin = setup_admin(service, client)
+        member = invite_member(service, admin, "member")
+        model_id, harness_id = prepare_model(admin)
+        free = attach(member, label="free")
+        busy = attach(member, label="busy", extra_files={"README": b"run"})
+        foreign = attach(admin, label="foreign", extra_files={"README": b"other owner"})
+        topic_only = attach(member, label="topic", extra_files={"README": b"topic"})
+        topic_id = member.post("/api/v1/topics", json={"name": "Review"}, expect=201).json()[
+            "data"
+        ]["id"]
+        revisions = f"{root}/versions?name=tools&limit=1"
+        assert member.get(f"{revisions}&q=free", expect=200).json()["data"][0]["id"] == free
+        assert member.get(f"{revisions}&q=busy", expect=200).json()["data"][0]["id"] == busy
+
+        accepted = submit(
+            member, version_id, **agent_body(model_id, harness_id, attachments=[busy])
+        ).json()["data"]
+        ids = [busy, free, foreign, free]
+        result = member.post(recycle, json={"ids": ids}, expect=200).json()["data"]["items"]
+        assert [item["id"] for item in result] == [busy, free, foreign]
+        assert [item["status"] for item in result] == ["failed", "deleted", "failed"]
+        assert result[0]["error"]["code"] == "ATTACHMENT_IN_USE"
+        assert result[0]["error"]["suggested_actions"][0]["run_ids"] == [accepted["run_id"]]
+        assert result[1]["error"] is None and result[2]["error"]["code"] == "FORBIDDEN"
+        assert error(member.delete(f"/api/v1/attachments/{foreign}")) == (403, "FORBIDDEN")
+        assert error(member.delete(f"/api/v1/attachments/{busy}")) == (409, "ATTACHMENT_IN_USE")
+        repeated = member.post(recycle, json={"ids": ids}, expect=200).json()["data"]["items"]
+        assert repeated[1] == {"id": free, "status": "already_deleted", "error": None}
+        assert repeated[0] == result[0] and repeated[2] == result[2]
+        assert member.get(f"{revisions}&q=free", expect=200).json()["data"] == []
+        locator = f"{root}/version?snapshot_id={free}"
+        item = member.get(locator, expect=200).json()["data"]["snapshot"]
+        assert item["deletion"]["state"] == "recycled"
+        assert bin_entry(admin, free)["object_id"] == free
+        purge(admin, bin_entry(admin, free)).raise_for_status()
+        assert error(member.get(locator)) == (410, "OBJECT_PURGED")
+
+        refs = f"/api/v1/topics/{topic_id}/references"
+        reference = [{"kind": "attachment_snapshot", "id": topic_only}]
+        member.post(refs, json={"add": reference}, expect=200)
+        member.post(refs, json={"remove": reference}, expect=200)
+        assert member.get(f"{root}?topic_id={topic_id}", expect=200).json()["data"] == []
+        assert member.get(f"{revisions}&q=topic", expect=200).json()["data"][0]["id"] == topic_only
+        member.post(f"/api/v1/runs/{accepted['run_id']}/cancel", expect=200)
+        finished = member.post(recycle, json={"ids": [busy]}, expect=200).json()["data"]["items"]
+        assert finished == [{"id": busy, "status": "deleted", "error": None}]
 
 
 # --- resolution ------------------------------------------------------------------------

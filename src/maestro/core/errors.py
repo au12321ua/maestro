@@ -34,6 +34,18 @@ class MaestroError(Exception):
         self.suggested_actions = suggested_actions or []
         self.headers = headers or {}
 
+    def public(self) -> dict:
+        return {
+            "code": self.code,
+            "message": self.message,
+            "stage": self.stage,
+            "field_errors": [
+                {k: v for k, v in vars(f).items() if v is not None} for f in self.field_errors
+            ],
+            "retryable": self.retryable,
+            "suggested_actions": self.suggested_actions,
+        }
+
 
 @dataclass
 class Page:

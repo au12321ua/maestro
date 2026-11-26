@@ -19,8 +19,13 @@ from maestro.api.models import (
     Attachment,
     AttachmentContents,
     AttachmentDiff,
+    AttachmentDirectoryEntry,
     AttachmentMissing,
     AttachmentPublish,
+    AttachmentVersionDetail,
+    AttachmentVersionEntry,
+    BulkDeleteRequest,
+    BulkDeleteResult,
     EnabledChange,
     Envelope,
     RecycleEntry,
@@ -32,6 +37,65 @@ from maestro.execution.attachments import SHA256
 from maestro.services.principal import Principal, require_content_upload
 
 router = APIRouter(prefix="/api/v1", tags=["attachments"])
+
+
+@router.get("/attachment-directory", response_model=Envelope[list[AttachmentDirectoryEntry]])
+def list_attachment_directory(
+    request: Request,
+    include_disabled: bool = True,
+    kind: Literal["attachment", "submission"] | None = None,
+    topic_id: str | None = None,
+    q: str | None = None,
+    cursor: str | None = None,
+    limit: int | None = None,
+    _: Principal = Depends(principal),
+):
+    """Page by attachment name. Search can locate a specific snapshot in a group."""
+    items, next_cursor = maestro(request).attachments.directory_page(
+        include_disabled=include_disabled,
+        kind=kind,
+        topic_id=topic_id,
+        q=q,
+        cursor=cursor,
+        limit=limit,
+    )
+    return ok(request, items, next_cursor)
+
+
+@router.get("/attachment-directory/versions", response_model=Envelope[list[AttachmentVersionEntry]])
+def list_attachment_versions(
+    request: Request,
+    name: str,
+    include_disabled: bool = True,
+    kind: Literal["attachment", "submission"] | None = None,
+    topic_id: str | None = None,
+    q: str | None = None,
+    cursor: str | None = None,
+    limit: int | None = None,
+    _: Principal = Depends(principal),
+):
+    """Page snapshots of an exact attachment name. Search by label or snapshot ID."""
+    items, next_cursor = maestro(request).attachments.versions_page(
+        name=name,
+        include_disabled=include_disabled,
+        kind=kind,
+        topic_id=topic_id,
+        q=q,
+        cursor=cursor,
+        limit=limit,
+    )
+    return ok(request, items, next_cursor)
+
+
+@router.get("/attachment-directory/version", response_model=Envelope[AttachmentVersionDetail])
+def get_attachment_version(
+    request: Request,
+    snapshot_id: str,
+    topic_id: str | None = None,
+    _: Principal = Depends(principal),
+):
+    """Locate a snapshot by ID and report its membership in an optional topic."""
+    return ok(request, maestro(request).attachments.version(snapshot_id, topic_id))
 
 
 @router.get("/attachments", response_model=Envelope[list[Attachment]])
@@ -216,3 +280,11 @@ def attachment_enabled(
 def delete_attachment(attachment_id: str, request: Request, who: Principal = Depends(principal)):
     """Into the recycle bin; the owner or an administrator."""
     return ok(request, maestro(request).recycle.delete(who, "attachment_version", attachment_id))
+
+
+@router.post("/attachments/bulk-delete", response_model=Envelope[BulkDeleteResult])
+def bulk_delete_attachments(
+    body: BulkDeleteRequest, request: Request, who: Principal = Depends(principal)
+):
+    """Move the named snapshots to the recycle bin. Report checks per snapshot."""
+    return ok(request, maestro(request).recycle.delete_many(who, "attachment_version", body.ids))
