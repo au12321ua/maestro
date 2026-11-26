@@ -257,7 +257,12 @@ class Attachments:
                 select(s.id)
                 .where(s.name == r.id, pagination.matching(q, s.label, s.id))
                 .order_by(
-                    case((s.id == q, 0), (func.lower(s.label) == func.lower(q), 1), else_=2),
+                    case(
+                        (s.id == q, 0),
+                        (s.label == q, 1),
+                        (func.lower(s.label) == func.lower(q), 2),
+                        else_=3,
+                    ),
                     s.created_at.desc(),
                     s.id.desc(),
                 )

@@ -323,7 +323,7 @@ def test_directory_pages_names_and_searches_old_snapshots_in_scope(service):
         sibling = publish(
             admin,
             package(extra_files={"README": b"second branch"}),
-            label="parallel",
+            label="RELEASE-1",
             parent_id=old,
             expect=201,
         ).json()["data"]["id"]
@@ -363,6 +363,8 @@ def test_directory_pages_names_and_searches_old_snapshots_in_scope(service):
             (group,) = reader.get(f"{root}?kind=attachment&q={lookup}", expect=200).json()["data"]
             assert group["match"]["id"] == old
             assert group["latest"]["id"] == latest and group["snapshot_count"] == 4
+        (group,) = reader.get(f"{root}?kind=attachment&q=RELEASE-1", expect=200).json()["data"]
+        assert group["match"]["id"] == sibling
         matching_names = reader.get(f"{root}?kind=attachment&q=tools&limit=1", expect=200).json()
         name_cursor = matching_names["meta"]["next_cursor"]
         assert matching_names["data"][0]["match"] is None
