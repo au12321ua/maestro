@@ -1273,6 +1273,23 @@ class Attachment(Model):
     deletion: DeletionState | None = None
 
 
+class AttachmentDirectoryEntry(Model):
+    name: str
+    latest: Attachment
+    snapshot_count: int = Field(description="Visible snapshots in the directory scope")
+    match: Attachment | None = Field(description="Snapshot matching the search by label or ID")
+
+
+class AttachmentVersionEntry(Attachment):
+    parent: Attachment | None = Field(description="Readable parent across pages and topics")
+    child_count: int = Field(description="Visible children across pages and topics")
+
+
+class AttachmentVersionDetail(Model):
+    snapshot: AttachmentVersionEntry
+    in_topic: bool = Field(description="True if there is no topic filter or the snapshot is in it")
+
+
 class AttachmentFileChange(Model):
     path: str
     before: AttachmentFile
@@ -2390,6 +2407,20 @@ class RecycleEntry(Model):
     purged_by: str | None
     purged_at: str | None
     detail: JsonObject = Field(description="What a purge removed; depends on the object type")
+
+
+class BulkDeleteRequest(Model):
+    ids: list[str] = Field(min_length=1, max_length=500)
+
+
+class BulkDeleteItem(Model):
+    id: str
+    status: Literal["deleted", "already_deleted", "failed"]
+    error: ErrorBody | None
+
+
+class BulkDeleteResult(Model):
+    items: list[BulkDeleteItem]
 
 
 class PurgeRequest(Model):
