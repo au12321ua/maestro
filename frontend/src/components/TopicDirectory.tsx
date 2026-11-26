@@ -100,17 +100,19 @@ function TopicPicker({ value, onChange, all }: {
   );
 }
 
-export function TopicDirectory({ search, onSearch, children }: {
+export function TopicDirectory({ search, onSearch, searchLabel = t("topics.searchObjects"), resetOnTopicChange, children }: {
   search: string;
   onSearch: (q: string) => void;
+  searchLabel?: string;
+  resetOnTopicChange?: string[];
   children?: ReactNode;
 }) {
   const id = useId();
   const scope = useTopicScope();
   return (
     <div className="mb-4 flex flex-wrap items-end gap-3">
-      <TopicPicker all value={scope.topicId ?? ""} onChange={scope.choose} />
-      <TextField id={id} label={t("topics.searchObjects")} value={search} onChange={(e) => onSearch(e.target.value)} />
+      <TopicPicker all value={scope.topicId ?? ""} onChange={(id) => scope.choose(id, resetOnTopicChange)} />
+      <TextField id={id} label={searchLabel} value={search} onChange={(e) => onSearch(e.target.value)} />
       {children}
       {scope.topicId && (
         <Button size="sm" variant="link" asChild>
