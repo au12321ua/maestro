@@ -1,4 +1,10 @@
 {
+  "recycle": {
+    "missingResult": "The service did not report an outcome for this item.",
+    "failed": "The item could not be moved to the recycle bin.",
+    "unknown": "Recycling is unconfirmed. {{reason}}",
+    "unattempted": "The request stopped before this item was sent."
+  },
   "runState": {
     "queued": "Queued",
     "preparing": "Preparing",

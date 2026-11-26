@@ -105,7 +105,7 @@
     "result_one": "{{count}} snapshot moved to the recycle bin",
     "result_other": "{{count}} snapshots moved to the recycle bin",
     "clearSelection": "Clear selection",
-    "ownerOnly": "Recycling is available to snapshot owners and administrators.",
-    "limit": "Select up to {{count}} snapshots to recycle at once."
+    "retry": "Retry recycling this snapshot",
+    "ownerOnly": "Recycling is available to snapshot owners and administrators."
   }
 }

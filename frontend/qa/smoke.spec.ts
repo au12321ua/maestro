@@ -769,6 +769,9 @@ test("attachment directory locates versions across pages and retains partial rec
       if (!q && !scope && !query.get("cursor")) {
         data = [{ name: "other-tools", latest: { ...versions[45], name: "other-tools" }, snapshot_count: 1, match: null }];
         next_cursor = "directory-next";
+      } else if (query.get("cursor") === "directory-next") {
+        data = [{ name: "middle-tools", latest: { ...versions[45], name: "middle-tools" }, snapshot_count: 1, match: null }];
+        next_cursor = "directory-last";
       }
     }
     await route.fulfill({ json: { data, meta: { ...meta, next_cursor } } });
@@ -787,6 +790,14 @@ test("attachment directory locates versions across pages and retains partial rec
   });
   await page.route("**/api/v1/attachments/bulk-delete", async (route) => {
     const { ids } = route.request().postDataJSON();
+    if (recycled.has(old.id)) {
+      expect(ids).toEqual([protectedVersion.id]);
+      recycled.add(protectedVersion.id);
+      await route.fulfill({ json: { data: { items: [
+        { id: protectedVersion.id, status: "deleted", error: null },
+      ] }, meta } });
+      return;
+    }
     expect(ids).toEqual([protectedVersion.id, old.id]);
     recycled.add(old.id);
     await route.fulfill({ json: { data: { items: [
@@ -803,13 +814,21 @@ test("attachment directory locates versions across pages and retains partial rec
   await page.goto("/attachments");
   await expect(page.getByRole("link", { name: "other-tools" })).toBeVisible();
   await page.getByRole("button", { name: "下一页" }).click();
+  await expect(page.getByRole("link", { name: "middle-tools" })).toBeVisible();
+  await page.getByRole("button", { name: "下一页" }).click();
   await expect(page.getByRole("row").filter({ hasText: name })).toContainText("51");
   await page.getByRole("link", { name, exact: true }).click();
   await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "v50", exact: true })).toBeVisible();
   expect(fileRequests).toBe(0);
+  await page.getByRole("link", { name: "v50", exact: true }).click();
+  await expect(page.locator("#attachment-selected")).toContainText(protectedVersion.id);
   await page.getByRole("link", { name: "返回附件目录" }).click();
+  expect(new URL(page.url()).searchParams.getAll("page")).toEqual(["directory-last"]);
+  await expect(page.getByText("第 3 页")).toBeVisible();
+  await page.getByRole("button", { name: "上一页" }).click();
   await expect(page.getByText("第 2 页")).toBeVisible();
+  await expect(page.getByRole("link", { name: "middle-tools" })).toBeVisible();
   await page.getByLabel("按名称、标签或快照 ID 搜索").fill(old.label);
   await page.getByRole("link", { name: "匹配快照：old-release" }).click();
   await expect(page.locator("#attachment-selected")).toContainText(old.id);
@@ -840,8 +859,14 @@ test("attachment directory locates versions across pages and retains partial rec
   await expect(page.getByText("已将 1 个快照移入回收站")).toBeVisible();
   await expect(page.getByText(/Active run uses this snapshot/)).toBeVisible();
   await expect(page.getByText("已选 1 个快照")).toBeVisible();
-  expect(pageErrors).toEqual([]);
   await page.screenshot({ path: `${shots}/attachment-directory.png`, fullPage: false });
+  await page.getByRole("button", { name: "重试回收此快照" }).click();
+  const retry = page.getByRole("alert").filter({ hasText: "将 directory-tools 的 1 个快照移入回收站？" });
+  await expect(retry).toContainText(protectedVersion.id);
+  await retry.getByRole("button", { name: "移入回收站", exact: true }).click();
+  await expect(page.getByText(/Active run uses this snapshot/)).toHaveCount(0);
+  await expect(page.getByText("已选 1 个快照")).toHaveCount(0);
+  expect(pageErrors).toEqual([]);
 });
 
 test("submission package and submission scoring run", async ({ page }) => {
