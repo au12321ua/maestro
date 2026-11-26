@@ -124,7 +124,7 @@ client.runs.download_artifacts(submitted.run_id, local_directory)
 
 ### 给 Agent 的本地工具
 
-SDK 也是 Agent 的客户端（U-59、U-60）。平台保存别人要依赖的事实（快照、运行、比较与结论），Agent 的工作过程不规定格式，skill 只给建议。初始化工作区和从 SDK 安装 skill 都是本地操作，工作流模块只组合公开 API：
+SDK 也是 Agent 的客户端（U-59、U-60）。平台保存别人要依赖的事实（快照、运行、比较与结论），Agent 的工作过程不规定格式，skill 只给建议。已有工具项目可从独立的 Python 环境把 skill 安装进原仓库，沿用项目的构建和交接记录。工具组件构建到干净的附件目录，记录源码修订和实际发布的快照。系列实验首次提交前按问题查找或建议建立专题，基线、候选和交接都使用同一链接；一次性试跑也可事后加入。初始化独立实验工作区和从 SDK 安装 skill 都是本地操作，工作流模块只组合公开 API：
 
 - `maestro_sdk.skills.install(目录)`：把随 wheel 发布的 skill（仓库的 `skills/`）复制到 `.agents/skills/` 与 `.claude/skills/`，同名 skill 整个替换、其他 skill 不动，并在 `.maestro-sdk-version` 记下 SDK 版本。skill 因此与 SDK 同版本，升级 SDK 后重装即同步。
 - `maestro_sdk.workspace.init(目录, workflow=None)` 创建推荐的工作区。`AGENTS.md` 写预算、命名习惯和当前目标。`.env.example` 用来配置服务根地址和 PAT 文件路径，更新脚本和 Agent 启动时由 uv 从 `.env` 加载。`notes/` 使用自由格式，`attachments/` 每个附件一个 git 仓库。`.gitignore` 忽略本地 `.env`、已安装的 skill 和附件仓库。重复调用只补缺并重装 skill。`workflow="attachments"` 另写入 `notes/attachments-workflow.md`。

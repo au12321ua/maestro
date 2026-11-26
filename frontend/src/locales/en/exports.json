@@ -17,5 +17,19 @@
   "moreRuns_other": "{{count}} in total",
   "noArtifacts": "Without artifacts",
   "download": "Download",
-  "loadMore": "Load more"
+  "expiredSelected": "Selected all {{count}} expired exports.",
+  "recycleFailed": "Could not recycle this export",
+  "recycled": "Processed {{count}} exports.",
+  "selectExpired": "Select all expired",
+  "recycleSelected": "Recycle selected ({{count}})",
+  "clearSelection": "Clear selection",
+  "emptyPage": "No exports remain on this page.",
+  "select": "Select",
+  "selectExport": "Select export {{id}}",
+  "recycleExport": "Recycle export {{id}}",
+  "recycle": "Recycle",
+  "confirmRecycle": "Move {{count}} selected personal exports to the recycle bin? Their download links will stop working.",
+  "previous": "Previous",
+  "next": "Next",
+  "page": "Page {{number}}"
 }

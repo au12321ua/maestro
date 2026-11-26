@@ -36,6 +36,21 @@ client = MaestroClient.from_env()
 
 默认直连，不使用代理环境变量（避免令牌经过调用方没有选择的代理）；需要代理时传 `trust_env=True`。
 
+## 在已有工具项目内评测
+
+在项目根目录启动 Agent，沿用项目自己的构建、提交和交接方式。用项目外的 Python 环境调用 SDK，在项目内只安装两份 skill。下面以正式版服务为例，将 `<版本>` 替换为服务版本。
+
+```bash
+export MAESTRO_PYTHON="$HOME/.local/share/maestro-tools/bin/python"
+uv venv "${MAESTRO_PYTHON%/bin/python}"
+uv pip install --python "$MAESTRO_PYTHON" "maestro-sdk==<版本>" --index maestro=https://au12321ua.github.io/maestro/simple
+"$MAESTRO_PYTHON" -c 'from maestro_sdk.skills import install; install(".")'
+```
+
+默认目标是 `.agents/skills/` 和 `.claude/skills/`。只使用一处时，例如传 `install(".", targets=[".agents/skills"])`。把 `MAESTRO_PYTHON`、`MAESTRO_URL`、`MAESTRO_TOKEN_FILE` 放进启动 Agent 的本地环境。之后由 Agent 用 `"$MAESTRO_PYTHON"` 运行 SDK 脚本。非 Python 项目也可以这样接入。升级时在同一环境安装匹配的 SDK，再执行上面的 `install(".")`。开发版服务用 `uv pip install --python "$MAESTRO_PYTHON" --reinstall-package maestro-sdk <随包 wheel 路径>`。
+
+项目 Agent 读取这两份 skill。试次里的 Agent 使用项目构建出的工具附件。整个提交的跟踪文件都属于附件且根目录有 manifest 时，用 `attachments.publish_commit`。组件型工具先按现有构建步骤把所需文件放进干净目录，核对清单再用 `attachments.publish`。把源码修订、参与构建的未提交修改和返回的快照 ID 记在项目原有的任务记录里。[附件工作流](../skills/maestro-package/SKILL.md)
+
 ## 先问服务能做什么
 
 ```python
@@ -46,6 +61,8 @@ caps.limits["run_max_trials"], caps.actions["runs.submit"]
 SDK 与服务来自同一份 OpenAPI（仓库 `openapi/maestro-v1.json`）。两边不一致时 `capabilities()` 发出 `ContractDriftWarning`，请换成与服务同版本的 SDK。
 
 ## 一次完整的实验
+
+做多轮调试、基线对照或交接时，首次提交前先从任务或交接记录找专题链接。已有链接就读目的、最新交接和活动运行。只有名称时用 `client.topics.list(q=名称)` 查找并核对目的，有多个合理候选就请用户指明。没有合适的专题时，建议用实验问题建立专题并把链接写回原任务记录。下面假定已经选定专题。一次性试跑可直接用 `client.runs.submit`，日后用 `client.topics.change_references` 把已有运行加入专题。
 
 ```python
 version = next(client.catalog.datasets()).versions[0]
@@ -63,7 +80,8 @@ config = {
 resolution = client.configs.resolve(config).raise_for_blockers()
 print(resolution.config_digest, resolution.field_sources)   # 每个生效值来自哪一层
 
-submitted = client.runs.submit(
+topic = client.topics.open(topic_link)
+submitted = topic.runs.submit(
     name="baseline",
     resolution_id=resolution.resolution_id,
     client_request_id="round-1",            # 自己起的名字，丢了一切本地状态时用它找回
@@ -124,7 +142,8 @@ for run in topic.runs.list(active=True, limit=25):
 | 上传数据集 | `op = client.catalog.upload("tasks/", namespace="team", name="benchmark")`；目录下每个子目录是已转换好的 Harbor task，不另加 manifest。需要管理员的 `datasets` 权限；用 `operations.wait(op.id)` 等待导入，结果含版本与首次准备操作的标识，任务检查失败按题报告。相同内容复用版本，只传缺少的内容。来源说明用挂在数据集版本上的工作流记录保存 |
 | 交付物 | `client.runs.download_deliverables(run_id, "deliverables/")` 把最终尝试的交付物按原字节保存到 `<目录>/<task_key>/<repetition>/<文件>`（路径相对于容器的 `/logs/artifacts/`），校验摘要并返回失败或过期原因。任务写入容器的 `/logs/artifacts/`；平台不定义 benchmark 提交包格式 |
 | 附件 | `a = client.attachments.publish("path/to/dir", label="v2", parent=old)`（只上传服务端缺少的文件，内容相同返回原快照；跳过 `.git`），或 `client.attachments.publish_commit("path/to/repo", "HEAD", parent=old)` 发布一个 git 提交跟踪的文件（仓库根目录就是附件根目录，可执行位取自 git 的文件模式，未提交的修改不发布并给出提醒），配置里写 `attachments: [a.id]`；`client.attachments.fetch(a.id, "dir")` 只下载有差异的文件，`diff(a.id)` 与父快照比较，`download(a.id, "a.zip")` 整包下载 |
-| 导出 | `e = client.exports.create([run_id])`、`client.operations.wait(e.operation_id)`、`client.exports.download(e.id, "export.zip")` |
+| 附件目录与回收 | `client.attachments.directory(q=...)` 按名称翻页；`client.attachments.versions(name, q=...)` 查找标签或 ID，`client.attachments.version(snapshot_id, topic_id=...)` 核对专题范围。用 `client.attachments.delete_many(ids)` 回收选定版本，逐项检查返回状态。 |
+| 导出 | `e = client.exports.create([run_id])`、`client.operations.wait(e.operation_id)`、`client.exports.download(e.id, "export.zip")`。用 `client.exports.list(state="expired")` 浏览；跨页清理时先取 `selection = client.exports.expired_selection()`，核对 `selection.count` 后将这组 `selection.ids` 传给 `client.exports.delete_many`。 |
 
 ## 给 Agent 的工作区与 skill
 
@@ -138,7 +157,7 @@ maestro_sdk.workspace.init("my-work")    # 生成 AGENTS.md、.env.example 和�
 maestro_sdk.workspace.init("improve", workflow="attachments")  # 另加附件工作流说明，不覆盖已有文件
 ```
 
-`maestro-sdk` 讲提交、观察、比较与诚实报告结果；`maestro-package` 讲怎样把已有材料做成附件、用实验改进它、在平台上记下当前最优的附件，以及中断后怎样只凭平台接着做。工作区是推荐布局：`AGENTS.md` 写预算、命名习惯和当前目标，`notes/` 的格式完全自由，`attachments/<名称>/` 每个附件一个 git 仓库。`init` 不覆盖已有文件，只补缺并重装 skill；升级 SDK 后再运行一次即可同步 skill。
+`maestro-sdk` 讲提交、观察、比较与诚实报告结果；`maestro-package` 讲怎样把已有材料做成附件、用实验改进它、在平台上记下当前最优的附件，以及中断后怎样只凭平台接着做。独立实验工作区采用以下布局：`AGENTS.md` 写预算、命名习惯和当前目标，`notes/` 的格式完全自由，`attachments/<名称>/` 每个附件一个 git 仓库。`init` 不覆盖已有文件，只补缺并重装 skill；升级 SDK 后再运行一次即可同步 skill。
 
 首次配置时复制 `.env.example` 为 `.env`。在 `MAESTRO_URL` 填入服务根地址，在 `MAESTRO_TOKEN_FILE` 填入工作区外的 PAT 文件绝对路径。用 uv 加载 `.env`，更新脚本和 Agent 的 SDK 调用共用这份配置。示例中的 `codex` 可换成你的 Agent 启动命令。
 

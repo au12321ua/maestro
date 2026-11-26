@@ -1521,3 +1521,62 @@ test("experiment topic scopes, paged runs and a handoff with evidence", async ({
   await page.screenshot({ path: `${shots}/topic-overview-mobile.png`, fullPage: false });
   expect(errors).toEqual([]);
 });
+
+test("personal export selection survives page refresh and recycles only confirmed IDs", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  const deleted = new Set<string>();
+  const batches: string[][] = [];
+  const expired = ["expired-first", "expired-last"];
+  let refreshes = 0;
+  const item = (id: string, state: string) => ({
+    id, state, request: { run_ids: ["run-source"], include_artifacts: true },
+    links: {}, created_at: "2026-01-01T00:00:00Z",
+  });
+  await serveFixtures(page, sessionRoutes);
+  await page.route("**/api/v1/exports**", route => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/expired-selection")) {
+      return route.fulfill({ json: { meta, data: { ids: [...expired], count: expired.length } } });
+    }
+    if (url.pathname.endsWith("/bulk-delete")) {
+      const { ids } = route.request().postDataJSON() as { ids: string[] };
+      batches.push(ids);
+      ids.forEach(id => deleted.add(id));
+      return route.fulfill({ json: { meta, data: { items: ids.map(id => ({ id, status: "deleted", error: null })) } } });
+    }
+    const last = url.searchParams.has("cursor");
+    if (last) refreshes++;
+    const rows = last ? [item("expired-last", "expired"), item("building", "building")]
+      : [item("expired-first", "expired"), item("ready", "ready")];
+    return route.fulfill({ json: { meta: { ...meta, next_cursor: last ? null : "page-two" },
+      data: rows.filter(row => !deleted.has(row.id)) } });
+  });
+  await page.goto("/exports");
+  await expect(page.getByRole("heading", { name: "导出" })).toBeVisible();
+  await page.getByLabel("选择导出 expired-first").check();
+  await page.getByRole("button", { name: "下一页" }).click();
+  await expect(page.getByLabel("选择导出 building")).toBeDisabled();
+  await page.getByLabel("选择导出 expired-last").check();
+  await expect.poll(() => refreshes).toBeGreaterThan(1);
+  await expect(page.getByText("第 2 页")).toBeVisible();
+  await expect(page.getByLabel("选择导出 expired-last")).toBeChecked();
+  await page.getByRole("button", { name: "选择全部已过期" }).click();
+  await expect(page.getByRole("status")).toContainText("2 条已过期记录");
+  expired.push("expired-after-selection");
+  page.once("dialog", dialog => {
+    expect(dialog.message()).toContain("2 条个人导出");
+    return dialog.accept();
+  });
+  await page.getByRole("button", { name: "将所选 2 条移入回收站" }).click();
+  await expect(page.getByLabel("选择导出 expired-last")).toHaveCount(0);
+  await expect(page.getByLabel("选择导出 building")).toBeVisible();
+  expect(batches).toEqual([["expired-first", "expired-last"]]);
+  await page.getByRole("button", { name: "上一页" }).click();
+  await expect(page.getByRole("link", { name: "下载" })).toBeVisible();
+  page.once("dialog", dialog => dialog.accept());
+  await page.getByRole("button", { name: "将导出 ready 移入回收站" }).click();
+  await expect(page.getByRole("link", { name: "下载" })).toHaveCount(0);
+  expect(batches[1]).toEqual(["ready"]);
+  expect(errors).toEqual([]);
+});
