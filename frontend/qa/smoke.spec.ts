@@ -695,6 +695,7 @@ test("attachment snapshots", async ({ page }) => {
 
   // The new snapshot against its parent, and one file's content.
   await page.getByRole("link", { name: "v2", exact: true }).click();
+  await expect(page.locator("#attachment-selected")).toHaveCount(1);
   await expect(page.getByText("与 v1 的文件差异")).toBeVisible();
   await expect(page.getByText("~ bin/run.sh")).toBeVisible();
   await page.getByRole("button", { name: "查看" }).first().click();
@@ -716,7 +717,7 @@ test("attachment snapshots", async ({ page }) => {
   const versions = page.getByRole("table");
   await expect(versions.getByText("分出 2 支")).toBeVisible();
   for (const child of ["v2", "v3"]) {
-    const row = versions.getByRole("row").filter({ has: versions.getByRole("link", { name: child, exact: true }) });
+    const row = versions.getByRole("row").filter({ has: page.getByRole("link", { name: child, exact: true }) });
     await expect(row.getByRole("link", { name: "v1", exact: true })).toBeVisible();
   }
   await page.screenshot({ path: `${shots}/attachments.png`, fullPage: true });

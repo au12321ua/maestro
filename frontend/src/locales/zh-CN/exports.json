@@ -16,7 +16,6 @@
   "noArtifacts": "不含产物",
   "download": "下载",
   "expiredSelected": "已选中全部 {{count}} 条已过期记录。",
-  "recycleFailed": "移入回收站失败",
   "recycled": "已处理 {{count}} 条导出记录。",
   "selectExpired": "选择全部已过期",
   "recycleSelected": "将所选 {{count}} 条移入回收站",

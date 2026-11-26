@@ -17,11 +17,12 @@ import {
   PageTitle,
   StatusPill,
 } from "@/components/common";
+import { bulkRecycle } from "@/lib/bulk-recycle";
 import { API, api } from "@/lib/api";
 import { EXPORT_STATE, fmtBytes, fmtTime, label, shortId } from "@/lib/format";
 import { useInterval, useLoad } from "@/lib/hooks";
 import type { Export } from "@/lib/types";
-import { t, translateCode } from "@/i18n";
+import { t } from "@/i18n";
 
 const PENDING = new Set(["queued", "building"]);
 
@@ -61,6 +62,7 @@ export function ExportsPage() {
   );
 
   function toggle(id: string) {
+    setNotice("");
     setSelected((previous) => {
       const updated = new Set(previous);
       if (updated.has(id)) updated.delete(id);
@@ -91,37 +93,17 @@ export function ExportsPage() {
     setError(undefined);
     setNotice("");
     setFailures([]);
-    const completed = new Set<string>();
-    const failed = [];
     try {
-      for (let offset = 0; offset < ids.length; offset += 500) {
-        const { data } = await api.post("/exports/bulk-delete", {
-          body: { ids: ids.slice(offset, offset + 500) },
-        });
-        for (const item of data.items) {
-          if (item.status === "failed") {
-            const reason = item.error
-              ? (translateCode(item.error.code) ?? item.error.message)
-              : t("exports.recycleFailed");
-            failed.push({ id: item.id, reason });
-          } else {
-            completed.add(item.id);
-          }
-        }
-      }
-    } catch (err) {
-      setError(err);
-    } finally {
+      const { completed, failures } = await bulkRecycle("/exports/bulk-delete", ids);
       setSelected((previous) => {
         const remaining = new Set(previous);
-        for (const id of ids) {
-          if (completed.has(id)) remaining.delete(id);
-          else remaining.add(id);
-        }
+        for (const id of completed) remaining.delete(id);
+        for (const failure of failures) remaining.add(failure.id);
         return remaining;
       });
-      setFailures(failed);
+      setFailures(failures);
       setNotice(t("exports.recycled", { count: completed.size }));
+    } finally {
       await page.reload();
       setBusy(false);
     }

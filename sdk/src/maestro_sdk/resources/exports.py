@@ -9,8 +9,6 @@ from pathlib import Path
 from maestro_sdk import models
 from maestro_sdk._transport import _query, _Resource, _save
 
-_BULK_DELETE_LIMIT = 500
-
 
 class Exports(_Resource):
     def create(
@@ -47,18 +45,7 @@ class Exports(_Resource):
 
     def delete_many(self, export_ids: list[str]) -> models.BulkDeleteResult:
         """Recycle a fixed list of your exports and report the outcome of each ID."""
-        ids = list(dict.fromkeys(export_ids))
-        items = []
-        for start in range(0, len(ids), _BULK_DELETE_LIMIT):
-            batch = self._c._send(
-                "POST",
-                "exports/bulk-delete",
-                models.BulkDeleteResult,
-                {"ids": ids[start : start + _BULK_DELETE_LIMIT]},
-                retry=True,
-            )
-            items.extend(batch.items)
-        return models.BulkDeleteResult(items=items)
+        return self._delete_many("exports/bulk-delete", export_ids)
 
     def download(self, export_id: str, destination: str | os.PathLike[str]) -> Path:
         """Save the zip package and check its digest."""

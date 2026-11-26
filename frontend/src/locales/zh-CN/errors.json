@@ -64,6 +64,8 @@
     "DATASET_VERSION_IN_USE": "数据集版本仍被运行使用",
     "DISPLAY_NAME_INVALID": "显示名称无效",
     "EXECUTION_UNAVAILABLE": "未配置执行器，暂不能运行",
+    "EXPORT_ACTIVE": "导出结束后可移入回收站",
+    "EXPORT_DELETED": "该导出已在回收站中",
     "EXPORT_EXPIRED": "导出包已过期",
     "EXPORT_INVALID": "导出请求无效",
     "EXPORT_LIMIT_REACHED": "进行中的导出已达上限",

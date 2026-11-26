@@ -18,7 +18,6 @@
   "noArtifacts": "Without artifacts",
   "download": "Download",
   "expiredSelected": "Selected all {{count}} expired exports.",
-  "recycleFailed": "Could not recycle this export",
   "recycled": "Processed {{count}} exports.",
   "selectExpired": "Select all expired",
   "recycleSelected": "Recycle selected ({{count}})",

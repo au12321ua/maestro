@@ -388,7 +388,7 @@ function AttachmentDetail({ name, kind }: { name: string; kind: AttachmentKind }
         </CardContent>
       </Card>
       <WorkflowRecords targetType="attachment" targetId={name} records={records} anchor={false} />
-      {publish && <AttachmentPublish key={publish.id} kind={kind} parent={publish} onPublished={refresh} />}
+      {publish && <AttachmentPublish key={`publish-${publish.id}`} kind={kind} parent={publish} onPublished={() => { setPublish(undefined); refresh(); }} />}
     </div>
   );
 }

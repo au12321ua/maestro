@@ -687,6 +687,42 @@
         "title": "AttachmentDiff",
         "type": "object"
       },
+      "AttachmentDirectoryEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "latest": {
+            "$ref": "#/components/schemas/Attachment"
+          },
+          "match": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Attachment"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Snapshot matching the search by label or ID"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "snapshot_count": {
+            "description": "Visible snapshots in the directory scope",
+            "title": "Snapshot Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "latest",
+          "snapshot_count",
+          "match"
+        ],
+        "title": "AttachmentDirectoryEntry",
+        "type": "object"
+      },
       "AttachmentFile": {
         "additionalProperties": false,
         "properties": {
@@ -847,6 +883,197 @@
           "files"
         ],
         "title": "AttachmentPublish",
+        "type": "object"
+      },
+      "AttachmentVersionDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "in_topic": {
+            "description": "True if there is no topic filter or the snapshot is in it",
+            "title": "In Topic",
+            "type": "boolean"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/AttachmentVersionEntry"
+          }
+        },
+        "required": [
+          "snapshot",
+          "in_topic"
+        ],
+        "title": "AttachmentVersionDetail",
+        "type": "object"
+      },
+      "AttachmentVersionEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "child_count": {
+            "description": "Visible children across pages and topics",
+            "title": "Child Count",
+            "type": "integer"
+          },
+          "compatible_harnesses": {
+            "description": "Harness agents, or [\"*\"] for any",
+            "items": {
+              "type": "string"
+            },
+            "title": "Compatible Harnesses",
+            "type": "array"
+          },
+          "content_digest": {
+            "description": "Identifies the snapshot: every file's path, SHA-256 and mode",
+            "title": "Content Digest",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "deletion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeletionState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "effects": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Effects",
+            "type": "array"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "file_count": {
+            "title": "File Count",
+            "type": "integer"
+          },
+          "files": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AttachmentFile"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Files"
+          },
+          "has_bootstrap": {
+            "description": "Has bootstrap.sh, run in each trial's setup",
+            "title": "Has Bootstrap",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "default": "attachment",
+            "enum": [
+              "attachment",
+              "submission"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owner_id": {
+            "title": "Owner Id",
+            "type": "string"
+          },
+          "owner_username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Username"
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Attachment"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Readable parent across pages and topics"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "provides": {
+            "$ref": "#/components/schemas/AttachmentProvides"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "name",
+          "label",
+          "parent_id",
+          "description",
+          "owner_id",
+          "owner_username",
+          "content_digest",
+          "effects",
+          "compatible_harnesses",
+          "provides",
+          "has_bootstrap",
+          "file_count",
+          "size_bytes",
+          "enabled",
+          "created_at",
+          "files",
+          "deletion",
+          "parent",
+          "child_count"
+        ],
+        "title": "AttachmentVersionEntry",
         "type": "object"
       },
       "Attempt": {
@@ -1963,6 +2190,77 @@
           "blockers"
         ],
         "title": "BlockedTask",
+        "type": "object"
+      },
+      "BulkDeleteItem": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ErrorBody"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "deleted",
+              "already_deleted",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "error"
+        ],
+        "title": "BulkDeleteItem",
+        "type": "object"
+      },
+      "BulkDeleteRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "title": "BulkDeleteRequest",
+        "type": "object"
+      },
+      "BulkDeleteResult": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BulkDeleteItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "BulkDeleteResult",
         "type": "object"
       },
       "CacheObservation": {
@@ -6379,6 +6677,23 @@
         "title": "Envelope[AttachmentMissing]",
         "type": "object"
       },
+      "Envelope_AttachmentVersionDetail_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AttachmentVersionDetail"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[AttachmentVersionDetail]",
+        "type": "object"
+      },
       "Envelope_Attachment_": {
         "additionalProperties": false,
         "properties": {
@@ -6445,6 +6760,23 @@
           "meta"
         ],
         "title": "Envelope[Batch]",
+        "type": "object"
+      },
+      "Envelope_BulkDeleteResult_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/BulkDeleteResult"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[BulkDeleteResult]",
         "type": "object"
       },
       "Envelope_Capabilities_": {
@@ -6615,6 +6947,23 @@
           "meta"
         ],
         "title": "Envelope[DeploymentSettings]",
+        "type": "object"
+      },
+      "Envelope_ExpiredExportSelection_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ExpiredExportSelection"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[ExpiredExportSelection]",
         "type": "object"
       },
       "Envelope_Export_": {
@@ -7214,6 +7563,48 @@
           "meta"
         ],
         "title": "Envelope[list[Artifact]]",
+        "type": "object"
+      },
+      "Envelope_list_AttachmentDirectoryEntry__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/AttachmentDirectoryEntry"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[list[AttachmentDirectoryEntry]]",
+        "type": "object"
+      },
+      "Envelope_list_AttachmentVersionEntry__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/AttachmentVersionEntry"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope[list[AttachmentVersionEntry]]",
         "type": "object"
       },
       "Envelope_list_Attachment__": {
@@ -8306,12 +8697,45 @@
         "title": "ExecutionInfo",
         "type": "object"
       },
+      "ExpiredExportSelection": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "ids": {
+            "description": "Frozen IDs across all pages of your expired exports",
+            "items": {
+              "type": "string"
+            },
+            "title": "Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids",
+          "count"
+        ],
+        "title": "ExpiredExportSelection",
+        "type": "object"
+      },
       "Export": {
         "additionalProperties": false,
         "properties": {
           "created_at": {
             "title": "Created At",
             "type": "string"
+          },
+          "deletion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeletionState"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "digest": {
             "anyOf": [
@@ -8424,6 +8848,7 @@
           "created_at",
           "finished_at",
           "expires_at",
+          "deletion",
           "links"
         ],
         "title": "Export",
@@ -13611,6 +14036,7 @@
             "enum": [
               "run",
               "artifact",
+              "export",
               "dataset",
               "dataset_version",
               "credential",
@@ -21470,6 +21896,7 @@
                   "enum": [
                     "run",
                     "artifact",
+                    "export",
                     "dataset",
                     "dataset_version",
                     "credential",
@@ -22473,6 +22900,330 @@
         ]
       }
     },
+    "/api/v1/attachment-directory": {
+      "get": {
+        "description": "Page by attachment name. Search can locate a specific snapshot in a group.",
+        "operationId": "list_attachment_directory",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "include_disabled",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Include Disabled",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "attachment",
+                    "submission"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "topic_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Topic Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_list_AttachmentDirectoryEntry__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "List Attachment Directory",
+        "tags": [
+          "attachments"
+        ]
+      }
+    },
+    "/api/v1/attachment-directory/version": {
+      "get": {
+        "description": "Locate a snapshot by ID and report its membership in an optional topic.",
+        "operationId": "get_attachment_version",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "topic_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Topic Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_AttachmentVersionDetail_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Get Attachment Version",
+        "tags": [
+          "attachments"
+        ]
+      }
+    },
+    "/api/v1/attachment-directory/versions": {
+      "get": {
+        "description": "Page snapshots of an exact attachment name. Search by label or snapshot ID.",
+        "operationId": "list_attachment_versions",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_disabled",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Include Disabled",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "attachment",
+                    "submission"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "topic_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Topic Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_list_AttachmentVersionEntry__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "List Attachment Versions",
+        "tags": [
+          "attachments"
+        ]
+      }
+    },
     "/api/v1/attachments": {
       "get": {
         "operationId": "list_attachments",
@@ -22654,6 +23405,48 @@
           }
         },
         "summary": "Publish Attachment",
+        "tags": [
+          "attachments"
+        ]
+      }
+    },
+    "/api/v1/attachments/bulk-delete": {
+      "post": {
+        "description": "Move the named snapshots to the recycle bin. Report checks per snapshot.",
+        "operationId": "bulk_delete_attachments",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkDeleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_BulkDeleteResult_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Bulk Delete Attachments",
         "tags": [
           "attachments"
         ]
@@ -24482,6 +25275,7 @@
     },
     "/api/v1/exports": {
       "get": {
+        "description": "Your exports, newest first, optionally filtered by their current state.",
         "operationId": "list_exports",
         "parameters": [
           {
@@ -24514,6 +25308,29 @@
                 }
               ],
               "title": "Limit"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "queued",
+                    "building",
+                    "ready",
+                    "failed",
+                    "expired"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
             }
           }
         ],
@@ -24585,7 +25402,122 @@
         ]
       }
     },
+    "/api/v1/exports/bulk-delete": {
+      "post": {
+        "description": "Recycle the supplied finished exports and report a result per ID.",
+        "operationId": "bulk_delete_exports",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkDeleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_BulkDeleteResult_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Bulk Delete Exports",
+        "tags": [
+          "exports"
+        ]
+      }
+    },
+    "/api/v1/exports/expired-selection": {
+      "get": {
+        "description": "Capture the exact IDs of your expired exports across all pages for confirmation.",
+        "operationId": "select_expired_exports",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_ExpiredExportSelection_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Select Expired Exports",
+        "tags": [
+          "exports"
+        ]
+      }
+    },
     "/api/v1/exports/{export_id}": {
+      "delete": {
+        "description": "Move one of your finished exports into the recycle bin.",
+        "operationId": "delete_export",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "title": "Export Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_RecycleEntry_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error"
+          }
+        },
+        "summary": "Delete Export",
+        "tags": [
+          "exports"
+        ]
+      },
       "get": {
         "operationId": "get_export",
         "parameters": [

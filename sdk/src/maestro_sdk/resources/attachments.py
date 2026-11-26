@@ -267,13 +267,7 @@ class Attachments(_Resource):
 
     def delete_many(self, attachment_ids: Sequence[str]) -> models.BulkDeleteResult:
         """Move snapshots to the recycle bin and report the outcome of each ID."""
-        return self._c._send(
-            "POST",
-            "attachments/bulk-delete",
-            models.BulkDeleteResult,
-            {"ids": list(attachment_ids)},
-            retry=True,
-        )
+        return self._delete_many("attachments/bulk-delete", attachment_ids)
 
 
 def _sha256(path: Path) -> str:

@@ -24,8 +24,8 @@
 
 | 编号 | 提案 | 状态 | 要点 |
 | --- | --- | --- | --- |
-| N-47 | [附件目录、版本详情与导出记录清理](N-47-attachment-directory-export-cleanup.md) | 已确认 | 附件按名称分页，详情内查找、比较和批删快照；个人导出支持单项、多选与跨页选择全部已过期记录（U-112、U-114） |
-| N-48 | [在开发项目内用 skill 测试 Agent 工具并按专题接手](N-48-project-tool-skills-topics.md) | 已确认 | 项目内只装 skill，由独立环境调用 SDK；从工具附件的首次对照到交接，主动引导使用专题（U-113、U-114） |
+| N-47 | [附件目录、版本详情与导出记录清理](archive/N-47-attachment-directory-export-cleanup.md) | 完成 | 附件按名称分页，详情内查找、比较和批删快照；个人导出支持单项、多选与跨页选择全部已过期记录（U-112、U-114） |
+| N-48 | [在开发项目内用 skill 测试 Agent 工具并按专题接手](archive/N-48-project-tool-skills-topics.md) | 完成 | 项目内只装 skill，由独立环境调用 SDK；从工具附件的首次对照到交接，主动引导使用专题（U-113、U-114） |
 | N-45 | [自动并发与手动保留运行产物](archive/N-45-auto-concurrency-artifact-retention.md) | 完成 | 新建运行显示自动调度的并发上限，用户可主动调低；团队可在字节配额内保留选定运行的原始产物供复盘（U-109） |
 | N-46 | [实验专题：供人和 Agent 共享的实验视图](archive/N-46-experiment-topics.md) | 完成 | 专题按引用组织运行、集合、数据集与附件；网页和 SDK 共用稳定链接，Agent 可显式按专题提交、读取概览并跨会话接手（U-110） |
 
