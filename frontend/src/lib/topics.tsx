@@ -10,7 +10,7 @@ interface TopicBrowsing {
   loading: boolean;
   error: unknown;
   reload: () => Promise<void>;
-  choose: (id: string) => void;
+  choose: (id: string, reset?: string[]) => void;
 }
 
 const ScopeContext = createContext<TopicBrowsing | null>(null);
@@ -45,10 +45,10 @@ export function TopicScopeProvider({ userId, children }: { userId: string; child
       : null,
   [topicId]);
 
-  const choose = (identity: string) => {
+  const choose = (identity: string, reset: string[] = []) => {
     const next = new URLSearchParams(params);
     next.set("topic", identity);
-    for (const field of ["dataset", "version", "snapshot", "base", "name"]) next.delete(field);
+    for (const field of ["dataset", "version", "snapshot", "base", "name", ...reset]) next.delete(field);
     setParams(next, { replace: true });
   };
 

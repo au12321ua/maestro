@@ -88,6 +88,7 @@ export type UpstreamVersions = S["UpstreamVersions"];
 export type AttachmentFile = S["AttachmentFile"];
 /** A published attachment snapshot; its content never changes. */
 export type Attachment = S["Attachment"];
+export type AttachmentVersion = S["AttachmentVersionEntry"];
 export type AttachmentDiff = S["AttachmentDiff"];
 
 export type PolicySetting = S["PolicySetting"];

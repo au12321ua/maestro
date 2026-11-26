@@ -15,9 +15,19 @@
     "provides": "提供：",
     "tool": "工具 {{name}}",
     "env": "环境变量 {{name}}",
-    "compareWith": "与另一快照比较",
     "noCompare": "不比较",
-    "parentMark": "（父快照）"
+    "versions": "快照列表",
+    "snapshot": "快照",
+    "search": "按标签或 ID 查找快照",
+    "empty": "当前范围内没有符合条件的快照。",
+    "close": "关闭快照",
+    "compare": "比较",
+    "compareAgainst": "与 {{snapshot}} 比较",
+    "comparison": "与 {{snapshot}} 的文件差异",
+    "outsideTopic": "此快照不在当前专题内。",
+    "baseOutsideTopic": "比较基准不在当前专题内。",
+    "invalidSnapshot": "此快照属于其他附件或包类别。",
+    "invalidBase": "请选择同一附件的另一快照作为比较基准。"
   },
   "progress": {
     "reading": "读取文件…",
@@ -28,9 +38,8 @@
   "list": {
     "title": "已发布的附件",
     "description": "包是每个试次独立安装的不可变快照。附件可用于模型和 Oracle 运行；待评提交用于提交评分，安装后只运行 verifier。安装使用安装网络，后续阶段遵循任务与平台网络规则。",
-    "empty": "还没有发布附件。",
+    "empty": "当前范围内没有符合条件的附件。",
     "deletedSnapshot": "已删除的快照",
-    "anyHarness": "任意",
     "files": "{{count}} 个文件 · {{size}}",
     "hasBootstrap": "含安装脚本",
     "disabled": "停用",
@@ -38,10 +47,7 @@
     "disable": "停用",
     "enable": "启用",
     "disabledDone": "已停用",
-    "enabledDone": "已启用",
-    "delete": "删除",
-    "deleted": "已移入回收站",
-    "snapshotNotListed": "地址中的附件快照 {{id}} 不在列表中：它已移入回收站或已删除。"
+    "enabledDone": "已启用"
   },
   "publish": {
     "title": "发布快照",
@@ -57,21 +63,11 @@
     "exampleDescription": "说明（可选）",
     "exampleNote": "effects 目前支持 model_call、agent_tools、task_environment；改变验证或评分的附件暂不支持。compatible_harnesses 填 Harness 适配器名，或 [\"*\"] 表示任意。provides 用于发现两个附件之间的冲突。快照没有版本号，用发布时的标签区分。",
     "noManifest": "文件夹根目录里没有 manifest.json。",
-    "done": "已发布 {{name}} {{snapshot}}（上传 {{count}} 个文件）"
+    "done": "已发布 {{name}} {{snapshot}}（上传 {{count}} 个文件）",
+    "parentPending": "发布前需先读取父快照的文件。"
   },
   "history": {
-    "count": "{{count}} 个快照",
-    "latestIs": "最新 {{snapshot}} · {{time}} · {{owner}}",
-    "baseOnLatest": "基于最新版发布",
-    "latest": "最新",
-    "changes": "较父快照 ",
-    "legend": "新增 / 删除 / 修改的文件数",
-    "noChange": "文件无变化",
-    "basedOn": "基于 {{name}}",
-    "separate": "没有父快照（另起一支）",
-    "first": "首个快照",
-    "branches": "分出 {{count}} 支",
-    "branch": "分支 {{n}}"
+    "branches": "分出 {{count}} 支"
   },
   "kind": {
     "label": "包类别（列表与上传）",
@@ -80,5 +76,30 @@
     "manifestHint": "在上方选择包类别，须与 manifest.json 一致：省略 kind 表示附件；待评提交须写 kind: \"submission\" 并包含 bootstrap.sh，不能包含 effects、compatible_harnesses 或 provides。所有安装脚本都可读取 MAESTRO_TASK_NAME。",
     "mismatch": "所选类别须与 manifest.json 中的 kind 一致。",
     "bootstrapRequired": "待评提交必须包含 bootstrap.sh。"
+  },
+  "directory": {
+    "back": "返回附件目录",
+    "search": "按名称、标签或快照 ID 搜索",
+    "name": "名称",
+    "latest": "最新快照",
+    "published": "发布时间",
+    "snapshots": "快照数",
+    "match": "匹配快照：{{snapshot}}"
+  },
+  "pagination": {
+    "label": "分页",
+    "previous": "上一页",
+    "next": "下一页",
+    "page": "第 {{page}} 页"
+  },
+  "recycle": {
+    "action": "移入回收站",
+    "selected": "已选 {{count}} 个快照",
+    "selectedAction": "将 {{count}} 个快照移入回收站",
+    "confirm": "将 {{name}} 的 {{count}} 个快照移入回收站？",
+    "result": "已将 {{count}} 个快照移入回收站",
+    "clearSelection": "清空选择",
+    "ownerOnly": "快照可由其发布者或管理员移入回收站。",
+    "limit": "每次最多将 {{count}} 个快照移入回收站。"
   }
 }
