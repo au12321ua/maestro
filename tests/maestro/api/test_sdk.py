@@ -466,6 +466,9 @@ SDK_METHODS = {
     "create_export": "exports.create",
     "get_export": "exports.get",
     "list_exports": "exports.list",
+    "select_expired_exports": "exports.expired_selection",
+    "bulk_delete_exports": "exports.delete_many",
+    "delete_export": "exports.delete",
     "download_export": "exports.download",
 }
 

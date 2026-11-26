@@ -6,15 +6,20 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Header, Request
 from fastapi.responses import FileResponse, StreamingResponse
+from starlette.background import BackgroundTask
 
-from maestro.api.deps import maestro, ok, principal, respond
+from maestro.api.deps import experiment, maestro, ok, principal, respond
 from maestro.api.models import (
     Artifact,
     ArtifactRetention,
+    BulkDeleteRequest,
+    BulkDeleteResult,
     ConfigRequest,
     Envelope,
+    ExpiredExportSelection,
     Export,
     ExportCreate,
+    ExportState,
     Operation,
     RecycleEntry,
     Run,
@@ -310,15 +315,41 @@ def list_exports(
     request: Request,
     cursor: str | None = None,
     limit: int | None = None,
+    state: ExportState | None = None,
     who: Principal = Depends(principal),
 ):
-    items, next_cursor = maestro(request).exports.list(who, cursor, limit)
+    """Your exports, newest first, optionally filtered by their current state."""
+    items, next_cursor = maestro(request).exports.list(who, cursor, limit, state)
     return ok(request, items, next_cursor)
+
+
+@router.get(
+    "/exports/expired-selection",
+    response_model=Envelope[ExpiredExportSelection],
+    tags=["exports"],
+)
+def select_expired_exports(request: Request, who: Principal = Depends(principal)):
+    """Capture the exact IDs of your expired exports across all pages for confirmation."""
+    return ok(request, maestro(request).exports.expired_selection(who))
+
+
+@router.post("/exports/bulk-delete", response_model=Envelope[BulkDeleteResult], tags=["exports"])
+def bulk_delete_exports(
+    body: BulkDeleteRequest, request: Request, who: Principal = Depends(experiment)
+):
+    """Recycle the supplied finished exports and report a result per ID."""
+    return ok(request, maestro(request).recycle.delete_many(who, "export", body.ids))
 
 
 @router.get("/exports/{export_id}", response_model=Envelope[Export], tags=["exports"])
 def get_export(export_id: str, request: Request, who: Principal = Depends(principal)):
     return ok(request, maestro(request).exports.get(who, export_id))
+
+
+@router.delete("/exports/{export_id}", response_model=Envelope[RecycleEntry], tags=["exports"])
+def delete_export(export_id: str, request: Request, who: Principal = Depends(experiment)):
+    """Move one of your finished exports into the recycle bin."""
+    return ok(request, maestro(request).recycle.delete(who, "export", export_id))
 
 
 @router.get(
@@ -327,12 +358,16 @@ def get_export(export_id: str, request: Request, who: Principal = Depends(princi
     responses={200: {"content": {"application/zip": {}}}},
 )
 def download_export(export_id: str, request: Request, who: Principal = Depends(principal)):
-    meta, path = maestro(request).exports.archive(who, export_id)
+    meta, reader = maestro(request).exports.archive(who, export_id)
+    # Keep the inode open for this response if expiry or a purge unlinks the package.
+    # FileResponse can still serve byte ranges through the open descriptor on Linux.
     return FileResponse(
-        path,
+        f"/proc/self/fd/{reader.fileno()}",
         media_type="application/zip",
         filename=f"export-{export_id}.zip",
+        stat_result=os.fstat(reader.fileno()),
         headers={"X-Content-Digest": meta["digest"] or ""},
+        background=BackgroundTask(reader.close),
     )
 
 
